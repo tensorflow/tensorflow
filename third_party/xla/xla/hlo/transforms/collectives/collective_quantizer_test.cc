@@ -44,10 +44,10 @@ class CollectiveQuantizerTest : public HloHardwareIndependentTestBase {
 
 TEST_F(CollectiveQuantizerTest, AllGatherConvert) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
-    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     ROOT convert = f8e4m3fn[8,32,8,128] convert(all-gather)
     }
   )";
@@ -63,10 +63,10 @@ TEST_F(CollectiveQuantizerTest, AllGatherConvert) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherConvertUnary) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
-    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     reshape = bf16[8,32,1024] reshape(all-gather)
     slice = bf16[8,32,512] slice(reshape), slice={[0:8], [0:32], [256:768]}
     ROOT convert = f8e4m3fn[8,32,512] convert(slice)
@@ -85,7 +85,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherConvertUnary) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherQuantize) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
     all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
@@ -114,7 +114,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantize) {
 
 TEST_F(CollectiveQuantizerTest, AllToAllQuantize) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     all-to-all = bf16[8,32,8,128] all-to-all(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
@@ -143,7 +143,7 @@ TEST_F(CollectiveQuantizerTest, AllToAllQuantize) {
 
 TEST_F(CollectiveQuantizerTest, CollectiveBroadcastQuantize) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     collective-broadcast = bf16[8,32,8,128] collective-broadcast(param), replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
@@ -173,7 +173,7 @@ TEST_F(CollectiveQuantizerTest, CollectiveBroadcastQuantize) {
 
 TEST_F(CollectiveQuantizerTest, CollectivePermuteQuantize) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     collective-permute = bf16[8,32,8,128] collective-permute(param), source_target_pairs={{0,1},{2,3},{4,5},{6,7}}, channel_id=1
@@ -203,7 +203,7 @@ TEST_F(CollectiveQuantizerTest, CollectivePermuteQuantize) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherQuantizeUnary) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
     all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
@@ -234,10 +234,10 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeUnary) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherQuantizeMultiUser) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
-    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(all-gather, scale_bcast)
@@ -258,10 +258,10 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeMultiUser) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherQuantizeNonReplicatedScale) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
-    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     scale = bf16[] parameter(1)
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(all-gather, scale_bcast)
@@ -281,7 +281,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeNonReplicatedScale) {
 
 TEST_F(CollectiveQuantizerTest, AllGatherQuantizePartialReplication) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -321,7 +321,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizePartialReplication) {
 
 TEST_F(CollectiveQuantizerTest, AllToAllQuantizePartialReplication) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -362,7 +362,7 @@ TEST_F(CollectiveQuantizerTest, AllToAllQuantizePartialReplication) {
 TEST_F(CollectiveQuantizerTest,
        AllToAllQuantizePartialReplicationSeparateComputation) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -410,7 +410,7 @@ TEST_F(CollectiveQuantizerTest,
 TEST_F(CollectiveQuantizerTest,
        AllGatherQuantizePartialReplicationGroupMismatch) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -447,7 +447,7 @@ TEST_F(CollectiveQuantizerTest,
 TEST_F(CollectiveQuantizerTest,
        AllToAllQuantizePartialReplicationGroupMismatchSeparateComputation) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -486,11 +486,11 @@ TEST_F(CollectiveQuantizerTest,
 
 TEST_F(CollectiveQuantizerTest, ConvertAllGather) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,4,8,128] parameter(0)
     convert = bf16[8,4,8,128] convert(param)
-    ROOT all-gather = bf16[8,32,8,128] all-gather(convert), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    ROOT all-gather = bf16[8,32,8,128] all-gather(convert), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -506,13 +506,13 @@ TEST_F(CollectiveQuantizerTest, ConvertAllGather) {
 
 TEST_F(CollectiveQuantizerTest, ConvertAllGatherUnary) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,4,8,128] parameter(0)
     convert = bf16[8,4,8,128] convert(param)
     reshape = bf16[8,4,1024] reshape(convert)
     slice = bf16[8,4,512] slice(reshape), slice={[0:8], [0:4], [256:768]}
-    ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -529,7 +529,7 @@ TEST_F(CollectiveQuantizerTest, ConvertAllGatherUnary) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeAllGather) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,4,8,128] parameter(0)
     convert = bf16[8,4,8,128] convert(param)
@@ -553,7 +553,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGather) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeAllToAll) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,32,8,128] parameter(0)
     convert = bf16[8,32,8,128] convert(param)
@@ -577,7 +577,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllToAll) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeCollectiveBroadcast) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,32,8,128] parameter(0)
     convert = bf16[8,32,8,128] convert(param)
@@ -602,7 +602,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeCollectiveBroadcast) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeCollectivePermute) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,32,8,128] parameter(0)
     convert = bf16[8,32,8,128] convert(param)
@@ -626,7 +626,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeCollectivePermute) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeAllGatherUnary) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   ENTRY entry {
     param = f8e4m3fn[8,4,8,128] parameter(0)
     convert = bf16[8,4,8,128] convert(param)
@@ -656,7 +656,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGatherUnary) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeAllGatherPartialReplication) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -691,7 +691,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGatherPartialReplication) {
 
 TEST_F(CollectiveQuantizerTest, DequantizeAllToAllPartialReplication) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -727,7 +727,7 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllToAllPartialReplication) {
 TEST_F(CollectiveQuantizerTest,
        DequantizeAllToAllPartialReplicationSeparateComputation) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -770,7 +770,7 @@ TEST_F(CollectiveQuantizerTest,
 TEST_F(CollectiveQuantizerTest,
        DequantizeAllGatherPartialReplicationGroupMismatch) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
@@ -802,7 +802,7 @@ TEST_F(CollectiveQuantizerTest,
 TEST_F(CollectiveQuantizerTest,
        DequantizeAllToAllPartialReplicationGroupMismatchSeparateComputation) {
   absl::string_view hlo_string = R"(
-  HloModule module
+  HloModule module, num_partitions=8
   max {
     a = f32[] parameter(0)
     b = f32[] parameter(1)
