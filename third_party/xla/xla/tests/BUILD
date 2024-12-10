@@ -2405,18 +2405,15 @@ xla_test(
         "interpreter",
     ],
     tags = [
-        "test_hlo_pjrt_runner",
+        "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_thunks",
     ],
     deps = [
-        ":hlo_test_base",
+        ":hlo_pjrt_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
-        "//xla:literal",
         "//xla:literal_util",
-        "//xla:shape_util",
         "//xla:test",
-        "//xla:test_helpers",
     ],
 )
 
