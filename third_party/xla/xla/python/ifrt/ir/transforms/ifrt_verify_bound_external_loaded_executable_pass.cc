@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -77,7 +77,7 @@ class IfrtVerifyBoundExternalLoadedExecutablePass
   absl::Status VerifyShardingsEqual(
       llvm::ArrayRef<mlir::Type> types,
       const std::vector<xla::OpSharding>& shardings,
-      std::string_view sharding_type);
+      absl::string_view sharding_type);
 
   // Map from symbol name of LoadedExecutableOp to externally bound
   // LoadedExecutable.
@@ -87,7 +87,7 @@ class IfrtVerifyBoundExternalLoadedExecutablePass
 absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     llvm::ArrayRef<mlir::Type> types,
     const std::vector<xla::OpSharding>& shardings,
-    std::string_view sharding_type) {
+    absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
