@@ -28,8 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfcompile {
 
-using QuantizeXlaFn = std::function<Status(const tf2xla::Config& config,
-                                           xla::XlaComputation* computation)>;
+using QuantizeXlaFn = std::function<absl::Status(
+    const tf2xla::Config& config, xla::XlaComputation* computation)>;
 
 // Set the static quantization function to the `fn` if it hasn't been set.
 // Return false if the static function has been set.
