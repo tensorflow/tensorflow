@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

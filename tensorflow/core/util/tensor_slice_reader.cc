@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 #include <climits>
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 
