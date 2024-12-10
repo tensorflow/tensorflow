@@ -59,6 +59,12 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
           mhlo::XlaRngGetAndUpdateStateOp>(hloOp.getOperation())) {
     return true;
   }
+  if (auto reshape = dyn_cast<mhlo::ReshapeOp>(hloOp.getOperation())) {
+    // Only mhlo and HLO support dynamic reshape results. stablehlo doesn't
+    // (yet), at the time of this writing.
+    auto t = dyn_cast<RankedTensorType>(reshape.getResult().getType());
+    if (t && !t.hasStaticShape()) return true;
+  }
   if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
     // StableHLO convolution doesn't support "unknown" dimensions.
     // This is an esoteric feature of MHLO convolutions, and it's different
