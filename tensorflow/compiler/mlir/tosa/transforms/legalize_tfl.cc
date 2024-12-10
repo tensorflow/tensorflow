@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
+#include "tensorflow/lite/kernels/internal/reference/gelu.h"
 
 #define PASS_NAME "tosa-legalize-tfl"
 #define DEBUG_TYPE PASS_NAME
@@ -211,6 +212,8 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
   auto tfl_gelu_op = cast<TFL::GeluOp>(op);
   Location loc = op->getLoc();
 
+  auto approximate = tfl_gelu_op.getApproximateAttr().getValue();
+
   Value input = tfl_gelu_op.getInput();
   RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
   RankedTensorType output_type =
@@ -232,11 +235,6 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
   }
 
   if (out_quant_type) {
-    // The formal definition of gelu.
-    auto gelu_func = [](double x) -> double {
-      return 0.5 * x * (1.0 + std::erf(x / std::sqrt(2)));
-    };
-
     if (in_quant_type.getStorageTypeIntegralWidth() != 8) {
       return rewriter.notifyMatchFailure(
           op, "current tfl.gelu only support 8-bit quantized type");
@@ -244,7 +242,9 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
 
     Value table_const = getTosaConst8bitTable(
         rewriter, op, in_quant_type.getScale(), in_quant_type.getZeroPoint(),
-        out_quant_type.getScale(), out_quant_type.getZeroPoint(), gelu_func);
+        out_quant_type.getScale(), out_quant_type.getZeroPoint(),
+        approximate ? tflite::reference_ops::GeluTransformApproximate
+                    : tflite::reference_ops::GeluTransform);
 
     CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type, input,
                                            table_const);
