@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
