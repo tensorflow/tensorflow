@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tools/benchmark/benchmark_model.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "tensorflow/cc/framework/scope.h"
