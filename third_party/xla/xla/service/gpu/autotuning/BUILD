@@ -7,6 +7,7 @@ load(
 )
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -297,6 +298,7 @@ cc_library(
     name = "autotuner_status_key",
     srcs = ["autotuner_status_key.cc"],
     hdrs = ["autotuner_status_key.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = ["@com_google_absl//absl/strings"],
 )
 
@@ -304,6 +306,7 @@ cc_library(
     name = "autotuner_util",
     srcs = ["autotuner_util.cc"],
     hdrs = ["autotuner_util.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["gpu"],
     deps = [
         ":autotuner_status_key",
