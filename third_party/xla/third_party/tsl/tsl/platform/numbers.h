@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NUMBERS_H_
 #define TENSORFLOW_TSL_PLATFORM_NUMBERS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
+#include "absl/base/macros.h"
+#include "absl/strings/numbers.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 
@@ -46,7 +49,7 @@ namespace strings {
 //     Int64, UInt64, Int, Uint:        22 bytes
 //     Time:                            30 bytes
 // Use kFastToBufferSize rather than hardcoding constants.
-static const int kFastToBufferSize = 32;
+inline constexpr int kFastToBufferSize = 32;
 
 // ----------------------------------------------------------------------
 // FastInt32ToBufferLeft()
@@ -77,52 +80,60 @@ size_t FloatToBuffer(float value, char* buffer);
 // Convert a 64-bit fingerprint value to an ASCII representation.
 std::string FpToString(Fprint fp);
 
-// Attempt to parse a fingerprint in the form encoded by FpToString.  If
-// successful, stores the fingerprint in *fp and returns true.  Otherwise,
-// returns false.
-bool StringToFp(const std::string& s, Fprint* fp);
-
-// Convert a 64-bit fingerprint value to an ASCII representation that
-// is terminated by a '\0'.
-// Buf must point to an array of at least kFastToBufferSize characters
-absl::string_view Uint64ToHexString(uint64_t v, char* buf);
-
-// Attempt to parse a uint64 in the form encoded by FastUint64ToHexString.  If
-// successful, stores the value in *v and returns true.  Otherwise,
-// returns false.
-bool HexStringToUint64(const absl::string_view& s, uint64_t* result);
+// Attempt to parse a `uint64_t` in the form encoded by
+// `absl::StrCat(absl::Hex(*result))`.  If successful, stores the value in
+// `result` and returns true.  Otherwise, returns false.
+bool HexStringToUint64(absl::string_view s, uint64_t* result);
 
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto32(absl::string_view str, int32_t* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strto32(absl::string_view str, int32_t* value) {
+  return absl::SimpleAtoi(str, value);
+}
 
 // Convert strings to unsigned 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strtou32(absl::string_view str, uint32_t* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strtou32(absl::string_view str, uint32_t* value) {
+  return absl::SimpleAtoi(str, value);
+}
 
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(absl::string_view str, int64_t* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strto64(absl::string_view str, int64_t* value) {
+  return absl::SimpleAtoi(str, value);
+}
 
 // Convert strings to unsigned 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strtou64(absl::string_view str, uint64_t* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strtou64(absl::string_view str, uint64_t* value) {
+  return absl::SimpleAtoi(str, value);
+}
 
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtof(absl::string_view str, float* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strtof(absl::string_view str, float* value) {
+  return absl::SimpleAtof(str, value);
+}
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtod(absl::string_view str, double* value);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool safe_strtod(absl::string_view str, double* value) {
+  return absl::SimpleAtod(str, value);
+}
 
 inline bool ProtoParseNumeric(absl::string_view s, int32_t* value) {
   return safe_strto32(s, value);

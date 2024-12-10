@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -61,9 +62,8 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
   //
   // "src_incarnation" is used to distinguish a worker when it
   // restarts.
-  char buf[strings::kFastToBufferSize];
-  return strings::StrCat(
-      src_device, ";", strings::Uint64ToHexString(src_incarnation, buf), ";",
+  return absl::StrCat(
+      src_device, ";", absl::Hex(src_incarnation, absl::kZeroPad16), ";",
       dst_device, ";", name, ";", frame_iter.frame_id, ":", frame_iter.iter_id);
 }
 
