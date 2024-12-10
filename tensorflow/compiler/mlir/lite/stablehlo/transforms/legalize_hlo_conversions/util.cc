@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <utility>
 
