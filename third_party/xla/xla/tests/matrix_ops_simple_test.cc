@@ -19,12 +19,9 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
