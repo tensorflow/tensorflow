@@ -153,10 +153,6 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
-  // Gates the experimental feature coupling the Triton Softmax pattern matcher
-  // with priority fusion.
-  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
-
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
@@ -1077,7 +1073,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 354
+  // Next id: 355
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1095,10 +1091,11 @@ message DebugOptions {
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
   // xla_gpu_enable_priority_fusion
+  // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      326, 332;
+      325, 326, 332;
 }
 
 // Contains flags which affects the GPU compilation result.

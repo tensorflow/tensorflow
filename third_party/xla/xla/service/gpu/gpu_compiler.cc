@@ -1592,11 +1592,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options
-            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
-         rocm_cc != nullptr)) {
+    if ((cuda_cc != nullptr &&
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+        rocm_cc != nullptr) {
       // Triton compilation needs normalized operations on bf16 (i.e. converted
       // to f32).
       add_float_normalization(pipeline);

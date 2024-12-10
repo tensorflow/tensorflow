@@ -209,7 +209,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(false);
-  opts.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -1676,14 +1675,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable heroless Triton fusions in the PriorityFusion pass. The pass "
       "will try to make Triton fusions first and foremost where it is "
       "possible."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_triton_softmax_priority_fusion",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_triton_softmax_priority_fusion),
-      debug_options
-          ->xla_gpu_experimental_enable_triton_softmax_priority_fusion(),
-      "Enable fusion into Triton Softmax in PriorityFusion pass."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_results_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
