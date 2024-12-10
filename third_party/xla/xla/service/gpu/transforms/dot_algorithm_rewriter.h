@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -33,6 +34,17 @@ class DotAlgorithmRewriter : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32(
+      HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32X3(
+      HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32X6(
+      HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForTF32TF32F32(
+      HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForTF32TF32F32X3(
+      HloInstruction* lhs, HloInstruction* rhs);
 };
 
 }  // namespace xla::gpu

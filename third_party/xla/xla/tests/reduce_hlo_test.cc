@@ -91,7 +91,7 @@ ENTRY reduce.1 {
   }
 };
 
-XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_TPU(Reduce)) {
+XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
   if (IsMlirLoweringEnabled()) {
     GTEST_SKIP() << "Explicit layouts not supported by MLIR";
   }

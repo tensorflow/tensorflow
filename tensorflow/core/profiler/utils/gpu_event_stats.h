@@ -52,6 +52,7 @@ struct GpuEventStats {
   absl::string_view kernel_details;
   absl::string_view memcpy_details;
   std::optional<int64_t> correlation_id;
+  std::optional<int64_t> scope_range_id;
 
   // Stats derived by grouping.
   std::optional<int64_t> group_id;

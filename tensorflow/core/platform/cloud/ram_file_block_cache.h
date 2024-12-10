@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/platform/cloud/ram_file_block_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/cloud/ram_file_block_cache.h"
 
 namespace tensorflow {
 using tsl::RamFileBlockCache;  // NOLINT(misc-unused-using-decls)

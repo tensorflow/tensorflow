@@ -20,7 +20,12 @@ package(
 cc_library(
     name = "litert_compiler_plugin",
     hdrs = ["litert_compiler_plugin.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_c_api"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+    ],
 )
 
 cc_library(
@@ -28,7 +33,8 @@ cc_library(
     hdrs = ["litert_compiler_plugin_api.h"],
     deps = [
         ":litert_compiler_plugin",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
     ],
 )
 
@@ -39,9 +45,23 @@ cc_library(
         "litert_dispatch_api.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime/dispatch",
+    ],
+)
+
+# This test verifies that the C API header files can build via C compiler.
+cc_test(
+    name = "litert_vendor_c_api_common_test",
+    srcs = ["litert_vendor_c_api_common_test.c"],
+    copts = ["--std=c11"],
+    linkopts = ["-ldl"],
+    deps = [
+        ":litert_compiler_plugin",
+        ":litert_compiler_plugin_api",
+        ":litert_dispatch_c_api",
     ],
 )
 

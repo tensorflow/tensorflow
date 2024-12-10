@@ -124,7 +124,7 @@ absl::Status XlaResource::SetTypeAndShape(DataType type,
   return absl::OkStatus();
 }
 
-absl::Status XlaResource::SetValue(const xla::XlaOp& value) {
+absl::Status XlaResource::SetValue(const xla::XlaOp value) {
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,
@@ -215,7 +215,7 @@ absl::Status XlaResource::Pack(xla::XlaOp* pack,
 }
 
 absl::Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
-                                      const xla::XlaOp& pack,
+                                      const xla::XlaOp pack,
                                       xla::XlaBuilder* builder) {
   if (gradient_sources.empty()) {
     if (!initialized()) {

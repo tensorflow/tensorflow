@@ -271,6 +271,36 @@ ENTRY main {
   EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, Bf16ExpIsNotNormalized) {
+  auto cc = se::CudaComputeCapability::Ampere();
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  ROOT r = bf16[] exponential(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+}
+
+TEST_F(FloatSupportTest, Bf16LogIsNotNormalized) {
+  auto cc = se::CudaComputeCapability::Ampere();
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  ROOT r = bf16[] log(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+}
+
 TEST_F(FloatSupportTest,
        BF16ReductionOnHopperIsOnlyNormalizedIfReducerIsUnsupported) {
   auto cc = se::CudaComputeCapability::Hopper();
@@ -300,6 +330,27 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(
                               absl::Substitute(kHloModuleTemplate, "divide")));
   EXPECT_TRUE(Normalize(module_with_unsupported_reducer.get(), cc, BF16, F32));
+}
+
+TEST_F(FloatSupportTest, BF16LogAndExpOnRocmIsNormalized) {
+  auto cc = se::RocmComputeCapability();
+  constexpr absl::string_view kHloModule = R"(
+HloModule module
+
+ENTRY main {
+      p0 = bf16[4] parameter(0)
+      ROOT r = bf16[4] $0(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_log,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
+  EXPECT_TRUE(Normalize(module_log.get(), cc, BF16, F32));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_exp,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(kHloModule, "exponential")));
+  EXPECT_TRUE(Normalize(module_exp.get(), cc, BF16, F32));
 }
 
 }  // namespace

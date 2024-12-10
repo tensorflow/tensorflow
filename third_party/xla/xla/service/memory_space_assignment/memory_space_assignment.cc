@@ -347,6 +347,37 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
+absl::Status MemorySpaceAssignment::VerifyAllocations() const {
+  BufferIntervalTree interval_tree;
+  // Checks the chunks that overlap with a given allocation in time do not
+  // overlap with the allocation's chunk in the memory range. If they do, we
+  // throw an error, otherwise we add the allocation's chunk to the interval
+  // tree and return an OK status.
+  auto add_allocation_and_verify =
+      [&](const Allocation* allocation) -> absl::Status {
+    for (const HeapSimulator::Chunk& overlapping_chunk :
+         interval_tree.ChunksOverlappingInTime(allocation->start_time(),
+                                               allocation->end_time() - 1)) {
+      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
+          << "Chunks are overlapping at Allocation level (before fixing the "
+             "schedule): "
+          << allocation->ToString()
+          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+    }
+    interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
+                      allocation->chunk());
+    return absl::OkStatus();
+  };
+  // Verify that all alternate memory allocations are free of overlapping
+  // Allocations in time and space, and add them to interval_tree one by one.
+  for (const auto& allocation : allocations_) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
+      TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
@@ -365,6 +396,16 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
 
   TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  if (options_.verify) {
+    TF_RETURN_IF_ERROR(VerifyAllocations());
+  }
+  // DEBUG_LOG_ALLOCATIONS_AT
+  //
+  // Uncomment the following to log the alternate memory allocations that MSA
+  // made at a given schedule time.
+  //
+  // AllocationSequenceDebugging::LogAltMemAllocationsAt(
+  //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());

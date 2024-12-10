@@ -52,3 +52,23 @@ config_setting(
         ":wheel_dependency": "True",
     },
 )
+
+# Flag indicating if the target requires manylinux compliance verification.
+bool_flag(
+    name = "verify_manylinux",
+    # TODO(ybaturina): Enable the flag by default when hermetic C++ toolchain is ready.
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "verify_manylinux_compliance",
+    srcs = [
+        "verify_manylinux_compliance.py",
+    ],
+    main = "verify_manylinux_compliance.py",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pypi_auditwheel//:pkg",
+    ],
+)

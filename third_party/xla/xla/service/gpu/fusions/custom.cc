@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
@@ -58,13 +59,12 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
+#include "xla/service/gpu/runtime/custom_call_target.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -180,15 +181,6 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
   return absl::InternalError("WTF");
 }
 
-// Returns the constant literal, if the offset is from an offset array. Returns
-// `std::nullopt` otherwise.
-std::optional<const Literal*> GetOffsetArray(const HloInstruction* inst) {
-  if (Match(inst, m::Reshape(m::DynamicSlice(m::Constant(), m::Parameter())))) {
-    return &inst->operand(0)->operand(0)->literal();
-  }
-  return std::nullopt;
-}
-
 absl::Status CollectSliceInfo(
     const BufferAssignment& buffer_assignment,
     const HloInstruction& fusion_instr,
@@ -205,12 +197,6 @@ absl::Status CollectSliceInfo(
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
-    if (auto offset_array_literal = GetOffsetArray(idx_op);
-        offset_array_literal != std::nullopt) {
-      arg_offsets.emplace_back(
-          DynamicSliceThunk::OffsetArray(**offset_array_literal));
-      continue;
-    }
     const auto* param = Cast<HloParameterInstruction>(idx_op);
     const auto* offset_value = fusion_instr.operand(param->parameter_number());
 
@@ -500,7 +486,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
-      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
+      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call),
+                      ir_emitter_context.gpu_compute_capability()));
 
   std::unique_ptr<Thunk> thunk;
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
@@ -670,7 +657,6 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   // For legacy custom calls we convert all API versions into the latest
   // status-returning one and pass backend config as an opaque string.
   CustomCallThunk::CustomCallTarget custom_call_target;
-  std::string opaque;
 
   // For XLA FFI handlers we decode opaque backend config into attributes map
   // at IR emission time, so that we do not need to parse MLIR at run time. For
@@ -681,26 +667,23 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   // xla/g3doc/custom_call.md.
   switch (custom_call.api_version()) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
-      using original_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/);
-      custom_call_target = [call_target](CustomCallThunk::Stream stream,
-                                         void** buffers, const char* opaque,
-                                         size_t opaque_len,
+      custom_call_target = [call_target](se::Stream* stream, void** buffers,
+                                         const char* opaque, size_t opaque_len,
                                          XlaCustomCallStatus*) {
-        auto typed_call_target =
-            reinterpret_cast<original_call_type>(call_target);
-        typed_call_target(stream, buffers, opaque, opaque_len);
+        reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
+            stream->platform_specific_handle().stream, buffers, opaque,
+            opaque_len);
       };
       break;
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      using status_returning_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/,
-                   XlaCustomCallStatus* /*status*/);
-      custom_call_target =
-          reinterpret_cast<status_returning_call_type>(call_target);
+      custom_call_target = [call_target](se::Stream* stream, void** buffers,
+                                         const char* opaque, size_t opaque_len,
+                                         XlaCustomCallStatus* status) {
+        reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
+            call_target)(stream->platform_specific_handle().stream, buffers,
+                         opaque, opaque_len, status);
+      };
       break;
     case CustomCallApiVersion::API_VERSION_TYPED_FFI:
       // We already checked `handler` above.
@@ -710,47 +693,48 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
                       custom_call.api_version());
   }
 
-  auto& backend_config_str = custom_call.raw_backend_config_string();
-  switch (custom_call.api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      if (!backend_config_str.empty()) {
-        opaque = backend_config_str;
-      }
-      break;
-
-    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
-      if (!backend_config_str.empty()) {
-        mlir::Attribute attr = mlir::parseAttribute(
-            backend_config_str, ir_emitter_context.mlir_context());
-        if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
-          TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
-          break;
-        }
-        return absl::InternalError(
-            "Unsupported backend config. Expected a string parsable into "
-            "dictionary attribute");
-      }
-      break;
-
-    default:
-      return Internal("Unknown custom-call API version enum value: %d",
-                      custom_call.api_version());
+  auto backend_config = custom_call.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    LOG(WARNING) << "Unable to parse backend config for custom call: "
+                 << backend_config.status().message() << "\n"
+                 << "Fall back to parse the raw backend config str.";
   }
 
   std::unique_ptr<Thunk> thunk;
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
-  auto ffi_thunk = [&](Slices ops, Slices res) {
+  auto ffi_thunk =
+      [&](Slices ops,
+          Slices res) -> absl::StatusOr<std::unique_ptr<CustomCallThunk>> {
     auto& called_computations = custom_call.called_computations();
+    auto& backend_config_str =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().attributes()
+            : custom_call.raw_backend_config_string();
+    if (!backend_config_str.empty()) {
+      mlir::Attribute attr = mlir::parseAttribute(
+          backend_config_str, ir_emitter_context.mlir_context());
+      auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
+      if (dict == nullptr) {
+        return absl::InternalError(
+            "Unsupported backend config. Expected a string parsable into "
+            "dictionary attribute");
+      }
+      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+    }
     return CustomCallThunk::Create(
         thunk_info, call_target_name, registration->bundle, std::move(ops),
         std::move(res), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
-  auto legacy_thunk = [&](Slices ops, Slices res) {
+  auto legacy_thunk =
+      [&](Slices ops,
+          Slices res) -> absl::StatusOr<std::unique_ptr<CustomCallThunk>> {
+    std::string opaque =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().opaque()
+            : custom_call.raw_backend_config_string();
     return CustomCallThunk::Create(
         thunk_info, call_target_name, std::move(custom_call_target),
         std::move(ops), std::move(res), std::move(opaque));
@@ -978,8 +962,8 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
         /*destination_memory_space=*/dst_shape.layout().memory_space(),
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr});
-    auto collective_start_thunk = std::make_unique<NcclThunkType>(
-        thunk_info, NcclApi::Default(), instr, buffers);
+    auto collective_start_thunk =
+        std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
     auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
         /*kind=*/collective_done_thunk_kind,
         /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),

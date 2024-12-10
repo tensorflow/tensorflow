@@ -36,6 +36,13 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
       return hlo.operand(0)->shape().element_type() == low_precision_type_;
+    case HloOpcode::kClz:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShiftRightArithmetic:
+      // Upcasting these ops to higher precision results in a
+      // different output, so they must be supported in low-precision.
+      return true;
+
     default:
       break;
   }
@@ -55,6 +62,12 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
       return true;
     case HloOpcode::kConvert:
       return hlo.shape().element_type() == low_precision_type_;
+    case HloOpcode::kClz:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShiftRightArithmetic:
+      // Upcasting these ops to higher precision results in a
+      // different output, so they must be supported in low-precision.
+      return true;
     default:
       break;
   }

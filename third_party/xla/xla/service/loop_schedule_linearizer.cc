@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/loop_schedule_linearizer.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/algorithm/container.h"

@@ -345,7 +345,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       an empty tuple: all variables must be frozen.
     multithreading: Whether to enable multithreading in the compiled
       computation.  Note that if using this option, the resulting object files
-      may have external dependencies on multithreading libraries like nsync.
+      may have external dependencies on multithreading libraries like Abseil.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.

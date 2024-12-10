@@ -10,6 +10,7 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 message CoordinatedTask {
   string job_name = 1;
   int32 task_id = 2;
+  bool recoverable = 3;
 }
 
 // Represents the state of a remote worker
@@ -37,6 +38,12 @@ message CoordinationServiceError {
   // Denotes which task hit the error. If unset, the error originated from the
   // same task that is processing this error.
   CoordinatedTask source_task = 4;
+}
+
+// Status payload for coordination barrier errors.
+message BarrierError {
+  string barrier_id = 1;
+  int64 counter = 2;
 }
 
 message CoordinatedTaskStateInfo {
@@ -214,13 +221,20 @@ message BarrierRequest {
   repeated CoordinatedTask tasks = 3;
   // Task that is making the request.
   CoordinatedTask source_task = 4;
+  // The same id can be reused, so this tracks each unique invocation.
+  int64 counter = 5;
 }
 
-message BarrierResponse {}
+message BarrierResponse {
+  // Acknowledge the service-side barrier counter that was invoked.
+  int64 counter = 1;
+}
 
 // Request and response messages for  cancelling generic sync barriers.
 message CancelBarrierRequest {
+  // Barrier key.
   string barrier_id = 1;
+  int64 counter = 3;
   // Task that is making the request.
   CoordinatedTask source_task = 2;
 }

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project

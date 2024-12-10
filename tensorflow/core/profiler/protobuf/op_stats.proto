@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "tensorflow/core/profiler/protobuf/diagnostics.proto";
+import "tensorflow/core/profiler/protobuf/hardware_types.proto";
 import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
 import "tensorflow/core/profiler/protobuf/power_metrics.proto";
@@ -26,6 +27,12 @@ message PerfEnv {
   // The ridge point of roofline model in FLOP/Byte. (i.e., minimum operational
   // intensity required to achieve maximum performance).
   double ridge_point = 3;
+  // Whether the device has CMEM.
+  bool has_cmem = 6;
+  // Whether the device has merged VMEM (with CMEM).
+  bool has_merged_vmem = 7;
+  // Whether megacore is used.
+  bool has_megacore = 8;
 }
 
 // Result proto for host-independent job information.
@@ -101,6 +108,8 @@ message RunEnvironment {
   bool is_training = 14;
   // Power Metrics for TPU.
   PowerMetrics power_metrics = 15;
+  // Hardware type.
+  tensorflow.profiler.HardwareType hardware_type = 16;
   reserved 6;
 }
 

@@ -228,6 +228,30 @@ func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
   return %arg0 : tensor<8x16xf32>
 }
 
+// -----
+
+// Test call with backend config and multiple results. This is what JAX would
+// emit in the frontend, and then we'd convert it to a NamedComputationOp when
+// coming back.
+
+func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  // CHECK:      %[[NC:.*]]:2 = sdy.named_computation<"g.2.2">(%arg0) (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MUL:.*]] = mhlo.multiply %arg1, %arg1 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MUL]], %[[MUL]] : tensor<8x2xi32>, tensor<8x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}} : (tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>)
+  // CHECK-NEXT: %[[HOST:.*]] = mhlo.custom_call @MoveToHost(%[[NC]]#0) {backend_config = ""} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: return %[[HOST]] : tensor<8x2xi32>
+  %0:2 = call @g.2(%arg0) {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}, mhlo.sharding = "{{maximal device=0}, {replicated}}"} : (tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>)
+  %1 = mhlo.custom_call @MoveToHost(%0#0) {backend_config = ""} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: g.2
+func.func private @g.2(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>) {
+  %0 = mhlo.multiply %arg0, %arg0 : tensor<8x2xi32>
+  return %0, %0 : tensor<8x2xi32>, tensor<8x2xi32>
+}
+
 // TODO(b/335481977): Add more tests for MHLO ops. So far tested all SDY
 // compiler APIs other than shard as/like (doesn't exist yet). See
 // round_trip_pipeline_manual_computation.mlir for ManualComputationOp tests.

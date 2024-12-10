@@ -16,31 +16,44 @@ limitations under the License.
 #include "xla/service/elemental_ir_emitter.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -52,7 +65,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/math_ops.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
@@ -60,6 +75,7 @@ limitations under the License.
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -70,11 +86,9 @@ using llvm_ir::SetToFirstInsertPoint;
 using xla::float8_fnuz_ir_emitter::EmitF8fnuzToFloating;
 using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
 
-namespace {
-
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
-    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilder<>* b) {
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b) {
   using llvm::APInt;
 
   if (!primitive_util::IsFloatingPointType(src_ty)) {
@@ -215,10 +229,12 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   return result;
 }
 
+namespace {
+
 template <int f8_exponent_bits>
 llvm::Value* handle_halfway_points_F16ToF8(llvm::Value* f16_abs_bits,
                                            llvm::Value* f8_bits,
-                                           llvm::IRBuilder<>* b) {
+                                           llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
   static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
@@ -300,7 +316,7 @@ llvm::Value* handle_halfway_points_F16ToF8(llvm::Value* f16_abs_bits,
 }
 
 absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
-                                             llvm::IRBuilder<>* b) {
+                                             llvm::IRBuilderBase* b) {
   TF_ASSIGN_OR_RETURN(
       llvm::Value * reduced_precision,
       EmitReducePrecisionIR(
@@ -314,7 +330,7 @@ absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
   return b->CreateBitCast(truncated, b->getInt8Ty());
 }
 
-llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
+llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   llvm::Value* as_int8 = b->CreateBitCast(f8_value, b->getInt8Ty());
   llvm::Value* as_int16 = b->CreateZExt(as_int8, b->getInt16Ty());
   llvm::Value* shifted = b->CreateShl(as_int16, 8);
@@ -323,7 +339,7 @@ llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
 
 template <int f8_exponent_bits>
 absl::StatusOr<llvm::Value*> EmitF16ToF8e(llvm::Value* f16_value,
-                                          llvm::IRBuilder<>* b) {
+                                          llvm::IRBuilderBase* b) {
   static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
   constexpr int f8_mantissa_bits = 7 - f8_exponent_bits;
   using llvm::APInt;
@@ -409,7 +425,7 @@ absl::StatusOr<llvm::Value*> EmitF16ToF8e(llvm::Value* f16_value,
 }
 
 template <int f8_exponent_bits>
-llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
+llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
   static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
@@ -538,7 +554,7 @@ llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }
 
-llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
+llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
 
@@ -629,7 +645,7 @@ llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
   return f8_bits;
 }
 
-llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
+llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
 
@@ -724,7 +740,7 @@ llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
 }
 
 llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
-                                    llvm::IRBuilder<>* b) {
+                                    llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
 
@@ -753,7 +769,7 @@ llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
 }
 
 llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
-                                    llvm::IRBuilder<>* b) {
+                                    llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
 
@@ -796,7 +812,7 @@ llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
 llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
                                     PrimitiveType from_type,
                                     PrimitiveType to_type, llvm::Module* module,
-                                    llvm::IRBuilder<>* b) {
+                                    llvm::IRBuilderBase* b) {
   if (primitive_util::IsSignedIntegralType(from_type)) {
     return b->CreateSIToFP(integer_value,
                            llvm_ir::PrimitiveTypeToIrType(to_type, module));
@@ -2556,7 +2572,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
       /*quiet_nans=*/false, b_);
 }
 
-static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
+static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilderBase* b,
                                              llvm::Value* lhs, llvm::Value* rhs,
                                              llvm::Value* shift_result,
                                              bool saturate_to_sign_bit) {

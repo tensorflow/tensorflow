@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -96,8 +96,9 @@ class GpuCommandBuffer : public CommandBuffer {
     size_t nodes_offset = 0;
   };
 
-  GpuCommandBuffer(Mode mode, GpuExecutor* parent);
+  GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
+  using CommandBuffer::Barrier;
   absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
 
   absl::Status Barrier(
@@ -150,14 +151,6 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
 
-  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
-    return static_cast<GpuCommandBuffer*>(command_buffer);
-  }
-
-  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
-    return static_cast<const GpuCommandBuffer*>(command_buffer);
-  }
-
   absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
   absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
@@ -197,7 +190,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
   using ConditionBuilder =
-      std::function<absl::Status(CommandBuffer*, GraphConditionalHandle)>;
+      std::function<absl::Status(GpuCommandBuffer*, GraphConditionalHandle)>;
 
   // Wraps a regular command buffer builder into condition builder.
   static ConditionBuilder ToConditionBuilder(Builder builder);
@@ -291,7 +284,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // kernel nodes, however large number of no-op kernels impacts performance.
   // The function needs access to the root command buffer which holds the
   // executable graph.
-  absl::Status DisableBarriersExecution(CommandBuffer& root_command_buffer);
+  absl::Status DisableBarriersExecution(GpuCommandBuffer& root_command_buffer);
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
@@ -319,7 +312,7 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode_;
   State state_ = State::kCreate;
 
-  GpuExecutor* parent_;  // not owned, must outlive *this
+  StreamExecutor* parent_;  // not owned, must outlive *this
 
  private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an
@@ -425,12 +418,8 @@ class GpuCommandBuffer : public CommandBuffer {
       const Dependencies& dependencies) = 0;
 
   // Enables or disables the execution of the given node in the graph.
-  // `root_command_buffer` is the root command buffer that holds the executable
-  // graph. Note that `this` must either by the same as the
-  // `root_command_buffer` or be a nested command buffer.
-  virtual absl::Status SetNodeExecutionEnabled(
-      GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
-      bool enabled) = 0;
+  virtual absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
+                                               bool enabled) = 0;
 
   // Launches an instantiated graph. Only supported on primary command buffers.
   virtual absl::Status LaunchGraph(Stream* stream) = 0;

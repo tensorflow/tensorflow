@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -31,8 +32,8 @@ class LiteRtTensorBufferRequirementsT {
             supported_tensor_buffer_types,
             supported_tensor_buffer_types + num_supported_tensor_buffer_types),
         buffer_size_(buffer_size),
-        strides_(strides) {}
-  std::vector<LiteRtTensorBufferType> SupportedBufferTypes() const {
+        strides_(std::move(strides)) {}
+  const std::vector<LiteRtTensorBufferType>& SupportedBufferTypes() const {
     return supported_buffer_types_;
   }
   size_t BufferSize() const { return buffer_size_; }

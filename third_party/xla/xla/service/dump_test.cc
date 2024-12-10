@@ -154,7 +154,7 @@ TEST(DumpTest, DumpProtobufToFileWhenDisabled) {
 TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
   std::string fdo_profile = "fdo_profile";
   HloModuleConfig config;
-  *config.mutable_fdo_profile() = fdo_profile;
+  config.set_fdo_profile(fdo_profile);
   DebugOptions options = config.debug_options();
   auto env = tsl::Env::Default();
   std::string dump_dir;
@@ -181,5 +181,34 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
   EXPECT_TRUE(absl::StrContains(data, fdo_profile));
 }
 
+TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
+  HloUnoptimizedSnapshot hlo_snapshot;
+  HloModuleProto module;
+  module.set_name("hello");
+  *hlo_snapshot.mutable_hlo_module() = module;
+  *hlo_snapshot.add_partitions() = HloInputs();
+
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+
+  options.set_xla_dump_to(tsl::testing::TmpDir());
+  options.set_xla_dump_hlo_as_text(true);
+  options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  config.set_debug_options(options);
+
+  DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
+
+  std::vector<std::string> matches;
+  std::string pattern_filename =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "*hlo_unoptimized_snapshot*");
+  TF_ASSERT_OK(
+      tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
+  EXPECT_THAT(matches, Not(IsEmpty()));
+
+  HloUnoptimizedSnapshot hlo_snapshot_loaded;
+  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), matches.front(),
+                                  &hlo_snapshot_loaded));
+  EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
+}
 }  // namespace
 }  // namespace xla

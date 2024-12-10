@@ -33,8 +33,8 @@ class DivOpLegalization : public Legalization {
  public:
   DivOpLegalization() = default;
   ~DivOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<DivOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<DivOpLegalization>(); }
+  using Ptr = std::unique_ptr<DivOpLegalization>;
+  static Ptr Create() { return std::make_unique<DivOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

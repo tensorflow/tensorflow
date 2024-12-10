@@ -59,14 +59,14 @@ class FlatTensorFunction {
   //  ctx      - A handle to the Tensorflow runtime. This MUST be non-null and
   //             outlive TFConcreteFunction.
   //  out      - The output FlatTensorFunction.
-  static Status Create(const FunctionDef* function_def,
-                       std::vector<ImmediateExecutionTensorHandle*> captures,
-                       ImmediateExecutionContext* ctx,
-                       std::unique_ptr<FlatTensorFunction>* out);
+  static absl::Status Create(
+      const FunctionDef* function_def,
+      std::vector<ImmediateExecutionTensorHandle*> captures,
+      ImmediateExecutionContext* ctx, std::unique_ptr<FlatTensorFunction>* out);
 
   // This method creates a "Call" Op used to execute the function.
-  Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
-                    ImmediateOpPtr* out) const;
+  absl::Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                          ImmediateOpPtr* out) const;
 
   ~FlatTensorFunction();
 

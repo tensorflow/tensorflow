@@ -316,6 +316,14 @@ build:rocm --copt=-Wno-gnu-offsetof-extensions
 # to make it work with build_rocm_python3
 build:rocm --copt="-Wno-unused-result"
 
+build:rocm_clang_official --config=rocm
+build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
+build:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
+build:rocm_clang_official --linkopt="-fuse-ld=lld"
+build:rocm_clang_official --host_linkopt="-fuse-ld=lld"
+
+build:rocm_ci --config=rocm_clang_official
+
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -401,6 +409,8 @@ build:windows --host_copt=-D_ENABLE_EXTENDED_ALIGNED_STORAGE
 # runfiles symlink tree to decide what to put into the Python wheel.
 startup --windows_enable_symlinks
 build:windows --enable_runfiles
+build:windows --nobuild_python_zip
+build:windows --dynamic_mode=off
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
@@ -474,6 +484,7 @@ build:avx_win --copt=/arch:AVX
 
 # Use Clang-cl compiler on Windows
 build:win_clang --copt=/clang:-Weverything
+build:win_clang --host_copt=/clang:-Weverything
 build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
 build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
@@ -485,6 +496,7 @@ test:win_clang --host_linkopt=/FORCE:MULTIPLE
 
 # Same config as above but for XLA, which has different toolchain paths
 build:win_clang_xla --copt=/clang:-Weverything
+build:win_clang_xla --host_copt=/clang:-Weverything
 build:win_clang_xla --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
 build:win_clang_xla --extra_execution_platforms=//tools/toolchains/win:x64_windows-clang-cl
 build:win_clang_xla --host_platform=//tools/toolchains/win:x64_windows-clang-cl
@@ -861,10 +873,12 @@ build:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow
 build:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
 build:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # WINDOWS X86-64 CPU PYCPP
+build:windows_x86_cpu_pycpp_test_build_opts --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions --dynamic_mode=off
+build:windows_x86_cpu_pycpp_test_build_opts_debug --config=windows_x86_cpu_pycpp_test_build_opts --linkopt=/demangle:no --host_linkopt=/demangle:no --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 test:windows_x86_cpu_pycpp_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-benchmark-test
 test:windows_x86_cpu_pycpp_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test
 test:windows_x86_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
-test:windows_x86_cpu_pycpp_test_opts --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions --dynamic_mode=off --build_tests_only
+test:windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_pycpp_test --config=windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
 
 # END TF TEST SUITE OPTIONS

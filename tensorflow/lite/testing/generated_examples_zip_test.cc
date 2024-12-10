@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "re2/re2.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/subprocess.h"
 
 namespace tflite {
 namespace testing {
@@ -72,13 +72,14 @@ using BrokenTestMap =
              std::pair</* bug_number */ string, /* always_ignore */ bool>>;
 // TODO(ahentz): make sure we clean this list up frequently.
 const BrokenTestMap& GetKnownBrokenTests() {
-  static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
-      // TODO(b/194364155): TF and TFLite have different behaviors when output
-      // nan values in LocalResponseNorm ops.
-      {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
-      {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
-       {"194364155", true}},
-  });
+  static const BrokenTestMap* const kBrokenTests = new BrokenTestMap(
+      {// TODO(b/194364155): TF and TFLite have different behaviors when output
+       // nan values in LocalResponseNorm ops.
+       {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
+       {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
+        {"194364155", true}},
+       {R"(^\/static_rnn_with_control_flow_v2.*use_sequence_length=True)",
+        {"380064373", true}}});
   return *kBrokenTests;
 }
 

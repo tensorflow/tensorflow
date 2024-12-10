@@ -8,9 +8,14 @@ package(
 xla_cc_binary(
     name = "mlir_fusions_opt",
     srcs = ["mlir_fusions_opt.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         "//xla/mlir_hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/transforms:passes",
@@ -75,6 +80,10 @@ xla_cc_binary(
     name = "fusion_to_mlir",
     testonly = 1,
     srcs = ["fusion_to_mlir.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         ":test_lib",
@@ -90,18 +99,23 @@ xla_cc_binary(
     name = "test_correctness",
     testonly = 1,
     srcs = ["test_correctness.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         ":test_lib",
         "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:shape_util",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:indexing_test_utils",
         "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

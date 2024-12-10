@@ -33,8 +33,8 @@ class MulOpLegalization : public Legalization {
  public:
   MulOpLegalization() = default;
   ~MulOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<MulOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<MulOpLegalization>(); }
+  using Ptr = std::unique_ptr<MulOpLegalization>;
+  static Ptr Create() { return std::make_unique<MulOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

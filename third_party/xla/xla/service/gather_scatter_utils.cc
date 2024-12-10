@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "xla/service/gather_scatter_utils.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -30,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -212,6 +217,42 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   }
 
   return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
+}
+
+bool IsCollapsedOrBatchingDim(absl::Span<const int64_t> collapsed_dims,
+                              absl::Span<const int64_t> batching_dims,
+                              int64_t dim) {
+  return absl::c_linear_search(collapsed_dims, dim) ||
+         absl::c_linear_search(batching_dims, dim);
+}
+
+absl::flat_hash_map<int64_t, int64_t>
+GetStartIndicesDimToOutputDimForExplicitBatchingDims(
+    absl::Span<const int64_t> start_indices_batching_dims,
+    int64_t index_vector_dim, absl::Span<const int64_t> offset_dims,
+    int64_t start_indices_rank, int64_t output_rank) {
+  absl::flat_hash_map<int64_t, int64_t>
+      explicit_batching_dims_start_indices_dim_to_output_dim;
+  explicit_batching_dims_start_indices_dim_to_output_dim.reserve(
+      start_indices_batching_dims.size());
+
+  for (int64_t output_dim = 0, start_indices_dim = 0; output_dim < output_rank;
+       ++output_dim) {
+    if (absl::c_linear_search(offset_dims, output_dim)) {
+      continue;
+    }
+    if (start_indices_dim == index_vector_dim) {
+      start_indices_dim++;
+    }
+    CHECK_LT(start_indices_dim, start_indices_rank);
+    if (absl::c_linear_search(start_indices_batching_dims, start_indices_dim)) {
+      // Explicit batching dim.
+      explicit_batching_dims_start_indices_dim_to_output_dim
+          [start_indices_dim] = output_dim;
+    }
+    ++start_indices_dim;
+  }
+  return explicit_batching_dims_start_indices_dim_to_output_dim;
 }
 
 }  // namespace xla

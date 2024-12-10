@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "xla/python/ifrt_proxy/client/py_module.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,10 +23,10 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_entry.h"
-#include "absl/log/log_sink.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/function.h"  // IWYU pragma: keep
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -48,6 +49,7 @@ namespace {
 struct PyClientConnectionOptions {
   std::optional<std::function<void(std::string)>> on_disconnect;
   std::optional<std::function<void(std::string)>> on_connection_update;
+  std::optional<int64_t> connection_timeout_in_seconds;
 };
 
 absl::StatusOr<nb_class_ptr<PyClient>> GetClient(
@@ -90,6 +92,11 @@ absl::StatusOr<nb_class_ptr<PyClient>> GetClient(
     };
   }
 
+  if (py_options.connection_timeout_in_seconds.has_value()) {
+    options.connection_timeout =
+        absl::Seconds(*py_options.connection_timeout_in_seconds);
+  }
+
   {
     nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(client, CreateClient(proxy_server_address, options));
@@ -110,6 +117,9 @@ void BuildIfrtProxySubmodule(nb::module_& m) {
               nb::arg().none())
       .def_rw("on_connection_update",
               &PyClientConnectionOptions::on_connection_update,
+              nb::arg().none())
+      .def_rw("connection_timeout_in_seconds",
+              &PyClientConnectionOptions::connection_timeout_in_seconds,
               nb::arg().none());
 
   sub_module.def("get_client", xla::ValueOrThrowWrapper(GetClient),

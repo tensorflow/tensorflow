@@ -33,10 +33,8 @@ class BatchMatmulOpLegalization : public Legalization {
  public:
   BatchMatmulOpLegalization() = default;
   ~BatchMatmulOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<BatchMatmulOpLegalization>;
-  static UniquePtr Create() {
-    return std::make_unique<BatchMatmulOpLegalization>();
-  }
+  using Ptr = std::unique_ptr<BatchMatmulOpLegalization>;
+  static Ptr Create() { return std::make_unique<BatchMatmulOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

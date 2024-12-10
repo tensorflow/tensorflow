@@ -479,11 +479,11 @@ TEST(BufferedInputStream, Seek_NotReset) {
   BufferedInputStream in(input_stream.get(), 3);
 
   TF_ASSERT_OK(in.ReadNBytes(4, &read));
-  int before_tell = input_stream.get()->Tell();
+  int before_tell = input_stream->Tell();
   EXPECT_EQ(before_tell, 6);
   // Seek backwards
   TF_ASSERT_OK(in.Seek(3));
-  int after_tell = input_stream.get()->Tell();
+  int after_tell = input_stream->Tell();
   EXPECT_EQ(before_tell, after_tell);
 }
 

@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_gpu_graph_exec.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -43,15 +43,14 @@ class RocmCommandBuffer : public GpuCommandBuffer {
  public:
   // Creates a new ROCm command buffer and the underlying HIP graph.
   static absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> Create(
-      Mode mode, GpuExecutor* parent);
+      Mode mode, StreamExecutor* parent);
 
   ~RocmCommandBuffer() override;
 
  private:
-  RocmCommandBuffer(Mode mode, GpuExecutor* parent, hipGraph_t graph,
+  RocmCommandBuffer(Mode mode, StreamExecutor* parent, hipGraph_t graph,
                     bool is_owned_graph)
       : GpuCommandBuffer(mode, parent),
-        parent_(parent),
         graph_(graph),
         is_owned_graph_(is_owned_graph) {}
 
@@ -121,7 +120,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                      absl::AnyInvocable<absl::Status()> function) override;
 
   absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
-                                       CommandBuffer& root_command_buffer,
                                        bool enabled) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
@@ -144,8 +142,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
       GraphNodeHandle node) override;
-
-  GpuExecutor* parent_;
 
   static_assert(std::is_pointer_v<hipGraph_t>, "hipGraph_t must be a pointer");
   static_assert(std::is_pointer_v<hipGraphExec_t>,

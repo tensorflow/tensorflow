@@ -44,6 +44,7 @@
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -57,8 +58,16 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();
-  TF_ASSIGN_OR_RETURN(*request->mutable_program(),
-                      Serialize(*program, /*options=*/nullptr));
+  {
+    tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
+    TF_ASSIGN_OR_RETURN(*request->mutable_program(),
+                        Serialize(*program, /*options=*/nullptr));
+  }
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      [prog_size = request->program().data().size()]() {
+        return tsl::profiler::TraceMeEncode(
+            "IfrtProxyEntrypointCompilerCompile", {{"prog_size", prog_size}});
+      });
 
   // Extract host callbacks from the XLA compile options. `XlaCompileOptions`'s
   // SerDes fails when it contains host callbacks, so the following

@@ -48,10 +48,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
@@ -342,17 +342,16 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
       custom_legalization_passes{};
   XlaCompilationResult compilation_result;
   auto compilation_status =
-      via_builder
-          ? CompileMlirToXlaHloViaBuilder(module_op, arg_shapes, device_type,
-                                          &compilation_result,
-                                          custom_legalization_passes)
-          : CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
-                                emit_use_tuple_arg,
-                                /*analyse_graph=*/false, emit_return_tuple,
-                                /*use_resource_updates_for_aliases=*/true,
-                                /*shape_determination_fns=*/{},
-                                &compilation_result, custom_legalization_passes)
-                .status();
+      via_builder ? CompileMlirToXlaHloViaBuilder(
+                        module_op, arg_shapes, device_type, &compilation_result,
+                        custom_legalization_passes)
+                  : CompileMlirToXlaHloAndSerialize(
+                        module_op, arg_shapes, device_type, emit_use_tuple_arg,
+                        /*enable_op_fallback=*/false, emit_return_tuple,
+                        /*use_resource_updates_for_aliases=*/true,
+                        /*shape_determination_fns=*/{}, &compilation_result,
+                        custom_legalization_passes)
+                        .status();
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();

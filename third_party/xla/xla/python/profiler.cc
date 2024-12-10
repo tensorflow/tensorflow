@@ -202,7 +202,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def("stop_and_get_profile_data",
            [](ProfilerSessionWrapper* sess)
                -> tensorflow::profiler::python::ProfileData {
-             std::shared_ptr<tensorflow::profiler::XSpace> xspace;
+             auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
              // Disables the ProfilerSession
              xla::ThrowIfError(sess->session->CollectData(xspace.get()));
              return tensorflow::profiler::python::ProfileData(xspace);

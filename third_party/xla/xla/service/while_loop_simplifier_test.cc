@@ -196,8 +196,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithSendNotSimplified) {
       while_body->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
       token,
-      /*channel_id=*/0));
-  while_body->AddInstruction(HloInstruction::CreateSendDone(send));
+      /*channel_id=*/0, /*is_host_transfer=*/false));
+  while_body->AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -210,8 +211,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
   auto* recv = while_body->AddInstruction(
       HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}), token,
-                                 /*channel_id=*/0));
-  while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
+                                 /*channel_id=*/0, /*is_host_transfer=*/false));
+  while_body->AddInstruction(HloInstruction::CreateRecvDone(
+      recv, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 

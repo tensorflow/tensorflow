@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include "xla/tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
     (defined(__ARM_ARCH_7A__) || defined(__aarch64__))

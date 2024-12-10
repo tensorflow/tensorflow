@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -62,6 +63,9 @@ class ThunkEmitter {
     std::vector<BufferAllocation::Slice> arguments;
     std::vector<BufferAllocation::Slice> results;
   };
+
+  std::optional<SortThunk::SortDirection> MatchSortDirection(
+      const HloComputation* hlo_comparator) const;
 
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!

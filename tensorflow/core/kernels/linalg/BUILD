@@ -247,7 +247,7 @@ tf_kernel_library(
     gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/util:cuda_sparse",
-    ]),
+    ]) + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -278,6 +278,7 @@ tf_kernel_library(
     ]) + [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
     ],
 )

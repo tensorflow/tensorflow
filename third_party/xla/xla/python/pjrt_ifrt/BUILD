@@ -1,7 +1,7 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
     name = "friends",
@@ -168,7 +168,7 @@ xla_cc_test(
     size = "small",
     srcs = ["xla_sharding_test.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_ifrt",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -225,6 +225,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
@@ -239,10 +240,13 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -266,31 +270,41 @@ cc_library(
 )
 
 cc_library(
-    name = "tfrt_cpu_client_test_lib",
+    name = "pjrt_cpu_client_test_lib",
     testonly = True,
-    srcs = ["tfrt_cpu_client_test_lib.cc"],
+    srcs = ["pjrt_cpu_client_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
 
 cc_library(
-    name = "se_gpu_client_test_lib",
+    name = "pjrt_cpu_client_multi_process_test_lib",
     testonly = True,
-    srcs = ["se_gpu_client_test_lib.cc"],
+    srcs = ["pjrt_cpu_client_multi_process_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
-        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
-        "//xla/service:gpu_plugin",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
+)
+
+# TODO(hyeontaek): Remove this target after migration is done.
+alias(
+    name = "tfrt_cpu_client_test_lib",
+    actual = ":pjrt_cpu_client_test_lib",
 )
 
 cc_library(
@@ -362,7 +376,7 @@ xla_cc_test(
     srcs = ["basic_string_array_test.cc"],
     deps = [
         ":basic_string_array",
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
@@ -390,7 +404,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:array_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -403,22 +417,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
-        "//xla/python/ifrt:client_impl_test_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_client_impl_test_se_gpu",
-    size = "small",
-    srcs = [],
-    tags = [
-        "no_oss",
-        "requires-gpu-nvidia:2",
-    ],
-    deps = [
-        ":se_gpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -429,7 +428,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_executable_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -442,7 +441,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:tuple_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -453,7 +452,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:remap_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],

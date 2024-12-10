@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -37,8 +38,21 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
+// Scales down values to reduce the range of costs & coefficients in the solver.
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
+
+// TODO(fahrbach): Create AutoShardingHeuristicOptions proto with a oneof field.
+// Runs a heuristic specified by one of the following values of `algorithm`:
+// - "trivial"
+// - "random"
+// - "greedy-node-cost"
+// - "greedy-node-memory"
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const AutoShardingSolverRequest& request, const std::string& algorithm);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
@@ -96,10 +110,6 @@ operations_research::MPVariable* CreateMakespanVar(
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation);
-
-// Scale down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).

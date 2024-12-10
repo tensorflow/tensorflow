@@ -1,6 +1,8 @@
 # Description:
 #  Holds model-agnostic files and proto definitions. The app will bundle the files into assets.
 
+# Placeholder: load java_lite_proto_library
+# Placeholder: load proto_library
 load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:proto.bzl", "proto_data")
 # copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 

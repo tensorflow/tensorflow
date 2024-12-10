@@ -491,7 +491,8 @@ GraphExecutor::GraphExecutor(
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
-    std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config)
     : options_(std::move(options)),
       fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
@@ -506,7 +507,8 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
-    std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
@@ -524,10 +526,10 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
       ->GetCell(options.model_metadata.name(),
                 absl::StrCat(options.model_metadata.version()))
       ->Set(options.enable_mlrt ? "mlrt" : "bef");
-  TF_ASSIGN_OR_RETURN(
-      auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graph_execution_state_options,
-                                      std::move(graph_def), *fallback_state));
+  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
+                      TfrtGraphExecutionState::Create(
+                          graph_execution_state_options, std::move(graph_def),
+                          *fallback_state, runtime_config));
   return std::make_unique<GraphExecutor>(
       std::move(options), std::move(fallback_state),
       std::move(resource_context), std::move(graph_execution_state),

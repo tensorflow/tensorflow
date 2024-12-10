@@ -1,5 +1,5 @@
 // RUN: fusion_to_mlir %s |\
-// RUN:   mlir_fusions_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
 fusion {
@@ -12,11 +12,11 @@ fusion {
   ROOT tuple = (f64[8], f64[2,4]) tuple(minimum, bc)
 }
 
-// CHECK: #[[MAJOR:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 floordiv 4),
-// CHECK: #[[MINOR:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 mod 4),
+// CHECK: #[[MAJOR:.*]] = #xla.indexing_map<"(d0) -> (d0 floordiv 4),
+// CHECK: #[[MINOR:.*]] = #xla.indexing_map<"(d0) -> (d0 mod 4),
 
-// CHECK:     xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK-DAG:   %[[MAJOR_IDX:.*]] = xla_gpu.apply_indexing #[[MAJOR]]
-// CHECK-DAG:   %[[MINOR_IDX:.*]] = xla_gpu.apply_indexing #[[MINOR]]
+// CHECK:     xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK-DAG:   %[[MAJOR_IDX:.*]] = xla.apply_indexing #[[MAJOR]]
+// CHECK-DAG:   %[[MINOR_IDX:.*]] = xla.apply_indexing #[[MINOR]]
 // CHECK-DAG:   tensor.insert {{.*}}[%[[MAJOR_IDX]], %[[MINOR_IDX]]]
 // CHECK-DAG:   tensor.insert {{.*}}[%[[RA]]]

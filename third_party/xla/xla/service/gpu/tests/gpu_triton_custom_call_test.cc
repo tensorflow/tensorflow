@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {
@@ -43,36 +42,39 @@ namespace gpu {
 
 using ::mlir::ArrayRef;
 using ::mlir::NamedAttribute;
+using ::testing::HasSubstr;
 
 namespace {
 
-std::unique_ptr<HloInstruction> CreateAddTritonCustomCall(
-    Shape tuple_shape, HloInstruction* param_0, HloInstruction* param_1) {
+constexpr absl::string_view kMLIRText = R"(
+module {
+  tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+    %0 = tt.get_program_id x : i32
+    %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    %cst = arith.constant 1.000000e+00 : f32
+    %3 = arith.addf %1, %cst : f32
+    %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+    %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+    tt.return
+  }
+}
+)";
+
+constexpr absl::string_view kCallName = "add_one";
+
+std::unique_ptr<HloInstruction> CreateTritonCustomCall(
+    Shape tuple_shape, HloInstruction* param_0, HloInstruction* param_1,
+    absl::string_view mlir_text, absl::string_view call_name) {
   mlir::MLIRContext context_;
   mlir::Builder builder(&context_);
 
-  // Create the backend_config for the triton custom call.
-  const std::string kMLIRText = R"(
-  module {
-    tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
-      %0 = tt.get_program_id x : i32
-      %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      %cst = arith.constant 1.000000e+00 : f32
-      %3 = arith.addf %1, %cst : f32
-      %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-      %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-      tt.return
-    }
-  }
-  )";
-
   NamedAttribute name =
-      builder.getNamedAttr("name", builder.getStringAttr("add_one"));
+      builder.getNamedAttr("name", builder.getStringAttr(call_name));
   NamedAttribute ir =
-      builder.getNamedAttr("ir", builder.getStringAttr(kMLIRText));
+      builder.getNamedAttr("ir", builder.getStringAttr(mlir_text));
   NamedAttribute num_stages =
       builder.getNamedAttr("num_stages", builder.getI32IntegerAttr(3));
   NamedAttribute num_warps =
@@ -134,8 +136,8 @@ TEST_F(GpuIrEmitterUnnestedTest,
   HloInstruction* param_1 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
 
-  computation_builder.AddInstruction(
-      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, param_0, param_1, kMLIRText, kCallName));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());
@@ -179,8 +181,8 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
   HloInstruction* param_1 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
 
-  computation_builder.AddInstruction(
-      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, param_0, param_1, kMLIRText, kCallName));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());
@@ -191,6 +193,58 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));
+}
+
+TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfTritonModuleIsNotParseable) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateTritonCustomCall(tuple_shape, param_0, param_1,
+                             /*mlir_text=*/"unparseable_mlir", kCallName));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
+              HasSubstr("Failed to parse Triton module"));
+}
+
+TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfCallNameIsInvalid) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateTritonCustomCall(tuple_shape, param_0, param_1, kMLIRText,
+                             /*call_name=*/"invalid_call_name"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
+              HasSubstr("Call name not found in the Triton module"));
 }
 
 class TritonCustomCallTest : public HloTestBase {};
@@ -230,10 +284,10 @@ TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
   HloInstruction* param_1 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
 
-  auto* instr_0 = computation_builder.AddInstruction(
-      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
-  computation_builder.AddInstruction(
-      CreateAddTritonCustomCall(tuple_shape, instr_0, instr_0));
+  auto* instr_0 = computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, param_0, param_1, kMLIRText, kCallName));
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, instr_0, instr_0, kMLIRText, kCallName));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());

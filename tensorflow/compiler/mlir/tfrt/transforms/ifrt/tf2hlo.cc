@@ -79,7 +79,7 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 }
 }  // namespace
 
-absl::StatusOr<std::string> Tf2HloArg::Key() {
+absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);
   if (topology) {
     TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
@@ -114,7 +114,7 @@ absl::StatusOr<std::string> Tf2HloArg::Key() {
   }
   fingerprint = tsl::FingerprintCat64(
       fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
-  return absl::StrCat(absl::Hex(fingerprint));
+  return fingerprint;
 }
 
 Tf2HLOResultProto Tf2HloResult::ToProto() const {
@@ -267,6 +267,16 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   return result;
+}
+
+absl::StatusOr<Tf2HloResult> TfToHloCompiler::CompileTfToHlo(
+    const Tf2HloArg& arg) {
+  return tensorflow::ifrt_serving::CompileTfToHlo(arg);
+}
+
+absl::StatusOr<std::string> TfToHloCompiler::Key(const Tf2HloArg& arg) {
+  TF_ASSIGN_OR_RETURN(uint64_t fingerprint, arg.Fingerprint());
+  return absl::StrCat(absl::Hex(fingerprint));
 }
 
 }  // namespace ifrt_serving

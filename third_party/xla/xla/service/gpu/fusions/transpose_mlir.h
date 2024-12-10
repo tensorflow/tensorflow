@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -112,6 +112,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   std::vector<int64_t> block_counts_;
   int vector_size_;
   int block_size_;
+  int64_t base_block_size_;
 
   std::vector<const HloInstruction*> shmem_transposes_;
   std::vector<const HloInstruction*> shmem_transpose_roots_;

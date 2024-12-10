@@ -37,6 +37,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,13 +53,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
-#include "xla/service/gpu/runtime/for_all_thunks.h"
-#include "xla/service/gpu/runtime/nccl_clique.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/random.h"
@@ -99,13 +100,11 @@ using ::tsl::profiler::ScopedAnnotation;
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
     const SequentialThunk& thunks) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
-  ForAllThunks(
-      [&](const Thunk* thunk) {
-        if (thunk->execution_stream_id() > 0) {
-          stream_ids.insert(thunk->execution_stream_id());
-        }
-      },
-      &thunks);
+  thunks.ForAllThunks([&](const Thunk* thunk) {
+    if (thunk->execution_stream_id() > 0) {
+      stream_ids.insert(thunk->execution_stream_id());
+    }
+  });
   return stream_ids;
 }
 
@@ -133,13 +132,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
-#if TENSORFLOW_USE_ROCM
-  // ROCm uses hsaco hashes to distinguish between modules.
-  // Bad things happen if multiple modules with identical code are loaded.
-  binary_.resize(binary_.size() + 16);
-  *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
-  *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
-#endif
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(
+          gpu_version_)) {
+    // ROCm uses hsaco hashes to distinguish between modules.
+    // Bad things happen if multiple modules with identical code are loaded.
+    binary_.resize(binary_.size() + 16);
+    *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
+    *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
+  }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_->ToProto());
@@ -188,7 +188,7 @@ namespace {
 // Shared resources required for thunk initialization and execution.
 class ResourceRequests : public Thunk::ResourceRequests {
  public:
-  absl::Status AddClique(const NcclCliqueKey& clique_key,
+  absl::Status AddClique(const GpuCliqueKey& clique_key,
                          int32_t num_local_participants) final {
     VLOG(5) << "Add collective clique request: " << clique_key.ToString()
             << "; num_local_participants: " << num_local_participants;
@@ -247,10 +247,10 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     auto start_micros = tsl::Env::Default()->NowMicros();
 
-    NcclClique::AcquiredCliquesMap cliques_map;
+    AcquiredCliquesMap cliques_map;
 
     for (const CliqueRequest& r : ordered_cliques) {
-      std::optional<int64_t> rank = r.key.rank(params.global_device_id);
+      std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
         return absl::InternalError(absl::StrCat(
@@ -259,18 +259,19 @@ class ResourceRequests : public Thunk::ResourceRequests {
       }
 
       bool is_local = r.key.devices().size() == r.num_local_participants;
-      TF_ASSIGN_OR_RETURN(
-          const NcclCliqueIdCallback* clique_id_callback,
-          GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
+      TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
+                          params.collectives->GetCliqueIdCallback(
+                              params.nccl_clique_id_callback, is_local));
 
       int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                  ? params.collective_max_nchannels
                                  : params.p2p_max_nchannels;
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                          AcquireNcclClique(params.executor, params.run_id,
-                                            r.key, *clique_id_callback, *rank,
-                                            r.num_local_participants,
-                                            cliques_map, max_channels));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<LockableGpuClique::Lock> clique,
+          AcquireGpuClique(params.collectives, params.executor, params.run_id,
+                           r.key, *clique_id_callback, *rank,
+                           r.num_local_participants, cliques_map,
+                           max_channels));
 
       cliques_map[r.key] = std::move(clique);
     }
@@ -287,7 +288,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
  private:
   struct CliqueRequest {
-    NcclCliqueKey key;
+    GpuCliqueKey key;
     int64_t num_local_participants;
     int64_t id;
   };
@@ -327,7 +328,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
     return cliques;
   }
 
-  absl::flat_hash_map<NcclCliqueKey, CliqueRequest> cliques_;
+  absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
@@ -349,7 +350,7 @@ absl::Status ExecuteThunks(
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
                 .gpu_executable_run_options()
-                ->enable_mock_nccl_collectives()
+                ->enable_mock_collectives()
           : false;
 
   int64_t collective_max_nchannels =
@@ -360,6 +361,13 @@ absl::Status ExecuteThunks(
   bool use_highest_priority_for_async_stream =
       debug_options
           ? debug_options->xla_gpu_enable_highest_priority_async_stream()
+          : false;
+
+  bool requires_exclusive_lock_on_gpu =
+      run_options->run_options().gpu_executable_run_options()
+          ? run_options->run_options()
+                .gpu_executable_run_options()
+                ->requires_exclusive_lock_on_gpu()
           : false;
 
   se::Stream* main_stream = run_options->stream();
@@ -454,7 +462,8 @@ absl::Status ExecuteThunks(
         &collective_params,
         &collective_cliques,
         run_options->run_options().ffi_execution_context(),
-        run_options->local_device_count()};
+        run_options->local_device_count(),
+        requires_exclusive_lock_on_gpu};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));
@@ -782,15 +791,13 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
 
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments));
 }
 
 absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStreamImpl(run_options, arguments));
   return out.ConsumeResult();

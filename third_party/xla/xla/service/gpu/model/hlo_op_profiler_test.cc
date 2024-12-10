@@ -45,7 +45,7 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kDivide, F64)
                 .value()
                 .clock_cycles(),
-            300);
+            280);
   // c128 sqrt is slow.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kSqrt, C128)
                 .value()

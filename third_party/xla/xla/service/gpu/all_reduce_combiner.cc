@@ -66,10 +66,10 @@ absl::StatusOr<bool> GpuAllReduceCombiner::Run(
     return AllReduceCombiner::Run(module, execution_threads);
   }
 
-  // Pass configuration heuristics are not enabled. Running parent pass code.
-  if (!module->config()
-           .debug_options()
-           .xla_gpu_enable_heuristic_pass_configuration()) {
+  // If there are no pipelined instructions in the IR, the optimizations below
+  // do not kick in anyway.
+  // Exit early so we do not perform expensive scheduling dry run below.
+  if (!ContainsPipelinedInstruction(*module)) {
     return AllReduceCombiner::Run(module, execution_threads);
   }
 

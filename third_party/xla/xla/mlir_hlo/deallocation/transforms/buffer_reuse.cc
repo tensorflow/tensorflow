@@ -40,79 +40,6 @@ namespace mlir {
 namespace deallocation {
 namespace {
 
-SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
-                               SmallVector<Value> freeAllocs) {
-  if (region.empty()) return freeAllocs;
-  assert(region.hasOneBlock() && "expected the region to have a single block");
-  // Hoist local allocs out of the loop.
-  // TODO(jreiffers): Add some smarts here so we don't blow up the heap for
-  // pathological inputs.
-
-  SmallVector<Value> result;
-  auto* op = &region.front().front();
-  while (op) {
-    auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
-    if (alloc && alloc.getDynamicSizes().empty()) {
-      auto dealloc = llvm::find_if(op->getUsers(), [&](Operation* user) {
-        return llvm::isa<memref::DeallocOp>(user) &&
-               user->getParentRegion() == &region;
-      });
-      if (dealloc == op->getUsers().end()) {
-        op = op->getNextNode();
-        continue;
-      }
-
-      auto* reusable = llvm::find_if(freeAllocs, [&](Value free) {
-        return free && free.getType() == alloc.getType();
-      });
-      if (reusable == freeAllocs.end()) {
-        dealloc->moveAfter(parent);
-        op = op->getNextNode();
-        alloc->moveBefore(parent);
-        result.push_back(alloc);
-      } else {
-        alloc->replaceAllUsesWith(ValueRange{*reusable});
-        dealloc->erase();
-        op = op->getNextNode();
-        alloc->erase();
-        result.push_back(*reusable);
-        *reusable = {};
-      }
-    } else {
-      op = op->getNextNode();
-    }
-  }
-  // Return remaining free allocs.
-  for (auto reusable : freeAllocs) {
-    if (reusable) result.push_back(reusable);
-  }
-  return result;
-}
-
-// Hoists allocs from while and for loops.
-bool hoistAllocs(Block& block) {
-  auto* op = &block.front();
-  bool result = false;
-  while (op) {
-    for (auto& region : op->getRegions()) {
-      if (!region.empty()) {
-        assert(region.hasOneBlock());
-        result |= hoistAllocs(region.front());
-      }
-    }
-
-    if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
-      SmallVector<Value> hoistedAllocs;
-      for (auto& region : op->getRegions()) {
-        hoistedAllocs = hoistAllocs(rbi, region, std::move(hoistedAllocs));
-      }
-      result |= !hoistedAllocs.empty();
-    }
-    op = op->getNextNode();
-  }
-  return result;
-}
-
 template <typename T>
 T findOp(Operation* start, std::function<bool(T)> predicate) {
   while (start) {
@@ -364,6 +291,101 @@ bool reuseBuffers(Block& block, BufferReuseMode mode) {
       }
     }
 
+    op = op->getNextNode();
+  }
+  return result;
+}
+
+SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
+                               SmallVector<Value> freeAllocs) {
+  if (region.empty()) return freeAllocs;
+  assert(region.hasOneBlock() && "expected the region to have a single block");
+  // Hoist local allocs out of the loop.
+  // TODO(jreiffers): Add some smarts here so we don't blow up the heap for
+  // pathological inputs.
+
+  SmallVector<Value> result;
+  auto* op = &region.front().front();
+  while (op) {
+    auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
+    if (alloc && alloc.getDynamicSizes().empty()) {
+      auto dealloc = llvm::find_if(op->getUsers(), [&](Operation* user) {
+        return llvm::isa<memref::DeallocOp>(user) &&
+               user->getParentRegion() == &region;
+      });
+      if (dealloc == op->getUsers().end()) {
+        op = op->getNextNode();
+        continue;
+      }
+
+      auto* reusable = llvm::find_if(freeAllocs, [&](Value free) {
+        return free && free.getType() == alloc.getType();
+      });
+      if (reusable == freeAllocs.end()) {
+        dealloc->moveAfter(parent);
+        op = op->getNextNode();
+        alloc->moveBefore(parent);
+        result.push_back(alloc);
+      } else {
+        alloc->replaceAllUsesWith(ValueRange{*reusable});
+        dealloc->erase();
+        op = op->getNextNode();
+        alloc->erase();
+        result.push_back(*reusable);
+        *reusable = {};
+      }
+    } else {
+      op = op->getNextNode();
+    }
+  }
+  // Return remaining free allocs.
+  for (auto reusable : freeAllocs) {
+    if (reusable) result.push_back(reusable);
+  }
+  return result;
+}
+
+// Hoists allocs from while and for loops.
+bool hoistAllocs(Block& block) {
+  auto* op = &block.front();
+  bool result = false;
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        const bool currResult = hoistAllocs(region.front());
+        if (currResult) {
+          // After the allocations are hoisted one level up, it's possible there
+          // are new opportunities for reusing buffers.
+          // For example, consider the following case:
+          //  scf.if %cond2 {
+          //   scf.if %cond {
+          //     %a = memref.alloc() : memref<f32>
+          //     "a.op"(%a) : (memref<f32>) -> ()
+          //     memref.dealloc %a : memref<f32>
+          //   }
+          //   scf.if %cond {
+          //     %b = memref.alloc() : memref<f32>
+          //     "b.op"(%b) : (memref<f32>) -> ()
+          //     memref.dealloc %b : memref<f32>
+          //   }
+          // }
+          // There are no buffer reuse in the two separate scf.if regions but
+          // once the allocations are hoisted one level up, we could merge the
+          // allocations before hoisting them out of the outer scf.if.
+          reuseBuffers(region.front(), BufferReuseMode::CONSERVATIVE);
+        }
+        result |= currResult;
+      }
+    }
+
+    if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
+      SmallVector<Value> hoistedAllocs;
+      for (auto& region : op->getRegions()) {
+        hoistedAllocs = hoistAllocs(rbi, region, std::move(hoistedAllocs));
+      }
+      result |= !hoistedAllocs.empty();
+    }
     op = op->getNextNode();
   }
   return result;

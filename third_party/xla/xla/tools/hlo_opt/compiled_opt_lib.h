@@ -34,6 +34,8 @@ namespace xla {
 // Platform-specific provider of `hlo-opt` functionality.
 class CompiledOptProvider : public OptProvider {
  public:
+  CompiledOptProvider() : OptProvider() {}
+
   // Generates textual output for a given stage on a given platform, returns
   // empty optional if the stage is not supported.
   absl::StatusOr<std::optional<std::string>> GenerateStage(
@@ -55,7 +57,7 @@ class CompiledOptProvider : public OptProvider {
 
   // Generates optimized HLO.
   absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
-      std::unique_ptr<HloModule> input_module) override;
+      std::unique_ptr<HloModule> input_module);
 
   // Gets a compiler associated with the provider.
   virtual absl::StatusOr<Compiler *> GetCompiler();

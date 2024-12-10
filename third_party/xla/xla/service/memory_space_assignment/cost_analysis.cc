@@ -49,10 +49,6 @@ HloCostAnalysisCosts::HloCostAnalysisCosts(
     const HloCostAnalysis& hlo_cost_analysis)
     : hlo_cost_analysis_(hlo_cost_analysis) {}
 
-int64_t HloCostAnalysisCosts::GetShapeSize(const Shape& shape) {
-  return hlo_cost_analysis_.GetShapeSize(shape);
-}
-
 float HloCostAnalysisCosts::BytesAccessed(const HloInstruction& instruction) {
   return static_cast<float>(hlo_cost_analysis_.bytes_accessed(instruction));
 }
@@ -68,10 +64,6 @@ float HloCostAnalysisCosts::OutputBytesAccessed(
     const HloInstruction& instruction, const ShapeIndex& shape_index) {
   return static_cast<float>(
       hlo_cost_analysis_.output_bytes_accessed(instruction, shape_index));
-}
-
-float HloCostAnalysisCosts::BytesPerSecond() {
-  return hlo_cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
 }
 
 float HloCostAnalysisCosts::ComputeSeconds(const HloInstruction& instruction) {
@@ -97,6 +89,19 @@ float HloCostAnalysisCosts::ComputeSeconds(const HloInstruction& instruction) {
   return absl::WrapUnique(
       new CostAnalysis(base_costs, options, std::move(alias_analysis),
                        std::move(hlo_live_range), std::move(call_graph)));
+}
+
+int64_t CostAnalysis::GetShapeSizeBytes(const Shape& shape) const {
+  return options_.shape_size_bytes_fn(shape);
+}
+
+double CostAnalysis::DefaultMemBandwidthBytesPerSecond(
+    bool use_scaling_factor) const {
+  if (use_scaling_factor) {
+    return options_.async_copy_bandwidth_scaling_factor *
+           options_.default_mem_bandwidth_bytes_per_second;
+  }
+  return options_.default_mem_bandwidth_bytes_per_second;
 }
 
 float CostAnalysis::GetAlternateMemoryBenefit(
@@ -317,7 +322,7 @@ float CostAnalysis::GetDefaultMemoryBandwidthIdleTime(
       GetBytesAccessedFromAlternateMemory(
           instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
   const float elapsed_due_to_default_mem =
-      default_memory_bytes_accessed / base_costs_.BytesPerSecond();
+      default_memory_bytes_accessed / DefaultMemBandwidthBytesPerSecond();
   const float elapsed = GetInstructionElapsedInAlternateMemory(
       instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
   return elapsed - elapsed_due_to_default_mem;
@@ -383,7 +388,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
       options_.alternate_mem_bandwidth_bytes_per_second;
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
-      base_costs_.BytesPerSecond();
+      DefaultMemBandwidthBytesPerSecond();
   return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
 }
 
@@ -425,7 +430,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
       options_.alternate_mem_bandwidth_bytes_per_second;
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
-      base_costs_.BytesPerSecond();
+      DefaultMemBandwidthBytesPerSecond();
   return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
 }
 
@@ -467,10 +472,9 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
 }
 
 float CostAnalysis::GetAsyncCopyElapsed(const Shape& shape) const {
-  int64_t size_in_bytes = base_costs_.GetShapeSize(shape);
+  int64_t size_in_bytes = GetShapeSizeBytes(shape);
   return static_cast<float>(size_in_bytes) /
-         (options_.async_copy_bandwidth_bytes_per_second *
-          options_.async_copy_bandwidth_scaling_factor);
+         DefaultMemBandwidthBytesPerSecond(/*use_scaling_factor=*/true);
 }
 
 int64_t CostAnalysis::GetScheduleEndTime() const {

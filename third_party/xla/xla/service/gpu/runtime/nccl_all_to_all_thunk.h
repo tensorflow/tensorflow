@@ -25,10 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 
@@ -43,7 +44,7 @@ struct NcclAllToAllConfig {
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
 class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllToAllStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+  NcclAllToAllStartThunk(ThunkInfo thunk_info,
                          const HloAllToAllInstruction* instr,
                          std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
 
@@ -69,7 +70,7 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
   AsyncStreamKind GetAsyncStreamKind() const override;
 
@@ -87,14 +88,14 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
       receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
 };
 
-absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
+absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, NcclApi::NcclCommHandle comm);
+                         se::Stream& stream, Communicator* comm);
 
 absl::Status RunMemCpyAllToAll(
-    NcclApi* nccl_api, bool has_split_dimension,
+    GpuCollectives* collectives, bool has_split_dimension,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    NcclApi::NcclCommHandle comm,
+    Communicator* comm,
     absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
     absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map);
 

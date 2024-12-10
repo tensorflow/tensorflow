@@ -86,6 +86,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -492,6 +493,44 @@ class AsyncHostToDeviceTransferManager
   }
 };
 
+static std::optional<stream_executor::GpuTargetConfigProto>
+GetTargetConfigForDevices(absl::Span<PjRtDevice* const> devices) {
+  // Temporary ability to disable TargetConfig via env var until
+  // internal tests can be fixed.
+  const char* disable_target_config_str =
+      std::getenv("PJRT_GPU_SE_DISABLE_TARGET_CONFIG");
+  int disable_target_config = 0;
+  if (disable_target_config_str &&
+      absl::SimpleAtoi(disable_target_config_str, &disable_target_config)) {
+    if (disable_target_config == 1) {
+      return std::nullopt;
+    }
+  }
+  for (const PjRtDevice* device : devices) {
+    LocalDeviceState* local_device_state =
+        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+            ->local_device_state();
+    if (local_device_state != nullptr) {
+      return xla::Compiler::TargetConfig(local_device_state->executor())
+          .ToProto();
+    }
+  }
+  return std::nullopt;
+}
+
+static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
+    absl::Span<PjRtDevice* const> devices) {
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
+  auto target_config = GetTargetConfigForDevices(devices);
+  if (target_config.has_value()) {
+    std::string attr;
+    if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
+      attrs["target_config"] = std::move(attr);
+    }
+  }
+  return attrs;
+}
+
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -505,9 +544,10 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           platform_name, client, std::move(devices), process_index,
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-      topology_(xla::StreamExecutorGpuTopologyDescription::Create(
+      topology_(xla::StreamExecutorGpuTopologyDescription(
           tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology))),
+          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
+          GetTargetConfigForDevices(addressable_devices()))),
       kv_store_(std::move(kv_store)) {
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
@@ -779,7 +819,6 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::Compile(const XlaComputation& computation,
                                  CompileOptions options) {
-  options.executable_build_options.set_key_value_store(kv_store_);
   auto executable = PjRtStreamExecutorClient::Compile(computation, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -1147,8 +1186,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   if (num_nodes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
                                                        std::move(kv_store));
-    gpu_executable_run_options->set_nccl_clique_id_callback(
-        [nccl_id_store](const gpu::NcclCliqueKey& key) {
+    gpu_executable_run_options->set_clique_id_callback(
+        [nccl_id_store](const CliqueKey& key) {
           return nccl_id_store->GetNcclUniqueId(key);
         });
   }
@@ -1272,8 +1311,15 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
 
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
-    gpu_run_options->set_enable_mock_nccl_collectives();
+    gpu_run_options->set_enable_mock_collectives();
   }
+
+  static const bool xla_gpu_require_exclusive_lock =
+      xla::GetDebugOptionsFromFlags().xla_gpu_require_exclusive_lock();
+  if (xla_gpu_require_exclusive_lock) {
+    gpu_run_options->set_requires_exclusive_lock_on_gpu();
+  }
+
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();

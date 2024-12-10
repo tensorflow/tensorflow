@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -44,7 +44,6 @@ using ::testing::Optional;
 using ::testing::SizeIs;
 
 using Constraint = ConstraintExpression::Constraint;
-using ConjointConstraints = ConstraintExpression::ConjointConstraints;
 
 MATCHER_P(MatchSymbolicTileString, symbolic_tile_string, "") {
   return ExplainMatchResult(
@@ -593,6 +592,27 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSummationOfSymbols) {
       )")));
 }
 
+TEST_F(SymbolicTileTest, CanPropagateTileModAndFloorDiv) {
+  // Such an indexing map is representative of HLOs with bitcasts collapsing
+  // more than two axes, i.e. something like
+  //   p0 = f32[3,5,7]{2,1,0} parameter(0)
+  //   bitcast = f32[105]{0} bitcast(p0)
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(
+          "(d0) -> (d0 floordiv 35, (d0 floordiv 7) mod 5, d0 mod 7)",
+          &mlir_context_),
+      {105}, {});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: (d0) -> (0, 0, 0)
+        size_map: (d0) -> ((d0 + 34) floordiv 35, (d0 + 6) floordiv 7 - (((d0 + 6) floordiv 7 - 1) floordiv 5) * 5, d0 - ((d0 - 1) floordiv 7) * 7)
+        stride_map: (d0) -> (1, 1, 1)
+        constraints: ((d0 + 6) floordiv 7) mod 5 in [0, 0] && 7 mod d0 in [0, 0] || ((d0 + 6) floordiv 7) mod 5 in [0, 0] && d0 mod 7 in [0, 0] || 5 mod ((d0 + 6) floordiv 7) in [0, 0] && 7 mod d0 in [0, 0] || 5 mod ((d0 + 6) floordiv 7) in [0, 0] && d0 mod 7 in [0, 0]
+      )")));
+}
+
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshape) {
   // TODO(b/349487906): constraints should allow us to unblock this use case.
@@ -818,107 +838,94 @@ TEST_F(SymbolicTileTest, PointDimensionsAreNotSimplified) {
 
 class ConstraintExpressionTest : public IndexingTestBase {
  public:
-  using ConstraintVector = std::vector<std::pair<std::string, Interval>>;
-
   ConstraintExpression::Constraint GetConstraint(const std::string& string_expr,
                                                  int64_t lower, int64_t upper) {
     return {ParseAffineExpr(string_expr, &mlir_context_),
             Interval{lower, upper}};
   }
-
-  // Constructs a conjoint constraint from a vector of pairs containing a string
-  // representation of an affine expression and an interval.
-  ConjointConstraints GetConjointConstraints(
-      ConstraintVector&& expr_and_interval_pairs) {
-    ConjointConstraints conjunction;
-    for (auto& [string_expr, interval] : expr_and_interval_pairs) {
-      conjunction.push_back(
-          {ParseAffineExpr(string_expr, &mlir_context_), interval});
-    }
-    return conjunction;
+  ConstraintExpression Simplify(ConstraintExpression constraints) {
+    constraints.Simplify();
+    return constraints;
   }
 };
 
-TEST_F(ConstraintExpressionTest,
-       DefaultConstructedConstraintExpressionIsAlwaysSatisfied) {
-  EXPECT_TRUE(ConstraintExpression().IsAlwaysSatisfied());
+TEST_F(ConstraintExpressionTest, CheckAlwaysSatisfied) {
+  auto always_satisfied = ConstraintExpression::GetAlwaysSatisfied();
+  EXPECT_TRUE(always_satisfied.is_satisfiable());
+  EXPECT_TRUE(always_satisfied.IsAlwaysSatisfied());
+  EXPECT_THAT(always_satisfied,
+              MatchConstraintExpressionString("always satisfied"));
+  EXPECT_TRUE(always_satisfied.IsSatisfiedBy({}));
+  EXPECT_THAT(always_satisfied || GetConstraint("d0", 0, 0),
+              MatchConstraintExpressionString("always satisfied"));
+  EXPECT_THAT(always_satisfied && GetConstraint("d0", 0, 0),
+              MatchConstraintExpressionString("d0 in [0, 0]"));
+  EXPECT_THAT(always_satisfied || ConstraintExpression::GetUnsatisfiable(),
+              MatchConstraintExpressionString("always satisfied"));
+  EXPECT_THAT(ConstraintExpression::GetUnsatisfiable() || always_satisfied,
+              MatchConstraintExpressionString("always satisfied"));
+  EXPECT_THAT(Simplify(always_satisfied),
+              MatchConstraintExpressionString("always satisfied"));
+}
+
+TEST_F(ConstraintExpressionTest, CheckUnsatisfiable) {
+  auto unsatisfiable = ConstraintExpression::GetUnsatisfiable();
+  EXPECT_FALSE(unsatisfiable.is_satisfiable());
+  EXPECT_FALSE(unsatisfiable.IsAlwaysSatisfied());
+  EXPECT_THAT(unsatisfiable, MatchConstraintExpressionString("unsatisfiable"));
+  EXPECT_FALSE(unsatisfiable.IsSatisfiedBy({}));
+  EXPECT_THAT(unsatisfiable || GetConstraint("d0", 0, 0),
+              MatchConstraintExpressionString("d0 in [0, 0]"));
+  EXPECT_THAT(unsatisfiable && GetConstraint("d0", 0, 0),
+              MatchConstraintExpressionString("unsatisfiable"));
+  EXPECT_THAT(unsatisfiable && ConstraintExpression::GetAlwaysSatisfied(),
+              MatchConstraintExpressionString("unsatisfiable"));
+  EXPECT_THAT(ConstraintExpression::GetAlwaysSatisfied() && unsatisfiable,
+              MatchConstraintExpressionString("unsatisfiable"));
+  EXPECT_THAT(Simplify(unsatisfiable),
+              MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
-  EXPECT_THAT(ConstraintExpression(),
-              MatchConstraintExpressionString("always satisfied"));
-  EXPECT_THAT(ConstraintExpression::GetUnsatisfiableConstraintExpression(),
-              MatchConstraintExpressionString("unsatisfiable"));
-
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}, {"d1", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d2", Interval{0, 5}}});
-
-  ConstraintExpression constraints;
-  constraints.Or(std::move(conjunction_1));
-  constraints.Or(std::move(conjunction_2));
+  ConstraintExpression constraints =
+      GetConstraint("d2", 5, 6) ||
+      (GetConstraint("d1", 3, 4) && GetConstraint("d0", 1, 2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+                               "d0 in [1, 2] && d1 in [3, 4] || d2 in [5, 6]"));
 }
 
 TEST_F(ConstraintExpressionTest,
        ConjunctionOfConstraintsOnTheSameExpressionAreIntersected) {
-  ConstraintExpression constraints;
-
-  constraints.And(GetConjointConstraints({{"d0", Interval{0, 5}}}));
+  ConstraintExpression constraints{GetConstraint("d0", 0, 5)};
   EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 5]"));
 
   // Constraints are intersected.
-  constraints.And(GetConjointConstraints({{"d0", Interval{3, 6}}}));
+  constraints = constraints && GetConstraint("d0", 3, 6);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 5]"));
 
   // Empty intersection results in unsatisfiability.
-  constraints.And(GetConjointConstraints({{"d0", Interval{7, 8}}}));
+  constraints = constraints && GetConstraint("d0", 7, 8);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
-}
-
-TEST_F(ConstraintExpressionTest,
-       UnsatisfiableConstraintExpressionHoldsNoConstraint) {
-  ConstraintExpression unsatisfiable_constraint =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-  EXPECT_FALSE(unsatisfiable_constraint.is_satisfiable());
-  EXPECT_THAT(unsatisfiable_constraint.DisjointConjointConstraints(),
-              IsEmpty());
 }
 
 TEST_F(
     ConstraintExpressionTest,
     CanSuccessfullyPerformConjunctionOfConstraintExpressionWithConjointConstraints) {  // NOLINT(whitespace/line_length)
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}, {"d1", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d2", Interval{0, 5}}});
-
-  ConstraintExpression constraints;
-  constraints.And(std::move(conjunction_1));
-  constraints.And(std::move(conjunction_2));
+  ConstraintExpression constraints = GetConstraint("d0", 0, 5) &&
+                                     GetConstraint("d1", 0, 5) &&
+                                     GetConstraint("d2", 0, 5);
   // Constraints can be merged without trouble, and hence the constraint
   // expression is satisfiable.
   EXPECT_TRUE(constraints.is_satisfiable());
-  const auto& conjunctions = constraints.DisjointConjointConstraints();
-  // There is a single conjunction in the disjoint expression.
-  EXPECT_THAT(conjunctions, SizeIs(1));
-  // There are three constraints in the single conjunction.
-  EXPECT_THAT(conjunctions.front(), SizeIs(3));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "d0 in [0, 5] && d1 in [0, 5] && d2 in [0, 5]"));
 }
 
 TEST_F(
     ConstraintExpressionTest,
     CorrectlyEliminatesConjunctionFromDisjunctionWhenItBecomesUnsatisfiable) {
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d1", Interval{0, 5}}});
-
-  ConstraintExpression constraints;
-  constraints.Or(std::move(conjunction_1));
-  constraints.Or(std::move(conjunction_2));
+  ConstraintExpression constraints =
+      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
   EXPECT_THAT(constraints,
               MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
 
@@ -926,40 +933,26 @@ TEST_F(
   // the conjunction of the existing constraint expression with `conjunction_3`
   // should therefore evict the unsatisfiable intersection of `conjunction_1`
   // and `conjunction_3` from the disjoint expression.
-  ConjointConstraints conjunction_3 =
-      GetConjointConstraints({{"d0", Interval{6, 6}}});
-  constraints.And(std::move(conjunction_3));
+  constraints = constraints && GetConstraint("d0", 6, 6);
 
   EXPECT_THAT(constraints,
               MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
 
   // But becomes unsatisfiable if we eliminate the last remaining constraint by
   // constructing another unsatisfiable conjunction.
-  ConjointConstraints conjunction_4 =
-      GetConjointConstraints({{"d0", Interval{7, 7}}});
-  constraints.And(std::move(conjunction_4));
+  constraints = constraints && GetConstraint("d0", 7, 7);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(
     ConstraintExpressionTest,
     CanSuccessfullyPerformDisjunctionOfConstraintExpressionWithConjointConstraints) {  // NOLINT(whitespace/line_length)
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}, {"d1", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d2", Interval{0, 5}}});
-
-  ConstraintExpression constraints;
-  constraints.Or(std::move(conjunction_1));
-  constraints.Or(std::move(conjunction_2));
+  ConstraintExpression constraints =
+      GetConstraint("d0", 0, 5) && GetConstraint("d1", 0, 5);
+  constraints = constraints || GetConstraint("d2", 0, 5);
   EXPECT_TRUE(constraints.is_satisfiable());
-  const auto& conjunctions = constraints.DisjointConjointConstraints();
-  // There are now two conjunctions in the disjoint expression.
-  EXPECT_THAT(conjunctions, SizeIs(2));
-  // There are two constraints in the first conjunction.
-  EXPECT_THAT(conjunctions.front(), SizeIs(2));
-  // And one constraint in the second conjunction.
-  EXPECT_THAT(conjunctions.back(), SizeIs(1));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
 }
 
 TEST_F(
@@ -967,55 +960,42 @@ TEST_F(
     CanSuccessfullyPerformConjunctionOfConstraintExpressionWithConstraintExpression) {  // NOLINT(whitespace/line_length)
   // Construct the first `ConstraintExpression` to be of the form
   //   a || b.
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d1", Interval{0, 5}}});
-  ConstraintExpression constraints_1;
-  constraints_1.Or(std::move(conjunction_1));
-  constraints_1.Or(std::move(conjunction_2));
+  ConstraintExpression constraints_1 =
+      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
 
   // Construct the second `ConstraintExpression` to be of the form
   //   c || d || e.
-  ConjointConstraints conjunction_3 =
-      GetConjointConstraints({{"d2", Interval{0, 5}}});
-  ConjointConstraints conjunction_4 =
-      GetConjointConstraints({{"d3", Interval{0, 5}}});
-  ConjointConstraints conjunction_5 =
-      GetConjointConstraints({{"d4", Interval{0, 5}}});
-  ConstraintExpression constraints_2;
-  constraints_2.Or(std::move(conjunction_3));
-  constraints_2.Or(std::move(conjunction_4));
-  constraints_2.Or(std::move(conjunction_5));
+  ConstraintExpression constraints_2 = GetConstraint("d2", 0, 5) ||
+                                       GetConstraint("d3", 0, 5) ||
+                                       GetConstraint("d4", 0, 5);
 
   // Taking the conjunction of the two `ConstraintExpression`s should result in
   // a `ConstraintExpression` of the form
   //   a && c || a && d || a && e || b && c || b && d || b && e.
   ConstraintExpression result_constraint_expression =
-      ConstraintExpression::And(std::move(constraints_1), constraints_2);
+      constraints_1 && constraints_2;
 
   EXPECT_TRUE(result_constraint_expression.is_satisfiable());
   // There are now six conjunctions in the disjoint expression, as described
   // above.
-  EXPECT_THAT(result_constraint_expression.DisjointConjointConstraints(),
-              SizeIs(6));
-  // And each of the conjunction consists only of two elements.
-  for (const ConjointConstraints& conjunction :
-       result_constraint_expression.DisjointConjointConstraints()) {
-    EXPECT_THAT(conjunction, SizeIs(2));
-  }
+  EXPECT_THAT(
+      result_constraint_expression,
+      MatchConstraintExpressionString(
+          "d0 in [0, 5] && d2 in [0, 5] || d0 in [0, 5] && d3 in [0, 5] || "
+          "d0 in [0, 5] && d4 in [0, 5] || d1 in [0, 5] && d2 in [0, 5] || "
+          "d1 in [0, 5] && d3 in [0, 5] || d1 in [0, 5] && d4 in [0, 5]"));
 
   // Lastly, make sure that the conjunction of an empty `ConstraintExpression`
   // with a non-empty one results in passing the non-empty one through, on both
   // sides.
-  ConstraintExpression empty_constraints;
-  EXPECT_THAT(ConstraintExpression::And(empty_constraints, constraints_2)
-                  .DisjointConjointConstraints(),
-              SizeIs(3));
-  EXPECT_THAT(ConstraintExpression::And(std::move(constraints_2),
-                                        std::move(empty_constraints))
-                  .DisjointConjointConstraints(),
-              SizeIs(3));
+  ConstraintExpression always_satisfied =
+      ConstraintExpression::GetAlwaysSatisfied();
+  EXPECT_THAT(always_satisfied && constraints_2,
+              MatchConstraintExpressionString(
+                  "d2 in [0, 5] || d3 in [0, 5] || d4 in [0, 5]"));
+  EXPECT_THAT(constraints_2 && always_satisfied,
+              MatchConstraintExpressionString(
+                  "d2 in [0, 5] || d3 in [0, 5] || d4 in [0, 5]"));
 }
 
 TEST_F(
@@ -1023,215 +1003,78 @@ TEST_F(
     CanSuccessfullyPerformDisjunctionOfConstraintExpressionWithConstraintExpression) {  // NOLINT(whitespace/line_length)
   // Construct the first `ConstraintExpression` to be of the form
   //   a || b.
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}});
-  ConjointConstraints conjunction_2 =
-      GetConjointConstraints({{"d1", Interval{0, 5}}});
-  ConstraintExpression constraints_1;
-  constraints_1.Or(std::move(conjunction_1));
-  constraints_1.Or(std::move(conjunction_2));
+  ConstraintExpression constraints_1 =
+      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
 
   // Construct the second `ConstraintExpression` to be of the form
   //   c || d || e.
-  ConjointConstraints conjunction_3 =
-      GetConjointConstraints({{"d2", Interval{0, 5}}});
-  ConjointConstraints conjunction_4 =
-      GetConjointConstraints({{"d3", Interval{0, 5}}});
-  ConjointConstraints conjunction_5 =
-      GetConjointConstraints({{"d4", Interval{0, 5}}});
-  ConstraintExpression constraints_2;
-  constraints_2.Or(std::move(conjunction_3));
-  constraints_2.Or(std::move(conjunction_4));
-  constraints_2.Or(std::move(conjunction_5));
+  ConstraintExpression constraints_2 = GetConstraint("d2", 0, 5) ||
+                                       GetConstraint("d3", 0, 5) ||
+                                       GetConstraint("d4", 0, 5);
 
   // Taking the disjunction of the two `ConstraintExpression`s should result in
   // a `ConstraintExpression` of the form
   //   a || b || c || d || e.
-  ConstraintExpression result_constraint_expression = ConstraintExpression::Or(
-      std::move(constraints_1), std::move(constraints_2));
+  ConstraintExpression result_constraint_expression =
+      constraints_1 || constraints_2;
 
   EXPECT_TRUE(result_constraint_expression.is_satisfiable());
   // There are now five conjunctions in the disjoint expression, as described
   // above.
-  EXPECT_THAT(result_constraint_expression.DisjointConjointConstraints(),
-              SizeIs(5));
-  // And each of the conjunctions consists only of a single constraint.
-  for (const ConjointConstraints& conjunction :
-       result_constraint_expression.DisjointConjointConstraints()) {
-    EXPECT_THAT(conjunction, SizeIs(1));
-  }
-}
-
-TEST_F(
-    ConstraintExpressionTest,
-    ConjunctionInvolvingUnsatisfiableConstraintExpressionIsUnsatisfiable) {  // NOLINT(whitespace/line_length)
-  ConstraintExpression constraints =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}});
-
-  constraints.And(std::move(conjunction_1));
-  EXPECT_FALSE(constraints.is_satisfiable());
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), IsEmpty());
-}
-
-TEST_F(
-    ConstraintExpressionTest,
-    DisjunctionInvolvingUnsatisfiableConstraintExpressionIsSatisfiable) {  // NOLINT(whitespace/line_length)
-  ConstraintExpression constraints =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-  ConjointConstraints conjunction_1 =
-      GetConjointConstraints({{"d0", Interval{0, 5}}});
-
-  // Try first with a single group of `ConjointConstraints`.
-  constraints.Or(conjunction_1);
-  EXPECT_TRUE(constraints.is_satisfiable());
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(1));
-
-  // Make sure this also works when constructing the conjunction from two
-  // `ConstraintExpression`s.
-  ConstraintExpression constraints_1 =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-  ConstraintExpression constraints_2;
-  constraints_2.Or(std::move(conjunction_1));
-
-  ConstraintExpression result_constraint_expression = ConstraintExpression::Or(
-      std::move(constraints_1), std::move(constraints_2));
-  EXPECT_TRUE(result_constraint_expression.is_satisfiable());
-  EXPECT_THAT(result_constraint_expression.DisjointConjointConstraints(),
-              SizeIs(1));
-}
-
-TEST_F(
-    ConstraintExpressionTest,
-    DisjunctionInvolvingTwoUnsatisfiableConstraintExpressionsIsUnsatisfiable) {  // NOLINT(whitespace/line_length)
-  ConstraintExpression constraints_1 =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-  ConstraintExpression constraints_2 =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-
-  EXPECT_FALSE(
-      ConstraintExpression::And(constraints_1, constraints_2).is_satisfiable());
+  EXPECT_THAT(result_constraint_expression,
+              MatchConstraintExpressionString(
+                  "d0 in [0, 5] || d1 in [0, 5] || d2 in [0, 5] || "
+                  "d3 in [0, 5] || d4 in [0, 5]"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAlwaysSatisfiedContraintExpression) {
-  ConstraintExpression constraints;
-  constraints.Or(GetConjointConstraints({
-      {"d0", Interval{0, 1}},
-  }));
-  constraints.Or(GetConjointConstraints({
-      {"25", Interval{0, 100}},
-      {"1", Interval{1, 1}},
-  }));
-  constraints.Or(GetConjointConstraints({
-      {"d0", Interval{0, -1}},
-  }));
-
+  ConstraintExpression constraints = GetConstraint("d0", 0, 1) ||
+                                     GetConstraint("25", 0, 100) ||
+                                     GetConstraint("1", 1, 1);
   constraints.Simplify();
-
   EXPECT_THAT(constraints, MatchConstraintExpressionString("always satisfied"));
 }
 
 TEST_F(ConstraintExpressionTest, CanSimplifyUnsatisfiableContraintExpression) {
-  ConstraintExpression constraints;
-  constraints.Or(GetConjointConstraints({
-      {"d0", Interval{0, -1}},
-  }));
-  constraints.Or(GetConjointConstraints({
-      {"1", Interval{2, 3}},
-  }));
-
+  ConstraintExpression constraints =
+      GetConstraint("d0", 0, -1) || GetConstraint("1", 2, 3);
   constraints.Simplify();
-
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAwayAlwaysSatisfiedPartOfConjunction) {
-  ConstraintExpression constraints;
-  constraints.Or(GetConjointConstraints({
-      {"d0", Interval{0, 1}},
-      {"1", Interval{1, 1}},
-      {"d1", Interval{0, 1}},
-      {"2", Interval{2, 3}},
-  }));
-
-  constraints.Simplify();
-
-  EXPECT_THAT(constraints,
+  EXPECT_THAT(Simplify(GetConstraint("d0", 0, 1) && GetConstraint("1", 1, 1) &&
+                       GetConstraint("d1", 0, 1) && GetConstraint("2", 2, 3)),
               MatchConstraintExpressionString("d0 in [0, 1] && d1 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAwayUnsatisfiablePartOfDisjunction) {
-  ConstraintExpression constraints;
-  constraints.Or(GetConjointConstraints({
-      {"d0", Interval{0, 1}},
-  }));
-  constraints.Or(GetConjointConstraints({
-      {"d1", Interval{0, 1}},
-      {"1", Interval{0, 0}},
-      {"d2", Interval{0, 1}},
-  }));
-
-  constraints.Simplify();
-
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 1]"));
-}
-
-TEST_F(ConstraintExpressionTest, SimplifyKeepsAlwaysSatisfiedUnchanged) {
-  ConstraintExpression constraints;
-
-  constraints.Simplify();
-
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("always satisfied"));
-}
-
-TEST_F(ConstraintExpressionTest, SimplifyKeepsUnsatisfiableUnchanged) {
-  auto constraints =
-      ConstraintExpression::GetUnsatisfiableConstraintExpression();
-
-  constraints.Simplify();
-
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
+  EXPECT_THAT(Simplify(GetConstraint("d0", 0, 1) ||
+                       (GetConstraint("d1", 0, 1) && GetConstraint("1", 0, 0) &&
+                        GetConstraint("d2", 0, 1))),
+              MatchConstraintExpressionString("d0 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
   Constraint c0 = GetConstraint("d0", 0, 0);
   Constraint c1 = GetConstraint("d1", 1, 1);
-
-  ConjointConstraints conjunction_0{c0, c1};
-  ConjointConstraints conjunction_1{c1, c0};
-  ConjointConstraints conjunction_2{c0};
-
-  ConstraintExpression constraints;
-  constraints.Or(conjunction_0);
-  constraints.Or(conjunction_1);
-  constraints.Or(conjunction_2);
-  constraints.Or(conjunction_1);
-  constraints.Or(conjunction_0);
-
-  constraints.Simplify();
-
   // We could simplify those contraints even further to `d0 in [0, 0]` by
   // checking that one conjunction is a subset of the other, but we don't do
   // that yet.
-  EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
+  EXPECT_THAT(
+      Simplify((c0 && c1) || (c1 && c0) || c0 || (c1 && c0) || (c0 && c1)),
+      MatchConstraintExpressionString(
+          "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
   Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
   Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
   Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
-
-  ConjointConstraints conjunction_0{c0, c1};
-  ConjointConstraints conjunction_1{c1, c2};
-
-  ConstraintExpression constraints;
-  constraints.Or(conjunction_0);
-  constraints.Or(conjunction_1);
+  ConstraintExpression constraints = (c0 && c1) || (c1 && c2);
 
   // Parameters {6, 8} satisfy these constraints.
   std::vector<int64_t> possible_tile_parameters({6, 8});
@@ -1246,11 +1089,12 @@ TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
   EXPECT_FALSE(constraints.IsSatisfiedBy(impossible_tile_parameters));
 
   // Anything satisfies an always satisfied constraint expression.
-  EXPECT_TRUE(ConstraintExpression().IsSatisfiedBy(impossible_tile_parameters));
+  EXPECT_TRUE(ConstraintExpression::GetAlwaysSatisfied().IsSatisfiedBy(
+      impossible_tile_parameters));
 
   // Nothing satisfies an unsatisfiable constraint expression.
-  EXPECT_FALSE(ConstraintExpression::GetUnsatisfiableConstraintExpression()
-                   .IsSatisfiedBy(possible_tile_parameters));
+  EXPECT_FALSE(ConstraintExpression::GetUnsatisfiable().IsSatisfiedBy(
+      possible_tile_parameters));
 }
 
 }  // namespace

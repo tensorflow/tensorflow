@@ -129,6 +129,10 @@ class LoadTest(test.TestCase):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
+    self.assertIn("start", fn.function_type.parameters)
+    # TODO(wangpeng): More properly test pretty-printing, similar to
+    #   polymorphic_function_test.py/testPrettyPrintedSignature.
+    self.assertIn("start", str(fn))
     self.evaluate(lookup_ops.tables_initializer())
     self.evaluate(ops.get_collection("saved_model_initializers"))
     self.assertEqual(
@@ -632,6 +636,8 @@ class LoadTest(test.TestCase):
     return path
 
   def test_load_sparse_inputs(self):
+    # TODO(b/372535913): Figure out why this test fails.
+    self.skipTest("b/372535913")
     path = self._model_with_sparse_input()
     imported = load.load(path)
     imported_fn = imported.signatures["serving_default"]

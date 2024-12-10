@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 
+#include <cstdint>
 #include <iterator>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"

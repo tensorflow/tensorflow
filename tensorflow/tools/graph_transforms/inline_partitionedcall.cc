@@ -54,31 +54,31 @@ std::string NormalizeNodeDefInput(const std::string& input_name) {
 
 }  // namespace
 
-Status InlinePartitionedCall(const GraphDef& input_graph_def,
-                             const TransformFuncContext& context,
-                             GraphDef* output_graph_def) {
+absl::Status InlinePartitionedCall(const GraphDef& input_graph_def,
+                                   const TransformFuncContext& context,
+                                   GraphDef* output_graph_def) {
   output_graph_def->Clear();
   absl::flat_hash_map<std::string, std::string> remap_input;
 
   for (const NodeDef& node : input_graph_def.node()) {
     if (node.op() == kPartitionedCallOpName) {
       if (node.attr().count(kFunctionAttrName) == 0) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kNotFound,
             "Node " + node.name() + " has no attribute: " + kFunctionAttrName);
       }
 
       if (!node.attr().at(kFunctionAttrName).has_func()) {
-        return Status(absl::StatusCode::kNotFound,
-                      "Cannot figure out function name");
+        return absl::Status(absl::StatusCode::kNotFound,
+                            "Cannot figure out function name");
       }
       const std::string function_name =
           node.attr().at(kFunctionAttrName).func().name();
       absl::optional<FunctionDef> function =
           GetFunctionByNameFromLibrary(input_graph_def, function_name);
       if (!function.has_value()) {
-        return Status(absl::StatusCode::kNotFound,
-                      "function " + function_name + " Not found");
+        return absl::Status(absl::StatusCode::kNotFound,
+                            "function " + function_name + " Not found");
       }
 
       const std::string prefix = node.name();
@@ -96,9 +96,9 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
 
       const int kInputArgumentCount = function->signature().input_arg().size();
       if (node.input().size() != kInputArgumentCount) {
-        return Status(absl::StatusCode::kInvalidArgument,
-                      "Called function  " + function_name +
-                          " has invalid input signature.");
+        return absl::Status(absl::StatusCode::kInvalidArgument,
+                            "Called function  " + function_name +
+                                " has invalid input signature.");
       }
       absl::flat_hash_map<std::string, std::string> input_argument_map;
       for (int k = 0; k < kInputArgumentCount; ++k) {
@@ -143,7 +143,7 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
           return input_name;
         });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("inline_partitionedcall", InlinePartitionedCall);

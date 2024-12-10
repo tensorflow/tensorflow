@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_CLIENT_VALIDATE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_CLIENT_VALIDATE_UTILS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/platform/status.h"
 

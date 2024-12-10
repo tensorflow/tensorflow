@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -45,6 +46,10 @@ namespace xla::gpu {
 
 class StreamAttributeAnnotator : public HloModulePass {
  public:
+  explicit StreamAttributeAnnotator(
+      const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
+
   absl::string_view name() const override {
     return "stream-attribute-annotator";
   }
@@ -53,6 +58,9 @@ class StreamAttributeAnnotator : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::DeviceDescription& device_description_;
 };
 
 }  // namespace xla::gpu

@@ -20,8 +20,8 @@
 #include <ostream>
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/compiler_plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 
@@ -49,6 +49,9 @@ void Dump(const LiteRtRankedTensorType& type, std::ostream& out = std::cerr);
 
 // Dump details about the given LiteRtModel to the given stream.
 void Dump(const LiteRtModelT& model, std::ostream& out = std::cerr);
+
+// Dump details about the given quantization params.
+void Dump(Quantization quantization, std::ostream& out = std::cerr);
 
 // Dump details about options
 void DumpOptions(const LiteRtOpT& op, std::ostream& out = std::cerr);

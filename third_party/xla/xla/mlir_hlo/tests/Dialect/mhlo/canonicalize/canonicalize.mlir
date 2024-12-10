@@ -696,6 +696,18 @@ func.func @simplify_broadcasted_not_as_select_pred(%arg0 : tensor<1xi1>, %arg1 :
 }
 
 ////////
+// SetDimensionSizeOp
+
+// CHECK-LABEL: set_dimension_size_is_not_folded
+func.func @set_dimension_size_is_not_folded() -> tensor<?x1xi64, #mhlo.type_extensions<bounds = [5, ?]>> {
+    // CHECK: set_dimension_size
+    %0 = "mhlo.constant"() {value = dense<[[1],[2],[3],[4],[5],[6],[7]]> : tensor<7x1xi64>} : () -> tensor<7x1xi64>
+    %size = "mhlo.constant"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+    %1 = "mhlo.set_dimension_size"(%0, %size) <{dimension = 0 : i64}> : (tensor<7x1xi64>, tensor<i32>) -> tensor<?x1xi64, #mhlo.type_extensions<bounds = [5, ?]>>
+    return %1 : tensor<?x1xi64, #mhlo.type_extensions<bounds = [5, ?]>>
+}
+
+////////
 // SliceOp
 
 // CHECK-LABEL: dynamic_update_slice_fold_length_0

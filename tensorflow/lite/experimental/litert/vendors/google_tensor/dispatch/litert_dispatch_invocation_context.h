@@ -17,10 +17,10 @@
 
 #include <optional>
 
-#include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/dispatch_api.h"
 
@@ -39,9 +39,9 @@ class LiteRtDispatchInvocationContextT {
     }
   }
 
-  absl::StatusOr<LiteRtTensorBufferRequirements> GetInputRequirements(
+  litert::Expected<LiteRtTensorBufferRequirements> GetInputRequirements(
       int input_index, const LiteRtRankedTensorType& tensor_type);
-  absl::StatusOr<LiteRtTensorBufferRequirements> GetOutputRequirements(
+  litert::Expected<LiteRtTensorBufferRequirements> GetOutputRequirements(
       int output_index, const LiteRtRankedTensorType& tensor_type);
 
   ThrInvocationContext* thr_invocation_context() {

@@ -605,7 +605,8 @@ class ConcatOpTest(test.TestCase):
       t1 = []
       t2 = []
       output = gen_array_ops.concat_v2([t1, t2], 0)
-      self.assertFalse(self.evaluate(output))  # Checks that output is empty
+      # Checks that output is empty
+      self.assertEqual(self.evaluate(output).size, 0)
 
   @test_util.run_deprecated_v1
   def testConcatInvalidAxis(self):

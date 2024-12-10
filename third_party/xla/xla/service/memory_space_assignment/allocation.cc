@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -1035,34 +1036,43 @@ struct AllocationSummary {
   static void Add(const Allocation& allocation,
                   std::vector<AllocationSummary>& data) {
     if (!allocation.is_sliced_copy_allocation()) {
-      std::string name = allocation.defining_position().ToString();
-      if (allocation.cross_program_prefetch_index().has_value()) {
-        absl::StrAppend(&name, " (xprogram prefetch)");
-      }
-      data.push_back(AllocationSummary{allocation.chunk(),
-                                       allocation.start_time(),
-                                       allocation.end_time(), name});
+      data.push_back(
+          AllocationSummary{allocation.chunk(), allocation.start_time(),
+                            allocation.end_time(), GetName(allocation)});
       return;
     }
     const SlicedCopyAllocation& sliced_copy_allocation =
         dynamic_cast<const SlicedCopyAllocation&>(allocation);
-    for (int i = 0;
+    for (size_t i = 0;
          i < sliced_copy_allocation.slice_details_sorted_by_start_time().size();
          ++i) {
-      std::string name = absl::StrCat(
-          sliced_copy_allocation.defining_position().ToString(), " (slice ", i,
-          (sliced_copy_allocation.cross_program_prefetch_index().has_value()
-               ? ", xprogram prefetch"
-               : ""),
-          ")");
       const SlicedCopyAllocation::SliceDetail& slice_detail =
           sliced_copy_allocation.slice_details_sorted_by_start_time()[i];
       data.push_back(AllocationSummary{
           slice_detail.slice_decision.chunk,
           ExclusiveToInclusiveStartTime(
               slice_detail.slice_decision.exclusive_start_time),
-          sliced_copy_allocation.end_time(), name});
+          sliced_copy_allocation.end_time(), GetName(allocation, i)});
     }
+  }
+
+  static std::string GetName(const Allocation& allocation,
+                             std::optional<size_t> slice_index = std::nullopt) {
+    std::vector<std::string> attributes;
+    if (slice_index.has_value()) {
+      attributes.push_back(absl::StrCat("slice ", *slice_index));
+    }
+    if (allocation.is_scoped_allocation()) {
+      attributes.push_back("scoped");
+    }
+    if (allocation.cross_program_prefetch_index().has_value()) {
+      attributes.push_back("cross-program prefetch");
+    }
+    if (attributes.empty()) {
+      return allocation.defining_position().ToString();
+    }
+    return absl::StrCat(allocation.defining_position().ToString(), " (",
+                        absl::StrJoin(attributes, ", "), ")");
   }
 
   HeapSimulator::Chunk chunk;

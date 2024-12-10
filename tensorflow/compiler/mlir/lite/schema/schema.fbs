@@ -70,6 +70,19 @@ table CustomQuantization {
 // Represents a specific quantization technique's parameters.
 union QuantizationDetails {
   CustomQuantization,
+  BlockwiseQuantization,
+}
+
+// Parameters for blockwise quantization.
+table BlockwiseQuantization {
+  // index to the scale tensor, the tensor can be found in tensors array in
+  // subgraph.
+  scales: int;
+  // index to the zero point tensor. If zero_points is -1, the zero point is
+  // assumed to be 0, following the convention of optional tensors in tflite.
+  zero_points: int;
+  // The block size of the tensor.
+  block_size: int;
 }
 
 // Parameters for converting a quantized tensor back to float.

@@ -118,9 +118,9 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
                               memory::format_tag::any);
   }
 
-  dnnl::post_ops post_ops = PopulateOneDnnPostOps(
-      cpu_engine, fused_mds, &matmul_config.fusions(), output_md.get_ndims(),
-      fused_operands_ref, &bias_md);
+  dnnl::post_ops post_ops =
+      PopulateOneDnnPostOps(cpu_engine, fused_mds, &matmul_config.fusions(),
+                            fused_operands_ref, &bias_md);
 
   dnnl::primitive_attr attrs;
   if (matmul_config.optimization_config().user_scratchpad()) {

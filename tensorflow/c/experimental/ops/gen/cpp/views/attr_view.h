@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_VIEWS_ATTR_VIEW_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_VIEWS_ATTR_VIEW_H_
 
+#include <vector>
+
 #include "tensorflow/c/experimental/ops/gen/model/attr_spec.h"
 #include "tensorflow/core/platform/types.h"
 

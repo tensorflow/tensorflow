@@ -222,6 +222,7 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "@com_google_googletest//:gtest",

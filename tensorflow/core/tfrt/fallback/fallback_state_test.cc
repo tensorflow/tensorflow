@@ -121,9 +121,10 @@ TEST(FallbackStateTest, CreateGraphExecutionState) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto graph_execution_state,
-      fallback_state->CreateGraphExecutionState(std::move(graphdef)));
+  TF_ASSERT_OK_AND_ASSIGN(auto graph_execution_state,
+                          fallback_state->CreateGraphExecutionState(
+                              std::move(graphdef), /*run_placer=*/true,
+                              /*enable_tf2xla_mlir_bridge=*/false));
 }
 
 TEST(FallbackStateTest, CreateWithMockGpuDevice) {

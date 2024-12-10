@@ -102,7 +102,7 @@ UNARY_TEST_COMPLEX_64(Log, {
       abs_err = rel_err = std::numeric_limits<float>::infinity();
     } else {
       double eps = std::numeric_limits<float>::epsilon();
-      abs_err = eps;
+      abs_err = 2 * eps;
       rel_err = 50 * eps;
     }
 

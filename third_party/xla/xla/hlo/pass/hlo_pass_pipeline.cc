@@ -15,23 +15,27 @@ limitations under the License.
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
-#include <functional>
 #include <string>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -175,6 +179,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }};
     VLOG(1) << "  HLO pass " << pass_name;
     VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
+    tsl::profiler::TraceMe traceme(pass->name());
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
@@ -295,6 +300,7 @@ absl::StatusOr<bool> HloPassPipeline::Run(
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
+  tsl::profiler::TraceMe traceme(name());
   return RunPassesInternal(module, module->config().debug_options(),
                            execution_threads);
 }

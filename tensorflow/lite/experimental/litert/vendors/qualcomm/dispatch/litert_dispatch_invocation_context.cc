@@ -18,28 +18,22 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
-#include "third_party/qairt/latest/include/QNN/QnnContext.h"
-#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/utils.h"
+#include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
-using ::litert::qnn::QnnManager;
+using litert::Expected;
+using litert::Unexpected;
+using litert::qnn::QnnManager;
 
 LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
     litert::qnn::QnnManager& qnn_manager,
@@ -57,28 +51,41 @@ LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
       inputs_(context_binary_info.Graphs()[graph_index].Inputs()),
       outputs_(context_binary_info.Graphs()[graph_index].Outputs()) {}
 
-absl::StatusOr<LiteRtDispatchInvocationContextT::Ptr>
+Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     QnnManager& qnn, LiteRtDispatchDeviceContextT& device_context,
     const void* exec_bytecode_ptr, size_t exec_bytecode_size,
     const char* function_name) {
   auto context_binary_info = litert::qnn::ContextBinaryInfo::Create(
       qnn, exec_bytecode_ptr, exec_bytecode_size);
-  if (!context_binary_info.ok()) {
-    return context_binary_info.status();
+  if (!context_binary_info) {
+    return Unexpected(context_binary_info.Error());
+  }
+
+  const auto& graphs = context_binary_info->Graphs();
+  if (graphs.empty()) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "No graph found");
   }
 
   int graph_index = -1;
-  const auto& graphs = context_binary_info->Graphs();
-  for (auto i = 0; i < graphs.size(); ++i) {
-    const auto& graph = graphs[i];
-    if (graph.Name() == absl::string_view(function_name)) {
-      graph_index = i;
-      break;
+  // If the function_name is not specified and there is only one graph, then
+  // take that graph.
+  if (absl::string_view(function_name).empty() && graphs.size() == 1) {
+    graph_index = 0;
+    const auto& graph = graphs[graph_index];
+    function_name = graph.Name().c_str();
+  } else {
+    for (auto i = 0; i < graphs.size(); ++i) {
+      const auto& graph = graphs[i];
+      if (graph.Name() == absl::string_view(function_name)) {
+        graph_index = i;
+        break;
+      }
     }
   }
   if (graph_index < 0) {
-    return absl::InternalError("Function name not found");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Function name not found");
   }
 
   auto configs = QnnManager::DefaultContextConfigs();
@@ -88,15 +95,16 @@ LiteRtDispatchInvocationContextT::Create(
       absl::MakeSpan(static_cast<const uint8_t*>(exec_bytecode_ptr),
                      exec_bytecode_size),
       profile_handle);
-  if (!context_handle.ok()) {
-    return context_handle.status();
+  if (!context_handle) {
+    return Unexpected(context_handle.Error());
   }
 
   Qnn_GraphHandle_t graph_handle;
   if (auto status = qnn.Api()->graphRetrieve(context_handle->get(),
                                              function_name, &graph_handle);
       status != QNN_SUCCESS) {
-    return absl::InternalError("Failed to retrieve graph");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to retrieve graph");
   }
 
   return Ptr(new LiteRtDispatchInvocationContextT(
@@ -106,11 +114,12 @@ LiteRtDispatchInvocationContextT::Create(
 
 namespace {
 
-absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
+Expected<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
     const LiteRtRankedTensorType& tensor_type) {
   auto* tensor_strides = tensor_type.layout.strides;
   if (tensor_strides != nullptr) {
-    return absl::InternalError("Tensor strides are not supported by QNN");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Tensor strides are not supported by QNN");
   }
 
   static constexpr std::array<const LiteRtTensorBufferType, 2>
@@ -120,8 +129,8 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
       };
 
   auto buffer_size = litert::internal::GetNumPackedBytes(tensor_type);
-  if (!buffer_size.ok()) {
-    return buffer_size.status();
+  if (!buffer_size) {
+    return Unexpected(buffer_size.Error());
   }
 
   LiteRtTensorBufferRequirements requirements;
@@ -130,7 +139,7 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
           kSupportedTensorBufferTypes.data(), *buffer_size, /*num_strides=*/0,
           /*strides=*/nullptr, &requirements);
       status != kLiteRtStatusOk) {
-    return absl::InternalError("Not implemented");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Not implemented");
   }
 
   return requirements;
@@ -138,48 +147,50 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
 
 }  // namespace
 
-absl::StatusOr<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetInputRequirements(
     int input_index, const LiteRtRankedTensorType& tensor_type) {
   return GetTensorBufferRequirements(tensor_type);
 }
 
-absl::StatusOr<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetOutputRequirements(
     int output_index, const LiteRtRankedTensorType& tensor_type) {
   return GetTensorBufferRequirements(tensor_type);
 }
 
-absl::Status LiteRtDispatchInvocationContextT::AttachInput(
+Expected<void> LiteRtDispatchInvocationContextT::AttachInput(
     int graph_input_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (graph_input_index < 0 || graph_input_index >= inputs_.size()) {
-    return absl::InternalError("Invalid graph_input_index");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Invalid graph_input_index");
   }
 
   auto& tensor = inputs_[graph_input_index];
   return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
 }
 
-absl::Status LiteRtDispatchInvocationContextT::AttachOutput(
+Expected<void> LiteRtDispatchInvocationContextT::AttachOutput(
     int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (graph_output_index < 0 || graph_output_index >= outputs_.size()) {
-    return absl::InternalError("Invalid graph_output_index");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Invalid graph_output_index");
   }
 
   auto& tensor = outputs_[graph_output_index];
   return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
 }
 
-absl::Status LiteRtDispatchInvocationContextT::AttachBuffer(
+Expected<void> LiteRtDispatchInvocationContextT::AttachBuffer(
     Qnn_Tensor_t& tensor, LiteRtTensorBufferHandle tensor_buffer_handle) {
   auto tensor_buffer = device_context_.GetTensorBuffer(tensor_buffer_handle);
-  if (!tensor_buffer.ok()) {
-    return tensor_buffer.status();
+  if (!tensor_buffer) {
+    return Unexpected(tensor_buffer.Error());
   }
 
   auto mem_handle = device_context_.GetMemHandle(tensor_buffer_handle, tensor);
-  if (!mem_handle.ok()) {
-    return mem_handle.status();
+  if (!mem_handle) {
+    return Unexpected(mem_handle.Error());
   }
 
   if (tensor.version == QNN_TENSOR_VERSION_1) {
@@ -188,19 +199,21 @@ absl::Status LiteRtDispatchInvocationContextT::AttachBuffer(
 
   } else if (tensor.version == QNN_TENSOR_VERSION_2) {
     if (tensor.v2.isDynamicDimensions != nullptr) {
-      return absl::InternalError("Dynamic dimensions not yet supported");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Dynamic dimensions not yet supported");
     }
     tensor.v2.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
     tensor.v2.memHandle = *mem_handle;
 
   } else {
-    return absl::InternalError("Unsupported QNN tensor version");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unsupported QNN tensor version");
   }
 
   return {};
 }
 
-absl::Status LiteRtDispatchInvocationContextT::Execute() {
+Expected<void> LiteRtDispatchInvocationContextT::Execute() {
   const size_t num_ins = inputs_.size();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, inputs, num_ins, QNN_TENSOR_INIT);
   for (size_t i = 0; i < num_ins; ++i) {
@@ -217,7 +230,8 @@ absl::Status LiteRtDispatchInvocationContextT::Execute() {
           graph_handle_, inputs, num_ins, outputs, num_outs,
           /*profileHandle=*/nullptr, /*signalHandle=*/nullptr);
       status != QNN_SUCCESS) {
-    return absl::InternalError("Failed to execute graph");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to execute graph");
   }
 
   return {};

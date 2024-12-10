@@ -173,20 +173,35 @@ void RendezvousSingle(
 
 namespace internal {
 
+// A base class for rendezvous state that holds synchronization primitives.
+struct RendezvousStateSynchronization {
+  explicit RendezvousStateSynchronization(size_t num_threads)
+      : num_threads(num_threads), ack(0), rel(0), ready(false) {}
+
+  int32_t num_threads;
+
+  std::atomic<int32_t> ack;
+  std::atomic<int32_t> rel;
+
+  absl::Mutex mutex;
+  absl::CondVar cv;
+
+  // Signals availability of `result`.
+  std::atomic<bool> ready ABSL_GUARDED_BY(mutex);
+};
+
 // A state for a single round of rendezvous. We expect exactly `num_treads` to
 // arrive to a rendezvous and update corresponding slots in `values`. We
 // pre-allocate storage for values so at run time each participant doesn't have
 // to grab a lock and can simple write to the destination storage.
 template <typename R, typename V>
-struct RendezvousState {
-  explicit RendezvousState(size_t num_threads)
-      : ack(0), rel(0), values(num_threads, nullptr), result(nullptr) {}
+struct RendezvousState : public RendezvousStateSynchronization {
+  explicit RendezvousState(size_t n_threads)
+      : RendezvousStateSynchronization(n_threads),
+        values(n_threads, nullptr),
+        result(nullptr) {}
 
-  std::atomic<int32_t> ack;
-  std::atomic<int32_t> rel;
   std::vector<const V*> values;
-
-  absl::Notification ready;  // signals availability of `result`
   RendezvousResultType<R> result;
 };
 
@@ -239,9 +254,17 @@ class RendezvousMap {
       return state;
     }();
 
-    // Notify awaiting participants without holding a lock.
+    // We notify awaiting participants without holding a rendezvous map lock, as
+    // the rendezvous callback might be an expensive operation and might block
+    // the progress of concurrent rendezvous for other keys.
+
+    // Publish rendezvous result to all participants.
     state->result = std::move(result);
-    state->ready.Notify();
+
+    // Notify awaiting participants that result is ready.
+    absl::MutexLock lock(&state->mutex);
+    state->ready.store(true);
+    state->cv.SignalAll();
   }
 
  private:
@@ -249,8 +272,8 @@ class RendezvousMap {
   absl::flat_hash_map<K, std::shared_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
 };
 
-void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
-                        std::string_view name, size_t num_threads,
+void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
+                        std::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout);
 }  // namespace internal
@@ -292,6 +315,9 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
         {{"num_threads", num_threads}, {"name", name}, {"id", id}});
   });
 
+  // Signal all waiting threads that new participant has arrived.
+  state->cv.SignalAll();
+
   // std::vector::operator[] creates data races, so we rely on data pointer
   // here and when we create an absl::Span below.
   *(state->values.data() + id) = &value;
@@ -304,14 +330,15 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
   if (id < num_threads - 1) {
     // Threads arriving before the last one wait for a result to be computed by
     // the last joining thread.
-    internal::AwaitAndLogIfStuck(state->ack, state->ready, name, num_threads,
-                                 warn_stuck_timeout, terminate_timeout);
+    internal::AwaitAndLogIfStuck(*state, id, name, warn_stuck_timeout,
+                                 terminate_timeout);
   } else {
     // Last thread to arrive executes the function and completes rendezvous by
     // making result available to all participants. All other participants will
-    // be notified via `state->ready` notification when result is ready, and we
-    // rely on the notification to create a memory barrier that makes access to
+    // be notified via `state->ready` flag when result is ready, and we rely on
+    // the store to a flag to create a memory barrier that makes access to
     // `state->result` safe without any extra synchronization.
+    tsl::profiler::TraceMe trace("ExecuteRendezvousCallback");
     absl::Span<const V*> values(state->values.data(), num_threads);
     rendezvous.Complete(key, RendezvousResult<R>::Wrap(fn(values)));
   }

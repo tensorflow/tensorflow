@@ -155,8 +155,8 @@ FallbackState::FallbackState(const SessionOptions &session_options,
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutionState>>
-FallbackState::CreateGraphExecutionState(GraphDef graph_def,
-                                         bool run_placer) const {
+FallbackState::CreateGraphExecutionState(GraphDef graph_def, bool run_placer,
+                                         bool enable_tf2xla_mlir_bridge) const {
   // Create GraphExecutionState which contains the preprocessed graph including
   // device information. The following code is adapted from
   // http://cs?q=tensorflow/core/common_runtime/direct_session.cc:427%20at_cl:352783230
@@ -166,6 +166,7 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def,
   options.session_options = &session_options_;
   options.session_handle = "tfrt_fallback_handle";
   options.run_placer = run_placer;
+  options.enable_tf2xla_mlir_bridge = enable_tf2xla_mlir_bridge;
 
   std::unique_ptr<GraphExecutionState> execution_state;
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(

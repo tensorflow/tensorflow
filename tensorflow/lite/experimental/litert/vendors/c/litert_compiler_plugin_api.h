@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_API_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_API_H_
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -72,24 +72,23 @@ typedef LiteRtStatus (*LiteRtGetNumCompiledResultCallsT)(
 
 // Wraps all resolved functions from api interface.
 struct LiteRtCompilerPluginApi {
-  LiteRtGetCompilerPluginVersionT get_compiler_plugin_version = nullptr;
-  LiteRtGetCompilerPluginSocManufacturerT get_compiler_plugin_soc_manufacturer =
-      nullptr;
-  LiteRtCreateCompilerPluginT create_compiler_plugin = nullptr;
-  LiteRtDestroyCompilerPluginT destroy_compiler_plugin = nullptr;
+  LiteRtGetCompilerPluginVersionT get_compiler_plugin_version;
+  LiteRtGetCompilerPluginSocManufacturerT get_compiler_plugin_soc_manufacturer;
+  LiteRtCreateCompilerPluginT create_compiler_plugin;
+  LiteRtDestroyCompilerPluginT destroy_compiler_plugin;
 
   LiteRtGetNumCompilerPluginSupportedSocModelsT
-      get_num_compiler_plugin_supported_models = nullptr;
+      get_num_compiler_plugin_supported_models;
   LiteRtGetCompilerPluginSupportedSocModelT
-      get_compiler_plugin_supported_soc_model = nullptr;
+      get_compiler_plugin_supported_soc_model;
 
-  LiteRtCompilerPluginPartitionModelT compiler_plugin_partition_model = nullptr;
-  LiteRtCompilerPluginCompileT compiler_plugin_compile = nullptr;
+  LiteRtCompilerPluginPartitionModelT compiler_plugin_partition_model;
+  LiteRtCompilerPluginCompileT compiler_plugin_compile;
 
-  LiteRtDestroyCompiledResultT destroy_compiled_result = nullptr;
-  LiteRtGetCompiledResultByteCodeT get_compiled_result_byte_code = nullptr;
-  LiteRtGetCompiledResultCallInfoT get_compiled_result_call_info = nullptr;
-  LiteRtGetNumCompiledResultCallsT get_compiled_result_num_calls = nullptr;
+  LiteRtDestroyCompiledResultT destroy_compiled_result;
+  LiteRtGetCompiledResultByteCodeT get_compiled_result_byte_code;
+  LiteRtGetCompiledResultCallInfoT get_compiled_result_call_info;
+  LiteRtGetNumCompiledResultCallsT get_compiled_result_num_calls;
 };
 
 #ifdef __cplusplus

@@ -15,15 +15,12 @@
 #include <memory>
 #include <optional>
 
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
@@ -67,9 +64,9 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
 
   auto configs = QnnManager::DefaultBackendConfigs();
   if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
-      !qnn_manager.ok()) {
-    ABSL_LOG(ERROR) << qnn_manager.status();
-    return kLiteRtStatusErrorRuntimeFailure;
+      !qnn_manager) {
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    return qnn_manager.Error().Status();
   } else {
     std::swap(TheQnnManager, *qnn_manager);
   }
@@ -77,14 +74,14 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   Qnn_ApiVersion_t qnn_api_version;
   if (auto status = Qnn().Api()->backendGetApiVersion(&qnn_api_version);
       status != QNN_SUCCESS) {
-    ABSL_LOG(ERROR) << "Failed to get QNN API version: " << status;
+    LITERT_LOG(LITERT_ERROR, "Failed to get QNN API version: %d", status);
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
   const char* build_id;
   if (auto status = Qnn().Api()->backendGetBuildId(&build_id);
       status != QNN_SUCCESS) {
-    ABSL_LOG(ERROR) << "Failed to get QNN build ID: " << status;
+    LITERT_LOG(LITERT_ERROR, "Failed to get QNN build ID: %d", status);
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
@@ -116,14 +113,13 @@ LiteRtStatus GetCapabilities(int* capabilities) {
 }
 
 LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
-  if (auto status_or = LiteRtDispatchDeviceContextT::Create(Qnn());
-      status_or.ok()) {
-    *device_context = status_or->release();
+  if (auto context = LiteRtDispatchDeviceContextT::Create(Qnn()); context) {
+    *device_context = context->release();
     return kLiteRtStatusOk;
   } else {
-    ABSL_LOG(ERROR) << "Failed to create device context: "
-                    << status_or.status();
-    return kLiteRtStatusErrorRuntimeFailure;
+    LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
+               context.Error().Message().data());
+    return context.Error().Status();
   }
 }
 
@@ -138,13 +134,13 @@ LiteRtStatus GetInputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetInputRequirements(input_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
-    ABSL_LOG(ERROR) << "Failed to get tensor buffer requirements: "
-                    << requirements.status();
-    return kLiteRtStatusErrorRuntimeFailure;
+    LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
@@ -154,23 +150,23 @@ LiteRtStatus GetOutputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetOutputRequirements(output_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
-    ABSL_LOG(ERROR) << "Failed to get tensor buffer requirements: "
-                    << requirements.status();
-    return kLiteRtStatusErrorRuntimeFailure;
+    LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
 LiteRtStatus RegisterTensorBuffer(
     LiteRtDispatchDeviceContext device_context, LiteRtTensorBuffer buffer,
     LiteRtTensorBufferHandle* tensor_buffer_handle) {
-  if (auto status = device_context->RegisterTensorBuffer(buffer);
-      !status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to register buffer: " << status;
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (auto status = device_context->RegisterTensorBuffer(buffer); !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to register buffer: %s",
+               status.Error().Message().data());
+    return status.Error().Status();
   } else {
     *tensor_buffer_handle = *status;
     return kLiteRtStatusOk;
@@ -179,10 +175,10 @@ LiteRtStatus RegisterTensorBuffer(
 
 LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
                                     LiteRtTensorBufferHandle handle) {
-  if (auto status = device_context->UnregisterTensorBuffer(handle);
-      !status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to unregister buffer: " << status;
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (auto status = device_context->UnregisterTensorBuffer(handle); !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to unregister buffer: %s",
+               status.Error().Message().data());
+    return status.Error().Status();
   } else {
     return kLiteRtStatusOk;
   }
@@ -196,10 +192,10 @@ LiteRtStatus InvocationContextCreate(
   auto context = LiteRtDispatchInvocationContextT::Create(
       Qnn(), *device_context, exec_bytecode_ptr, exec_bytecode_size,
       function_name);
-  if (!context.ok()) {
-    ABSL_LOG(ERROR) << "Failed to create context from context binary: "
-                    << context.status();
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (!context) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create context from context binary: %s",
+               context.Error().Message().data());
+    return context.Error().Status();
   }
   *invocation_context = context->release();
   device_context->SetInvocationContext(*invocation_context);
@@ -217,9 +213,10 @@ LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->AttachInput(graph_input_index,
                                                     tensor_buffer_handle);
-      !status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to attach input buffer: " << status;
-    return kLiteRtStatusErrorRuntimeFailure;
+      !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to attach input buffer: %s",
+               status.Error().Message().data());
+    return status.Error().Status();
   }
   return kLiteRtStatusOk;
 }
@@ -229,9 +226,10 @@ LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
                           LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->AttachOutput(graph_output_index,
                                                      tensor_buffer_handle);
-      !status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to attach output buffer: " << status;
-    return kLiteRtStatusErrorRuntimeFailure;
+      !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to attach output buffer: %s",
+               status.Error().Message().data());
+    return status.Error().Status();
   }
   return kLiteRtStatusOk;
 }
@@ -251,9 +249,10 @@ LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
 }
 
 LiteRtStatus Invoke(LiteRtDispatchInvocationContext invocation_context) {
-  if (auto status = invocation_context->Execute(); !status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to execute invocation context: " << status;
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (auto status = invocation_context->Execute(); !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to execute invocation context: %s",
+               status.Error().Message().data());
+    return status.Error().Status();
   }
   return kLiteRtStatusOk;
 }

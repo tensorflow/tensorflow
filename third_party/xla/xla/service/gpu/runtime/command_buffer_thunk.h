@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -53,6 +54,8 @@ class CommandBufferThunk : public Thunk {
   // buffer but will be consumed by non-command buffer operations.
   absl::StatusOr<se::DeviceMemoryBase> GetCommandBufferAllocationAddress(
       const ExecuteParams& params, int64_t index);
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   // Command buffer instantiated on a `se::StreamExecutor` instance, and

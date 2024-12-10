@@ -96,9 +96,9 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
-        tensorflow::Status status;
+        absl::Status status;
         pjrt_device_context->CopyCPUTensorToDevice(
-            &src, gpu_device, &dst, [&status, &n](Status s) mutable {
+            &src, gpu_device, &dst, [&status, &n](absl::Status s) mutable {
               status = s;
               n.Notify();
             });
@@ -137,10 +137,10 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorFromDevice(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
-        tensorflow::Status status;
+        absl::Status status;
         pjrt_device_context->CopyDeviceTensorToCPU(
             &src, "tensor_name", gpu_device, &dst,
-            [&status, &n](Status s) mutable {
+            [&status, &n](absl::Status s) mutable {
               status = s;
               n.Notify();
             });
@@ -335,10 +335,11 @@ std::vector<XlaCompiler::Argument> BuildXlaCompilerArguments(
   return out;
 }
 
-Status CompileProgram(const GpuRunInputs& run_inputs, int device_idx,
-                      const XlaCompiler::CompilationResult** compilation_result,
-                      xla::PjRtClient** pjrt_client,
-                      xla::PjRtLoadedExecutable** pjrt_executable) {
+absl::Status CompileProgram(
+    const GpuRunInputs& run_inputs, int device_idx,
+    const XlaCompiler::CompilationResult** compilation_result,
+    xla::PjRtClient** pjrt_client,
+    xla::PjRtLoadedExecutable** pjrt_executable) {
   std::vector<XlaCompiler::Argument> xla_compiler_args =
       BuildXlaCompilerArguments(run_inputs.args);
 

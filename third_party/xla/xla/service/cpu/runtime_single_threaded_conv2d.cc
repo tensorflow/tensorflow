@@ -37,7 +37,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, nullptr);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -57,5 +57,5 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, nullptr);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
 }

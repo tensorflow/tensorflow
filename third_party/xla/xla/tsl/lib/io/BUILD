@@ -1,10 +1,10 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tsl_cc_test")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +20,7 @@ package(
         "//xla/tsl/profiler:__subpackages__",
         "@local_tsl//tsl/profiler:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     licenses = ["notice"],
 )

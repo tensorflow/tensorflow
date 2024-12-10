@@ -756,28 +756,52 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
   return nullptr;
 }
 
+static absl::StatusOr<const Eigen::ThreadPoolDevice*> GetIntraOpThreadPool(
+    const XLA_FFI_ExecutionContext* ctx) {
+  auto* cpu =
+      std::get_if<XLA_FFI_ExecutionContext::CpuContext>(&ctx->backend_context);
+
+  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
+    return Unimplemented("XLA FFI CPU context is not available");
+  }
+
+  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
+    return Unimplemented("No intra-op thread pool available on this platform");
+  }
+
+  return cpu->intra_op_thread_pool;
+}
+
 static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
     XLA_FFI_ThreadPool_Schedule_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ThreadPool_Schedule_Args",
       XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE, args->struct_size));
 
-  auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
-      &args->ctx->backend_context);
-
-  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
-    return new XLA_FFI_Error{
-        Unimplemented("XLA FFI CPU context is not available")};
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
   }
 
-  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
-    return new XLA_FFI_Error{
-        Unimplemented("No intra-op thread pool available on this platform")};
+  (*intra_op_thread_pool)
+      ->enqueueNoNotification(
+          [task = args->task, data = args->data] { (*task)(data); });
+
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
+    XLA_FFI_ThreadPool_NumThreads_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ThreadPool_NumThreads_Args",
+      XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE, args->struct_size));
+
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
   }
 
-  cpu->intra_op_thread_pool->enqueueNoNotification(
-      [task = args->task, data = args->data] { (*task)(data); });
-
+  *args->num_threads = (*intra_op_thread_pool)->numThreadsInPool();
   return nullptr;
 }
 
@@ -895,6 +919,7 @@ static XLA_FFI_Api api = {
     XLA_FFI_DeviceMemory_Allocate,
     XLA_FFI_DeviceMemory_Free,
     XLA_FFI_ThreadPool_Schedule,
+    XLA_FFI_ThreadPool_NumThreads,
     XLA_FFI_Future_Create,
     XLA_FFI_Future_SetAvailable,
     XLA_FFI_Future_SetError,

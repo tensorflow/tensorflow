@@ -108,7 +108,7 @@ def pywrap_library(
         testonly,
         compatible_with,
         py_cc_win_def_file,
-        ["PROTOBUF_USE_DLLS"],
+        None,
     )
 
     common_deps = extra_deps + [
@@ -158,7 +158,6 @@ def pywrap_library(
             win_def_file = ":%s" % win_def_name,
             testonly = testonly,
             compatible_with = compatible_with,
-            local_defines = ["PROTOBUF_USE_DLLS"],
         )
         shared_objects.append(":%s" % shared_object_name)
 
@@ -166,7 +165,7 @@ def pywrap_library(
     # attribute in a py_library, which is the final and only public artifact of
     # this macro
     #
-    pywrap_binaries_name = "_%s_binaries" % name
+    pywrap_binaries_name = "%s_internal_binaries" % name
     _pywrap_binaries(
         name = pywrap_binaries_name,
         collected_pywraps = ":%s" % info_collector_name,
@@ -175,6 +174,7 @@ def pywrap_library(
             "@bazel_tools//src/conditions:windows": ".pyd",
             "//conditions:default": ".so",
         }),
+        wheel_locations_json = ":%s_wheel_locations.json" % pywrap_binaries_name,
         testonly = testonly,
         compatible_with = compatible_with,
     )
@@ -408,6 +408,17 @@ def pywrap_py_common_library(name, dep):
         actual = "%s_py_internal_import" % dep,
     )
 
+def pywrap_binaries(name, dep):
+    native.filegroup(
+        name = name,
+        srcs = [
+            "%s_internal_binaries_wheel_locations.json" % dep,
+            "%s_internal_binaries" % dep,
+            "%s_py_internal" % dep,
+            "%s_internal" % dep,
+        ],
+    )
+
 def _generated_win_def_file_impl(ctx):
     pywrap_infos = ctx.attr.dep[CollectedPywrapInfo].pywrap_infos.to_list()
     pywrap_info = pywrap_infos[ctx.attr.pywrap_index]
@@ -465,7 +476,7 @@ def pybind_extension(
         visibility = visibility,
         testonly = testonly,
         compatible_with = compatible_with,
-        local_defines = ["PROTOBUF_USE_DLLS"],
+        local_defines = ["PROTOBUF_USE_DLLS", "ABSL_CONSUME_DLL"],
         **kwargs
     )
 
@@ -655,6 +666,7 @@ def _pywrap_binaries_impl(ctx):
     original_to_final_binaries = [
         "\n\nvvv Shared objects corresondence map, target = {} vvv".format(ctx.label),
     ]
+    wheel_locations = {}
     for i in range(0, len(pywrap_infos)):
         pywrap_info = pywrap_infos[i]
         original_binary = original_binaries[i]
@@ -682,6 +694,20 @@ def _pywrap_binaries_impl(ctx):
 
         final_binaries.append(final_binary)
 
+        final_binary_location = "{root}{new_package}/{basename}".format(
+            root = final_binary.path.split(final_binary.short_path, 1)[0],
+            new_package = pywrap_info.owner.package,
+            basename = final_binary.basename,
+        )
+        wheel_locations[final_binary.path] = final_binary_location
+        if pywrap_info.py_stub:
+            wheel_locations[pywrap_info.py_stub.path] = ""
+
+    ctx.actions.write(
+        output = ctx.outputs.wheel_locations_json,
+        content = str(wheel_locations),
+    )
+
     original_to_final_binaries.append(
         "^^^ Shared objects corresondence map^^^\n\n",
     )
@@ -694,6 +720,7 @@ _pywrap_binaries = rule(
         "deps": attr.label_list(mandatory = True, allow_files = False),
         "collected_pywraps": attr.label(mandatory = True, allow_files = False),
         "extension": attr.string(default = ".so"),
+        "wheel_locations_json": attr.output(mandatory = True),
     },
     implementation = _pywrap_binaries_impl,
 )

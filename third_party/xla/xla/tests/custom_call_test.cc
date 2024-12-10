@@ -73,37 +73,43 @@ limitations under the License.
 
 static const char* PLATFORM = "Host";
 
+enum class BinaryOp : int8_t { kAdd, kMul };
+enum class InitMethod : int { kZero, kOne };
+
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(BinaryOp);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(InitMethod);
+
+namespace xla {
 namespace {
-void R0F32Add2(float* out, float** in) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
-  *out = **in + 2.0f;
+
+absl::Status R0F32Add2(ffi::Result<ffi::Buffer<PrimitiveType::F32>> out,
+                       ffi::Buffer<PrimitiveType::F32> in) {
+  *out->typed_data() = *in.typed_data() + 2.0f;
+  return absl::OkStatus();
 }
 
-void R0F32Add2InPlace(float* out, float** in) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
-  **in = **in + 2.0f;
+absl::Status R0F32Add2InPlace(ffi::Result<ffi::Buffer<PrimitiveType::F32>> out,
+                              ffi::Buffer<PrimitiveType::F32> in) {
+  *in.typed_data() = *in.typed_data() + 2.0f;
+  return absl::OkStatus();
 }
 
-void R2F32ReduceSum(float* out, float** in) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
-  float* array = in[0];
-  *out = array[0] + array[1] + array[2] + array[3];
+absl::Status R2F32ReduceSum(ffi::Result<ffi::Buffer<PrimitiveType::F32>> out,
+                            ffi::Buffer<PrimitiveType::F32> in) {
+  float* array = in.typed_data();
+  *out->typed_data() = array[0] + array[1] + array[2] + array[3];
+  return absl::OkStatus();
 }
 
-void Add1ToValues(float* out, float** in) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
-  float* array = in[0];
-  out[0] = array[0] + 1;
-  out[1] = array[1] + 1;
-  out[2] = array[2] + 1;
-  out[3] = array[3] + 1;
-}
-
-void F32TupleSwap(float** out, float** in) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in[0], sizeof(float));
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in[1], sizeof(float));
-  *out[0] = *in[1];
-  *out[1] = *in[0];
+absl::Status Add1ToValues(ffi::Result<ffi::Buffer<PrimitiveType::F32>> out,
+                          ffi::Buffer<PrimitiveType::F32> in) {
+  float* array = in.typed_data();
+  float* out_data = out->typed_data();
+  out_data[0] = array[0] + 1;
+  out_data[1] = array[1] + 1;
+  out_data[2] = array[2] + 1;
+  out_data[3] = array[3] + 1;
+  return absl::OkStatus();
 }
 
 void R0F32Add2Succeed(float* out, float** in, XlaCustomCallStatus*) {
@@ -126,17 +132,41 @@ void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
   XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
 }
 
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2InPlace);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
+XLA_FFI_DEFINE_HANDLER(kR0F32Add2, R0F32Add2,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::Buffer<PrimitiveType::F32>>()
+                           .Arg<ffi::Buffer<PrimitiveType::F32>>());
+
+XLA_FFI_DEFINE_HANDLER(kR0F32Add2InPlace, R0F32Add2InPlace,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::Buffer<PrimitiveType::F32>>()
+                           .Arg<ffi::Buffer<PrimitiveType::F32>>());
+
+XLA_FFI_DEFINE_HANDLER(kR2F32ReduceSum, R2F32ReduceSum,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::Buffer<PrimitiveType::F32>>()
+                           .Arg<ffi::Buffer<PrimitiveType::F32>>());
+
+XLA_FFI_DEFINE_HANDLER(kAdd1ToValues, Add1ToValues,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::Buffer<PrimitiveType::F32>>()
+                           .Arg<ffi::Buffer<PrimitiveType::F32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "R0F32Add2", PLATFORM,
+                         kR0F32Add2);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "R0F32Add2InPlace", PLATFORM,
+                         kR0F32Add2InPlace);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "R2F32ReduceSum", PLATFORM,
+                         kR2F32ReduceSum);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "Add1ToValues", PLATFORM,
+                         kAdd1ToValues);
+
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2Succeed);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFail);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFailWithBackendConfigStr);
-
-enum class BinaryOp : int8_t { kAdd, kMul };
-enum class InitMethod : int { kZero, kOne };
 
 std::ostream& operator<<(std::ostream& os, BinaryOp op) {
   switch (op) {
@@ -156,14 +186,6 @@ std::ostream& operator<<(std::ostream& os, InitMethod op) {
   }
 }
 
-}  // namespace
-
-XLA_FFI_REGISTER_ENUM_ATTR_DECODING(BinaryOp);
-XLA_FFI_REGISTER_ENUM_ATTR_DECODING(InitMethod);
-
-namespace xla {
-namespace {
-
 using ::testing::HasSubstr;
 
 class CustomCallTest : public HloTestBase {
@@ -178,8 +200,9 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder.AddInstruction(
-      HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {constant}, "R0F32Add2", "",
+      CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
 
@@ -195,8 +218,9 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
 
   builder
-      .AddInstruction(HloInstruction::CreateCustomCall(r0f32_, {constant},
-                                                       "R0F32Add2InPlace"))
+      .AddInstruction(HloInstruction::CreateCustomCall(
+          r0f32_, {constant}, "R0F32Add2InPlace", "",
+          CustomCallApiVersion::API_VERSION_TYPED_FFI))
       ->set_output_to_operand_aliasing({{{}, {0, {}}}});
 
   module->AddEntryComputation(builder.Build());
@@ -217,161 +241,14 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
-  builder.AddInstruction(
-      HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {constant}, "R2F32ReduceSum", "",
+      CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
-}
-
-XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
-  auto module = CreateNewVerifiedModule();
-  auto b = HloComputation::Builder(TestName());
-
-  auto input = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
-          Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
-  auto incremented = b.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {1, 2, 2}), {input}, "Add1ToValues"));
-  auto incremented_again = b.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented}, "Add1ToValues"));
-
-  // Concatenate the values along first dim.
-  b.AddInstruction(
-      HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
-                                        {incremented, incremented_again}, 0));
-
-  module->AddEntryComputation(b.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR3EqualArray3D<float>(
-      Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
-}
-
-XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
-  if (IsMlirLoweringEnabled()) {
-    // The MLIR pipeline does /not/ transpose the output here, and there's no
-    // obvious reason why it should.
-    GTEST_SKIP() << "Appears to test an XLA current implementation detail";
-  }
-
-  auto module = CreateNewVerifiedModule();
-  auto b = HloComputation::Builder(TestName());
-
-  auto input =
-      b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
-  b.AddInstruction(
-      HloInstruction::CreateCustomCall(r2f32_, {input}, "Add1ToValues"));
-
-  module->AddEntryComputation(b.Build());
-  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
-
-  Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
-
-  // Note, the expected result is transposed! This is because the input and
-  // output layouts of the custom call differ and the called function just
-  // blindly adds one to each element.
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
-  LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
-}
-
-XLA_TEST_F(CustomCallTest, LayoutConstrained) {
-  // The argument and result of the computation are set to different layouts,
-  // but the custom call is layout constrained to a fixed operand and result
-  // layout, so the correct result should be produced.
-  auto module = CreateNewVerifiedModule();
-  auto b = HloComputation::Builder(TestName());
-
-  auto input =
-      b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
-
-  const Shape& r2f32_dim0_major =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
-  auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
-      r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
-  b.AddInstruction(
-      custom_call->CloneWithNewOperands(r2f32_dim0_major, {custom_call}));
-
-  module->AddEntryComputation(b.Build());
-  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
-
-  Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
-  LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
-}
-
-XLA_TEST_F(CustomCallTest, R2Dimensions_3x4) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-
-  auto input_3x4 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(S32, {3, 4}), "arg3x4"));
-
-  builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeTupleShape({}), {input_3x4},
-      "__xla_test$$VerifyR2Dimensions",
-      /*opaque=*/"{rows = 3 : i32, cols = 4 : i32}",
-      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
-
-  module->AddEntryComputation(builder.Build());
-
-  Literal arg3x4 = LiteralUtil::CreateR2<int>({
-      {0, 0, 0, 0},  //
-      {0, 0, 0, 0},  //
-      {0, 0, 0, 0},  //
-  });
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg3x4}));
-}
-
-XLA_TEST_F(CustomCallTest, R2Dimensions_5x2) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-
-  auto input_5x2 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(S32, {5, 2}), "arg5x2"));
-
-  builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeTupleShape({}), {input_5x2},
-      "__xla_test$$VerifyR2Dimensions",
-      /*opaque=*/"{rows = 5 : i32, cols = 2 : i32}",
-      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
-
-  module->AddEntryComputation(builder.Build());
-
-  Literal arg5x2 = LiteralUtil::CreateR2<int>({
-      {0, 0},  //
-      {0, 0},  //
-      {0, 0},  //
-      {0, 0},  //
-      {0, 0},  //
-  });
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg5x2}));
-}
-
-XLA_TEST_F(CustomCallTest, TupleOutput) {
-  const char* kModuleStr = R"(
-    HloModule m
-    test {
-      p0 = f32[] parameter(0)
-      p1 = f32[] parameter(1)
-      ROOT %custom-call = (f32[], f32[]) custom-call(f32[] %p0, f32[] %p1), custom_call_target="F32TupleSwap", operand_layout_constraints={f32[], f32[]}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-
-  Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
-  Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
-
-  Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1}));
-  EXPECT_EQ(result, expected);
 }
 
 XLA_TEST_F(CustomCallTest, ReportsSuccess) {

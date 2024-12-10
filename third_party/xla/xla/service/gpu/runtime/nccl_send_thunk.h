@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
@@ -35,16 +35,16 @@ namespace gpu {
 // Thunk that performs a NCCL-send.
 class NcclSendThunk : public NcclCollectiveThunk {
  public:
-  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                const HloSendInstruction* instr, int64_t replica_count,
-                int64_t partition_count, const Buffer& buffer);
+  NcclSendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
+                int64_t replica_count, int64_t partition_count,
+                const Buffer& buffer);
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
   AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
   bool NeedFirstCallRendzevous() const override { return false; }
 
@@ -55,11 +55,11 @@ class NcclSendThunk : public NcclCollectiveThunk {
   std::shared_ptr<ExecutionCounters> execution_counters_;
 };
 
-absl::Status RunSend(NcclApi* nccl_api,
+absl::Status RunSend(GpuCollectives* collectives,
                      NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     NcclApi::NcclCommHandle comm,
-                     absl::string_view device_string, int64_t current_id);
+                     Communicator* comm, absl::string_view device_string,
+                     int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -28,12 +29,17 @@ namespace gpu {
 // have no LHLO equivalent in fusions containing just that instruction.
 class FusionWrapper : public HloModulePass {
  public:
+  explicit FusionWrapper(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
   absl::string_view name() const override { return "fusion-wrapper"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::DeviceDescription& device_description_;
 };
 
 }  // namespace gpu

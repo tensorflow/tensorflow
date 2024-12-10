@@ -390,6 +390,22 @@ absl::StatusOr<HloInstruction*> MakeDotHlo(
       metadata);
 }
 
+absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
+    HloInstruction* lhs, HloInstruction* rhs, HloInstruction* group_sizes,
+    const RaggedDotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, rhs->parent());
+  CHECK_EQ(computation, group_sizes->parent());
+  TF_ASSIGN_OR_RETURN(Shape ragged_dot_shape,
+                      ShapeInference::InferRaggedDotOpShape(
+                          lhs->shape(), rhs->shape(), group_sizes->shape(),
+                          dim_numbers, preferred_element_type));
+  return computation->AddInstruction(HloInstruction::CreateRaggedDot(
+      ragged_dot_shape, lhs, rhs, group_sizes, dim_numbers, precision_config));
+}
+
 absl::StatusOr<HloInstruction*> MakeMapHlo(
     absl::Span<HloInstruction* const> operands, HloComputation* map_computation,
     const OpMetadata* metadata) {

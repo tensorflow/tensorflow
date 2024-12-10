@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -54,12 +55,12 @@ class SortThunk final : public Thunk {
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
       bool is_stable, LessThan less_than,
-      std::optional<SortDirection> direction = std::nullopt);
+      std::optional<SortDirection> direction);
 
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
       bool is_stable, std::string comparator_name,
-      std::optional<SortDirection> direction = std::nullopt);
+      std::optional<SortDirection> direction);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -84,9 +85,8 @@ class SortThunk final : public Thunk {
   std::string comparator_name_;
 
   // Lazily resolved LessThan comparator function.
-  absl::Mutex mutex_;
-  std::optional<LessThan> less_than_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<LessThan*> less_than_ptr_;  // pointer to `less_than_`
+  absl::once_flag less_than_init_flag_;
+  absl::StatusOr<LessThan> less_than_;
 };
 
 }  // namespace xla::cpu

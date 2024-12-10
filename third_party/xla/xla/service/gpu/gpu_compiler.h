@@ -113,12 +113,18 @@ class GpuCompiler : public LLVMCompiler {
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
-    return &FusionCanShareBufferHint;
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer(
+      const se::DeviceDescription& device_description) const {
+    return [&](const HloInstruction* user, const HloInstruction* operand,
+               const ShapeIndex& user_index) {
+      return FusionCanShareBufferHint(user, operand, user_index,
+                                      device_description);
+    };
   }
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& config) {
+      const HloModuleConfig& config,
+      const stream_executor::DeviceDescription& device_description) {
     return false;
   }
 
@@ -169,12 +175,6 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Add passes that convert HLO operations to custom kernels.
-  virtual absl::Status AddCustomKernelReplacementPasses(
-      HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-    return absl::OkStatus();
-  }
-
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
                                               se::StreamExecutor* stream_exec,
@@ -197,21 +197,24 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<BackendCompileResult> CompileAndLink(
       const HloModuleConfig& module_config,
       CompileModuleResults& compile_module_results,
-      se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const HloModule* debug_module);
+      const stream_executor::DeviceDescription& device_description,
+      se::StreamExecutor* stream_exec, const CompileOptions& options,
+      const HloModule* debug_module);
 
   absl::StatusOr<BackendCompileResult> CompileSingleModule(
       const HloModuleConfig& module_config,
-      se::GpuComputeCapability gpu_version, const HloModule* debug_module,
-      llvm::Module* llvm_module, bool relocatable,
-      const CompileOptions& options, std::optional<int> shard_number);
+      const stream_executor::DeviceDescription& device_description,
+      const HloModule* debug_module, llvm::Module* llvm_module,
+      bool relocatable, const CompileOptions& options,
+      std::optional<int> shard_number);
 
   absl::Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
   absl::Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options);
 
-  absl::Status RunPreSchedulingPasses(HloModule* module,
-                                      se::StreamExecutor* stream_exec);
+  absl::Status RunPreSchedulingPasses(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info);
   absl::Status RunCollectiveScheduleLinearizerPasses(
       HloModule* hlo_module, se::StreamExecutor* stream_exec);
 
@@ -232,13 +235,15 @@ class GpuCompiler : public LLVMCompiler {
   // that accommodates both HLO and MLIR.
   virtual absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      se::GpuComputeCapability gpu_version, bool relocatable,
-      const HloModule* debug_module, const CompileOptions& options) = 0;
+      const stream_executor::DeviceDescription& device_description,
+      bool relocatable, const HloModule* debug_module,
+      const CompileOptions& options) = 0;
 
-  absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+  absl::Status PrepareHloModuleForIrEmitting(
+      HloModule* hlo_module, const se::DeviceDescription& device_description);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::GpuComputeCapability gpu_compute_capability,
+      const stream_executor::DeviceDescription& device_description,
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) {

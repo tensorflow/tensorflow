@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 #define XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

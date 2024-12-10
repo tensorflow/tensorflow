@@ -1,5 +1,4 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,6 +18,7 @@ td_library(
     srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
+        "//xla/codegen/ir:xla_td_files",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -79,12 +79,14 @@ gentbl_cc_library(
         (
             [
                 "-gen-attrdef-decls",
+                "-attrdefs-dialect=xla_gpu",
             ],
             "xla_gpu_attrs.h.inc",
         ),
         (
             [
                 "-gen-attrdef-defs",
+                "-attrdefs-dialect=xla_gpu",
             ],
             "xla_gpu_attrs.cc.inc",
         ),
@@ -126,15 +128,17 @@ cc_library(
         "xla_gpu_ops.cc",
         "xla_gpu_types.cc",
     ],
-    hdrs = [
-        "xla_gpu_ops.h",
-    ],
+    hdrs = ["xla_gpu_ops.h"],
     deps = [
         ":xla_gpu_attrs_inc_gen",
         ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
         ":xla_gpu_types_inc_gen",
-        "//xla/service/gpu/model:indexing_analysis",
+        "//xla/codegen/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
@@ -145,23 +149,5 @@ cc_library(
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_test(
-    name = "xla_gpu_ops_test",
-    srcs = ["xla_gpu_ops_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":xla_gpu",
-        "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:test",
     ],
 )

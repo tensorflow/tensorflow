@@ -42,15 +42,16 @@ class QueueRunner : public RunnerInterface {
   /// Creates a new QueueRunner from proto.
   // TODO(yuefengz): we may want to initialize from queues and ops in the
   // future.
-  static Status New(const QueueRunnerDef& queue_runner_def,
-                    std::unique_ptr<QueueRunner>* result);
+  static absl::Status New(const QueueRunnerDef& queue_runner_def,
+                          std::unique_ptr<QueueRunner>* result);
 
   /// Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
-  static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
-                    std::unique_ptr<QueueRunner>* result);
+  static absl::Status New(const QueueRunnerDef& queue_runner_def,
+                          Coordinator* coord,
+                          std::unique_ptr<QueueRunner>* result);
 
   /// Adds a callback that the queue runner will call when it detects an error.
-  void AddErrorCallback(const std::function<void(Status)>& cb);
+  void AddErrorCallback(const std::function<void(absl::Status)>& cb);
 
   /// Delete the previously registered callbacks.
   void ClearErrorCallbacks();
@@ -59,18 +60,19 @@ class QueueRunner : public RunnerInterface {
   ~QueueRunner();
 
   /// Starts the queue runner with the given session.
-  Status Start(Session* sess);
+  absl::Status Start(Session* sess);
 
   /// Starts the queue runner with the given session and sets the run arguments
   /// for sess->Run. It also collects and stores the cost model.
-  Status StartAndCollectCostGraph(Session* sess,
-                                  const RunOptions& run_options = RunOptions());
+  absl::Status StartAndCollectCostGraph(
+      Session* sess, const RunOptions& run_options = RunOptions());
 
   /// Starts the queue runner with the given session, and wait for up to the
   /// specified time (in milliseconds) for the queues to start to fill up.
-  Status Start(Session* sess, int wait_for_ms);
-  Status StartAndCollectCostGraph(Session* session, int wait_for_ms,
-                                  const RunOptions& run_options = RunOptions());
+  absl::Status Start(Session* sess, int wait_for_ms);
+  absl::Status StartAndCollectCostGraph(
+      Session* session, int wait_for_ms,
+      const RunOptions& run_options = RunOptions());
 
   /// Requests to stop and runs the cancel op. It would be called in a separate
   /// thread when coordinator is set. If there is no coordinator it should be
@@ -79,28 +81,28 @@ class QueueRunner : public RunnerInterface {
 
   /// Joins all the threads. Returns okay if all threads run successfully;
   /// otherwise returns the first captured failure status.
-  Status Join() final;
+  absl::Status Join() final;
 
   /// Returns the latest status.
-  Status GetStatus();
+  absl::Status GetStatus();
 
   // Returns the stored cost model.
-  Status ExportCostGraph(CostGraphDef* cost_graph) const override;
+  absl::Status ExportCostGraph(CostGraphDef* cost_graph) const override;
 
  private:
   QueueRunner() : coord_(nullptr), stopped_(false), cg_mu_(nullptr) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
-  Status Init(const QueueRunnerDef& queue_runner_def);
+  absl::Status Init(const QueueRunnerDef& queue_runner_def);
 
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
 
   // Updates the internal status; it only keeps OK or the first unexpected error
   // status.
-  void UpdateStatus(const Status& status);
+  void UpdateStatus(const absl::Status& status);
 
-  bool IsQueueClosed(Status status) const {
+  bool IsQueueClosed(absl::Status status) const {
     return queue_closed_exception_types_.count(
                static_cast<int>(status.code())) > 0;
   }
@@ -109,7 +111,7 @@ class QueueRunner : public RunnerInterface {
 
   void SetRunArgumentsAndCostGraph(const RunOptions& run_options);
 
-  Status RealRun(Session* sess, const string& op, bool update_costs);
+  absl::Status RealRun(Session* sess, const string& op, bool update_costs);
 
   string queue_name_;
   std::vector<string> enqueue_op_names_;
@@ -121,8 +123,8 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   mutex mu_;
   int runs_ = 0;
-  Status status_ TF_GUARDED_BY(mu_);
-  Status enqueue_status_ TF_GUARDED_BY(mu_);
+  absl::Status status_ TF_GUARDED_BY(mu_);
+  absl::Status enqueue_status_ TF_GUARDED_BY(mu_);
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
@@ -130,7 +132,7 @@ class QueueRunner : public RunnerInterface {
   std::atomic<bool> stopped_;
 
   mutex cb_mu_;
-  std::vector<std::function<void(Status)>> callbacks_;
+  std::vector<std::function<void(absl::Status)>> callbacks_;
 
   mutable std::unique_ptr<mutex> cg_mu_;
   std::unique_ptr<CostGraphDef> cost_graph_ TF_GUARDED_BY(cg_mu_);

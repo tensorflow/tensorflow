@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
@@ -518,6 +520,13 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
+
+  // If this instruction is a constant, clear the literal eagerly instead of
+  // waiting for the instruction to be deleted in Cleanup(). This greatly
+  // reduces the peak heap memory during constant folding.
+  if (auto constant = DynCast<HloConstantInstruction>(to_be_deleted_.back())) {
+    *constant->mutable_literal() = Literal();
+  }
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
@@ -1441,13 +1450,13 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
-  if (auto old_original_value = old_instruction->original_value()) {
+  if (auto original_value = old_instruction->original_value()) {
     // Fusions are handled separately. The original value of fused instructions
     // is copied when they are added into the fused computation.
     if (new_instruction->opcode() != HloOpcode::kFusion) {
       if (ShapeUtil::Compatible(old_instruction->shape(),
                                 new_instruction->shape())) {
-        new_instruction->set_original_value(old_original_value);
+        new_instruction->set_original_value(original_value);
       } else {
         LOG(WARNING)
             << "Expect the new instruction to have the same shape with the old "

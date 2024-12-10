@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace stream_executor::cuda {
 
@@ -27,11 +28,22 @@ namespace internal {
 // Helper method to handle the slow path of ToStatus.  Assumes a non-successful
 // result code.
 absl::Status ToStatusSlow(CUresult result, absl::string_view detail);
+absl::Status ToStatusSlow(cudaError_t result, absl::string_view detail);
 }  // namespace internal
 
 // Returns an absl::Status corresponding to the CUresult.
 inline absl::Status ToStatus(CUresult result, absl::string_view detail = "") {
   if (ABSL_PREDICT_TRUE(result == CUDA_SUCCESS)) {
+    return absl::OkStatus();
+  }
+  return internal::ToStatusSlow(result, detail);
+}
+
+// Returns an absl::Status corresponding to the cudaError_t (CUDA runtime API
+// error type). The string `detail` will be included in the error message.
+inline absl::Status ToStatus(cudaError_t result,
+                             absl::string_view detail = "") {
+  if (ABSL_PREDICT_TRUE(result == cudaSuccess)) {
     return absl::OkStatus();
   }
   return internal::ToStatusSlow(result, detail);

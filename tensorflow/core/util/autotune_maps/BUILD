@@ -155,10 +155,7 @@ tf_proto_library(
 # tf_pyclif_proto_library(
 #     name = "autotune_map_pyclif",
 #     proto_lib = ":autotune_map_proto",
-#     visibility = [
-#         "//waymo/ml/deploy/benchmark:__subpackages__",
-#         "//waymo/ml/deploy/system/autotuning:__subpackages__",
-#     ],
+#     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 # )
 # copybara:uncomment_end
 

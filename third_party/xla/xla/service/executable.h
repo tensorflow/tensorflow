@@ -260,14 +260,10 @@ class Executable {
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
   //
-  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
-  // enabled.
-  //
   // Returns a shaped buffer containing the result of the computation.
   absl::StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Starts the given program executing on the given stream/executor.
   //
@@ -283,26 +279,19 @@ class Executable {
   // operations are enqueued for launch on the stream. Note that some
   // implementations may in fact block or may block in some circumstances (e.g.,
   // when profiling); i.e., asynchronous is a "may" not a "must".
-  //
-  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
-  // enabled. Note that profiling is tricky to use correctly, as the profiling
-  // objects (when they exist) must out-live the task.
   virtual absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Same as ExecuteAsyncOnStream(), but blocks waiting for the computation to
   // complete.
   absl::StatusOr<ExecutionOutput> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      std::vector<ExecutionInput> arguments);
 
   virtual absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
+      std::vector<ExecutionInput> arguments) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on

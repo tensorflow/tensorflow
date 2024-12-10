@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
@@ -102,13 +105,17 @@ KernelArgsPacking CreateDefaultArgsPacking() {
 }
 
 // Some of the tests rely on CUDA 12.3+ features.
-bool IsAtLeastCuda12300() {
-#if defined(TENSORFLOW_USE_ROCM)
-  return false;
-#endif
-#if CUDA_VERSION >= 12030
-  return true;
-#endif
+bool IsAtLeastCuda12300(const se::StreamExecutor* executor) {
+  const auto& device_description = executor->GetDeviceDescription();
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr) {
+    if (device_description.driver_version() >=
+        stream_executor::SemanticVersion(12, 3, 0)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -593,11 +600,11 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, GemmCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph tracing is not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -638,12 +645,13 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
@@ -709,11 +717,11 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 }
 
 TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph tracing is not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -763,12 +771,13 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
   BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
   BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
                                           1024 * 1024);
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
@@ -864,11 +873,11 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
 }
 
 TEST(CommandBufferThunkTest, CublasLtCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph tracing is not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto stream2, executor->CreateStream());
@@ -906,7 +915,8 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       /*precision_algorithm*/ PrecisionConfig::ALG_UNSET,
       /*algorithm*/ std::nullopt,
       /*compute_precision*/ se::blas::kDefaultComputePrecision,
-      /*grad_x*/ false, /*grad_y*/ false);
+      /*grad_x*/ false, /*grad_y*/ false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
@@ -1123,11 +1133,11 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1211,11 +1221,11 @@ TEST(CommandBufferThunkTest, IfCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfElseCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1304,11 +1314,11 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
 }
 
 TEST(CommandBufferThunkTest, CaseCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1393,11 +1403,11 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 }
 
 TEST(CommandBufferThunkTest, ForCmd) {
-  if (!IsAtLeastCuda12300()) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
-
-  se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1481,7 +1491,7 @@ class CmdBufferTest : public HloTestBase {
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE);
+        DebugOptions::DYNAMIC_SLICE_FUSION);
     return debug_options;
   }
 };
@@ -1558,7 +1568,22 @@ ENTRY main.49 {
   ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
 }
 )";
-  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-3, 1e-3}));
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_exclusive_lock(false);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+
+  // running with module with exclusive lock on GpuExecutable
+  debug_options.set_xla_gpu_require_exclusive_lock(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
 }  // namespace xla::gpu

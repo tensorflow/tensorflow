@@ -58,7 +58,7 @@ class TFRDecomposeContext {
                                          StringPiece func_name);
 
   // Runs the decompose passes on the user_module.
-  Status DecomposeGraph(mlir::ModuleOp user_module);
+  absl::Status DecomposeGraph(mlir::ModuleOp user_module);
 
   // Erases the tfr_module created.
   void Destroy();
@@ -77,7 +77,7 @@ absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
 
 // Decomposes the ops in the ModuleOp to a set of primitive ops according to
 // decompose library in the context.
-Status DecomposeGraph(mlir::ModuleOp user_module);
+absl::Status DecomposeGraph(mlir::ModuleOp user_module);
 
 }  // namespace tfr
 }  // namespace tensorflow

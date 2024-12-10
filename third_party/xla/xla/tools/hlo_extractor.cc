@@ -168,13 +168,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     // Rename HLOs so that their name matches the original. By default,
     // HLOs get new unique names when adding a new entry computation to
     // a module.
-    for (auto computation : old_module_->MakeComputationPostOrder()) {
-      for (auto old_instruction : computation->MakeInstructionPostOrder()) {
-        if (auto new_instruction =
-                clone_context_.FindInstruction(old_instruction)) {
-          new_instruction->SetAndSanitizeName(old_instruction->name());
-        }
-      }
+    for (const auto& instruction_mapping :
+         clone_context_.cloned_instructions()) {
+      auto old_instruction = instruction_mapping.first;
+      auto new_instruction = instruction_mapping.second;
+      new_instruction->SetAndSanitizeName(old_instruction->name());
     }
     // For the extra created instructions (e.g., the ones created when replacing
     // with broadcasted zeros), we make sure they have unique names without
@@ -350,7 +348,7 @@ absl::Status Inline(HloModule* module) {
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height,
     ExtractSelector extract_selector, ReplaceTypeSelector replace_type_selector,
-    bool cross_computation, bool inline_calls_and_fusions) {
+    bool cross_computation, bool inline_calls_and_fusions, bool run_verifier) {
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
@@ -386,9 +384,11 @@ std::unique_ptr<HloModule> ExtractModule(
       /*ignore_control_predecessors=*/false,
       /*cross_computation=*/false));
 
-  HloVerifier verifier(/*layout_sensitive=*/false,
-                       /*allow_mixed_precision=*/true);
-  TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  if (run_verifier) {
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  }
   return cleanup_visitor.ConsumeModule();
 }
 

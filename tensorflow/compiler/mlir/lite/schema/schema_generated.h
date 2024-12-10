@@ -33,6 +33,10 @@ struct CustomQuantization;
 struct CustomQuantizationBuilder;
 struct CustomQuantizationT;
 
+struct BlockwiseQuantization;
+struct BlockwiseQuantizationBuilder;
+struct BlockwiseQuantizationT;
+
 struct QuantizationParameters;
 struct QuantizationParametersBuilder;
 struct QuantizationParametersT;
@@ -777,29 +781,32 @@ inline const char *EnumNameTensorType(TensorType e) {
 enum QuantizationDetails : uint8_t {
   QuantizationDetails_NONE = 0,
   QuantizationDetails_CustomQuantization = 1,
+  QuantizationDetails_BlockwiseQuantization = 2,
   QuantizationDetails_MIN = QuantizationDetails_NONE,
-  QuantizationDetails_MAX = QuantizationDetails_CustomQuantization
+  QuantizationDetails_MAX = QuantizationDetails_BlockwiseQuantization
 };
 
-inline const QuantizationDetails (&EnumValuesQuantizationDetails())[2] {
+inline const QuantizationDetails (&EnumValuesQuantizationDetails())[3] {
   static const QuantizationDetails values[] = {
     QuantizationDetails_NONE,
-    QuantizationDetails_CustomQuantization
+    QuantizationDetails_CustomQuantization,
+    QuantizationDetails_BlockwiseQuantization
   };
   return values;
 }
 
 inline const char * const *EnumNamesQuantizationDetails() {
-  static const char * const names[3] = {
+  static const char * const names[4] = {
     "NONE",
     "CustomQuantization",
+    "BlockwiseQuantization",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameQuantizationDetails(QuantizationDetails e) {
-  if (::flatbuffers::IsOutRange(e, QuantizationDetails_NONE, QuantizationDetails_CustomQuantization)) return "";
+  if (::flatbuffers::IsOutRange(e, QuantizationDetails_NONE, QuantizationDetails_BlockwiseQuantization)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesQuantizationDetails()[index];
 }
@@ -812,12 +819,20 @@ template<> struct QuantizationDetailsTraits<tflite::CustomQuantization> {
   static const QuantizationDetails enum_value = QuantizationDetails_CustomQuantization;
 };
 
+template<> struct QuantizationDetailsTraits<tflite::BlockwiseQuantization> {
+  static const QuantizationDetails enum_value = QuantizationDetails_BlockwiseQuantization;
+};
+
 template<typename T> struct QuantizationDetailsUnionTraits {
   static const QuantizationDetails enum_value = QuantizationDetails_NONE;
 };
 
 template<> struct QuantizationDetailsUnionTraits<tflite::CustomQuantizationT> {
   static const QuantizationDetails enum_value = QuantizationDetails_CustomQuantization;
+};
+
+template<> struct QuantizationDetailsUnionTraits<tflite::BlockwiseQuantizationT> {
+  static const QuantizationDetails enum_value = QuantizationDetails_BlockwiseQuantization;
 };
 
 struct QuantizationDetailsUnion {
@@ -857,6 +872,14 @@ struct QuantizationDetailsUnion {
   const tflite::CustomQuantizationT *AsCustomQuantization() const {
     return type == QuantizationDetails_CustomQuantization ?
       reinterpret_cast<const tflite::CustomQuantizationT *>(value) : nullptr;
+  }
+  tflite::BlockwiseQuantizationT *AsBlockwiseQuantization() {
+    return type == QuantizationDetails_BlockwiseQuantization ?
+      reinterpret_cast<tflite::BlockwiseQuantizationT *>(value) : nullptr;
+  }
+  const tflite::BlockwiseQuantizationT *AsBlockwiseQuantization() const {
+    return type == QuantizationDetails_BlockwiseQuantization ?
+      reinterpret_cast<const tflite::BlockwiseQuantizationT *>(value) : nullptr;
   }
 };
 
@@ -5155,6 +5178,80 @@ inline ::flatbuffers::Offset<CustomQuantization> CreateCustomQuantizationDirect(
 
 ::flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const CustomQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct BlockwiseQuantizationT : public ::flatbuffers::NativeTable {
+  typedef BlockwiseQuantization TableType;
+  int32_t scales = 0;
+  int32_t zero_points = 0;
+  int32_t block_size = 0;
+};
+
+struct BlockwiseQuantization FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef BlockwiseQuantizationT NativeTableType;
+  typedef BlockwiseQuantizationBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_SCALES = 4,
+    VT_ZERO_POINTS = 6,
+    VT_BLOCK_SIZE = 8
+  };
+  int32_t scales() const {
+    return GetField<int32_t>(VT_SCALES, 0);
+  }
+  int32_t zero_points() const {
+    return GetField<int32_t>(VT_ZERO_POINTS, 0);
+  }
+  int32_t block_size() const {
+    return GetField<int32_t>(VT_BLOCK_SIZE, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_SCALES, 4) &&
+           VerifyField<int32_t>(verifier, VT_ZERO_POINTS, 4) &&
+           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE, 4) &&
+           verifier.EndTable();
+  }
+  BlockwiseQuantizationT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BlockwiseQuantizationT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<BlockwiseQuantization> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct BlockwiseQuantizationBuilder {
+  typedef BlockwiseQuantization Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_scales(int32_t scales) {
+    fbb_.AddElement<int32_t>(BlockwiseQuantization::VT_SCALES, scales, 0);
+  }
+  void add_zero_points(int32_t zero_points) {
+    fbb_.AddElement<int32_t>(BlockwiseQuantization::VT_ZERO_POINTS, zero_points, 0);
+  }
+  void add_block_size(int32_t block_size) {
+    fbb_.AddElement<int32_t>(BlockwiseQuantization::VT_BLOCK_SIZE, block_size, 0);
+  }
+  explicit BlockwiseQuantizationBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<BlockwiseQuantization> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<BlockwiseQuantization>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t scales = 0,
+    int32_t zero_points = 0,
+    int32_t block_size = 0) {
+  BlockwiseQuantizationBuilder builder_(_fbb);
+  builder_.add_block_size(block_size);
+  builder_.add_zero_points(zero_points);
+  builder_.add_scales(scales);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct QuantizationParametersT : public ::flatbuffers::NativeTable {
   typedef QuantizationParameters TableType;
   std::vector<float> min{};
@@ -5199,6 +5296,9 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::T
   const tflite::CustomQuantization *details_as_CustomQuantization() const {
     return details_type() == tflite::QuantizationDetails_CustomQuantization ? static_cast<const tflite::CustomQuantization *>(details()) : nullptr;
   }
+  const tflite::BlockwiseQuantization *details_as_BlockwiseQuantization() const {
+    return details_type() == tflite::QuantizationDetails_BlockwiseQuantization ? static_cast<const tflite::BlockwiseQuantization *>(details()) : nullptr;
+  }
   int32_t quantized_dimension() const {
     return GetField<int32_t>(VT_QUANTIZED_DIMENSION, 0);
   }
@@ -5225,6 +5325,10 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::T
 
 template<> inline const tflite::CustomQuantization *QuantizationParameters::details_as<tflite::CustomQuantization>() const {
   return details_as_CustomQuantization();
+}
+
+template<> inline const tflite::BlockwiseQuantization *QuantizationParameters::details_as<tflite::BlockwiseQuantization>() const {
+  return details_as_BlockwiseQuantization();
 }
 
 struct QuantizationParametersBuilder {
@@ -16886,6 +16990,38 @@ inline ::flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(::flat
       _custom);
 }
 
+inline BlockwiseQuantizationT *BlockwiseQuantization::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<BlockwiseQuantizationT>(new BlockwiseQuantizationT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void BlockwiseQuantization::UnPackTo(BlockwiseQuantizationT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = scales(); _o->scales = _e; }
+  { auto _e = zero_points(); _o->zero_points = _e; }
+  { auto _e = block_size(); _o->block_size = _e; }
+}
+
+inline ::flatbuffers::Offset<BlockwiseQuantization> BlockwiseQuantization::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBlockwiseQuantization(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const BlockwiseQuantizationT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _scales = _o->scales;
+  auto _zero_points = _o->zero_points;
+  auto _block_size = _o->block_size;
+  return tflite::CreateBlockwiseQuantization(
+      _fbb,
+      _scales,
+      _zero_points,
+      _block_size);
+}
+
 inline QuantizationParametersT *QuantizationParameters::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<QuantizationParametersT>(new QuantizationParametersT());
   UnPackTo(_o.get(), _resolver);
@@ -21695,6 +21831,10 @@ inline bool VerifyQuantizationDetails(::flatbuffers::Verifier &verifier, const v
       auto ptr = reinterpret_cast<const tflite::CustomQuantization *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case QuantizationDetails_BlockwiseQuantization: {
+      auto ptr = reinterpret_cast<const tflite::BlockwiseQuantization *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -21718,6 +21858,10 @@ inline void *QuantizationDetailsUnion::UnPack(const void *obj, QuantizationDetai
       auto ptr = reinterpret_cast<const tflite::CustomQuantization *>(obj);
       return ptr->UnPack(resolver);
     }
+    case QuantizationDetails_BlockwiseQuantization: {
+      auto ptr = reinterpret_cast<const tflite::BlockwiseQuantization *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -21729,6 +21873,10 @@ inline ::flatbuffers::Offset<void> QuantizationDetailsUnion::Pack(::flatbuffers:
       auto ptr = reinterpret_cast<const tflite::CustomQuantizationT *>(value);
       return CreateCustomQuantization(_fbb, ptr, _rehasher).Union();
     }
+    case QuantizationDetails_BlockwiseQuantization: {
+      auto ptr = reinterpret_cast<const tflite::BlockwiseQuantizationT *>(value);
+      return CreateBlockwiseQuantization(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -21737,6 +21885,10 @@ inline QuantizationDetailsUnion::QuantizationDetailsUnion(const QuantizationDeta
   switch (type) {
     case QuantizationDetails_CustomQuantization: {
       value = new tflite::CustomQuantizationT(*reinterpret_cast<tflite::CustomQuantizationT *>(u.value));
+      break;
+    }
+    case QuantizationDetails_BlockwiseQuantization: {
+      value = new tflite::BlockwiseQuantizationT(*reinterpret_cast<tflite::BlockwiseQuantizationT *>(u.value));
       break;
     }
     default:
@@ -21748,6 +21900,11 @@ inline void QuantizationDetailsUnion::Reset() {
   switch (type) {
     case QuantizationDetails_CustomQuantization: {
       auto ptr = reinterpret_cast<tflite::CustomQuantizationT *>(value);
+      delete ptr;
+      break;
+    }
+    case QuantizationDetails_BlockwiseQuantization: {
+      auto ptr = reinterpret_cast<tflite::BlockwiseQuantizationT *>(value);
       delete ptr;
       break;
     }

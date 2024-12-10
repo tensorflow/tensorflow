@@ -13,7 +13,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   // }
   //
   // func.func @main(%arg0: tensor<?xi32>, %arg1: tensor<*xi32>) -> () {
-  //   "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, module = "", platforms = [], version = 5 : i64} : (tensor<?xi32>, tensor<*xi32>) -> ()
+  //   "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, _stablehlo_version = "0.17.6", _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, module = "", platforms = [], version = 5 : i64} : (tensor<?xi32>, tensor<*xi32>) -> ()
   //   func.return
   // }
   func.func @main(%arg0: tensor<?xi32>, %arg1: tensor<*xi32>) attributes {tfrt_ifrt_serving.program_id = -2372940092539171444 : i64, __tpu_compile_metadata_text = "args { dtype: DT_INT32 kind: PARAMETER sharding { } }  args { dtype: DT_INT32 kind: PARAMETER sharding { } } num_replicas: 1 num_cores_per_replica: 1 use_spmd_for_xla_partitioning: true compile_options { }"} {

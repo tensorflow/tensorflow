@@ -5,14 +5,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.bzl",
@@ -22,6 +14,14 @@ load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -191,7 +191,11 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
+<<<<<<< HEAD
     tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
+=======
+    tags = ["cuda-only"],
+>>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -322,16 +326,20 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_b100",
         "gpu_amd_any",
+<<<<<<< HEAD
     ] + if_oss(["gpu_b100"]),
     tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
+=======
+    ],
+>>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -610,8 +618,8 @@ lit_test_suite(
 #     srcs = ["xla-opt.cc"],
 #     deps = [
 #         "//xla/service/gpu/fusions/transforms:passes",
-#         "//xla/service/gpu/fusions/triton:passes",
 #         "//xla/service/gpu/fusions/triton:xla_triton",
+#         "//xla/service/gpu/fusions/triton:xla_triton_passes",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",
@@ -671,8 +679,6 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_asm_compiler",
-        "//xla/service/gpu:gpu_asm_opts_util",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
     ]),
@@ -683,10 +689,10 @@ xla_test(
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
         "gpu_a100",
+        "gpu_b100",
         "gpu_amd_any",
     ] + if_oss([
         "gpu_any",
-        "gpu_b100",
     ]),
     deps = [
         "//xla:error_spec",
@@ -702,7 +708,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-    ] + if_oss(["gpu_b100"]),
+        "gpu_b100",
+    ],
     tags = ["cuda-only"],
     deps = if_cuda_is_configured(
         [
@@ -746,7 +753,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-    ] + if_oss(["gpu_b100"]),
+        "gpu_b100",
+    ],
     shard_count = 2,
     deps = [
         ":gpu_codegen_test",
@@ -790,7 +798,6 @@ cc_library(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
     ],
@@ -808,7 +815,10 @@ xla_test(
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
                         "$(execpath test_autotune_cache.textproto)"},
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 # This shows that tests can load an autotune cache using the TEST_WORKSPACE prefix.
@@ -827,7 +837,10 @@ xla_test(
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
                         package_name() +
                         "/test_autotune_cache.textproto"},
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 # This shows that tests can dump an autotune cache into their output directory.
@@ -843,7 +856,10 @@ xla_test(
                         "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
     # Sharding must be disabled to correctly dump the autotune cache for all test.
     shard_count = 1,
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 xla_test(
@@ -865,6 +881,7 @@ xla_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

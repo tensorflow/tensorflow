@@ -32,11 +32,16 @@ done
 )
 
 genrule(
-    name = "tflite_test_data",
+    name = "mlir_test_data",
     srcs = glob(["testdata/*.mlir"]),
     outs = [s.removesuffix(".mlir") + ".tflite" for s in glob(["testdata/*.mlir"])],
     cmd = CMD,
     tools = [CONVERTER],
+)
+
+filegroup(
+    name = "tflite_test_data",
+    srcs = glob(["testdata/*.tflite"]),
 )
 
 cc_library(
@@ -49,15 +54,20 @@ cc_library(
         "common.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:litert_model_init",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        ":test_macros",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
+        "//tensorflow/lite/experimental/litert/core:filesystem",
+        "//tensorflow/lite/experimental/litert/core/model:model_buffer",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/strings:string_view",
-        "@flatbuffers//:runtime_cc",
         "@local_tsl//tsl/platform",
     ],
 )
@@ -70,11 +80,10 @@ cc_library(
     ],
     data = [
         "testdata/simple_model.tflite",
-        "testdata/simple_model_google_tensor.bin",
-        "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
     ],
 )
 
@@ -87,10 +96,27 @@ cc_library(
     ],
     data = [
         "testdata/simple_model_google_tensor.bin",
+        "testdata/simple_model_mtk.bin",
         "testdata/simple_model_npu.tflite",
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
     ],
+)
+
+cc_library(
+    name = "test_models",
+    hdrs = ["test_models.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "test_macros",
+    hdrs = ["test_macros.h"],
+    deps = ["//tensorflow/lite/experimental/litert/c:litert_common"],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_DEVICE_UTILS_H_
 #define XLA_TSL_PROFILER_UTILS_DEVICE_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -28,8 +29,10 @@ enum class DeviceType {
   kGpu,
 };
 
-// Get DeviceType from XPlane.
+// Gets DeviceType from XPlane.
 DeviceType GetDeviceType(const tensorflow::profiler::XPlane& plane);
+// Gets DeviceType from XPlane name.
+DeviceType GetDeviceType(absl::string_view plane_name);
 
 }  // namespace profiler
 }  // namespace tsl

@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tests/new_hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
@@ -77,12 +77,13 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 //
-// This class is deprecated in favor of NewHloTestBase. We are in the process of
-// incrementally migrating tests to use this new base class. HloTestBase remains
-// as a shim on tests during this migration process. Please avoid introducing
-// new tests that use this class.
-class [[deprecated("Use NewHloTestBase instead.")]] HloTestBase
-    : public NewHloTestBase {
+// ** NOTE **
+// This class will soon be deprecated in favor of HloRunnerAgnosticTestBase. We
+// are in the process of incrementally migrating tests to use this new base
+// class.  HloTestBase remains as a shim on tests during this migration process.
+// While we would prefer if you can avoid introducing new tests that use this
+// class, we are still working on documenting the exact migration procedure.
+class HloTestBase : public HloRunnerAgnosticTestBase {
  public:
   // Compiles the given `hlo` with optimizations, and verifies that optimized
   // HLO matches the given FileCheck pattern.
@@ -102,7 +103,7 @@ class [[deprecated("Use NewHloTestBase instead.")]] HloTestBase
   absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       std::unique_ptr<HloModule> hlo_module);
 
-  using NewHloTestBase::ParseAndReturnVerifiedModule;
+  using HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule;
 
  protected:
   // This uses the interpreter backend as the reference backend and

@@ -270,7 +270,19 @@ message CudnnfMHABackendConfig {
   int32 sliding_window_length = 24;
 }
 
+// Backend config for a general custom call instruction, e.g. XLA FFI.
+message CustomCallBackendConfig {
+  // Generic configurations that can be parsed by XLA.
+  oneof raw_backend_config_oneof {
+    // An opaque ASCII string could be parsed by the compiler.
+    string opaque = 1;
+    // Attributes parsed by XLA FFI.
+    string attributes = 2;
+  }
+}
+
 // Generic backend config for XLA:GPU
+// Next-Id: 12
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -298,6 +310,8 @@ message GpuBackendConfig {
     CudnnNormBackendConfig cudnn_norm_backend_config = 8;
 
     CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
+
+    CustomCallBackendConfig custom_call_backend_config = 11;
   }
 
   // This attribute instructs the latency-hiding scheduler to

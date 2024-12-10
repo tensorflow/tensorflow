@@ -14,6 +14,8 @@
 # ==============================================================================
 
 # Placeholder: load py_proto_library
+# Placeholder: load java_proto_library
+# Placeholder: load proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",

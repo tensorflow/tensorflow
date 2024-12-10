@@ -112,11 +112,11 @@ struct SpmdPartitionerOptions {
 
   // Partitioning method to prioritize for gather operations.
   PartitioningMethod gather_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
 
   // Partitioning method to prioritize for scatter operations.
   PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
 
   // The minimum size to enable windowed einsum in total bytes.
   // This combines sizes in bytes of both operands.

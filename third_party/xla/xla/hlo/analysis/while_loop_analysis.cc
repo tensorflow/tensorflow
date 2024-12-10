@@ -18,24 +18,37 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/constant_value.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/value_range.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -61,6 +74,73 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   return result;
 }
 
+// If all of instr's operands are either constants or have the form
+//   get-tuple-element(gte_operand, N)
+// for the same value N, returns N.  Otherwise, returns nullopt.
+static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
+                                            const HloInstruction* gte_operand) {
+  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString()
+          << ", GTE Operand: " << gte_operand->ToString() << ")";
+
+  // All operands of `instr` must be either constants or of the form
+  //   get-tuple-element(gte_operand, tuple_idx)
+  // for the same value tuple_idx. We also support the case where GTE feeds a
+  // copy that is then used.
+  optional<int64_t> tuple_idx;
+  for (const HloInstruction* operand : instr->operands()) {
+    if (operand->opcode() == HloOpcode::kConstant) {
+      continue;
+    }
+    auto possibly_gte = operand;
+
+    if (operand->opcode() == HloOpcode::kCopy) {
+      possibly_gte = operand->operand(0);
+    }
+
+    if (possibly_gte->opcode() != HloOpcode::kGetTupleElement) {
+      return nullopt;
+    }
+
+    if (possibly_gte->operand(0) != gte_operand) {
+      return nullopt;
+    }
+
+    int64_t operand_tuple_idx = possibly_gte->tuple_index();
+    // This is the first GTE we are seeing. Set tuple_idx.
+    if (!tuple_idx.has_value()) {
+      tuple_idx = operand_tuple_idx;
+    } else {
+      if (operand_tuple_idx != tuple_idx) {
+        return nullopt;
+      }
+    }
+  }
+  return tuple_idx;
+}
+
+// This function returns true if the operation is a simple scalar operation.
+// While loop analysis can execute such an operation at compile time without
+// incurring huge overheads.
+static bool IsScalarOp(const HloInstruction* op) {
+  if (IsCollective(op)) return false;
+  switch (op->opcode()) {
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kCustomCall:
+      return false;
+    default:
+      break;
+  }
+  for (const HloComputation* computation : op->called_computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (!IsScalarOp(instruction)) return false;
+    }
+  }
+  return ShapeUtil::IsScalar(op->shape());
+}
+
 // If `out` is a function of a single value in the tuple `in` and has no other
 // dependence, i.e. if `out=f(gte(in))`, then this function will return the
 // unique get-tuple-element index for the dependence.
@@ -69,8 +149,16 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 //   in = (s32[], s32[], s32[]) tuple(a,b,c)
 //   gte.1 = get-tuple-element(in), index=1
 //   out = fusion(gte.1), ...
-std::optional<int64_t> GetUniqueGTEDependenceIndex(const HloInstruction* out,
-                                                   const HloInstruction* in) {
+// Also checks whether all ops on the path from `in` to `out` are ops with a
+// scalar shape.
+static std::optional<int64_t> GetUniqueGTEDependenceIndex(
+    const HloInstruction* out, const HloInstruction* in) {
+  // Fast path : pattern matching.
+  std::optional<int64_t> tuple_idx = GetGTEOperandIndex(out, in);
+  if (tuple_idx != std::nullopt) {
+    return tuple_idx;
+  }
+
   if (out->parent() != in->parent() || !in->shape().IsTuple()) {
     return std::nullopt;
   }
@@ -88,7 +176,9 @@ std::optional<int64_t> GetUniqueGTEDependenceIndex(const HloInstruction* out,
       /*replace_type_selector=*/
       [](const HloInstruction* inst) -> ReplaceType {
         return ReplaceType::kReplaceParam;
-      });
+      },
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/false,
+      /*run_verifier=*/false);
   HloComputation* entry = extracted->entry_computation();
 
   // Check that the extracted module takes nothing but `in` as input. If `out`
@@ -102,7 +192,9 @@ std::optional<int64_t> GetUniqueGTEDependenceIndex(const HloInstruction* out,
 
   // If there are no users for the input `in`, it would mean that `out` does not
   // depend on a get-tuple-element of `in`.
-  if (param->user_count() == 0) return nullopt;
+  if (param->user_count() == 0) {
+    return nullopt;
+  }
 
   // If any of the users of the input `in` is not a get-tuple-element
   // instruction, then that would mean that the output does not depend uniquely
@@ -125,6 +217,13 @@ std::optional<int64_t> GetUniqueGTEDependenceIndex(const HloInstruction* out,
                      [candidate_index](const HloInstruction* inst) -> bool {
                        return inst->tuple_index() != candidate_index;
                      })) {
+    return std::nullopt;
+  }
+
+  if (absl::c_any_of(
+          entry->instructions(), [](const HloInstruction* inst) -> bool {
+            return inst->opcode() != HloOpcode::kParameter && !IsScalarOp(inst);
+          })) {
     return std::nullopt;
   }
 
@@ -381,6 +480,132 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
     return nullopt;
   }
   return result;
+}
+
+optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
+  std::optional<int64_t> indvar_tuple_idx =
+      GetLoopInductionVarTupleIdx(while_op);
+  if (!indvar_tuple_idx.has_value()) {
+    return nullopt;
+  }
+  if (!while_op->operand(0)->operand(*indvar_tuple_idx)->IsConstant()) {
+    return nullopt;
+  }
+  const Literal& indvar_init =
+      while_op->operand(0)->operand(*indvar_tuple_idx)->literal();
+
+  // First, find the scalar constant init that `i` is initialized to.
+  optional<int64_t> indvar_init_val =
+      LiteralUtil::LiteralAsScalarInt64(indvar_init);
+  if (!indvar_init_val) {
+    VLOG(2) << "Pattern-match failed: induction variable init is not a "
+               "constant scalar representable as an int64_t: "
+            << indvar_init.ToString();
+    return nullopt;
+  }
+
+  // Check that `i` goes as `i += k` in the while body where k is a natural
+  // number.
+  auto* while_body = while_op->while_body();
+  auto* while_body_indvar_update =
+      while_body->root_instruction()->mutable_operand(indvar_tuple_idx.value());
+  auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  if (while_body_indvar == nullptr ||
+      while_body_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_body->parameter_instruction(0), indvar_tuple_idx.value())) {
+    VLOG(2) << "Pattern-match failed: update of induction variable is not in "
+               "the form of op(gte, constant): "
+            << while_body_indvar_update->ToString();
+    return std::nullopt;
+  }
+  HloInstruction* trip_count_increase_step_instr = nullptr;
+  int64_t trip_count_step = 0;
+  if (!Match(while_body_indvar_update,
+             m::AddAnyOrder(m::Op().Is(while_body_indvar),
+                            m::Op(&trip_count_increase_step_instr)))) {
+    if (trip_count_increase_step_instr == nullptr) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "updated by an add operation: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!trip_count_increase_step_instr->IsConstant() ||
+        !ShapeUtil::IsEffectiveScalar(
+            trip_count_increase_step_instr->shape())) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "incremented by constant: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!LiteralUtil::LiteralAsScalarInt64(
+             trip_count_increase_step_instr->literal())
+             .has_value()) {
+      VLOG(2)
+          << "Pattern-match failed: trip count step is not an integral type: "
+          << trip_count_increase_step_instr->shape().ToString();
+      return nullopt;
+    }
+    VLOG(2) << "Pattern-match for trip count step failed: "
+            << trip_count_increase_step_instr->ToString();
+  }
+
+  trip_count_step = LiteralUtil::LiteralAsScalarInt64(
+                        trip_count_increase_step_instr->literal())
+                        .value();
+  if (trip_count_step <= 0) {
+    VLOG(2) << "Pattern-match failed: trip count step is not a natural number: "
+            << trip_count_step;
+    return nullopt;
+  }
+  // Check that we do op(i, N) or op(N, i) as the while condition.  Capture the
+  // value N.
+  auto* while_cond = while_op->while_condition();
+  auto* while_cond_root = while_cond->root_instruction();
+  auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  if (while_cond_indvar == nullptr ||
+      while_cond_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_cond->parameter_instruction(0), indvar_tuple_idx.value())) {
+    VLOG(2) << "Pattern-match failed: while condition is not supported.";
+    return std::nullopt;
+  }
+  HloInstruction* while_cond_bound = nullptr;
+  if (!Match(while_cond_root,
+             m::Op().WithBinaryOperandsAnyOrder(
+                 m::Op().Is(while_cond_indvar),
+                 m::ConstantEffectiveScalar(&while_cond_bound)))) {
+    VLOG(2) << "Pattern-match failed: while condition is not of the form "
+               "op(i, N) or op(N, i).";
+    return nullopt;
+  }
+  // Note: If this succeeds, the constant `N` is representable as an int64_t --
+  // that is, if it's an XLA U64, it fits within an int64_t.
+  optional<int64_t> while_cond_bound_val =
+      LiteralUtil::LiteralAsScalarInt64(while_cond_bound->literal());
+  if (!while_cond_bound_val) {
+    VLOG(2) << "Pattern-match failed: while condition induction variable is "
+               "not a constant scalar representable as an int64_t.";
+    return nullopt;
+  }
+
+  const int64_t init_bitwidth =
+      primitive_util::BitWidth(indvar_init.shape().element_type());
+  const bool init_is_signed =
+      primitive_util::IsSignedIntegralType(indvar_init.shape().element_type());
+
+  const int64_t bound_bitwidth =
+      primitive_util::BitWidth(while_cond_bound->shape().element_type());
+  const bool bound_is_signed = primitive_util::IsSignedIntegralType(
+      while_cond_bound->shape().element_type());
+
+  return Range{ConstantValue::Get(indvar_init_val.value(), init_bitwidth,
+                                  /*is_signed=*/init_is_signed),
+               ConstantValue::Get(while_cond_bound_val.value(), bound_bitwidth,
+                                  /*is_signed=*/bound_is_signed),
+               ConstantValue::Get(trip_count_step, /*bitwidth=*/64,
+                                  /*is_signed=*/true),
+               /*is_linear=*/true};
 }
 
 optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,

@@ -33,8 +33,8 @@ class ConcatenationOpLegalization : public Legalization {
  public:
   ConcatenationOpLegalization() = default;
   ~ConcatenationOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<ConcatenationOpLegalization>;
-  static UniquePtr Create() {
+  using Ptr = std::unique_ptr<ConcatenationOpLegalization>;
+  static Ptr Create() {
     return std::make_unique<ConcatenationOpLegalization>();
   }
 

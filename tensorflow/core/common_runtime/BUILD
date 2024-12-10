@@ -996,10 +996,7 @@ cc_library(
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":device",
         ":device_factory",
@@ -3582,8 +3579,8 @@ cc_library(
     name = "device_id_utils",
     hdrs = ["device_id_utils.h"],
     deps = [
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/tsl/framework:device_id_impl",
     ],
 )

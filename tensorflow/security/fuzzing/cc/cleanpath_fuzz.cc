@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <cstdlib>
-#include <iostream>
+#include <cassert>
 #include <regex>  // NOLINT
 #include <string>
 #include <string_view>

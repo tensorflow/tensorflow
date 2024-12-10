@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/service/layout_normalization.h"
 
-#include <algorithm>
-#include <cstring>
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -66,8 +64,10 @@ namespace {
 class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
  public:
   explicit LayoutNormalizationVisitor(
+      LayoutNormalization* normalization,
       const CustomCallTransformer& custom_call_transformer = nullptr)
-      : custom_call_transformer_(custom_call_transformer) {}
+      : normalization_(normalization),
+        custom_call_transformer_(custom_call_transformer) {}
 
   // To handle a constant, just give the literal data a new layout.
   absl::Status HandleConstant(HloInstruction* hlo) override {
@@ -208,6 +208,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         MakeReduceWindowHlo(normalized_input, hlo->mutable_operand(1),
                             new_window, hlo->called_computations()[0],
                             &hlo->metadata()));
+    normalization_->UpdateLayout(rw->mutable_shape());
     SetVisited(*rw);
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(rw, hlo->shape());
@@ -818,6 +819,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
   }
 
+  LayoutNormalization* normalization_;
   CustomCallTransformer custom_call_transformer_;
 };
 
@@ -826,7 +828,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> LayoutNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return LayoutNormalizationVisitor{custom_call_transformer_}.RunOnModule(
+  return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(
       module, execution_threads);
 }
 

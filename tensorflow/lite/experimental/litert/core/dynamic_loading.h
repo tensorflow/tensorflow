@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -58,8 +59,10 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
   return kLiteRtStatusOk;
 }
 
-// All internal dynamically linked dependencies for litert should be prefixed
-// "libLiteRt". Find all litert shared libraries in "search_path"
+// Find all litert shared libraries in "search_path" and return
+// kLiteRtStatusErrorInvalidArgument if the provided search_path doesn't
+// exist. All internal dynamically linked dependencies for litert should be
+// prefixed with "libLiteRtCompilerPlugin".
 LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
                                   std::vector<std::string>& results);
 

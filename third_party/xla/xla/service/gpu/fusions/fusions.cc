@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusions.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -23,6 +22,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -46,16 +45,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
-  if (instr->opcode() == HloOpcode::kParameter) {
-    return true;
-  }
-  if (instr->opcode() == HloOpcode::kGetTupleElement) {
-    return IsParameterOrGteOfParameter(instr->operand(0));
-  }
-  return false;
-}
 
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(

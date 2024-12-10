@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
@@ -123,7 +125,7 @@ absl::string_view CollectiveOpGroupModeToString(
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
 // HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    HloInstruction* instr);
+    const HloInstruction* instr);
 
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
@@ -167,8 +169,16 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 // Same as above, but take replica/partition count instead of device assignment.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode replica_group_mode, int replica_count,
-    int partition_count);
+    CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
+
+// Same as above, with collective group mode determined by the collective
+// instruction.
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const HloInstruction* hlo, const DeviceAssignment& device_assignment);
+
+// Same as above, used for cases where static_device_assignment is not present.
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const HloInstruction* hlo, int replica_count, int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -181,6 +191,9 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
     int64_t num_replicas, int64_t num_partitions,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
+
+absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
+GetReplicaGroupCountAndSize(const HloInstruction* hlo);
 
 // Returns true if the two replica group are orthogonal.
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,

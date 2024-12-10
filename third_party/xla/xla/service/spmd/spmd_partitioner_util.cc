@@ -2141,9 +2141,9 @@ HloSharding CreateMatchingShardingOnDims(
 std::optional<GatherScatterParallelDimSharding>
 GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
-  const auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
-  const auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
+    const hlo_sharding_util::GatherScatterDims& parallel_dims) {
+  const auto& indices_parallel_dims = parallel_dims.indices_dims;
+  const auto& operand_parallel_dims = parallel_dims.operand_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
     return std::nullopt;
   }

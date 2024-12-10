@@ -16,10 +16,9 @@
 
 #include <cstddef>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace internal {
@@ -32,7 +31,7 @@ bool AhwbBuffer::IsSupported() {
 #endif
 }
 
-absl::StatusOr<AhwbBuffer> AhwbBuffer::Alloc(size_t size) {
+Expected<AhwbBuffer> AhwbBuffer::Alloc(size_t size) {
 #if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer* ahwb;
   AHardwareBuffer_Desc ahwb_desc = {
@@ -44,12 +43,13 @@ absl::StatusOr<AhwbBuffer> AhwbBuffer::Alloc(size_t size) {
                AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
                AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER};
   if (AHardwareBuffer_allocate(&ahwb_desc, &ahwb) != 0) {
-    return absl::InternalError("Failed to allocate AHWB");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to allocate AHWB");
   }
   return AhwbBuffer{/*.ahwb=*/ahwb};
 #else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "AHardwareBuffers are not supported on this platform");
 #endif  // LITERT_HAS_AHWB_SUPPORT
 }
 
@@ -59,26 +59,26 @@ void AhwbBuffer::Free(AHardwareBuffer* ahwb) {
 #endif
 }
 
-absl::StatusOr<size_t> AhwbBuffer::GetSize(AHardwareBuffer* ahwb) {
+Expected<size_t> AhwbBuffer::GetSize(AHardwareBuffer* ahwb) {
 #if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer_Desc ahwb_desc;
   AHardwareBuffer_describe(ahwb, &ahwb_desc);
   return static_cast<size_t>(ahwb_desc.width) * ahwb_desc.height *
          ahwb_desc.layers;
 #else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "AHardwareBuffers are not supported on this platform");
 #endif  // LITERT_HAS_AHWB_SUPPORT
 }
 
-absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb,
-                                       LiteRtEvent event) {
+Expected<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb, LiteRtEvent event) {
 #if LITERT_HAS_AHWB_SUPPORT
   int fence = -1;
   if (event) {
     if (auto status = LiteRtGetEventSyncFenceFd(event, &fence);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to get sync fence fd from event");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get sync fence fd from event");
     }
   }
   void* host_addr;
@@ -86,24 +86,25 @@ absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb,
                            AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
                                AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
                            fence, /*rect=*/nullptr, &host_addr) != 0) {
-    return absl::InternalError("Failed to lock AHWB");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to lock AHWB");
   }
   return host_addr;
 #else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "AHardwareBuffers are not supported on this platform");
 #endif
 }
 
-absl::Status AhwbBuffer::Unlock(AHardwareBuffer* ahwb) {
+Expected<void> AhwbBuffer::Unlock(AHardwareBuffer* ahwb) {
 #if LITERT_HAS_AHWB_SUPPORT
   if (AHardwareBuffer_unlock(ahwb, /*fence=*/nullptr) != 0) {
-    return absl::InternalError("Failed to unlock AHWB");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to unlock AHWB");
   }
   return {};
 #else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "AHardwareBuffers are not supported on this platform");
 #endif
 }
 

@@ -36,46 +36,16 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-// An empty struct to be used as a handle for all unsupported features in
-// current CUDA/HIP/SYCL version.
-struct UnsupportedGpuFeature {
-  // This makes the struct the same size as all the other handles.
-  void* payload;
-};
-
 #if TENSORFLOW_USE_SYCL
 
 using GpuStreamHandle = ::sycl::queue*;
-using GpuFunctionHandle = ::sycl::kernel*;
-using GpuDevicePtr = void*;
-using GpuGraphHandle = UnsupportedGpuFeature;
-using GpuGraphExecHandle = UnsupportedGpuFeature;
-using GpuGraphNodeHandle = UnsupportedGpuFeature;
-using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 
 #elif TENSORFLOW_USE_ROCM
 
 using GpuStreamHandle = hipStream_t;
-using GpuFunctionHandle = hipFunction_t;
-using GpuDevicePtr = hipDeviceptr_t;
-using GpuGraphHandle = hipGraph_t;
-using GpuGraphExecHandle = hipGraphExec_t;
-using GpuGraphNodeHandle = hipGraphNode_t;
-using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
 using GpuStreamHandle = CUstream;
-using GpuFunctionHandle = CUfunction;
-using GpuDevicePtr = CUdeviceptr;
-using GpuGraphHandle = CUgraph;
-using GpuGraphExecHandle = CUgraphExec;
-using GpuGraphNodeHandle = CUgraphNode;
-
-#if CUDA_VERSION >= 12030
-using GpuGraphConditionalHandle = CUgraphConditionalHandle;
-#else
-using GpuGraphConditionalHandle = UnsupportedGpuFeature;
-#endif  // #if CUDA_VERSION >= 12030
 
 #endif
 

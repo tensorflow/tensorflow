@@ -160,7 +160,7 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
 // kwnames: either None or a tuple containing the keyword argument names
 // static_argnums: the indices of the static arguments in the positional
 //   arguments
-// static_argnames: the names of the static arguments
+// static_argnames: the names of the static arguments, which must be interned.
 // pytree_registry: the registry to use to convert the arguments to pytrees
 // signature: output; describes the static arguments and the identities of the
 //  dynamic arguments.
@@ -213,6 +213,8 @@ struct CallSignature {
   // Opaque additional context that should be included as part of the cache key.
   std::optional<nanobind::object> global_extra_jit_context;
   std::optional<nanobind::object> thread_local_extra_jit_context;
+
+  std::vector<nanobind::object> configs;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {

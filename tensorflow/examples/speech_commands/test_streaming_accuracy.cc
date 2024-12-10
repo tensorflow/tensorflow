@@ -63,9 +63,12 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 
  */
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
-#include <iomanip>
-#include <unordered_set>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

@@ -43,10 +43,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
@@ -140,10 +136,8 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
     }
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
   XlaCustomCallStatus custom_call_status;
-  call_target_(gpu_stream, buffers.data(), opaque_.data(), opaque_.size(),
+  call_target_(params.stream, buffers.data(), opaque_.data(), opaque_.size(),
                &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
@@ -151,11 +145,6 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   } else {
     return absl::OkStatus();
   }
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(

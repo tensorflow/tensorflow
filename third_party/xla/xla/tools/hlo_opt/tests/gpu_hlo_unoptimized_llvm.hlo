@@ -1,0 +1,51 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+// CHECK:       define void @fusion
+// CHECK:         br i1
+// CHECK:         br label
+
+
+HloModule module, is_scheduled=true
+
+%fused_computation (param_0.1: f32[1000], param_1.2: f32[1000], param_2.3: f32[1000], param_3.4: f32[1000], param_4.5: f32[1000], param_5.6: f32[1000], param_6.7: f32[1000], param_7.8: f32[1000], param_8.9: f32[1000], param_9.10: f32[1000], param_10.11: f32[1000]) -> f16[11000] {
+  %param_10.11 = f32[1000]{0} parameter(10)
+  %converted0.1 = f16[1000]{0} convert(f32[1000]{0} %param_10.11)
+  %param_9.10 = f32[1000]{0} parameter(9)
+  %converted1.1 = f16[1000]{0} convert(f32[1000]{0} %param_9.10)
+  %param_8.9 = f32[1000]{0} parameter(8)
+  %converted2.1 = f16[1000]{0} convert(f32[1000]{0} %param_8.9)
+  %param_7.8 = f32[1000]{0} parameter(7)
+  %converted3.1 = f16[1000]{0} convert(f32[1000]{0} %param_7.8)
+  %param_6.7 = f32[1000]{0} parameter(6)
+  %converted4.1 = f16[1000]{0} convert(f32[1000]{0} %param_6.7)
+  %param_5.6 = f32[1000]{0} parameter(5)
+  %converted5.1 = f16[1000]{0} convert(f32[1000]{0} %param_5.6)
+  %param_4.5 = f32[1000]{0} parameter(4)
+  %converted6.1 = f16[1000]{0} convert(f32[1000]{0} %param_4.5)
+  %param_3.4 = f32[1000]{0} parameter(3)
+  %converted7.1 = f16[1000]{0} convert(f32[1000]{0} %param_3.4)
+  %param_2.3 = f32[1000]{0} parameter(2)
+  %converted8.1 = f16[1000]{0} convert(f32[1000]{0} %param_2.3)
+  %param_1.2 = f32[1000]{0} parameter(1)
+  %converted9.1 = f16[1000]{0} convert(f32[1000]{0} %param_1.2)
+  %param_0.1 = f32[1000]{0} parameter(0)
+  %converted10.1 = f16[1000]{0} convert(f32[1000]{0} %param_0.1)
+  ROOT %out.1 = f16[11000]{0} concatenate(f16[1000]{0} %converted0.1, f16[1000]{0} %converted1.1, f16[1000]{0} %converted2.1, f16[1000]{0} %converted3.1, f16[1000]{0} %converted4.1, /*index=5*/f16[1000]{0} %converted5.1, f16[1000]{0} %converted6.1, f16[1000]{0} %converted7.1, f16[1000]{0} %converted8.1, f16[1000]{0} %converted9.1, /*index=10*/f16[1000]{0} %converted10.1), dimensions={0}
+}
+
+ENTRY %computation (p0: f32[1000], p1: f32[1000], p2: f32[1000], p3: f32[1000], p4: f32[1000], p5: f32[1000], p6: f32[1000], p7: f32[1000], p8: f32[1000], p9: f32[1000], p10: f32[1000]) -> f16[11000] {
+  %p10 = f32[1000]{0} parameter(10)
+  %p9 = f32[1000]{0} parameter(9)
+  %p8 = f32[1000]{0} parameter(8)
+  %p7 = f32[1000]{0} parameter(7)
+  %p6 = f32[1000]{0} parameter(6)
+  %p5 = f32[1000]{0} parameter(5)
+  %p4 = f32[1000]{0} parameter(4)
+  %p3 = f32[1000]{0} parameter(3)
+  %p2 = f32[1000]{0} parameter(2)
+  %p1 = f32[1000]{0} parameter(1)
+  %p0 = f32[1000]{0} parameter(0)
+  ROOT %fusion = f16[11000]{0} fusion(f32[1000]{0} %p10, f32[1000]{0} %p9, f32[1000]{0} %p8, f32[1000]{0} %p7, f32[1000]{0} %p6, /*index=5*/f32[1000]{0} %p5, f32[1000]{0} %p4, f32[1000]{0} %p3, f32[1000]{0} %p2, f32[1000]{0} %p1, /*index=10*/f32[1000]{0} %p0), kind=kLoop, calls=%fused_computation
+}
+
+

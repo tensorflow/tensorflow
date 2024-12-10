@@ -79,7 +79,7 @@ using ::testing::status::StatusIs;
 TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
   DeviceMesh device_mesh({2, 4});
   device_mesh.FillIota(0);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4));
   EXPECT_EQ(device_mesh.num_elements(), 8);
 }
@@ -87,7 +87,7 @@ TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
 TEST(DeviceMeshTest, IotaDeviceMesh3DStartsWithNonZero) {
   DeviceMesh device_mesh({2, 4, 8});
   device_mesh.FillIota(55);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -97,7 +97,7 @@ TEST(DeviceMeshTest, ExplicitSetValuesInferIotaIotaValues) {
   std::vector<int64_t> device_mesh_values(64);
   absl::c_iota(device_mesh_values, 34);
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -108,7 +108,7 @@ TEST(DeviceMeshTest, ExplicitSetValuesInferIotaNonIotaValues) {
   absl::c_iota(device_mesh_values, 34);
   device_mesh_values[54] = 54;
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -119,12 +119,12 @@ TEST(DeviceMeshTest, ReshapeTestWithoutIota) {
   absl::c_iota(device_mesh_values, 34);
   device_mesh_values[54] = 54;
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 
   device_mesh.Reshape({2, 32});
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -134,12 +134,12 @@ TEST(DeviceMeshTest, ReshapeTestWithIota) {
   std::vector<int64_t> device_mesh_values(64);
   absl::c_iota(device_mesh_values, 34);
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 
   device_mesh.Reshape({2, 32});
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -1037,6 +1037,70 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   const HloInstruction* instruction = FindInstruction(module.get(), "p0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest,
+       SPMDShardToFullShapeWithUnusedParamInCalledComputation) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add.6.clone {
+  y.13 = bf16[]{:T(256)} parameter(1)
+  x.13 = bf16[]{:T(256)} parameter(0)
+  ROOT add.9011 = bf16[]{:T(256)} add(x.13, y.13)
+}
+
+%branch0 {
+  %branch0_param = bf16[128,128]{1,0} parameter(0)
+  %iota = bf16[16,16]{1,0} iota(), iota_dimension=0
+  ROOT all-reduce.1 = bf16[16,16]{1,0} all-reduce(iota), channel_id=621, replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, use_global_device_ids=true, to_apply=add.6.clone, frontend_attributes={from-cross-replica-sharding="true"}, backend_config={"flag_configs":[],"barrier_config":{"barrier_type":"CUSTOM","id":"9"},"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+}
+
+%branch1 {
+  %branch1_param = bf16[128,128]{1,0} parameter(0)
+  ROOT %slice1 = bf16[16,16]{1,0} slice(bf16[128,128]{1,0} %branch1_param), slice={[0:16], [0:16]}
+}
+
+ENTRY main {
+  input.1 = bf16[512,512]{1,0} parameter(0)
+  constant.1 = s32[] constant(16)
+
+  custom-call.1 = bf16[512,512]{1,0} custom-call(input.1), custom_call_target="Sharding", sharding={devices=[4,4]<=[16]}
+  custom-call.2 = bf16[128,128]{1,0} custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+
+  conditional = bf16[16,16]{1,0} conditional(constant.1, custom-call.2, custom-call.2), branch_computations={%branch0, %branch1}
+  custom-call.3 = bf16[64,16]{1,0} custom-call(conditional), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,4]<=[16]last_tile_dim_replicate}
+  ROOT tuple.1 = tuple(custom-call.3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {4, 4};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  LOG(INFO) << module->ToString();
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* custom_call2 =
+      FindInstruction(module.get(), "custom-call.2");
+  ASSERT_NE(custom_call2, nullptr);
+  EXPECT_THAT(custom_call2, op::Sharding("{manual}"));
+
+  const HloInstruction* custom_call3 =
+      FindInstruction(module.get(), "custom-call.3");
+  ASSERT_NE(custom_call3, nullptr);
+  EXPECT_THAT(custom_call3,
+              op::Sharding("{devices=[4,1,4]<=[16]last_tile_dim_replicate}"));
+
+  // Auto-sharding rewrites Sharding custom-calls
+  const HloInstruction* custom_call1 = custom_call2->operand(0);
+  ASSERT_NE(custom_call1, nullptr);
+  EXPECT_THAT(custom_call1, op::Sharding("{devices=[4,4]<=[16]}"));
 }
 
 TEST_F(AutoShardingTest, SPMDShardToFullShapeWithConstantTest) {

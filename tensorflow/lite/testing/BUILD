@@ -105,7 +105,7 @@ _test_size_override = {
         "//conditions:default": [
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:status",
-            "@local_tsl//tsl/platform:subprocess",
+            "@local_xla//xla/tsl/platform:subprocess",
             "@local_xla//xla/tsl/util:command_line_flags",
         ],
         "//tensorflow:android": [
@@ -180,6 +180,7 @@ py_strict_library(
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
+        "@ml_dtypes",
     ],
 )
 

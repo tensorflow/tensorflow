@@ -23,10 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-// Calls Python isinstance(inst, cls).
-// TODO(phawkins): consider upstreaming this to nanobind.
-bool nb_isinstance(nanobind::handle inst, nanobind::handle cls);
-
 // Issues a Python deprecation warning. Throws a C++ exception if issuing the
 // Python warning causes a Python exception to be raised.
 template <typename... Args>

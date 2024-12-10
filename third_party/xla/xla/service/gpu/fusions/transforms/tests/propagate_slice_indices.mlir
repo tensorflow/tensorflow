@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-propagate-slice-indices | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-gpu-propagate-slice-indices | FileCheck %s
 
 module {
   func.func private @add(%arg0: f32, %arg1: f32) -> f32 {

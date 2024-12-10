@@ -79,7 +79,7 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op);
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
     absl::string_view name = "");
 
 // Emits a call to the specified target intrinsic with the given operands.
@@ -88,11 +88,11 @@ llvm::CallInst* EmitDeviceFunctionCall(
 // intrinsics have only a single overloaded type.
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b);
 
 // Annotate the kernel as GPU kernel according to the GPU target.
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                                 llvm::IRBuilder<>* b);
+                                 llvm::IRBuilderBase* b);
 
 // 'output_type' is the type of the math op corresponding to 'func_id' for which
 // we want to obtain the device function name.

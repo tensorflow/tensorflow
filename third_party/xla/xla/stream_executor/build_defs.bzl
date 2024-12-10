@@ -7,7 +7,7 @@ load(
     _if_gpu_is_configured = "if_gpu_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

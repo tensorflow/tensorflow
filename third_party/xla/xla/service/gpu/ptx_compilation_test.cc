@@ -195,9 +195,11 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
 
-    debug_options->set_xla_gpu_enable_libnvjitlink(
-        compilation_method == PtxCompilationMethod::kNvJitLink ||
-        linking_method == PtxLinkingMethod::kNvJitLink);
+    debug_options->set_xla_gpu_libnvjitlink_mode(
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)
+            ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
+            : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);
@@ -233,7 +235,7 @@ class NVPTXCompilationTests
 
   absl::StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       std::unique_ptr<HloModule> module) {
-    NVPTXCompiler compiler{};
+    NVPTXCompiler compiler{module->config().debug_options()};
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),
@@ -294,15 +296,14 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   // reference build when the build under test also uses a separate linking
   // step.
   const PtxLinkingMethod reference_linking_method =
-      (linking_method == PtxLinkingMethod::kNone)
-          ? PtxLinkingMethod::kNone
-          : PtxLinkingMethod::kNvJitLink;
+      (linking_method == PtxLinkingMethod::kNone) ? PtxLinkingMethod::kNone
+                                                  : PtxLinkingMethod::kNvLink;
 
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
-  EXPECT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
-  EXPECT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
 
   absl::Span<const uint8_t> executable_binary =
       static_cast<GpuExecutable*>(executable.value().get())->binary();

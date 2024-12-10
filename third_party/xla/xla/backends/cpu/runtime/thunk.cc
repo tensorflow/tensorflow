@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/thunk.h"
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
-#include "absl/base/optimization.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
@@ -159,23 +157,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {
         tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
   }();
   return singleton->AsRef();
-}
-
-Thunk::ExecuteState::ExecuteState(int64_t num_tasks)
-    : pending_tasks(num_tasks),
-      event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
-
-Thunk::ExecuteState::~ExecuteState() {
-  auto cnt = pending_tasks.load(std::memory_order_acquire);
-  DCHECK_EQ(cnt, 0)
-      << "ExecuteState is destroyed before all tasks are completed";
-}
-
-void Thunk::ExecuteState::Notify() {
-  bool is_done = pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1;
-  if (ABSL_PREDICT_FALSE(is_done)) {
-    event.SetStateConcrete();
-  }
 }
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,

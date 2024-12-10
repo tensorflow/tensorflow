@@ -17,6 +17,14 @@ limitations under the License.
 
 namespace stream_executor {
 bool IsLibNvJitLinkSupported() {
+  // NVJitLink as a precompiled library is not compatible with MSan, so we
+  // disable its support so that we at least can run some larger tests under
+  // MSAN. This is not ideal because it means these tests will take different
+  // code paths but the alternative would be not running them at all.
+#ifdef MEMORY_SANITIZER
+  return false;
+#else
   return LIBNVJITLINK_SUPPORT && CUDA_SUPPORTS_NVJITLINK;
+#endif
 }
 }  // namespace stream_executor

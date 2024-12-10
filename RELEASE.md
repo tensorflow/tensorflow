@@ -8,6 +8,16 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* `LiteRT`, a.k.a. `tf.lite`:
+  * C++ API:
+    * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
+      and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
+      references, rather than `constexpr` compile-time constants.
+      (This is to enable better API compatibility for TFLite in Play services
+      while preserving the implementation flexibility to change the values of
+      these constants in the future.)
+    * Interpreter:
+      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new location at `ai_edge_litert.interpreter`, as the API `tf.lite.Interpreter` will be deleted in TF 2.20. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
 
 ### Known Caveats
 
@@ -17,7 +27,8 @@
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*  `tf.lite`
+    * `tfl.Cast` op is now supporting `bfloat16` in runtime kernel.
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 ### Bug Fixes and Other Changes

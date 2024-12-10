@@ -101,7 +101,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+#include "xla/stream_executor/cuda/subprocess_compilation.h"
 #endif
 
 #if TENSORFLOW_USE_SYCL
@@ -204,21 +204,6 @@ std::string EmitModuleToPTX(llvm::Module* module,
                                       llvm::CodeGenFileType::AssemblyFile);
   pm.run(*module);
   return ptx;
-}
-
-// LLVM has an extensive flags mechanism of its own, which is only accessible
-// through the command line. Internal libraries within LLVM register parsers for
-// flags, with no other way to configure them except pass these flags.
-// To do this programmatically, we invoke ParseCommandLineOptions manually with
-// a "fake argv".
-// Note: setting flags with this method is stateful, since flags are just
-// static globals within LLVM libraries.
-void FeedLLVMWithFlags(const std::vector<std::string>& cl_opts) {
-  std::vector<const char*> fake_argv = {""};
-  for (const std::string& cl_opt : cl_opts) {
-    fake_argv.push_back(cl_opt.c_str());
-  }
-  llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
 }
 
 // Returns whether the module could use any device bitcode library functions.
@@ -482,9 +467,24 @@ absl::Status LinkAndOptimizeModule(
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void NVPTXBackendInit(const DebugOptions& debug_options) {
+void NVPTXBackendInit() {
+  // Initialize the NVPTX target; it's the only target we link with, so call its
+  // specific initialization functions instead of the catch-all InitializeAll*.
+  LLVMInitializeNVPTXTarget();
+  LLVMInitializeNVPTXTargetInfo();
+  LLVMInitializeNVPTXTargetMC();
+  LLVMInitializeNVPTXAsmPrinter();
+
+  // Initialize the LLVM optimization passes.
+  llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
+  InitializePasses(registry);
+}
+
+std::vector<std::string> GetNVPTXBackendOptions(
+    const DebugOptions& debug_options) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
+  std::vector<std::string> backend_llvm_opts;
 
   // This flag tunes a threshold in branch folding. The default threshold, which
   // is one, is not suitable for CUDA programs where branches are more expensive
@@ -499,35 +499,29 @@ void NVPTXBackendInit(const DebugOptions& debug_options) {
   // TODO(jingyue): The current threshold only considers the number of IR
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
-  FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
+  backend_llvm_opts.emplace_back("-bonus-inst-threshold=2");
 
   // Use div.full -- it matters for some float-division heavy benchmarks.
   // Using div.approx produces incorrect result for float32(max)/float32(max).
-  FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
+  backend_llvm_opts.emplace_back("-nvptx-prec-divf32=1");
 
   // SLPVectorizer is useful (vectorizes f16x2 ops) but slow.  Most of the
   // slowness appears to be in trying to form horizontal reductions, which don't
   // exist in PTX *anyway*.  Disable these.  While we're here, tweak
   // SLPVectorizer so it doesn't try to create large vectors -- f16x2 are the
   // only vectors supported in PTX.
-  FeedLLVMWithFlags({
-      "-slp-vectorize-hor=false",
-      "-slp-max-reg-size=32",
-  });
+  backend_llvm_opts.emplace_back("-slp-vectorize-hor=false");
+  backend_llvm_opts.emplace_back("-slp-max-reg-size=32");
 
-  llvm_ir::InitializeLLVMCommandLineOptions(
+  // Extra backend options must go after regular backend options in order to be
+  // able for the later to override the former.
+  auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
       debug_options.xla_backend_extra_options());
+  backend_llvm_opts.insert(backend_llvm_opts.end(),
+                           backend_extra_llvm_opts.cbegin(),
+                           backend_extra_llvm_opts.cend());
 
-  // Initialize the NVPTX target; it's the only target we link with, so call its
-  // specific initialization functions instead of the catch-all InitializeAll*.
-  LLVMInitializeNVPTXTarget();
-  LLVMInitializeNVPTXTargetInfo();
-  LLVMInitializeNVPTXTargetMC();
-  LLVMInitializeNVPTXAsmPrinter();
-
-  // Initialize the LLVM optimization passes.
-  llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
-  InitializePasses(registry);
+  return backend_llvm_opts;
 }
 
 }  // namespace
@@ -573,7 +567,9 @@ absl::StatusOr<std::string> CompileToPtx(
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, NVPTXBackendInit, debug_options);
+  absl::call_once(backend_init_flag, NVPTXBackendInit);
+  auto llvm_opts = GetNVPTXBackendOptions(debug_options);
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -992,9 +988,6 @@ std::string GetROCDLDir(const DebugOptions& debug_options) {
 
 void AMDGPUBackendInit(const DebugOptions& debug_options,
                        std::string& rocdl_dir_path) {
-  llvm_ir::InitializeLLVMCommandLineOptions(
-      debug_options.xla_backend_extra_options());
-
   // Initialize the AMDGPU target; it's the only target we link with, so call
   // its specific initialization functions instead of the catch-all
   // InitializeAll*.
@@ -1009,6 +1002,21 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
   rocdl_dir_path = GetROCDLDir(debug_options);
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
+}
+
+std::vector<std::string> GetAMDGPUBackendOptions(
+    const DebugOptions& debug_options) {
+  std::vector<std::string> backend_llvm_opts;
+
+  // Extra backend options must go after regular backend options in order to be
+  // able for the later to override the former.
+  auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
+      debug_options.xla_backend_extra_options());
+  backend_llvm_opts.insert(backend_llvm_opts.end(),
+                           backend_extra_llvm_opts.cbegin(),
+                           backend_extra_llvm_opts.cend());
+
+  return backend_llvm_opts;
 }
 
 }  // namespace
@@ -1036,6 +1044,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
   static std::string rocdl_dir_path;  // NOLINT: static/global vars forbidden
   absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
                   rocdl_dir_path);
+  auto llvm_opts = GetAMDGPUBackendOptions(debug_options);
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
   std::vector<uint8_t> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -1140,18 +1150,28 @@ absl::StatusOr<std::string> EmitModuleToSpir(
 #endif
 }
 
-void SPIRBackendInit(const DebugOptions& debug_options) {
-  FeedLLVMWithFlags({
-      "-slp-vectorize-hor=false",
-      "-slp-min-reg-size=64",
-      "-slp-max-reg-size=64",
-  });
-
-  llvm_ir::InitializeLLVMCommandLineOptions(
-      debug_options.xla_backend_extra_options());
-
+void SPIRBackendInit() {
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
+}
+
+std::vector<std::string> GetSPIRBackendOptions(
+    const DebugOptions& debug_options) {
+  std::vector<std::string> backend_llvm_opts;
+
+  backend_llvm_opts.emplace_back("-slp-vectorize-hor=false");
+  backend_llvm_opts.emplace_back("-slp-min-reg-size=64");
+  backend_llvm_opts.emplace_back("-slp-max-reg-size=64");
+
+  // Extra backend options must go after regular backend options in order to be
+  // able for the later to override the former.
+  auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
+      debug_options.xla_backend_extra_options());
+  backend_llvm_opts.insert(backend_llvm_opts.end(),
+                           backend_extra_llvm_opts.cbegin(),
+                           backend_extra_llvm_opts.cend());
+
+  return backend_llvm_opts;
 }
 
 }  // namespace
@@ -1163,7 +1183,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
     const DebugOptions& debug_options) {
   std::string libdevice_dir_path;
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, SPIRBackendInit, debug_options);
+  absl::call_once(backend_init_flag, SPIRBackendInit);
+  auto llvm_opts = GetSPIRBackendOptions(debug_options);
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
   std::string spir;
   {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/shape_inference/pass.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 

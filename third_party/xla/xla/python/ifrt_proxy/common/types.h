@@ -57,6 +57,8 @@ absl::StatusOr<proto::Variant> ToVariantProto(const xla::PjRtValueType& value);
 std::vector<int64_t> FromByteStridesProto(const proto::ByteStrides& strides);
 proto::ByteStrides ToByteStridesProto(absl::Span<const int64_t> strides);
 
+constexpr uint64_t kServerGeneratedHandlesMinValue = 1ULL << 48;
+
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla

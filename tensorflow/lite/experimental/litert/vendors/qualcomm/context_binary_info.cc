@@ -18,13 +18,12 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_tensor.h"
 
@@ -33,29 +32,29 @@ namespace qnn {
 
 namespace {
 
-absl::Status InsertQnnTensors(int num_qnn_tensors, Qnn_Tensor_t* qnn_tensors,
-                              std::vector<QnnTensor>* tensors) {
+Expected<void> InsertQnnTensors(int num_qnn_tensors, Qnn_Tensor_t* qnn_tensors,
+                                std::vector<QnnTensor>* tensors) {
   tensors->clear();
   tensors->reserve(num_qnn_tensors);
   for (auto i = 0; i < num_qnn_tensors; ++i) {
     auto tensor = QnnTensor::Create(qnn_tensors[i]);
-    if (!tensor.ok()) {
-      return tensor.status();
+    if (!tensor) {
+      return Unexpected(tensor.Error());
     }
     tensors->push_back(std::move(*tensor));
   }
   return {};
 }
 
-absl::Status InsertQnnGraphInfos(int num_qnn_graph_infos,
-                                 QnnSystemContext_GraphInfo_t* qnn_graph_infos,
-                                 std::vector<GraphInfo>* graphs) {
+Expected<void> InsertQnnGraphInfos(
+    int num_qnn_graph_infos, QnnSystemContext_GraphInfo_t* qnn_graph_infos,
+    std::vector<GraphInfo>* graphs) {
   graphs->clear();
   graphs->reserve(num_qnn_graph_infos);
   for (auto i = 0; i < num_qnn_graph_infos; ++i) {
     auto graph = GraphInfo::Create(qnn_graph_infos[i]);
-    if (!graph.ok()) {
-      return graph.status();
+    if (!graph) {
+      return Unexpected(graph.Error());
     }
     graphs->push_back(std::move(*graph));
   }
@@ -65,89 +64,126 @@ absl::Status InsertQnnGraphInfos(int num_qnn_graph_infos,
 
 }  // namespace
 
-absl::StatusOr<GraphInfo> GraphInfo::Create(
+Expected<GraphInfo> GraphInfo::Create(
     const QnnSystemContext_GraphInfo_t& graph_info) {
   GraphInfo info;
   auto status = info.Init(graph_info);
-  if (status.ok()) {
+  if (status) {
     return info;
   } else {
-    return status;
+    return Unexpected(status.Error());
   }
 }
 
-absl::Status GraphInfo::Init(const QnnSystemContext_GraphInfo_t& graph_info) {
+Expected<void> GraphInfo::Init(const QnnSystemContext_GraphInfo_t& graph_info) {
   if (graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
     const auto& graph_info_ = graph_info.graphInfoV1;
     name_ = graph_info_.graphName;
+    LITERT_LOG(LITERT_INFO, "Found qnn graph: %s", name_.c_str());
+
     if (auto status = InsertQnnTensors(graph_info_.numGraphInputs,
                                        graph_info_.graphInputs, &inputs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
     if (auto status = InsertQnnTensors(graph_info_.numGraphOutputs,
                                        graph_info_.graphOutputs, &outputs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
 
   } else if (graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2) {
     const auto& graph_info_ = graph_info.graphInfoV2;
     name_ = graph_info_.graphName;
+    LITERT_LOG(LITERT_INFO, "Found qnn graph: %s", name_.c_str());
+
     if (auto status = InsertQnnTensors(graph_info_.numGraphInputs,
                                        graph_info_.graphInputs, &inputs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
     if (auto status = InsertQnnTensors(graph_info_.numGraphOutputs,
                                        graph_info_.graphOutputs, &outputs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
-  }
+  } else if (graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
+    const auto& graph_info_ = graph_info.graphInfoV3;
+    name_ = graph_info_.graphName;
+    LITERT_LOG(LITERT_INFO, "Found qnn graph: %s", name_.c_str());
 
+    if (auto status = InsertQnnTensors(graph_info_.numGraphInputs,
+                                       graph_info_.graphInputs, &inputs_);
+        !status) {
+      return Unexpected(status.Error());
+    }
+    if (auto status = InsertQnnTensors(graph_info_.numGraphOutputs,
+                                       graph_info_.graphOutputs, &outputs_);
+        !status) {
+      return Unexpected(status.Error());
+    }
+
+  } else {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unsupported graph info version.");
+  }
   return {};
 }
 
-absl::Status ContextBinaryInfo::Init(
+Expected<void> ContextBinaryInfo::Init(
     const QnnSystemContext_BinaryInfo_t& binary_info) {
   if (binary_info.version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
     const auto& context_binary_info = binary_info.contextBinaryInfoV1;
     if (auto status = InsertQnnTensors(context_binary_info.numContextTensors,
                                        context_binary_info.contextTensors,
                                        &context_tensors_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
     if (auto status = InsertQnnGraphInfos(context_binary_info.numGraphs,
                                           context_binary_info.graphs, &graphs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
 
   } else if (binary_info.version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
-    const auto& context_binary_info = binary_info.contextBinaryInfoV1;
+    const auto& context_binary_info = binary_info.contextBinaryInfoV2;
     if (auto status = InsertQnnTensors(context_binary_info.numContextTensors,
                                        context_binary_info.contextTensors,
                                        &context_tensors_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
     if (auto status = InsertQnnGraphInfos(context_binary_info.numGraphs,
                                           context_binary_info.graphs, &graphs_);
-        !status.ok()) {
-      return status;
+        !status) {
+      return Unexpected(status.Error());
     }
+  } else if (binary_info.version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
+    const auto& context_binary_info = binary_info.contextBinaryInfoV3;
+    if (auto status = InsertQnnTensors(context_binary_info.numContextTensors,
+                                       context_binary_info.contextTensors,
+                                       &context_tensors_);
+        !status) {
+      return Unexpected(status.Error());
+    }
+    if (auto status = InsertQnnGraphInfos(context_binary_info.numGraphs,
+                                          context_binary_info.graphs, &graphs_);
+        !status) {
+      return Unexpected(status.Error());
+    }
+  } else {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unsupported context binary version.");
   }
-
   return {};
 }
 
-absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
+Expected<ContextBinaryInfo> ContextBinaryInfo::Create(
     QnnManager& qnn, const void* exec_bytecode_ptr, size_t exec_bytecode_size) {
   auto system_context_handle = qnn.CreateSystemContextHandle();
-  if (!system_context_handle.ok()) {
-    return system_context_handle.status();
+  if (!system_context_handle) {
+    return Unexpected(system_context_handle.Error());
   }
 
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
@@ -156,22 +192,23 @@ absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
           system_context_handle->get(), const_cast<void*>(exec_bytecode_ptr),
           exec_bytecode_size, &binary_info, &binary_info_size);
       status != QNN_SUCCESS) {
-    ABSL_LOG(ERROR) << "Failed to get context binary info: " << status;
-    return absl::InternalError("Failed to get context binary info");
+    LITERT_LOG(LITERT_ERROR, "Failed to get context binary info: %d", status);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to get context binary info");
   }
 
   if (!binary_info) {
-    ABSL_LOG(ERROR) << "Null binary info";
-    return absl::InternalError("Null binary info");
+    LITERT_LOG(LITERT_ERROR, "Null binary info", "");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Null binary info");
   }
 
   ContextBinaryInfo info;
   auto status = info.Init(*binary_info);
 
-  if (status.ok()) {
+  if (status) {
     return info;
   } else {
-    return status;
+    return Unexpected(status.Error());
   }
 }
 

@@ -22,13 +22,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 
 absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin() {
   tsl::Env* env = tsl::Env::Default();
+  std::string file_path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "stream_executor", "gpu",
+                        "gpu_test_kernels.fatbin");
   std::string file_contents;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, FATBIN_SRC, &file_contents));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, file_path, &file_contents));
   return std::vector<uint8_t>(file_contents.begin(), file_contents.end());
 }
 }  // namespace stream_executor::gpu

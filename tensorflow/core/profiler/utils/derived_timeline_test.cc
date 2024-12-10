@@ -74,6 +74,73 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   });
 }
 
+// Checks that HLO module events are expanded, with both same name and scope
+// range id. Note that strange XStatValue{int64_t{10}} is to handle different
+// compilers behavior.
+TEST(DerivedTimelineTest, HloModuleNameSameScopeRangeIdTest) {
+  const absl::string_view kHloModuleName = "hlo_module";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kHloModule, XStatValue{kHloModuleName}},
+                {StatType::kKernelDetails, XStatValue{kKernelDetails}},
+                {StatType::kScopeRangeId, XStatValue{int64_t{10}}}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kHloModule, XStatValue{kHloModuleName}},
+                {StatType::kKernelDetails, XStatValue{kKernelDetails}},
+                {StatType::kScopeRangeId, XStatValue{int64_t{10}}}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // Only the hlo module line is added and other empty lines are removed at the
+  // end.
+  EXPECT_EQ(plane_visitor.NumLines(), 2);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == 0) return;
+    EXPECT_EQ(line_visitor.Id(), kThreadIdHloModule);
+    EXPECT_EQ(line_visitor.NumEvents(), 1);
+    line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+      EXPECT_EQ(event_visitor.Name(), kHloModuleName);
+    });
+  });
+}
+
+// Checks that HLO module events are expanded, with same name only,
+// but different scope range id.
+TEST(DerivedTimelineTest, HloModuleNameDifferentScopeRangeIdTest) {
+  const absl::string_view kHloModuleName = "hlo_module";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kHloModule, XStatValue{kHloModuleName}},
+                {StatType::kKernelDetails, XStatValue{kKernelDetails}},
+                {StatType::kScopeRangeId, XStatValue{int64_t{10}}}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kHloModule, XStatValue{kHloModuleName}},
+                {StatType::kKernelDetails, XStatValue{kKernelDetails}},
+                {StatType::kScopeRangeId, XStatValue{int64_t{20}}}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // Only the hlo module line is added and other empty lines are removed at the
+  // end.
+  EXPECT_EQ(plane_visitor.NumLines(), 2);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == 0) return;
+    EXPECT_EQ(line_visitor.Id(), kThreadIdHloModule);
+    EXPECT_EQ(line_visitor.NumEvents(), 2);
+    line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+      EXPECT_EQ(event_visitor.Name(), kHloModuleName);
+    });
+  });
+}
+
 // Checks that HLO module events are expanded.
 TEST(DerivedTimelineTest, NoHloModuleNameTest) {
   const absl::string_view kKernelDetails = "kernel_details";
@@ -199,6 +266,58 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
       EXPECT_EQ(line_visitor.NumEvents(), 2);
       line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
         EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    } else if (line_id == kThreadIdTfOp) {
+      EXPECT_EQ(line_visitor.NumEvents(), 1);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.Name(), kTfOpName);
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    }
+  });
+}
+
+// Checks only derived events from line with most events for gpu trace.
+TEST(DerivedTimelineTest, OnlyDerivedEventsFromLineWithMostEvents) {
+  const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  // Add first line with two events.
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  // Add second line with only one event.
+  auto line_builder_2 = plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&plane_builder, &line_builder_2, "op3", 50, 850,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  // Derive lines for the plane.
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // The TF name scope line and the TF op line are added.
+  EXPECT_EQ(plane_visitor.NumLines(), 4);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    int64_t line_id = line_visitor.Id();
+    if (line_id == 0 || line_id == 1) {
+      return;
+    } else if (line_id == kThreadIdTfNameScope) {
+      EXPECT_EQ(line_visitor.NumEvents(), 2);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        // When derived from first line only, we should get single event which
+        // starts from op1' start (0), end at op2's end (200 + 300),
+        // duration is 500.
+        // If derived from both lines, the derived event duration will be
+        // (50 + 850) - 0 = 900.
         EXPECT_EQ(event_visitor.DurationPs(), 500);
       });
     } else if (line_id == kThreadIdTfOp) {
@@ -380,6 +499,40 @@ TEST(DerivedTimelineTest, DeriveLinesForXlaCpuOps) {
       } else {
         FAIL() << "Found Event " << event_visitor.Name();
       }
+    });
+  });
+}
+
+TEST(DerivedTimelineTest, MergeAndNoMerge) {
+  constexpr absl::string_view kHloModuleName = "Framework Ops";
+  static constexpr absl::string_view kTfOpName = "abc:model/layer/MatMul_1";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane =
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "DummyTPU", 1.0, 1.0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(
+      &plane_builder, &line_builder, "op1", 0, 100,
+      {{StatType::kHloModule, kHloModuleName}, {StatType::kTfOp, kTfOpName}});
+  CreateXEvent(
+      &plane_builder, &line_builder, "op2", 200, 300,
+      {{StatType::kHloModule, kHloModuleName}, {StatType::kTfOp, kTfOpName}});
+  // The above two events are merged into one. This event will not be merged
+  // because the gap is > 2x(0..200+300) = 1000.
+  CreateXEvent(
+      &plane_builder, &line_builder, "op3", 1501, 300,
+      {{StatType::kHloModule, kHloModuleName}, {StatType::kTfOp, kTfOpName}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // Only the hlo module line is added and other empty lines are removed at the
+  // end.
+  EXPECT_EQ(plane_visitor.NumLines(), 2);
+  plane_visitor.ForEachLine([](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == 0) return;
+    EXPECT_EQ(line_visitor.NumEvents(), 2);
+    line_visitor.ForEachEvent([](const XEventVisitor& event_visitor) {
+      EXPECT_EQ(event_visitor.Name(), kTfOpName);
     });
   });
 }

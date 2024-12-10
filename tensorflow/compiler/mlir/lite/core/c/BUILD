@@ -34,7 +34,23 @@ exports_files(
         "tflite_types.h",
     ],
     visibility = [
-        "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_end_and_comment_begin
+        "//visibility:public",
+        # copybara:comment_end
+    ],
+)
+
+cc_library(
+    name = "tflite_types",
+    hdrs = [
+        "tflite_types.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite/ios:__subpackages__",
     ],
 )
 
@@ -48,11 +64,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:__pkg__",
-        "//tensorflow/lite/core/c:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 # LINT.ThenChange(//tensorflow/lite/core/c:common)

@@ -100,8 +100,8 @@ class Block::Iter : public Iterator {
   absl::string_view value_;
   absl::Status status_;
 
-  inline int Compare(const absl::string_view& a,
-                     const absl::string_view& b) const {
+  inline int Compare(const absl::string_view a,
+                     const absl::string_view b) const {
     return a.compare(b);
   }
 

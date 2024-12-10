@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/sharding_op_util.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

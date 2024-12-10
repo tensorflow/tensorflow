@@ -516,11 +516,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
-    return PjRtFuture<>(Unimplemented(
-        "PJRT C API does not support CopyRawToHost. Please report an issue at "
-        "https://github.com/google/jax/issues if you need this feature."));
-  }
+                             int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -814,6 +810,11 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
+    const PJRT_Api* c_api,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 

@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DMABUF_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DMABUF_BUFFER_H_
 
-#include "absl/status/statusor.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace internal {
@@ -25,7 +25,7 @@ struct DmaBufBuffer {
   void* addr;
 
   static bool IsSupported();
-  static absl::StatusOr<DmaBufBuffer> Alloc(size_t size);
+  static Expected<DmaBufBuffer> Alloc(size_t size);
   static void Free(void* addr);
 };
 

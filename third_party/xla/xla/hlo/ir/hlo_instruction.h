@@ -793,9 +793,9 @@ class HloInstruction {
 
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
-  static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
-                                                     HloOpcode opcode,
-                                                     HloInstruction* operand);
+  static std::unique_ptr<HloInstruction> CreateUnary(
+      const Shape& shape, HloOpcode opcode, HloInstruction* operand,
+      std::optional<ResultAccuracy> result_accuracy = std::nullopt);
 
   // Creates a binary instruction (two operands).
   // Precondition: opcode must be a legitimate binary operation.
@@ -879,6 +879,15 @@ class HloInstruction {
       const PrecisionConfig& precision_config,
       std::vector<SparsityDescriptor> sparsity = {},
       absl::Span<HloInstruction* const> sparse_meta = {});
+
+  // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
+  // contracting, batch, ragged, and group dimensions specified in
+  // 'dimension_numbers'.
+  static std::unique_ptr<HloInstruction> CreateRaggedDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      HloInstruction* group_sizes,
+      const RaggedDotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config);
 
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
@@ -1066,11 +1075,11 @@ class HloInstruction {
   //
   // The ragged all-to-all HLO has the following arguments:
   // input: ragged input data tensor.
-  // input_offsets: ragged input offsets tensor.
-  // input_sizes: ragged input sizes tensor.
   // output: ragged output data tensor.
+  // input_offsets: ragged input offsets tensor.
+  // send_sizes: ragged send sizes tensor.
   // output_offsets: ragged output offsets tensor.
-  // output_sizes: ragged output sizes tensor.
+  // recv_sizes: ragged recv sizes tensor.
   //
   // The '*_offsets' and '*_sizes' tensors must have the same shape.
   // The output buffer is passed in as an input (and aliased in the output),
@@ -1182,17 +1191,14 @@ class HloInstruction {
   // another computation that has the same channel id. If is_host_transfer is
   // true, then this Send operation transfers data to the host.
   static std::unique_ptr<HloInstruction> CreateSend(
-      HloInstruction* operand, HloInstruction* token, int64_t channel_id,
-      bool is_host_transfer = false);
+      HloInstruction* operand, HloInstruction* token,
+      std::optional<int64_t> channel_id, bool is_host_transfer);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
   // The operand must be kSend.
   static std::unique_ptr<HloInstruction> CreateSendDone(
-      HloInstruction* operand, bool is_host_transfer = false);
-  // Similar to the above, but the operand doesn't have to be a kSend.
-  static std::unique_ptr<HloInstruction> CreateSendDone(
-      HloInstruction* operand, int64_t channel_id,
-      bool is_host_transfer = false);
+      HloInstruction* operand, std::optional<int64_t> channel_id,
+      bool is_host_transfer);
 
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
@@ -1200,17 +1206,14 @@ class HloInstruction {
   // is_host_transfer is true, then this Recv operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
-      const Shape& shape, HloInstruction* token, int64_t channel_id,
-      bool is_host_transfer = false);
+      const Shape& shape, HloInstruction* token,
+      std::optional<int64_t> channel_id, bool is_host_transfer);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete
   // and returns the receive buffer. The operand must be kRecv.
   static std::unique_ptr<HloInstruction> CreateRecvDone(
-      HloInstruction* operand, bool is_host_transfer = false);
-  // Similar to the above, but the operand doesn't have to be a kRecv.
-  static std::unique_ptr<HloInstruction> CreateRecvDone(
-      HloInstruction* operand, int64_t channel_id,
-      bool is_host_transfer = false);
+      HloInstruction* operand, std::optional<int64_t> channel_id,
+      bool is_host_transfer);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -1526,6 +1529,7 @@ class HloInstruction {
   static bool IsThreadIncluded(
       absl::string_view execution_thread,
       const absl::flat_hash_set<absl::string_view>& execution_threads_set);
+
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -2236,6 +2240,15 @@ class HloInstruction {
   // kCall instructions used as a Composite op.
   bool is_composite() const { return has_rare() && rare()->is_composite; }
 
+  const ResultAccuracy& result_accuracy() const {
+    return rare()->result_accuracy;
+  }
+
+  bool has_result_accuracy() const {
+    return has_rare() && (result_accuracy().has_tolerance() ||
+                          result_accuracy().mode() != ResultAccuracy::DEFAULT);
+  }
+
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
   }
@@ -2309,6 +2322,12 @@ class HloInstruction {
   // Precondition: opcode must be kConvolution or kDot.
   const PrecisionConfig& precision_config() const;
   PrecisionConfig* mutable_precision_config();
+
+  // Sets the result accuracy for this instruction. Supported for unary ops
+  // with multiple implementations.
+  void set_result_accuracy(ResultAccuracy result_accuracy) {
+    mutable_rare()->result_accuracy = std::move(result_accuracy);
+  }
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
@@ -2613,6 +2632,9 @@ class HloInstruction {
   // Delegates to HloDotInstruction::dot_dimension_numbers().
   const DotDimensionNumbers& dot_dimension_numbers() const;
 
+  // Delegates to HloRaggedDotInstruction::ragged_dot_dimension_numbers().
+  const RaggedDotDimensionNumbers& ragged_dot_dimension_numbers() const;
+
   // Delegates to HloDomainInstruction::operand_side_metadata().
   const DomainMetadata& operand_side_metadata() const;
 
@@ -2826,6 +2848,9 @@ class HloInstruction {
     // Used to render an HLO graph when tracking the propagation desired values
     // through it.
     StatisticsViz statistics_viz;
+
+    // Used to select different implementations for unary functions.
+    ResultAccuracy result_accuracy;
   };
 
   static const Rare* const kEmptyRare;
@@ -2971,11 +2996,16 @@ std::string PaddingConfigToString(const PaddingConfig& padding);
 std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
+std::string ResultAccuracyToleranceToString(
+    const ResultAccuracy::Tolerance& tolerance);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
+std::string RaggedDotDimensionNumbersToString(
+    const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 
@@ -2987,6 +3017,8 @@ absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name);
+absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
+    absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
     absl::string_view name);
 absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
@@ -2994,6 +3026,8 @@ absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
+bool IsUnaryOpWithResultAccuracy(HloOpcode opcode);
+bool IsValidResultAccuracy(const ResultAccuracy& result_accuracy);
 // Map classes that guarantee a deterministic iteration order when the key is
 // an HloInstruction* or a const HloInstruction*.
 // To make the iteration order over the map deterministic, the comparator

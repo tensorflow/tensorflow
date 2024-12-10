@@ -66,7 +66,8 @@ class FallbackState {
   // Create GraphExecutionState from the `graph_def`. The result will contain a
   // preprocessed graph with runtime information such as devices.
   absl::StatusOr<std::unique_ptr<GraphExecutionState>>
-  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true) const;
+  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true,
+                            bool enable_tf2xla_mlir_bridge = true) const;
 
   // Adds `func_def` to the function library.
   absl::Status AddFunctionDef(const FunctionDef &func_def);

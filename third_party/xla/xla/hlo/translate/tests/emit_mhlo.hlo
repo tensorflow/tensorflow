@@ -1,0 +1,13 @@
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo %s | FileCheck %s
+
+// CHECK-LABEL: module @main
+HloModule main, entry_computation_layout={(f32[4]{0}, f32[4]{0})->(f32[])}
+ENTRY %main.6 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> (f32[]) {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = f32[4] parameter(1)
+  // CHECK: mhlo.add
+  %add.3 = f32[4] add(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
+  // CHECK: mhlo.dot
+  %dot.4 = f32[] dot(f32[4] %add.3, f32[4] %Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT %tuple.5 = (f32[]) tuple(f32[] %dot.4)
+}

@@ -167,7 +167,7 @@ absl::Status PrepareRestore(mlir::MLIRContext* context,
   return absl::OkStatus();
 }
 
-tensorflow::Status RunBytecodeInitializers(
+absl::Status RunBytecodeInitializers(
     const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
     const mlrt::LoadedExecutable& loaded_executable,
@@ -218,7 +218,7 @@ tensorflow::Status RunBytecodeInitializers(
   return absl::OkStatus();
 }
 
-tensorflow::Status RunBefInitializers(
+absl::Status RunBefInitializers(
     const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
     tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
@@ -272,9 +272,9 @@ tensorflow::Status RunBefInitializers(
   return absl::OkStatus();
 }
 
-tensorflow::Status IsInputSpecsCorrect(
-    absl::string_view name, const internal::Signature& signature,
-    absl::Span<const tensorflow::Tensor> inputs) {
+absl::Status IsInputSpecsCorrect(absl::string_view name,
+                                 const internal::Signature& signature,
+                                 absl::Span<const tensorflow::Tensor> inputs) {
   TF_RET_CHECK(signature.input_specs.size() == inputs.size())
       << "signature " << name
       << " input size is wrong, expected: " << signature.input_specs.size()
@@ -293,7 +293,7 @@ tensorflow::Status IsInputSpecsCorrect(
   return absl::OkStatus();
 }
 
-tensorflow::Status CheckInputSpecs(
+absl::Status CheckInputSpecs(
     const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const internal::Signature& signature,
@@ -322,7 +322,7 @@ tensorflow::Status CheckInputSpecs(
   return absl::OkStatus();
 }
 
-tensorflow::Status PreprocessSignature(
+absl::Status PreprocessSignature(
     const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const tensorflow::SignatureDef& signature_def,
@@ -516,6 +516,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 
   tfrt::metrics::AddTFRTVersionMetric();
 
+  if (options.emit_model_type_metric) {
+    inferred_model_type_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  GetInferredModelType(meta_graph_def))
+        ->IncrementBy(1);
+  }
+
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(options);
@@ -584,7 +593,9 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
+            options.graph_execution_options.run_placer_grappler_on_functions,
+            /*import_signature_names=*/{},
+            &options.graph_execution_options.runtime_config));
   }
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
@@ -720,7 +731,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
                             std::move(fallback_state),
                             std::move(resource_context),
                             std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
+                            std::move(kernel_registry),
+                            &options.graph_execution_options.runtime_config));
 
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;
@@ -778,15 +790,6 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         ->tf_xla_persistent_cache_read_only = true;
     LOG(INFO) << "Set persistent cache directory to "
               << persistent_cache_directory << ", and set it to read-only.";
-  }
-
-  if (options.infer_model_type) {
-    inferred_model_type_count
-        ->GetCell(options.graph_execution_options.model_metadata.name(),
-                  absl::StrCat(
-                      options.graph_execution_options.model_metadata.version()),
-                  GetInferredModelType(meta_graph_def))
-        ->IncrementBy(1);
   }
 
   if (options.graph_execution_options.use_ifrt) {
@@ -860,10 +863,10 @@ std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
   return FunctionMetadata(&iter->second);
 }
 
-tensorflow::Status SavedModelImpl::Run(
-    const RunOptions& run_options, absl::string_view name,
-    absl::Span<const tensorflow::Tensor> inputs,
-    std::vector<tensorflow::Tensor>* outputs) {
+absl::Status SavedModelImpl::Run(const RunOptions& run_options,
+                                 absl::string_view name,
+                                 absl::Span<const tensorflow::Tensor> inputs,
+                                 std::vector<tensorflow::Tensor>* outputs) {
   TF_RET_CHECK(outputs) << "outputs must be provided";
   outputs->clear();
 
@@ -966,7 +969,7 @@ struct SavedModelImpl::JoinedSignature {
   std::vector<std::string> target_nodes;
 };
 
-tensorflow::Status SavedModelImpl::RunMultipleSignatures(
+absl::Status SavedModelImpl::RunMultipleSignatures(
     const RunOptions& run_options, absl::Span<const std::string> names,
     absl::Span<const std::vector<tensorflow::Tensor>> multi_inputs,
     std::vector<std::vector<tensorflow::Tensor>>* multi_outputs) {
@@ -1056,7 +1059,7 @@ SavedModelImpl::ImportSubgraph(
       optimization_result.graph->flib_def(), graph_import_config, context);
 }
 
-tensorflow::Status SavedModelImpl::RunByTensorNames(
+absl::Status SavedModelImpl::RunByTensorNames(
     const RunOptions& run_options,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
     absl::Span<const std::string> output_tensor_names,

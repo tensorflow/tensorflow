@@ -373,7 +373,7 @@ TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
 /// SignatureRunner APIs
 
 /// Attempts to cancel in flight invocation if any.
-/// This will not affect calls to `Invoke` that happend after this.
+/// This will not affect calls to `Invoke` that happen after this.
 /// Non blocking and thread safe.
 /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
 /// kTfLiteOk.

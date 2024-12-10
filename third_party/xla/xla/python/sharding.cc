@@ -74,9 +74,15 @@ nb::object CheckAndCanonicalizeMemoryKind(
         return memory_kind;
       }
     }
-    nb::object device_kind = PyDeviceList::AddressableDeviceList(device_list)
-                                 ->GetItem(0)
-                                 .attr("device_kind");
+    auto addressable_device_list =
+        PyDeviceList::AddressableDeviceList(device_list);
+    if (addressable_device_list->Len() == 0) {
+      // If the device list is not addressable, we can't check if the memory
+      // kind is supported, so we assume it is.
+      return memory_kind;
+    }
+    nb::object device_kind =
+        addressable_device_list->GetItem(0).attr("device_kind");
     std::string_view device_kind_str = nb::cast<std::string_view>(device_kind);
     auto py_str_formatter = [](std::string* out, nb::handle h) {
       *out += nb::cast<std::string_view>(nb::str(h));

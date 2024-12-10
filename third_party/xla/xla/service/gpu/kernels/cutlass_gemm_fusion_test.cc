@@ -34,11 +34,13 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
+
+using stream_executor::CudaComputeCapability;
 
 namespace xla::gpu {
 
@@ -262,6 +264,38 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
+// Test that the DUS pattern is not applied for V100, because it causes
+// `CUDA_ERROR_ILLEGAL_ADDRESS` : an illegal memory access was encountered.
+TEST_F(CutlassFusionTest, DoNotRewriteOnV100) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: f32[2,2,2], p1: f32[2,2], i: s32[]) -> f32[2,2,2] {
+      %p0 = f32[2,2,2]{2,1,0} parameter(0)
+      %p1 = f32[2,2]{1,0} parameter(1)
+      %i = s32[] parameter(2)
+
+      %dot = f32[2,2]{1,0} dot(%p1, %p1),
+               lhs_contracting_dims={1},
+               rhs_contracting_dims={0}
+      %bc = f32[1,2,2]{2,1,0} bitcast(%dot)
+
+      ROOT %r = f32[2,2,2]{2,1,0} dynamic-update-slice(%p0, %bc, %i, %i, %i)
+    }
+  )";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo(CudaComputeCapability{
+      CudaComputeCapability::CudaComputeCapabilities::VOLTA, 0});
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(std::move(pass), module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {

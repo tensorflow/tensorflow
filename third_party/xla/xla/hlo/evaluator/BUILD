@@ -1,8 +1,8 @@
 # Description:
 #   XLA evaluator implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -58,6 +58,7 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:compilation_environments",
         "//xla/service:dynamic_dimension_inference",
+        "//xla/service:gather_scatter_utils",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
         "//xla/service:pattern_matcher",
@@ -148,7 +149,6 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

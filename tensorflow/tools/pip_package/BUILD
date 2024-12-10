@@ -4,13 +4,13 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load(
-    "@local_tsl//third_party/py:python_wheel_library.bzl",
-    "wheel_library",
+    "@local_tsl//third_party/py:py_import.bzl",
+    "py_import",
 )
 load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
@@ -74,7 +74,6 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -274,6 +273,12 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
+    manylinux_compliance_tag = select({
+        "@platforms//cpu:aarch64": "manylinux_2_17_aarch64",
+        "@platforms//cpu:arm64": "manylinux_2_17_aarch64",
+        "@platforms//cpu:x86_64": "manylinux_2_17_x86_64",
+        "//conditions:default": "",
+    }),
     platform_name = select({
         "@platforms//os:osx": "macosx",
         "@platforms//os:macos": "macosx",
@@ -284,6 +289,7 @@ tf_wheel(
         "@platforms//cpu:aarch64": "arm64",
         "@platforms//cpu:arm64": "arm64",
         "@platforms//cpu:x86_64": "x86_64",
+        "@platforms//cpu:ppc": "ppc64le",
     }),
     source_files = [
         "MANIFEST.in",
@@ -293,14 +299,27 @@ tf_wheel(
         ":py_deps",
         "//tensorflow:tf_python_api_gen_v2",
     ] + select({
-        "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
+        "//tensorflow:dynamic_loaded_kernels": if_pywrap(
+            if_false = DYNAMIC_LOADED_KERNELS,
+            if_true = [],
+        ),
         "//conditions:default": [],
     }) + select({
-        "//conditions:default": [
-            "//tensorflow:tensorflow_cc",
-            "//tensorflow:tensorflow_framework",
-        ],
-        "//tensorflow:windows": ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
+        "//conditions:default": if_pywrap(
+            if_false = [
+                "//tensorflow:tensorflow_cc",
+                "//tensorflow:tensorflow_framework",
+            ],
+            if_true = [
+                "//tensorflow/python:_pywrap_tensorflow_binaries",
+            ],
+        ),
+        "//tensorflow:windows": if_pywrap(
+            if_false = [
+                "//tensorflow/python:pywrap_tensorflow_import_lib_file",
+            ],
+            if_true = [],
+        ),
     }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
@@ -346,14 +365,13 @@ py_test(
         "windows_excluded",
     ],
     deps = [
-        ":tf_wheel_library",
+        ":tf_py_import",
     ],
 )
 
-wheel_library(
-    name = "tf_wheel_library",
-    wheel = ":wheel",
-    wheel_deps = if_cuda_libs([
+py_import(
+    name = "tf_py_import",
+    cc_deps = if_cuda_libs([
         "@cuda_cublas//:cublas",
         "@cuda_cublas//:cublasLt",
         "@cuda_cudart//:cudart",
@@ -367,6 +385,7 @@ wheel_library(
         "@cuda_nvjitlink//:nvjitlink",
         "@cuda_nvrtc//:nvrtc",
     ]),
+    wheel = ":wheel",
     deps = [
         "@pypi_absl_py//:pkg",
         "@pypi_astunparse//:pkg",

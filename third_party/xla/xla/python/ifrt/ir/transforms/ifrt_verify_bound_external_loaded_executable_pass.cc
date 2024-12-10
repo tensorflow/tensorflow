@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"
 #include "tsl/platform/statusor.h"

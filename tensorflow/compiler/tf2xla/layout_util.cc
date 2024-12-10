@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

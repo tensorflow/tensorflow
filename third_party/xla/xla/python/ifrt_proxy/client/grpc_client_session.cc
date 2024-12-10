@@ -14,7 +14,6 @@
 
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -42,12 +41,14 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -156,6 +157,7 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
   CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
   req->mutable_request_metadata()->set_op_id(op_id);
 
+  tsl::profiler::TraceMe t("grpc_stream_write");
   if (!stream_->Write(*req)) {
     CHECK(response_callbacks_->Pop(op_id).has_value());
     return absl::UnknownError("GrpcClientSession: writing to stream failed.");
@@ -249,6 +251,7 @@ std::shared_ptr<grpc::GrpcIfrtService::StubInterface> CreateGrpcStub(
   // model compilation.
   args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
+  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   std::shared_ptr<::grpc::Channel> channel = ::grpc::CreateCustomChannel(
       std::string(server_address), GetClientCredentials(), args);
   VLOG(0) << "  Established channel.";

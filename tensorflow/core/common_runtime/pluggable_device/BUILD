@@ -58,7 +58,8 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:device_memory",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ],
@@ -106,7 +107,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
@@ -130,7 +131,8 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_xla//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
@@ -192,6 +194,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -212,6 +215,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,

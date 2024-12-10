@@ -16,14 +16,15 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_TENSOR_BUFFER_H_
 
 #include <cstddef>
+#include <cstring>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
@@ -41,7 +42,22 @@ class TensorBuffer
       : internal::Handle<LiteRtTensorBuffer, LiteRtDestroyTensorBuffer>(
             tensor_buffer, owned) {}
 
-  static absl::StatusOr<TensorBuffer> CreateManaged(
+  // Creates a duplicate of the current TensorBuffer object. The returned
+  // object is reference counted so the underlying LiteRtTensorBuffer handle is
+  // not released with the destructor until the last reference is removed.
+  Expected<TensorBuffer> Duplicate() const {
+    if (!IsOwned()) {
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Cannot duplicate a non-owned tensor buffer");
+    }
+    if (auto status = LiteRtDuplicateTensorBuffer(Get());
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to duplicate managed tensor buffer");
+    }
+    return TensorBuffer(Get());
+  }
+
+  static Expected<TensorBuffer> CreateManaged(
       LiteRtTensorBufferType buffer_type, const RankedTensorType& tensor_type,
       size_t buffer_size) {
     LiteRtTensorBuffer tensor_buffer;
@@ -49,61 +65,129 @@ class TensorBuffer
     if (auto status = LiteRtCreateManagedTensorBuffer(
             buffer_type, &litert_tensor_type, buffer_size, &tensor_buffer);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to create managed tensor buffer");
+      return Unexpected(status, "Failed to create managed tensor buffer");
     }
     return TensorBuffer(tensor_buffer);
   }
 
-  absl::StatusOr<LiteRtTensorBufferType> BufferType() const {
+  litert::Expected<AHardwareBuffer*> GetAhwb() const {
+#if LITERT_HAS_AHWB_SUPPORT
+    AHardwareBuffer* ahwb;
+    if (LiteRtGetTensorBufferAhwb(Get(), &ahwb) == kLiteRtStatusOk) {
+      return ahwb;
+    } else {
+      return litert::Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "Failed to get AHardwareBuffer from tensor buffer");
+    }
+#else
+    return litert::Unexpected(
+        kLiteRtStatusErrorRuntimeFailure,
+        "AHardwareBuffer is not supported on this platform");
+#endif
+  }
+
+  Expected<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;
     if (auto status = LiteRtGetTensorBufferType(Get(), &tensor_buffer_type);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to get tensor buffer type");
+      return Unexpected(status, "Failed to get tensor buffer type");
     }
     return tensor_buffer_type;
   }
 
-  absl::StatusOr<RankedTensorType> TensorType() const {
+  Expected<RankedTensorType> TensorType() const {
     LiteRtRankedTensorType tensor_type;
     if (auto status = LiteRtGetTensorBufferTensorType(Get(), &tensor_type);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to get tensor type");
+      return Unexpected(status, "Failed to get tensor type");
     }
     return RankedTensorType(tensor_type);
   }
 
-  absl::StatusOr<size_t> Size() const {
+  Expected<size_t> Size() const {
     size_t size;
     if (auto status = LiteRtGetTensorBufferSize(Get(), &size);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to get tensor size");
+      return Unexpected(status, "Failed to get tensor size");
     }
     return size;
   }
 
-  absl::StatusOr<size_t> Offset() const {
+  Expected<size_t> Offset() const {
     size_t offset;
     if (auto status = LiteRtGetTensorBufferOffset(Get(), &offset);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to get tensor offset");
+      return Unexpected(status, "Failed to get tensor offset");
     }
     return offset;
   }
 
-  absl::StatusOr<void*> Lock(LiteRtEvent event = nullptr) {
+  Expected<void*> Lock(LiteRtEvent event = nullptr) {
     void* host_mem_addr;
     if (auto status = LiteRtLockTensorBuffer(Get(), &host_mem_addr, event);
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to lock the tensor buffer");
+      return Unexpected(status, "Failed to lock the tensor buffer");
     }
     return host_mem_addr;
   }
 
-  absl::Status Unlock() {
+  Expected<void> Unlock() {
     if (auto status = LiteRtUnlockTensorBuffer(Get());
         status != kLiteRtStatusOk) {
-      return absl::InternalError("Failed to unlock the tensor buffer");
+      return Unexpected(status, "Failed to unlock the tensor buffer");
     }
+    return {};
+  }
+
+  // Writes data from the user provided Span<const T> to the tensor buffer.
+  // It returns an error if the provided buffer is bigger than the size of the
+  // tensor buffer.
+  template <typename T>
+  Expected<void> Write(absl::Span<const T> data) {
+    auto host_mem_addr = Lock();
+    if (!host_mem_addr) {
+      return host_mem_addr.Error();
+    }
+    auto size = Size();
+    if (!size) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get TensorBuffer size");
+    }
+    if (*size < data.size() * sizeof(T)) {
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "TensorBuffer size is smaller than the given data size");
+    }
+    std::memcpy(*host_mem_addr, data.data(), data.size() * sizeof(T));
+    Unlock();
+    return {};
+  }
+
+  // Reads data into the user provided Span<T> from the tensor buffer.
+  // If the provided buffer is smaller than the size of the tensor buffer, the
+  // data will be read up to the size of the provided buffer.
+  // It returns an error if the provided buffer is bigger than the size of the
+  // tensor buffer.
+  template <typename T>
+  Expected<void> Read(absl::Span<T> data) {
+    auto host_mem_addr = Lock();
+    if (!host_mem_addr) {
+      return host_mem_addr.Error();
+    }
+    auto size = Size();
+    if (!size) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get TensorBuffer size");
+    }
+    size_t total_read_size = data.size() * sizeof(T);
+    if (*size < total_read_size) {
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "TensorBuffer size is smaller than the given data size");
+    }
+    std::memcpy(data.data(), *host_mem_addr, total_read_size);
+    Unlock();
     return {};
   }
 };
@@ -112,11 +196,11 @@ class TensorBufferScopedLock {
  public:
   ~TensorBufferScopedLock() { (void)tensor_buffer_.Unlock(); }
 
-  static absl::StatusOr<std::pair<TensorBufferScopedLock, void*>> Create(
+  static Expected<std::pair<TensorBufferScopedLock, void*>> Create(
       TensorBuffer& tensor_buffer, LiteRtEvent event = nullptr) {
     auto addr = tensor_buffer.Lock(event);
-    if (!addr.ok()) {
-      return addr.status();
+    if (!addr) {
+      return addr.Error();
     }
     return std::make_pair(TensorBufferScopedLock(tensor_buffer), *addr);
   }

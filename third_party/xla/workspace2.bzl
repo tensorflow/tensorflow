@@ -6,9 +6,10 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 # Import TSL Workspaces
 load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
-load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
@@ -20,6 +21,7 @@ load("//third_party/uv:workspace.bzl", uv = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
+    FP16()
     dlpack()
     gloo()
     mpitrampoline()
@@ -39,6 +41,13 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
+
+    tf_http_archive(
+        name = "XNNPACK",
+        sha256 = "3306f4178c8594b689165d385e644f03a3154c3be044f6ae36dd170fbf182cf5",
+        strip_prefix = "XNNPACK-983d013300f19fd3f4e33220b6401408e97a8d12",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/983d013300f19fd3f4e33220b6401408e97a8d12.zip"),
+    )
 
     tf_http_archive(
         name = "jsoncpp_git",

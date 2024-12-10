@@ -4,14 +4,14 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
 # copybara:uncomment_end
 
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("@local_xla//xla:xla.bzl", "xla_py_proto_library")
 load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
@@ -219,6 +219,7 @@ filegroup(
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "@local_tsl//tsl/platform:xla_cpu_runtime_srcs",
         "@local_xla//xla:cpu_runtime_hdrs",
+        "@local_xla//xla/backends/cpu:xla_cpu_runtime_hdrs",
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
         "@local_xla//xla/tsl/framework:xla_cpu_runtime_hdrs",
@@ -351,17 +352,15 @@ cc_library(
 #         "@local_tsl//tsl/platform:thread_annotations",
 #         "@local_tsl//tsl/platform:tstring",
 #         "@local_tsl//tsl/platform:types",
-#         "@local_tsl//tsl/platform/default:cord",
-#         "@local_tsl//tsl/platform/default:env_time",
-#         "@local_tsl//tsl/platform/default:logging",
-#         "@local_tsl//tsl/platform/default:mutex",
-#         "@local_tsl//tsl/platform/default:types",
-#         "@local_tsl//tsl/platform/google:cord",
-#         "@local_tsl//tsl/platform/google:env_time",
-#         "@local_tsl//tsl/platform/google:logging",
-#         "@local_tsl//tsl/platform/google:mutex",
-#         "@local_tsl//tsl/platform/google:types",
-#         "@local_tsl//tsl/platform/windows:env_time",
+#         "@local_xla//xla/tsl/platform/default:cord",
+#         "@local_xla//xla/tsl/platform/default:env_time",
+#         "@local_xla//xla/tsl/platform/default:logging",
+#         "@local_xla//xla/tsl/platform/default:types",
+#         "@local_xla//xla/tsl/platform/google:cord",
+#         "@local_xla//xla/tsl/platform/google:env_time",
+#         "@local_xla//xla/tsl/platform/google:logging",
+#         "@local_xla//xla/tsl/platform/google:types",
+#         "@local_xla//xla/tsl/platform/windows:env_time",
 #         "//tensorflow/core/platform:bfloat16",
 #         "//tensorflow/core/platform:blocking_counter",
 #         "//tensorflow/core/platform:byte_order",
@@ -539,6 +538,8 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
+        "@local_xla//xla/core/collectives:clique_id",
+        "@local_xla//xla/core/collectives:clique_key",
         "@local_xla//xla/hlo/builder:value_inference",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
@@ -729,6 +730,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla:types",
+        "@local_xla//xla/backends/gpu/collectives:gpu_clique_key",
+        "@local_xla//xla/core/collectives:clique_id",
+        "@local_xla//xla/core/collectives:clique_key",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/builder/lib:arithmetic",
@@ -737,8 +741,8 @@ cc_library(
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
-        "@local_xla//xla/service/gpu/runtime:nccl_clique_key",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
+        "@local_xla//xla/stream_executor:stream_executor_h",
     ],
     alwayslink = 1,
 )

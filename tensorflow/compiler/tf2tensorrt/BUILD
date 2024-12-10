@@ -5,7 +5,7 @@
 
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
@@ -1087,7 +1087,6 @@ pybind_extension(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@ml_dtypes//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@platforms//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@snappy//:__subpackages__",
@@ -1102,7 +1101,6 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "@local_xla//xla/stream_executor",
         "@pybind11",
     ],
 )

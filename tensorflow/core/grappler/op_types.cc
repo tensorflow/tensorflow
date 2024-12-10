@@ -702,7 +702,7 @@ bool IsDataset(const NodeDef& node) {
          op == "DatasetToSingleElement" || op == "ReduceDataset";
 }
 
-bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+bool IsStateful(const NodeDef& node, const OpRegistryInterface* op_registry) {
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
   absl::Status status = op_registry->LookUpOpDef(op_name, &op_def);
@@ -714,7 +714,7 @@ bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
   return op_def->is_stateful();
 }
 
-bool IsStateful(const NodeDef node) {
+bool IsStateful(const NodeDef& node) {
   return IsStateful(node, OpRegistry::Global());
 }
 

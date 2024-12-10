@@ -71,8 +71,10 @@ constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
-constexpr int kPendingTaskLogLimit = 20;
+// Limit the number of stragglers we log to avoid `RESOURCE_EXHAUSTED` errors in
+// the RPC layer from sending overly verbose errors.
 constexpr int kPendingStragglerLogLimit = 3;
+constexpr int kUniqueBarrierCounter = 0;
 
 std::string GetTaskName(std::string_view job_name, int task_id) {
   return absl::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
@@ -103,6 +105,11 @@ struct CoordinatedTaskEqual {
     return lhs.job_name() == rhs.job_name() && lhs.task_id() == rhs.task_id();
   }
 };
+
+absl::Status MakeShutdownBarrierError(const absl::Status& error) {
+  return MakeCoordinationError(absl::InternalError(absl::StrCat(
+      "Shutdown barrier has failed.\nBarrier result: '", error.ToString())));
+}
 
 // Standalone implementation of the coordination service.
 class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
@@ -146,11 +153,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   std::vector<KeyValueEntry> GetKeyValueDir(
       std::string_view directory_key) override;
   absl::Status DeleteKeyValue(std::string_view key) override;
-  void BarrierAsync(std::string barrier_id, absl::Duration timeout,
-                    const CoordinatedTask& task,
+  void BarrierAsync(std::string barrier_id, int64_t counter,
+                    absl::Duration timeout, const CoordinatedTask& task,
                     const std::vector<CoordinatedTask>& participating_tasks,
-                    StatusCallback done) override;
-  absl::Status CancelBarrier(std::string barrier_id,
+                    BarrierCallback done) override;
+  absl::Status CancelBarrier(std::string barrier_id, int64_t counter,
                              const CoordinatedTask& task) override;
   void PollForErrorAsync(const CoordinatedTask& task,
                          StatusCallback done) override;
@@ -160,13 +167,17 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   uint64_t GetServiceIncarnation() override;
   void BarrierAsyncLocked(
-      std::string barrier_id, absl::Duration timeout,
+      std::string barrier_id, int64_t counter, absl::Duration timeout,
       const CoordinatedTask& task,
       const std::vector<CoordinatedTask>& participating_tasks,
-      StatusCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  StatusCallback ConnectAfterBarrierPasses(absl::string_view task_name,
-                                           uint64_t incarnation,
-                                           StatusCallback done);
+      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  BarrierCallback ConnectAfterBarrierPasses(absl::string_view task_name,
+                                            uint64_t incarnation,
+                                            StatusCallback done);
+  // Connects a task to the service, and leaves any previously ongoing barriers
+  // for recoverable tasks.
+  void ConnectTask(const CoordinatedTask& task, uint64_t incarnation)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Checks if any task has stopped sending heartbeats.
   void CheckHeartbeatTimeout();
   // Checks if any barrier has timed out.
@@ -199,10 +210,16 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   absl::Status DisconnectTask(const CoordinatedTask& task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void DisconnectAllTasks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void DisconnectAllNonRecoverableTasks()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  std::vector<CoordinatedTask> GetTasksForShutdownBarrier();
 
   struct BarrierState {
-    std::string id;
+    std::string id = "";
+    // Counter is incremented for each new barrier using the same id.
+    // No two barriers with the same id (and different counters) can be ongoing
+    // at the same time.
+    int64_t counter = 0;
     bool passed = false;
     absl::Status result = absl::UnknownError(
         "Invalid barrier result.");  // Only valid if `passed` is true.
@@ -212,34 +229,58 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                         CoordinatedTaskEqual>
         tasks_at_barrier;
-    std::vector<StatusCallback> done_callbacks;
+    absl::flat_hash_map<CoordinatedTask, BarrierCallback, CoordinatedTaskHash,
+                        CoordinatedTaskEqual>
+        done_callbacks;
     // Specifies the task that initiated the barrier (the first task to call the
     // barrier).
     CoordinatedTask initiating_task;
   };
-  // Validates that the barrier is invoked with the right args. Returns false if
-  // the barrier should fail immediately.
-  bool ValidateBarrierArgs(
-      std::string_view barrier_id, absl::Duration timeout,
-      const CoordinatedTask& task,
-      const std::vector<CoordinatedTask>& participating_tasks,
-      StatusCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  bool BarrierIsUninitialized(const BarrierState& barrier) {
+    return barrier.id.empty() && barrier.counter == 0 && !barrier.passed &&
+           barrier.deadline_in_micros == 0 && barrier.num_pending_tasks == 0;
+  }
+  std::string BarrierName(std::string_view barrier_id, int64_t counter) {
+    return absl::StrCat(barrier_id, "::", counter);
+  }
+  std::string BarrierName(const BarrierState& barrier) {
+    return BarrierName(barrier.id, barrier.counter);
+  }
   // Initializes a new barrier. Returns false if the barrier should fail
   // immediately.
   bool InitializeBarrier(
-      BarrierState* barrier, std::string_view barrier_id,
+      BarrierState* barrier, std::string_view barrier_id, int64_t counter,
       absl::Duration timeout, const CoordinatedTask& task,
       const std::vector<CoordinatedTask>& participating_tasks,
-      StatusCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Initialize `BarrierState`'s tasks_at_barrier map.
+  bool InitializeTasksAtBarrier(
+      BarrierState* barrier,
+      const std::vector<CoordinatedTask>& participating_tasks,
+      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Adds a callback to be called when the barrier is done.
+  // If there is an existing callback for that task, it will be overwritten,
+  // cancelling the previous callback.
+  void AddBarrierCallback(BarrierState* barrier, const CoordinatedTask& task,
+                          BarrierCallback done)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Ends the barrier with a result (ok or error).
   void PassBarrier(BarrierState* barrier, const absl::Status& result)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // A task reaches the barrier.
   void ReachBarrier(BarrierState* barrier, const CoordinatedTask& task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void FailBarrierWithCounterMismatch(BarrierState* barrier, int64_t counter)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Propagates same result back to task.
-  void RepeatBarrierResult(BarrierState* barrier, const CoordinatedTask& task,
-                           StatusCallback done)
+  void RepeatBarrierResult(BarrierState* barrier, const CoordinatedTask& task)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Leaves any ongoing barriers.
+  // If the task is non-recoverable, the barrier exits with an error.
+  // If the task is recoverable, the barrier will 'unregister' a task and allow
+  // it to join back again later before the timeout.
+  void LeaveOngoingBarriers(const CoordinatedTask& task,
+                            std::string_view reason)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Post-barrier hook to connect all tasks.
   void ConnectAllTasks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -250,8 +291,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void CompleteShutdownAfterBarrier(const absl::Status& result,
                                     BarrierState* barrier)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  // Checks if participating tasks are specified correctly across barrier calls.
+  // Checks if the participating tasks are specified correctly across barrier
+  // calls and that the caller task is one of the participating tasks.
   bool ValidateTaskArgs(BarrierState* barrier,
+                        const CoordinatedTask& caller_task,
                         const std::vector<CoordinatedTask>& tasks_args)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   bool isRecoverableJob(std::string_view task_name) const;
@@ -284,10 +327,19 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // Adds a task to the error polling state.
     void AddTask(const CoordinatedTask& task, StatusCallback&& done);
 
+    // Removes a task from the error polling state.
+    // If an existing polling request is present, we will invoke the callback
+    // with the `reason` argument.
+    // Note: for disconnected tasks, this does not actually propagate the error
+    // back, but prevents memory leaks by removing stale callbacks.
+    void RemoveTask(const CoordinatedTask& task, absl::string_view reason);
+
    private:
     bool responded_ = false;
     absl::Status error_ = absl::OkStatus();
-    std::vector<StatusCallback> done_callbacks_;
+    absl::flat_hash_map<CoordinatedTask, StatusCallback, CoordinatedTaskHash,
+                        CoordinatedTaskEqual>
+        done_callbacks_;
     absl::flat_hash_set<std::string> polling_task_names_;
   };
 
@@ -307,6 +359,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
     CoordinatedTaskState GetState() { return state_; }
     absl::Status GetStatus() { return status_; }
+    bool IsRecoverable() { return recoverable_; }
+    void SetRecoverable(bool recoverable) { recoverable_ = recoverable; }
     uint64_t GetTaskIncarnation() { return task_incarnation_; }
     void SetTaskIncarnation(uint64_t task_incarnation) {
       task_incarnation_ = task_incarnation;
@@ -330,8 +384,13 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // local device info.
     bool DeviceInfoIsCollected() { return devices_.device_size() != 0; }
 
+    // This is used to propagate state changes (disconnect, error) to ongoing
+    // barriers.
     absl::flat_hash_set<std::string> GetOngoingBarriers();
+    // The task has a new ongoing barrier. This does not mean that it has
+    // reached the barrier.
     void JoinBarrier(std::string_view barrier_id);
+    // The task has exited a barrier (because a barrier has passed).
     void ExitBarrier(std::string_view barrier_id);
     // Returns true if the task has been disconnected beyond the grace period
     // and no further agent requests are expected. Note that the grace period
@@ -357,6 +416,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
+    // TODO(b/342448688): Re-use config's recoverable jobs instead.
+    bool recoverable_ = false;
   };
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
@@ -381,6 +442,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
   const std::string shutdown_barrier_id_ =
       absl::StrCat("Shutdown::", std::to_string(service_incarnation_));
+  std::vector<CoordinatedTask> shutdown_barrier_tasks_
+      ABSL_GUARDED_BY(state_mu_);
 
   absl::Mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
@@ -420,10 +483,19 @@ void CoordinationServiceStandaloneImpl::ErrorPollingState::SetError(
   if (responded_) return;
   responded_ = true;
   error_ = error;
-  for (auto& done_cb : done_callbacks_) {
+  for (auto& [_, done_cb] : done_callbacks_) {
     done_cb(error_);
   }
   done_callbacks_.clear();
+}
+
+void CoordinationServiceStandaloneImpl::ErrorPollingState::RemoveTask(
+    const CoordinatedTask& task, absl::string_view reason) {
+  if (done_callbacks_.contains(task)) {
+    done_callbacks_[task](MakeCoordinationError(absl::CancelledError(
+        absl::StrCat("Cancelled error polling because: ", reason))));
+  }
+  done_callbacks_.erase(task);
 }
 
 void CoordinationServiceStandaloneImpl::ErrorPollingState::AddTask(
@@ -431,7 +503,8 @@ void CoordinationServiceStandaloneImpl::ErrorPollingState::AddTask(
   // Do not allow to insert a task if the service has already responded.
   if (Responded()) return;
   polling_task_names_.insert(GetTaskName(task));
-  done_callbacks_.emplace_back(done);
+  RemoveTask(task, "new request from the same task");
+  done_callbacks_[task] = done;
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
@@ -462,7 +535,16 @@ bool CoordinationServiceStandaloneImpl::TaskState::SetError(
 absl::Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
     uint64_t task_incarnation) {
   if (!status_.ok()) return status_;
-  if (task_incarnation != task_incarnation_) {
+  // Record heartbeat.
+  if (task_incarnation_ == task_incarnation) {
+    absl::MutexLock l(&last_heartbeat_mu_);
+    last_heartbeat_us_ = Env::Default()->NowMicros();
+    return absl::OkStatus();
+  }
+  // Task incarnation mismatch!
+  if (IsRecoverable()) {
+    return absl::OkStatus();  // Ignore, but don't record new heartbeat.
+  } else {
     return MakeCoordinationError(absl::AbortedError(absl::StrCat(
         task_name_, " Heartbeat: Incarnation ID mismatch: expecting ",
         task_incarnation_, " but got ", task_incarnation,
@@ -470,9 +552,6 @@ absl::Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
         "earlier errors or any scheduler events (e.g. preemption, eviction) to "
         "debug further.")));
   }
-  absl::MutexLock l(&last_heartbeat_mu_);
-  last_heartbeat_us_ = Env::Default()->NowMicros();
-  return absl::OkStatus();
 }
 
 int64_t
@@ -598,7 +677,7 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
         continue;
       }
       ++pending_task_count;
-      if (pending_task_count < kPendingTaskLogLimit) {
+      if (pending_task_count < kPendingStragglerLogLimit) {
         absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
       }
     }
@@ -610,10 +689,12 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
         "task logs (both timed out and first task) to debug further.\n"
         "# of tasks that reached the barrier: %d/%d.\nThe first "
         "task at the barrier: %s. Some timed out task names:\n%s",
-        barrier_id, tasks_at_barrier, barrier->tasks_at_barrier.size(),
-        GetTaskName(barrier->initiating_task), pending_tasks);
+        BarrierName(*barrier), tasks_at_barrier,
+        barrier->tasks_at_barrier.size(), GetTaskName(barrier->initiating_task),
+        pending_tasks);
     const absl::Status error =
-        MakeCoordinationError(absl::DeadlineExceededError(error_message));
+        MakeBarrierError(absl::DeadlineExceededError(error_message),
+                         barrier->id, barrier->counter);
     PassBarrier(barrier, error);
   }
 }
@@ -664,10 +745,11 @@ void CoordinationServiceStandaloneImpl::Stop() {
   // Fail all ongoing barriers.
   for (auto& [barrier_id, barrier] : barriers_) {
     if (!barrier.passed) {
-      absl::Status error =
-          MakeCoordinationError(absl::AbortedError(absl::StrCat(
+      absl::Status error = MakeBarrierError(
+          absl::AbortedError(absl::StrCat(
               "Barrier failed because service is shutting down. Barrier_id: ",
-              barrier_id)));
+              BarrierName(barrier))),
+          barrier.id, barrier.counter);
       PassBarrier(&barrier, error);
     }
   }
@@ -720,24 +802,39 @@ absl::Status CoordinationServiceStandaloneImpl::RegisterTask(
   return status;
 }
 
-StatusCallback CoordinationServiceStandaloneImpl::ConnectAfterBarrierPasses(
+CoordinationServiceInterface::BarrierCallback
+CoordinationServiceStandaloneImpl::ConnectAfterBarrierPasses(
     absl::string_view task_name, uint64_t incarnation, StatusCallback done) {
   return [this, task = std::string(task_name), incarnation,
-          done = std::move(done)](absl::Status s) mutable {
+          done = std::move(done)](absl::Status s,
+                                  int64_t unused_counter) mutable {
     state_mu_.AssertHeld();
-    if (!s.ok()) {
-      done(s);
-    } else if (incarnation == cluster_state_[task]->GetTaskIncarnation()) {
+    if (s.ok() && incarnation == cluster_state_[task]->GetTaskIncarnation()) {
       // Connect task to service.
       cluster_state_[task]->Connect();
       done(absl::OkStatus());
-    } else {
+    } else if (s.ok() || absl::IsCancelled(s)) {
       // Avoid using `AbortedError` which typically has retry semantics.
       done(MakeCoordinationError(
           absl::AlreadyExistsError("Aborted connect attempt as there is a "
                                    "request from a newer incarnation.")));
+    } else {
+      // Non-cancellation error.
+      done(s);
     }
   };
+}
+
+void CoordinationServiceStandaloneImpl::ConnectTask(const CoordinatedTask& task,
+                                                    uint64_t incarnation) {
+  const std::string task_name = GetTaskName(task);
+  const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+
+  task_state->SetTaskIncarnation(incarnation);
+  task_state->Connect();
+  if (task_state->IsRecoverable()) {
+    LeaveOngoingBarriers(task, "recoverable task silently connected again");
+  }
 }
 
 void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
@@ -767,11 +864,13 @@ void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
 
   const std::unique_ptr<TaskState>& task_cluster_state =
       cluster_state_[task_name];
+  task_cluster_state->SetRecoverable(task.recoverable());
   const auto task_state = task_cluster_state->GetState();
   const auto task_status = task_cluster_state->GetStatus();
 
   if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
-      (allow_new_incarnation_to_reconnect_ &&
+      ((allow_new_incarnation_to_reconnect_ ||
+        task_cluster_state->IsRecoverable()) &&
        (absl::IsUnavailable(task_status) &&
         task_status.GetPayload(CoordinationErrorPayloadKey())))) {
     // The task is allowed to register itself if:
@@ -790,12 +889,12 @@ void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
       // There is no state that needs to be cleaned up.
       task_cluster_state->SetTaskIncarnation(incarnation);
       BarrierAsyncLocked(
-          kClusterRegisterBarrierId, cluster_register_timeout_, task, {},
+          kClusterRegisterBarrierId, kUniqueBarrierCounter,
+          cluster_register_timeout_, task, {},
           ConnectAfterBarrierPasses(task_name, incarnation, std::move(done)));
       return;
     }
-    task_cluster_state->SetTaskIncarnation(incarnation);
-    task_cluster_state->Connect();
+    ConnectTask(task, incarnation);
     // TODO(b/369222279): Think about the barrier case - may need periodic
     // reporting of stragglers.
     LogConnectStatusLocked();
@@ -804,11 +903,13 @@ void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
   } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
     // This may happen if the service processes the initial RegisterTask(),
     // but the agent did not receive the response so the agent retries again.
-    if (task_cluster_state->GetTaskIncarnation() == incarnation) {
+    if (task_cluster_state->GetTaskIncarnation() == incarnation ||
+        task_cluster_state->IsRecoverable()) {
       // This should be a no-op, but we update the last heartbeat timestamp
       // to give a longer grace period for the agent to start sending
       // heartbeats.
-      task_cluster_state->Connect();
+      /// For recoverable tasks, we also leave any previously ongoing barriers.
+      ConnectTask(task, incarnation);
       LogConnectStatusLocked();
       done(absl::OkStatus());
       return;
@@ -855,17 +956,38 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
       task_state->second->CollectDeviceInfo(devices);
     }
   }
-  BarrierAsync(device_propagation_barrier_id_, kDevicePropagationTimeout, task,
-               {}, std::move(done));
+  BarrierAsync(device_propagation_barrier_id_, kUniqueBarrierCounter,
+               kDevicePropagationTimeout, task, {},
+               [done = std::move(done)](const absl::Status& s,
+                                        int64_t unused_counter) { done(s); });
 }
 
 void CoordinationServiceStandaloneImpl::ShutdownTaskAsync(
     const CoordinatedTask& task, StatusCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked ShutdownTaskAsync()";
-  if (shutdown_barrier_timeout_ > absl::ZeroDuration()) {
-    // Impose shutdown barrier so that all tasks can disconnect together.
-    BarrierAsync(shutdown_barrier_id_, shutdown_barrier_timeout_, task, {},
-                 done);
+  if (shutdown_barrier_timeout_ > absl::ZeroDuration() && !task.recoverable()) {
+    // Impose shutdown barrier so that all (non-recoverable) tasks can
+    // disconnect together.
+    // Notes:
+    // 1. Recoverable tasks may disconnect and connect multiple times, thus we
+    //    should not impose a barrier on them. Otherwise, the shutdown barrier
+    //    will fail upon the first recoverable task restart.
+    // 2. But a shutdown barrier across non-recoverable tasks is still needed
+    //    to propagate any early shutdown errors from a non-recoverable task.
+    // 3. Users should invoke their own barrier to signify the end of a
+    //    workload so that there will still be a synchronized shutdown across
+    //    all tasks.
+    auto shutdown_tasks = GetTasksForShutdownBarrier();
+    BarrierAsync(shutdown_barrier_id_, kUniqueBarrierCounter,
+                 shutdown_barrier_timeout_, task, shutdown_tasks,
+                 [done = std::move(done)](const absl::Status& s,
+                                          int64_t unused_counter) {
+                   if (s.ok()) {
+                     done(absl::OkStatus());
+                   } else {
+                     done(MakeShutdownBarrierError(s));
+                   }
+                 });
   } else {
     absl::Status status;
     {
@@ -900,24 +1022,19 @@ absl::Status CoordinationServiceStandaloneImpl::DisconnectTask(
   } else if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(absl::InvalidArgumentError(absl::StrCat(
         "Unexpected disconnect request with task_name=", task_name)));
-  } else if (cluster_state_[task_name]->GetState() ==
-             CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
+  }
+  const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+
+  if (task_state->GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         absl::StrCat("The task is already disconnected: ", task_name)));
   }
 
-  // Disconnect task and fail any ongoing barriers.
-  cluster_state_[task_name]->Disconnect(
+  // Disconnect task.
+  task_state->Disconnect(
       /*grace_period_duration_us=*/heartbeat_timeout_ms_ * 1000);
-  for (const auto& barrier_id :
-       cluster_state_[task_name]->GetOngoingBarriers()) {
-    BarrierState* barrier = &barriers_[barrier_id];
-    absl::Status error = MakeCoordinationError(absl::InternalError(absl::StrCat(
-        "Barrier failed because a task has disconnected. Barrier Id: ",
-        barrier_id, ", Task: ", task_name)));
-    PassBarrier(barrier, error);
-  }
-
+  LeaveOngoingBarriers(task, "task disconnected");
+  error_polling_state_.RemoveTask(task, "task has disconnected.");
   LOG(INFO) << task_name << " has disconnected from coordination service.";
   return absl::OkStatus();
 }
@@ -1025,7 +1142,8 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
 bool CoordinationServiceStandaloneImpl::AllTasksAreRecoverable(
     const std::vector<CoordinatedTask>& tasks) {
   for (const auto& task : tasks) {
-    if (!isRecoverableJob(task.job_name())) {
+    if (!cluster_state_[GetTaskName(task)]->IsRecoverable() &&
+        !isRecoverableJob(task.job_name())) {
       return false;
     }
   }
@@ -1245,19 +1363,11 @@ void CoordinationServiceStandaloneImpl::SetAllTasksError(
 
 void CoordinationServiceStandaloneImpl::SetTaskError(
     std::string_view task_name, const absl::Status& error) {
+  const CoordinatedTask task = GetTaskFromName(task_name);
   const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
   if (task_state->SetError(error)) {
-    LOG(ERROR) << task_name
-               << " has been set to ERROR in coordination service: " << error;
-    for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
-      BarrierState* barrier = &barriers_[barrier_id];
-      absl::Status barrier_error =
-          MakeCoordinationError(absl::InternalError(absl::StrCat(
-              "Barrier failed beacuse a task is in error. Barrier Id: ",
-              barrier_id, ", Task: ", task_name,
-              " Error: ", error.ToString())));
-      PassBarrier(barrier, barrier_error);
-    }
+    LeaveOngoingBarriers(
+        task, absl::StrCat("task is set to ERROR: ", error.ToString()));
   }
 }
 
@@ -1320,91 +1430,44 @@ void CoordinationServiceStandaloneImpl::PollForErrorAsync(
   error_polling_state_.AddTask(task, std::move(done));
 }
 
-// Validates that the barrier is invoked with the right args. Returns false if
-// the barrier should fail immediately.
-bool CoordinationServiceStandaloneImpl::ValidateBarrierArgs(
-    std::string_view barrier_id, absl::Duration timeout,
-    const CoordinatedTask& task,
-    const std::vector<CoordinatedTask>& participating_tasks,
-    StatusCallback done) {
-  // Check if caller task is participating in the barrier. If not, update
-  // `barriers_` to cause subsequent calls from the same task and other tasks
-  // that have already called this instance of the barrier to fail.
-  const std::string source_task_name = GetTaskName(task);
-
-  bool among_participating_tasks =
-      std::find_if(participating_tasks.begin(), participating_tasks.end(),
-                   [&](const CoordinatedTask& task) {
-                     return GetTaskName(task) == source_task_name;
-                   }) != participating_tasks.end();
-
-  if (!participating_tasks.empty() && !among_participating_tasks) {
-    const std::string task_name = GetTaskName(task);
-    absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-        absl::StrCat("A non-participating task (", GetTaskName(task),
-                     ") called the barrier: ", barrier_id)));
-    auto pair = barriers_.try_emplace(barrier_id);
-    auto it = pair.first;
-    auto* barrier = &it->second;
-    // Make sure subsequent calls fail and existing waiting tasks receive the
-    // error.
-    PassBarrier(barrier, error);
-    done(error);
-    return false;
-  }
-  return true;
-};
-
 // Initializes a new barrier. Returns false if the barrier should fail
 // immediately.
 bool CoordinationServiceStandaloneImpl::InitializeBarrier(
-    BarrierState* barrier, std::string_view barrier_id, absl::Duration timeout,
-    const CoordinatedTask& task,
+    BarrierState* barrier, std::string_view barrier_id, int64_t counter,
+    absl::Duration timeout, const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
-    StatusCallback done) {
+    BarrierCallback done) {
   // Initialize barrier state.
   barrier->id = barrier_id;
+  barrier->counter = counter;
   barrier->passed = false;
+  barrier->result = absl::UnknownError("Invalid barrier result.");
   barrier->initiating_task = task;
-  // Assume barrier is for entire cluster if no tasks are specified.
-  if (participating_tasks.empty()) {
-    for (const auto& task_state : cluster_state_) {
-      std::string_view task_name = task_state.first;
-      barrier->tasks_at_barrier[GetTaskFromName(task_name)] = false;
-    }
-  } else {
-    for (const auto& task : participating_tasks) {
-      // Fail the barrier immediately if unexpected task is included in the
-      // barrier.
-      const std::string task_name = GetTaskName(task);
-      if (!cluster_state_.contains(task_name)) {
-        absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-            absl::StrCat("Unexpected task (", task_name,
-                         ") that is not in the cluster called the barrier. "
-                         "Barrier Id: ",
-                         barrier_id)));
-        PassBarrier(barrier, error);
-        done(error);
-        return false;
-      }
-      barrier->tasks_at_barrier[task] = false;
-    }
+  barrier->done_callbacks.clear();
+  if (!InitializeTasksAtBarrier(barrier, participating_tasks, done)) {
+    return false;
   }
+
   barrier->num_pending_tasks = barrier->tasks_at_barrier.size();
 
   // Fail the barrier immediately if any tasks are already in error.
   for (const auto& pending_task : barrier->tasks_at_barrier) {
     const std::string task_name = GetTaskName(pending_task.first);
-    if (cluster_state_[task_name]->GetState() ==
-        CoordinatedTaskState::TASKSTATE_ERROR) {
-      absl::Status error = MakeCoordinationError(absl::InternalError(
-          absl::StrCat("Task (", task_name,
-                       ") is already in error before the barrier "
-                       "was called. Barrier Id: ",
-                       barrier_id, " Task error: ",
-                       cluster_state_[task_name]->GetStatus().ToString())));
+    const std::unique_ptr<TaskState>& task_cluster_state =
+        cluster_state_[task_name];
+    if (!task_cluster_state->IsRecoverable() &&
+        task_cluster_state->GetState() ==
+            CoordinatedTaskState::TASKSTATE_ERROR) {
+      absl::Status error = MakeBarrierError(
+          absl::InternalError(absl::StrCat(
+              "Task (", task_name,
+              ") is already in error before the barrier "
+              "was called. Barrier Id: ",
+              BarrierName(*barrier),
+              " Task error: ", task_cluster_state->GetStatus().ToString())),
+          barrier->id, barrier->counter);
       PassBarrier(barrier, error);
-      done(error);
+      done(error, counter);
       return false;
     }
   }
@@ -1426,62 +1489,152 @@ bool CoordinationServiceStandaloneImpl::InitializeBarrier(
   return true;
 }
 
+bool CoordinationServiceStandaloneImpl::InitializeTasksAtBarrier(
+    BarrierState* barrier,
+    const std::vector<CoordinatedTask>& participating_tasks,
+    BarrierCallback done) {
+  // Tasks were already specified for a previous barrier counter. Reset state
+  // and return early.
+  if (!barrier->tasks_at_barrier.empty()) {
+    for (auto& it : barrier->tasks_at_barrier) {
+      it.second = false;
+    }
+    return true;
+  }
+  if (participating_tasks.empty()) {
+    // Assume barrier is for entire cluster if no tasks are specified.
+    for (const auto& task_state : cluster_state_) {
+      std::string_view task_name = task_state.first;
+      barrier->tasks_at_barrier[GetTaskFromName(task_name)] = false;
+    }
+    return true;
+  }
+  // Rely on the caller-specified task args.
+  for (const auto& task : participating_tasks) {
+    // Fail the barrier immediately if unexpected task is included in the
+    // barrier.
+    const std::string task_name = GetTaskName(task);
+    if (!cluster_state_.contains(task_name)) {
+      absl::Status error = MakeBarrierError(
+          absl::InvalidArgumentError(
+              absl::StrCat("Unexpected task (", task_name,
+                           ") that is not in the cluster called the barrier. "
+                           "Barrier Id: ",
+                           BarrierName(*barrier))),
+          barrier->id, barrier->counter);
+      AddBarrierCallback(barrier, task, std::move(done));
+      PassBarrier(barrier, error);
+      return false;
+    }
+    barrier->tasks_at_barrier[task] = false;
+  }
+  return true;
+}
+
+void CoordinationServiceStandaloneImpl::AddBarrierCallback(
+    BarrierState* barrier, const CoordinatedTask& task, BarrierCallback done) {
+  auto it = barrier->done_callbacks.find(task);
+  if (it != barrier->done_callbacks.end()) {
+    it->second(absl::CancelledError(
+                   absl::StrCat("Cancelled because there's a more recent "
+                                "barrier call for ",
+                                BarrierName(*barrier), " from the same task.")),
+               barrier->counter);
+  }
+  barrier->done_callbacks[task] = std::move(done);
+}
+
 void CoordinationServiceStandaloneImpl::BarrierAsync(
     // Note: `barrier_id` uses a `std::string` instead of `string_view` as the
     // RPC may end (i.e. done callback is invoked) before this handler
     // completes, which would invalidate the `string_view`.
-    std::string barrier_id, absl::Duration timeout, const CoordinatedTask& task,
+    std::string barrier_id, int64_t counter, absl::Duration timeout,
+    const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
-    StatusCallback done) {
+    BarrierCallback done) {
   absl::MutexLock l(&state_mu_);
-  return BarrierAsyncLocked(barrier_id, timeout, task, participating_tasks,
-                            std::move(done));
+  return BarrierAsyncLocked(barrier_id, counter, timeout, task,
+                            participating_tasks, std::move(done));
 };
 
 void CoordinationServiceStandaloneImpl::BarrierAsyncLocked(
-    std::string barrier_id, absl::Duration timeout, const CoordinatedTask& task,
+    std::string barrier_id, int64_t counter, absl::Duration timeout,
+    const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
-    StatusCallback done) {
+    BarrierCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked BarrierAsync("
-          << barrier_id << ").";
+          << BarrierName(barrier_id, counter) << ").";
 
   // Check if coordination service has stopped. If so, return an error
   // immediately.
   if (ServiceHasStopped()) {
-    done(MakeCoordinationError(absl::InternalError(
-        "Barrier requested after coordination service has shut down.")));
+    done(MakeBarrierError(
+             absl::InternalError(absl::StrCat(
+                 "Barrier ", BarrierName(barrier_id, counter),
+                 " requested after coordination service has shut down.")),
+             barrier_id, counter),
+         counter);
     return;
   }
 
-  if (!ValidateBarrierArgs(barrier_id, timeout, task, participating_tasks,
-                           done)) {
-    return;  // Exit early if args are wrong.
+  // For the first barrier counter of a unique id, this will create an empty
+  // struct.
+  auto* barrier = &barriers_[barrier_id];
+
+  // Maybe create new barrier instance.
+  bool should_initialize_new_instance =
+      // First barrier for this id.
+      (BarrierIsUninitialized(*barrier) && (counter == 0)) ||
+      // Previous barrier instance has passed. New barrier instance
+      // requested.
+      (barrier->passed && counter == (barrier->counter + 1));
+
+  // Task just restarted and is starting a new barrier (since previous
+  // barrier passed).
+  if (  // Barrier has been passed before.
+      barrier->passed &&
+      // Task has likely just restarted.
+      task.recoverable() && counter == 0 &&
+      // Not a special once-only barrier.
+      barrier_id != kClusterRegisterBarrierId &&
+      barrier_id != device_propagation_barrier_id_ &&
+      barrier_id != shutdown_barrier_id_) {
+    should_initialize_new_instance = true;
+    // Use the service's counter to initialize the new barrier.
+    counter = barrier->counter + 1;
   }
 
-  auto pair = barriers_.try_emplace(barrier_id);
-  auto it = pair.first;
-  bool inserted = pair.second;
-  auto* barrier = &it->second;
-
-  // Create barrier for the first time.
-  if (inserted) {
-    if (!InitializeBarrier(barrier, barrier_id, timeout, task,
+  if (should_initialize_new_instance) {
+    // Initialize new barrier instance state.
+    if (!InitializeBarrier(barrier, barrier_id, counter, timeout, task,
                            participating_tasks, done)) {
       return;  // Exit early if barrier init failed.
     }
   }
 
-  // Barrier has already been passed, return previous result immediately.
-  if (barrier->passed) {
-    RepeatBarrierResult(barrier, task, std::move(done));
+  // Add pending callbacks.
+  AddBarrierCallback(barrier, task, std::move(done));
+
+  if (!should_initialize_new_instance && counter != barrier->counter &&
+      // Recoverable tasks are allowed to use different counters and rejoin the
+      // barrier.
+      !(task.recoverable() && counter == 0)) {
+    // Counter mismatch! This is likely due to a restart.
+    FailBarrierWithCounterMismatch(barrier, counter);
     return;
   }
 
-  // Add pending callbacks.
-  barrier->done_callbacks.push_back(done);
+  // Check if task args are specified consistently across barrier calls, and if
+  // caller is involved in the barrier.
+  if (!ValidateTaskArgs(barrier, task, participating_tasks)) {
+    return;
+  }
 
-  // Check if task args are specified consistently across barrier calls.
-  if (!ValidateTaskArgs(barrier, participating_tasks)) {
+  if (barrier->passed && counter == barrier->counter) {
+    // Same counter, but barrier has already passed: return previous result.
+    // This will rarely happen, except if the RPC layer retries the RPC
+    // multiple times somehow.
+    RepeatBarrierResult(barrier, task);
     return;
   }
 
@@ -1489,37 +1642,82 @@ void CoordinationServiceStandaloneImpl::BarrierAsyncLocked(
   ReachBarrier(barrier, task);
 }
 
+void CoordinationServiceStandaloneImpl::FailBarrierWithCounterMismatch(
+    BarrierState* barrier, int64_t counter) {
+  std::string reason;
+  if (counter == 0 || barrier->counter == 0) {
+    reason =
+        "The service or task probably restarted, check the earlier logs to "
+        "debug further. Usually, a restart on the stale tasks will resolve "
+        "the issue.";
+  } else {
+    reason =
+        "One task is probably way too quick / slow in its execution. For "
+        "example, one task started a barrier early, which timed out, and "
+        "started a second barrier before the late task even joined once.";
+  }
+
+  // Counter mismatch! This is likely due to a restart.
+  absl::Status error = MakeBarrierError(
+      absl::InternalError(absl::StrCat(
+          "Barrier (", BarrierName(barrier->id, counter),
+          ") is invoked by the task, but the service thinks it is the ",
+          barrier->counter, "-th instance. ", reason)),
+      barrier->id, barrier->counter);
+  PassBarrier(barrier, error);
+}
+
 absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
     // Note: `barrier_id` uses a `std::string` instead of `string_view` as the
     // RPC may end (i.e. done callback is invoked) before this handler
     // completes, which would invalidate the `string_view`.
-    std::string barrier_id, const CoordinatedTask& task) {
+    std::string barrier_id, int64_t counter, const CoordinatedTask& task) {
+  std::string barrier_name = BarrierName(barrier_id, counter);
   absl::MutexLock l(&state_mu_);
   if (ServiceHasStopped()) {
-    return MakeCoordinationError(absl::InternalError(
-        "Coordination service has stopped. CancelBarrier() failed."));
+    return MakeBarrierError(
+        absl::InternalError(absl::StrCat(
+            "Coordination service has stopped. CancelBarrier() for ",
+            barrier_name, " failed.")),
+        barrier_id, counter);
   }
   auto [it, inserted] = barriers_.try_emplace(barrier_id);
   auto* barrier = &it->second;
   if (inserted) {
-    LOG(WARNING) << "Barrier (" << barrier_id
+    LOG(WARNING) << "Barrier (" << barrier_name
                  << ") is cancelled before being created by task: "
                  << GetTaskName(task);
   }
+  // Cancelling stale barrier instance.
+  if (barrier->counter != counter) {
+    return MakeBarrierError(
+        absl::FailedPreconditionError(
+            absl::StrCat("Barrier (", barrier_name,
+                         ") is cancelled by task, but the service thinks "
+                         "it is the ",
+                         barrier->counter,
+                         "-th instance. This is likely due to a restart in the "
+                         "task or service.")),
+        barrier_id, barrier->counter);
+  }
   // Barrier has already been passed.
   if (barrier->passed) {
-    return MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
-        "Barrier (", barrier_id, ") has already been passed with status code: ",
-        barrier->result.code())));
+    return MakeBarrierError(absl::FailedPreconditionError(absl::StrCat(
+                                "Barrier (", barrier_name,
+                                ") has already been passed with status code: ",
+                                barrier->result.code())),
+                            barrier_id, barrier->counter);
   }
 
   // Cancel barrier.
-  absl::Status cancelled = MakeCoordinationError(absl::CancelledError(
-      absl::StrCat("Barrier (", barrier_id,
-                   ") is cancelled by task: ", GetTaskName(task))));
+  absl::Status cancelled =
+      MakeBarrierError(absl::CancelledError(absl::StrCat(
+                           "Barrier (", barrier_name,
+                           ") is cancelled by task: ", GetTaskName(task))),
+                       barrier_id, barrier->counter);
   PassBarrier(barrier, cancelled);
 
-  VLOG(3) << "Barrier (" << barrier_id << ") is cancelled.";
+  VLOG(3) << "Barrier (" << barrier_name << ") is cancelled.";
   return absl::OkStatus();
 }
 
@@ -1528,7 +1726,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     BarrierState* barrier, const absl::Status& result) {
   barrier->passed = true;
   barrier->result = result;
-  VLOG(3) << "Barrier(" << barrier->id
+  VLOG(3) << "Barrier(" << BarrierName(*barrier)
           << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier->id == device_propagation_barrier_id_) {
@@ -1541,8 +1739,8 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   }
   ongoing_barriers_.erase(barrier->id);
   // Propagate results to participating tasks.
-  for (const auto& callback : barrier->done_callbacks) {
-    callback(result);
+  for (const auto& [_, callback] : barrier->done_callbacks) {
+    callback(result, barrier->counter);
   }
   barrier->done_callbacks.clear();
   if (barrier->id == kClusterRegisterBarrierId && !result.ok()) {
@@ -1568,9 +1766,6 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   if (ServiceHasStopped()) {
     return;
   }
-  // This has to be after shutdown hook, which checks the tasks that reached the
-  // barrier.
-  barrier->tasks_at_barrier.clear();
 }
 
 void CoordinationServiceStandaloneImpl::SendErrorPollingResponse(
@@ -1603,17 +1798,20 @@ void CoordinationServiceStandaloneImpl::SendErrorPollingResponse(
 }
 
 bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
-    BarrierState* barrier, const std::vector<CoordinatedTask>& tasks_args) {
+    BarrierState* barrier, const CoordinatedTask& task,
+    const std::vector<CoordinatedTask>& tasks_args) {
   // Assume all tasks are participating if no task is specified.
   if (tasks_args.empty()) {
     if (barrier->tasks_at_barrier.size() != cluster_state_.size()) {
-      absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-          absl::StrCat("No tasks were specified by the client, which implies "
-                       "that the entire cluster is participating in the "
-                       "barrier. However, the service disagrees: ",
-                       barrier->id,
-                       ". Check that the callers are invoking the barrier with "
-                       "the same arguments.")));
+      absl::Status error = MakeBarrierError(
+          absl::InvalidArgumentError(absl::StrCat(
+              BarrierName(*barrier),
+              ": No tasks were specified by the client, which implies "
+              "that the entire cluster is participating in the "
+              "barrier. However, the service disagrees. Check that "
+              "the callers are invoking the barrier with "
+              "the same arguments.")),
+          barrier->id, barrier->counter);
       PassBarrier(barrier, error);
       return false;
     }
@@ -1624,12 +1822,24 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
       absl::c_any_of(tasks_args, [&](const CoordinatedTask& task) {
         return !barrier->tasks_at_barrier.contains(task);
       })) {
-    absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-        absl::StrCat("Conflicting tasks specified by different processes for "
-                     "the same barrier: ",
-                     barrier->id,
-                     ". Check that the callers are invoking the barrier with "
-                     "the same arguments.")));
+    absl::Status error = MakeBarrierError(
+        absl::InvalidArgumentError(absl::StrCat(
+            "Conflicting tasks specified by different processes for the same "
+            "barrier: ",
+            BarrierName(*barrier),
+            ". Check that the callers are invoking the barrier with the same "
+            "arguments.")),
+        barrier->id, barrier->counter);
+    PassBarrier(barrier, error);
+    return false;
+  }
+  // Check if the caller task is included in the list of participating tasks.
+  if (!barrier->tasks_at_barrier.contains(task)) {
+    absl::Status error =
+        MakeBarrierError(absl::InvalidArgumentError(absl::StrCat(
+                             "A non-participating task (", GetTaskName(task),
+                             ") called the barrier: ", BarrierName(*barrier))),
+                         barrier->id, barrier->counter);
     PassBarrier(barrier, error);
     return false;
   }
@@ -1637,24 +1847,67 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
 }
 
 void CoordinationServiceStandaloneImpl::RepeatBarrierResult(
-    BarrierState* barrier, const CoordinatedTask& task, StatusCallback done) {
+    BarrierState* barrier, const CoordinatedTask& task) {
+  BarrierCallback done = barrier->done_callbacks[task];
+  barrier->done_callbacks.erase(task);
   // Special hook for shutdown barrier to disconnect task.
   if (barrier->id == shutdown_barrier_id_) {
     absl::Status s = DisconnectTask(task);
     // Return any errors from the disconnect attempt, otherwise return the
     // barrier status outside of this hook.
     if (!s.ok()) {
-      done(s);
+      done(s, barrier->counter);
       return;
     }
   }
-  done(barrier->result);
+  done(barrier->result, barrier->counter);
+}
+
+void CoordinationServiceStandaloneImpl::LeaveOngoingBarriers(
+    const CoordinatedTask& task, std::string_view reason) {
+  const std::string task_name = GetTaskName(task);
+  const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+  // Unregister recoverable task from ongoing barriers.
+  if (task_state->IsRecoverable()) {
+    for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
+      BarrierState* barrier = &barriers_[barrier_id];
+      // Unregister task from barrier.
+      if (barrier->tasks_at_barrier[task]) {
+        barrier->tasks_at_barrier[task] = false;
+        ++barrier->num_pending_tasks;
+      }
+      // Cancel any pending callbacks.
+      auto it = barrier->done_callbacks.find(task);
+      if (it != barrier->done_callbacks.end()) {
+        it->second(
+            MakeBarrierError(
+                absl::CancelledError(absl::StrCat(
+                    "Stale barrier invocation is cancelled because:  ", reason,
+                    ". Barrier: ", BarrierName(*barrier), " Task ", task_name)),
+                barrier->id, barrier->counter),
+            barrier->counter);
+        barrier->done_callbacks.erase(it);
+      }
+    }
+    return;
+  }
+  // Fail ongoing barriers since task is not recoverable.
+  for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
+    BarrierState* barrier = &barriers_[barrier_id];
+    absl::Status error = MakeBarrierError(
+        absl::InternalError(absl::StrCat(
+            "Barrier failed because: ", reason,
+            ". Barrier Id: ", BarrierName(*barrier), ", Task: ", task_name)),
+        barrier->id, barrier->counter);
+    PassBarrier(barrier, error);
+  }
 }
 
 void CoordinationServiceStandaloneImpl::ReachBarrier(
     BarrierState* barrier, const CoordinatedTask& task) {
   // Remove pending task.
-  // We need to check if task made a repeated call after reaching the barrier.
+  // We need to check if task made a repeated call after reaching the
+  // barrier.
   if (!barrier->tasks_at_barrier[task]) {
     barrier->tasks_at_barrier[task] = true;
     --barrier->num_pending_tasks;
@@ -1694,8 +1947,13 @@ void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
   }
 }
 
-void CoordinationServiceStandaloneImpl::DisconnectAllTasks() {
-  for (const auto& [task_name, _] : cluster_state_) {
+void CoordinationServiceStandaloneImpl::DisconnectAllNonRecoverableTasks() {
+  for (const auto& [task_name, state] : cluster_state_) {
+    if (state->IsRecoverable()) {
+      // Recoverable tasks will disconnect independently without the
+      // barrier.
+      continue;
+    }
     auto s = DisconnectTask(GetTaskFromName(task_name));
     if (!s.ok()) {
       LOG(ERROR) << "Failed to disconnect task " << task_name << ": " << s;
@@ -1703,11 +1961,24 @@ void CoordinationServiceStandaloneImpl::DisconnectAllTasks() {
   }
 }
 
+std::vector<CoordinatedTask>
+CoordinationServiceStandaloneImpl::GetTasksForShutdownBarrier() {
+  absl::MutexLock l(&state_mu_);
+  if (shutdown_barrier_tasks_.empty()) {
+    for (const auto& [task_name, task_state] : cluster_state_) {
+      if (!task_state->IsRecoverable()) {
+        shutdown_barrier_tasks_.push_back(GetTaskFromName(task_name));
+      }
+    }
+  }
+  return shutdown_barrier_tasks_;
+}
+
 void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
     const absl::Status& result, BarrierState* barrier) {
   if (result.ok()) {
     LOG(INFO) << "Shutdown barrier in coordination service has passed.";
-    DisconnectAllTasks();
+    DisconnectAllNonRecoverableTasks();
   } else {
     LOG(ERROR) << "Shutdown barrier in coordination service has failed:\n"
                << result
@@ -1717,9 +1988,7 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
                   "too fast in its execution, or (c) too slow / hanging. Check "
                   "the logs (both the program and scheduler events) for an "
                   "earlier error to identify the root cause.";
-    absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
-        absl::StrCat("Shutdown barrier has failed.\nBarrier result: '",
-                     barrier->result.ToString())));
+    absl::Status shutdown_error = MakeShutdownBarrierError(result);
     // Propagate error to all tasks.
     // 1. Identify all straggling tasks.
     std::vector<CoordinatedTask> straggling_tasks;
@@ -1734,8 +2003,8 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
     // restarted tasks.
     // This is done after (2) so that all tasks get the shutdown error.
     // (already-errored tasks don't receive new notifications)
-    // For restarted tasks that hit this error, they should retry until there is
-    // a new service instance.
+    // For restarted tasks that hit this error, they should retry until
+    // there is a new service instance.
     SetAllTasksError(shutdown_error);
   }
 }

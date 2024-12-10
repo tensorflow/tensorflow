@@ -813,7 +813,7 @@ absl::Status PopulateResultIOInfo(
       &compilation_result->resource_updates);
 }
 
-absl::StatusOr<std::string> CompileMlirToXlaHlo(
+absl::Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -845,8 +845,6 @@ absl::StatusOr<std::string> CompileMlirToXlaHlo(
         "Verification failure. MLIR to Xla conversion aborted.");
   }
 
-  auto mlir_compilation = SerializeMlirModule(module_op);
-
   // Only attempt to fill in the compilation result's IO info if lowering.
   if (lower_to_xla_hlo) {
     TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
@@ -859,7 +857,26 @@ absl::StatusOr<std::string> CompileMlirToXlaHlo(
       return populate_result;
     }
   }
-  return mlir_compilation;
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> CompileMlirToXlaHloAndSerialize(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
+    bool use_return_tuple, bool use_resource_updates_for_aliases,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaCompilationResult* compilation_result,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes,
+    llvm::StringRef module_name, bool lower_to_xla_hlo) {
+  TF_RETURN_IF_ERROR(CompileMlirToXlaHlo(
+      module_op, arg_shapes, device_type, use_tuple_args, enable_op_fallback,
+      use_return_tuple, use_resource_updates_for_aliases,
+      shape_determination_fns, compilation_result, custom_legalization_passes,
+      module_name, lower_to_xla_hlo));
+
+  return SerializeMlirModule(module_op);
 }
 
 absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
@@ -881,7 +898,7 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(
+  return CompileMlirToXlaHloAndSerialize(
       mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
       enable_op_fallback, /*use_return_tuple=*/true,
       /*use_resource_updates_for_aliases=*/false, shape_determination_fns,
@@ -1053,7 +1070,7 @@ absl::Status CompileGraphToXlaHlo(
       /*use_resource_updates_for_aliases=*/true, shape_determination_fns,
       compilation_result, custom_legalization_passes);
   compilation_result->input_mapping = remaining_params;
-  return compile_mlir_result.status();
+  return compile_mlir_result;
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(

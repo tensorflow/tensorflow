@@ -17,7 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -38,7 +39,7 @@ TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
   options.asynchronous = true;
   options.cpu_device_count = 1;
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
-      DEVICE_CPU, xla::GetTfrtCpuClient(options).value()));
+      DEVICE_CPU, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
 }

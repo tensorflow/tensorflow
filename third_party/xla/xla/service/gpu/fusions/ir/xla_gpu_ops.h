@@ -30,26 +30,15 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
+#include "xla/codegen/ir/xla_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
 #include "xla/service/gpu/fusions/ir/xla_gpu_dialect.h.inc"
 #include "xla/service/gpu/fusions/ir/xla_gpu_enums.h.inc"
-#include "xla/service/gpu/model/indexing_map.h"  // IWYU pragma: keep
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
 #define GET_TYPEDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_types.h.inc"
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h.inc"
-
-namespace xla::gpu {
-
-struct VariableConstraints {
-  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
-      constraints_for_dims;
-  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
-      constraints_for_symbols;
-};
-VariableConstraints GetConstraintsForVariables(const IndexingMap& map);
-
-}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_

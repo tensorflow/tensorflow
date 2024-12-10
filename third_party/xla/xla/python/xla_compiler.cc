@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/xla_compiler.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -63,9 +64,11 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/dlpack.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
@@ -232,9 +235,8 @@ absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
     TF_RETURN_IF_ERROR(
         LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
-  } else {
-    shape.clear_layout();
   }
+
   return shape;
 }
 
@@ -441,6 +443,39 @@ absl::StatusOr<HloSharding> SubgroupWithTileAssignmentHelper(
     nb::ndarray<int64_t, nb::c_contig> tile_assignment,
     absl::Span<const OpSharding::Type> subgroup_types) {
   return HloSharding::Subgroup(NDArrayToArray(tile_assignment), subgroup_types);
+}
+
+nb::ndarray<> LiteralToNdarray(Literal& obj) {
+  const Shape& shape = obj.shape();
+
+  if (!shape.has_layout()) {
+    throw XlaRuntimeError(
+        "Creating an array is only supported for Literals with a layout.");
+  }
+
+  const Layout& layout = shape.layout();
+
+  if (!layout.tiles().empty()) {
+    throw XlaRuntimeError(
+        "Creating an array from a tiled Literal is not supported.");
+  }
+
+  if (!LayoutUtil::IsDenseArray(shape)) {
+    throw XlaRuntimeError(
+        "Creating an array is only supported for dense Literals.");
+  }
+
+  xla::PrimitiveType primitive_type = shape.element_type();
+  nb::dlpack::dtype dtype =
+      ValueOrThrow(PrimitiveTypeToNbDLDataType(primitive_type));
+
+  absl::Span<const int64_t> dimensions = shape.dimensions();
+  std::vector<size_t> unsigned_dimensions(dimensions.begin(), dimensions.end());
+  auto strides = StridesForShape(primitive_type, dimensions, layout);
+
+  return nb::ndarray<>(obj.untyped_data(), unsigned_dimensions.size(),
+                       unsigned_dimensions.data(), {}, strides.data(), dtype,
+                       nb::device::cpu::value, 0);
 }
 
 }  // namespace
@@ -666,7 +701,35 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
            [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
-  nb::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  nb::class_<Literal>(m, "Literal")
+      .def(nb::init<const Shape&>())
+      .def("__repr__", &Literal::ToString)
+      .def(
+          "__array__",
+          [](std::shared_ptr<Literal> obj, std::optional<nb::object> dtype,
+             std::optional<bool> copy) {
+            // Provides the interface required by numpy to create a np.ndarray.
+            // Currently don't support the __dl_pack__ interface but can be
+            // added with very little effort it if needed.
+
+            nb::ndarray<nb::numpy> np_array(LiteralToNdarray(*obj));
+
+            if (dtype.has_value()) {
+              throw XlaRuntimeError(
+                  "Passing of dtype to __array__ not currently supported.");
+            }
+
+            if (copy.has_value() && *copy) {
+              // when a copy is requested we _must_ return a copy:
+              // https://numpy.org/doc/2.1/reference/generated/numpy.ndarray.__array__.html
+              return np_array.cast(nb::rv_policy::copy);
+            }
+
+            return np_array.cast(nb::rv_policy::reference_internal,
+                                 nb::cast(obj));
+          },
+          nb::arg("dtype").none() = nb::none(),
+          nb::arg("copy").none() = nb::none());
 
   nb::class_<XlaComputation>(m, "XlaComputation")
       .def("__init__",
@@ -1483,6 +1546,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
+
+  nb::enum_<ResultAccuracy::Mode>(m, "ResultAccuracy_Mode")
+      .value("DEFAULT", ResultAccuracy::DEFAULT)
+      .value("HIGHEST", ResultAccuracy::HIGHEST);
 
   nb::enum_<FftType>(m, "FftType")
       .value("FFT", FftType::FFT)

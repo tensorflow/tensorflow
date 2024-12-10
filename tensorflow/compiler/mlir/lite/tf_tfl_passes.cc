@@ -37,10 +37,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+#include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -115,20 +116,18 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
 }
 
 void AddVariableFreezingFromGlobalTensorsPasses(
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   // This pass does resource analysis of saved model global tensors and marks
   // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-
-  // This pass 'freezes' immutable global tensors and inlines them as tf
-  // constant ops.
-  pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
-      /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
-
-  pass_manager->addPass(
-      mlir::TFL::Create<mlir::TFL::UnfreezeMutableGlobalTensorsPass>());
+  auto pass = mlir::TFL::Create<mlir::TFL::VariableFreezingPipeline,
+                                mlir::TFL::VariableFreezingPipelineOptions>();
+  auto pass_ptr = dynamic_cast<mlir::TFL::MutableOptionsPass*>(pass.get());
+  if (pass_ptr)
+    pass_ptr->ApplyOptionsVisitor(
+        mlir::TFL::ConverterPassOptionsSetter(converter_flags, pass_config));
+  pass_manager->addPass(std::move(pass));
 }
 
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -177,6 +176,7 @@ void AddPytorchPasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addPass(mlir::odml::createBuildStableHLOCompositePass());
   pass_manager.addPass(mlir::createInlinerPass());
   pass_manager.addPass(mlir::odml::createLiftCallSiteLocCallerPass());
+  pass_manager.addPass(mlir::odml::createLegalizeQDQCustomCallPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 }
 
@@ -286,6 +286,7 @@ void AddPostQuantizationStableHloToTfPasses(
 
   if (pass_config.enable_composite_direct_lowering) {
     pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
+    pass_manager.addPass(mlir::createSymbolDCEPass());
   }
 
   // TFLite dialect passes.
@@ -302,7 +303,7 @@ void AddPostQuantizationStableHloToTfPasses(
     // legalization, otherwise the newly generated TFL broadcast ops can fold
     // and materialize the weights.
     pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::odml::CreateFoldBroadcastToPass());
+        mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>());
   }
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
@@ -385,6 +386,33 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
   pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+}
+
+void AddOptimizationPasses(const tflite::ConverterFlags& converter_flags,
+                           const mlir::TFL::PassConfig& pass_config,
+                           mlir::OpPassManager* pass_manager) {
+  mlir::TFL::ConverterPassOptionsSetter converter_pass_options_setter(
+      converter_flags, pass_config);
+
+  pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
+
+  pass_manager->addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>());
+
+  // Add TFLite optimize pass.
+  std::unique_ptr<mlir::Pass> optimize_pass =
+      mlir::TFL::Create<mlir::TFL::OptimizePass>();
+  auto pass_ptr =
+      dynamic_cast<mlir::TFL::MutableOptionsPass*>(optimize_pass.get());
+  if (pass_ptr) pass_ptr->ApplyOptionsVisitor(converter_pass_options_setter);
+  pass_manager->addNestedPass<mlir::func::FuncOp>(std::move(optimize_pass));
+
+  if (!pass_config.unfold_batch_matmul) {
+    // Enable an optimization pass that transforms BatchMatmul to FC only
+    // when `unfold_batch_matmul=false`.
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateOptimizeBatchMatmulPass());
+  }
 }
 
 // This is the later part of the conversion in isolation. This enables a caller
@@ -530,34 +558,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
 
-    mlir::TFL::ConverterPassOptionsSetter converter_pass_options_setter(
-        converter_flags, pass_config);
-
-    auto add_tfl_optimization_passes = [&]() {
-      pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
-
-      // Add TFLite optimize pass.
-      std::unique_ptr<mlir::Pass> optimize_pass =
-          mlir::TFL::Create<mlir::TFL::OptimizePass>();
-      auto pass_ptr =
-          dynamic_cast<mlir::TFL::MutableOptionsPass*>(optimize_pass.get());
-      if (pass_ptr)
-        pass_ptr->ApplyOptionsVisitor(converter_pass_options_setter);
-      pass_manager->addNestedPass<mlir::func::FuncOp>(std::move(optimize_pass));
-
-      if (!pass_config.unfold_batch_matmul) {
-        // Enable an optimization pass that transforms BatchMatmul to FC only
-        // when `unfold_batch_matmul=false`.
-        pass_manager->addNestedPass<mlir::func::FuncOp>(
-            mlir::TFL::CreateOptimizeBatchMatmulPass());
-      }
-    };
-
     // Run TFL optimization passes set multiple times as op fusion and
     // reordering in later passes may enable further optimizations with earlier
     // passes.
-    add_tfl_optimization_passes();
-    add_tfl_optimization_passes();
+    AddOptimizationPasses(converter_flags, pass_config, pass_manager);
+    AddOptimizationPasses(converter_flags, pass_config, pass_manager);
 
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops

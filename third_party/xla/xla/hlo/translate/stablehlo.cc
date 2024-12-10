@@ -22,52 +22,73 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/dialect/Register.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
+namespace {
+absl::Status MhloToStablehlo(mlir::ModuleOp module) {
+  auto context = module.getContext();
+  mlir::PassManager pm(context);
+  mlir::BaseScopedDiagnosticHandler diag_handler(context);
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (failed(pm.run(module))) {
+    return diag_handler.ConsumeStatus();
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
+void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
+  mlir::stablehlo::registerAllDialects(registry);
+  mlir::func::registerAllExtensions(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+                  mlir::shape::ShapeDialect>();
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  mlir::BaseScopedDiagnosticHandler diag_handler(&ctx);
-  absl::Status status =
-      HloModuleImporter(mlir_module.get(), /*import_all_computation*/ true,
-                        /*flatten_computation_args_result*/ true)
-          .Import(*hlo_module);
-  if (!status.ok()) {
-    return status;
-  }
-  mlir::PassManager pm(&ctx);
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (failed(pm.run(*mlir_module))) {
-    return diag_handler.ConsumeStatus();
-  }
+  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+                                       /*import_all_computation=*/true,
+                                       /*flatten_computation_args_result=*/true)
+                         .Import(*hlo_module));
+  TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
   return std::move(mlir_module);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module_proto) {
-  auto hlo_module = HloModule::CreateFromProto(*hlo_module_proto, {});
-  if (!hlo_module.ok()) {
-    return hlo_module.status();
-  }
-  return ConvertHloToStablehlo(ctx, hlo_module.value().get());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+                                       /*import_all_computation=*/true,
+                                       /*flatten_computation_args_result=*/true)
+                         .Import(*hlo_module_proto));
+  TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
+  return std::move(mlir_module);
 }
 
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
@@ -117,6 +138,8 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
   }
 
   mlir::MlirToHloConversionOptions options;
+  options.return_tuple = false;
+  options.use_tuple_args = false;
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
   return absl::OkStatus();
 }

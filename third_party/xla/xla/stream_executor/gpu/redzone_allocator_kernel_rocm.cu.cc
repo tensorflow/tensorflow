@@ -15,19 +15,19 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
-__global__ void redzone_checker_kernel(uint8_t* input_buffer,
-                                       uint8_t redzone_pattern,
-                                       uint64_t buffer_length,
-                                       uint32_t* out_mismatched_ptr) {
+__global__ void redzone_checker(uint8_t* input_buffer, uint8_t redzone_pattern,
+                                uint64_t buffer_length,
+                                uint32_t* out_mismatched_ptr) {
   uint64_t idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= buffer_length) return;
   if (input_buffer[idx] != redzone_pattern) atomicAdd(out_mismatched_ptr, 1);
@@ -36,16 +36,12 @@ __global__ void redzone_checker_kernel(uint8_t* input_buffer,
 
 namespace stream_executor {
 
-absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
-    StreamExecutor* executor, GpuAsmOpts /*gpu_asm_opts*/) {
-  static auto kernel = TypedKernelFactory<
-      DeviceMemory<uint8_t>, uint8_t, uint64_t,
-      DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
-                                      reinterpret_cast<void*>(
-                                          redzone_checker_kernel));
-
-  if (!kernel.ok()) return kernel.status();
-  return &kernel.value();
+absl::StatusOr<ComparisonKernel> GetComparisonKernel(StreamExecutor* executor) {
+  MultiKernelLoaderSpec spec(/*arity=*/4);
+  spec.AddInProcessSymbol(absl::bit_cast<void*>(&redzone_checker),
+                          "redzone_checker");
+  return TypedKernelFactory<DeviceMemory<uint8_t>, uint8_t, uint64_t,
+                            DeviceMemory<uint64_t>>::Create(executor, spec);
 }
 
 }  // namespace stream_executor

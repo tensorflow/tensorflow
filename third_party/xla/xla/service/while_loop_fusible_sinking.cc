@@ -375,7 +375,6 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   bool changed = false;
   std::vector<HloInstruction*> invariant_body_gtes =
       WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
-  std::vector<int64_t> tuple_indices;
   std::vector<HloInstruction*> new_operands;
 
   for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
@@ -457,7 +456,6 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
     HloInstruction* root = while_body->root_instruction();
     HloInstruction* parameter = while_body->parameter_instruction(0);
-    tuple_indices.resize(fusion->operand_count());
     int64_t next_index = init_value->operand_count();
     new_operands.resize(fusion->operand_count());
     for (int64_t i = 0; i < fusion->operand_count(); ++i) {

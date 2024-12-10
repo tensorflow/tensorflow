@@ -3,14 +3,14 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -18,6 +18,7 @@ load(
     "pywrap_aware_cc_import",
     "pywrap_aware_filegroup",
     "pywrap_aware_genrule",
+    "pywrap_binaries",
     "pywrap_common_library",
     "pywrap_library",
     "pywrap_tensorflow_macro",
@@ -567,7 +568,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
 )
 
 # TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
@@ -683,7 +684,6 @@ pywrap_tensorflow_macro(
         "@local_config_python//:python_headers",
     ] + if_windows([
         "//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",
         "@double_conversion//:__subpackages__",
@@ -738,7 +738,6 @@ pywrap_tensorflow_macro(
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -867,9 +866,7 @@ pywrap_tensorflow_macro(
     ]) + if_google([
         "//base",
         "//tensorflow/core/util/tensor_bundle",
-    ]) + if_oss(if_static(
-        [clean_dep("@nsync//:nsync_headers")],
-    )) + if_oss([
+    ]) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ]) + if_oss(if_cuda_is_configured([
@@ -968,7 +965,6 @@ pywrap_aware_filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_xla//xla/stream_executor",  # stat_summarizer
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
@@ -1239,6 +1235,7 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     enable_stub_generation = True,
+    linkopts = [],
     pytype_srcs = [
         "_pywrap_tfe.pyi",
     ],
@@ -1462,6 +1459,7 @@ pywrap_library(
             "-DEFAULTLIB:advapi32.lib",
             "-DEFAULTLIB:crypt32.lib",
             "-DEFAULTLIB:Normaliz.lib",
+            "-DEFAULTLIB:ntdll.lib",
         ],
         "//conditions:default": [],
     }),
@@ -1502,6 +1500,7 @@ pywrap_library(
         ],
     }),
     visibility = ["//visibility:public"],
+    win_def_file = "_pywrap_tensorflow.def",
     #    win_def_file = "_pywrap_tensorflow.def",
     deps = [
         ":_pywrap_quantize_training",
@@ -1618,5 +1617,10 @@ cc_library(
 
 pywrap_common_library(
     name = "_pywrap_tensorflow_common",
+    dep = ":_pywrap_tensorflow",
+)
+
+pywrap_binaries(
+    name = "_pywrap_tensorflow_binaries",
     dep = ":_pywrap_tensorflow",
 )

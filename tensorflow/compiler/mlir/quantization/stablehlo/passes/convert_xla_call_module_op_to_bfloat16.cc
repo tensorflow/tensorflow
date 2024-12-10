@@ -58,6 +58,14 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
   OwningOpRef<ModuleOp> stablehlo_module_op =
       mlir::stablehlo::deserializePortableArtifact(serialized_stablehlo_module,
                                                    &context);
+  auto version =
+      mlir::stablehlo::getPortableArtifactVersion(serialized_stablehlo_module);
+  if (failed(version)) {
+    return absl::InternalError(
+        "Failed to get the deserialized StableHLO version, XlaCallModuleOp "
+        "must have a valid StableHLO module serialized using "
+        "stablehlo::serializePortableArtifact APIs.");
+  }
 
   // Convert the StableHLO module to bfloat16.
   PassManager pm(&context);
@@ -70,8 +78,7 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
   if (failed(mlir::stablehlo::serializePortableArtifact(
-          stablehlo_module_op.get(), mlir::stablehlo::getCurrentVersion(),
-          os))) {
+          stablehlo_module_op.get(), version.value().toString(), os))) {
     return absl::InternalError("Failed to serialize StableHLO module.");
   }
   return bytecode;

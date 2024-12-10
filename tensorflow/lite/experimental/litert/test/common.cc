@@ -14,69 +14,73 @@
 
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
-// NOLINTNEXTLINE
-#include <filesystem>
-#include <fstream>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
 #include "tsl/platform/platform.h"
 
 namespace litert {
 namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename) {
-  static constexpr std::string_view kTestDataDir =
+  static constexpr absl::string_view kTestDataDir =
       "tensorflow/lite/experimental/litert/"
       "test/testdata/";
 
-  std::filesystem::path result_path;
   if constexpr (!tsl::kIsOpenSource) {
-    result_path.append("third_party");
+    return internal::Join({"third_party", kTestDataDir, filename});
+  } else {
+    return internal::Join({kTestDataDir, filename});
   }
-
-  result_path.append(kTestDataDir);
-  result_path.append(filename.data());
-
-  return result_path.generic_string();
 }
 
-absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
-  std::string model_path = GetTestFilePath(filename);
-  ABSL_CHECK(std::filesystem::exists(model_path));
-  auto size = std::filesystem::file_size(model_path);
-  std::vector<char> buffer(size);
-  std::ifstream f(model_path, std::ifstream::binary);
-  if (!f) {
-    return absl::InternalError("Failed to open file");
-  }
-  f.read(buffer.data(), buffer.size());
-  if (!f) {
-    return absl::InternalError("Failed to read file");
-  }
-  f.close();
-  return buffer;
+Model LoadTestFileModel(absl::string_view filename) {
+  return *Model::CreateFromFile(GetTestFilePath(filename));
 }
 
-internal::UniqueLiteRtModel LoadTestFileModel(absl::string_view filename) {
-  LiteRtModel model = nullptr;
-  LITERT_CHECK_STATUS_OK(
-      internal::LoadModelFromFile(GetTestFilePath(filename).data(), &model));
-  ABSL_CHECK_NE(model, nullptr);
-  return internal::UniqueLiteRtModel(model);
+bool ValidateTopology(const std::vector<Op>& ops) {
+  for (const auto& op : ops) {
+    const auto inputs = op.Inputs();
+    for (int i = 0; i < inputs.size(); ++i) {
+      if (!MatchUse(inputs.at(i), UseInfo{op.Code(), i})) {
+        return false;
+      }
+    }
+    const auto outputs = op.Outputs();
+    for (int i = 0; i < outputs.size(); ++i) {
+      const auto defining_op = outputs.at(i).DefiningOp();
+      if (!defining_op.has_value()) {
+        return false;
+      }
+      if (defining_op->op != op.Get() || defining_op->op_output_index != i) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
-void TouchTestFile(absl::string_view filename, absl::string_view dir) {
-  std::filesystem::path path(dir.data());
-  path.append(filename.data());
-  std::ofstream f(path);
+Expected<TflRuntime::Ptr> TflRuntime::CreateFromFlatBuffer(
+    internal::FlatbufferWrapper::Ptr flatbuffer) {
+  ::tflite::Interpreter::Ptr interp;
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder(flatbuffer->FlatbufferModel(), resolver)(&interp);
+  if (interp == nullptr) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+  return TflRuntime::Ptr(
+      new TflRuntime(std::move(flatbuffer), std::move(interp)));
 }
 
 }  // namespace testing

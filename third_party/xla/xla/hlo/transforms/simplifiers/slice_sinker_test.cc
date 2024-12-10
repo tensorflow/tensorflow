@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/slice_sinker.h"
 
 #include <memory>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

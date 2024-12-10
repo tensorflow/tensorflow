@@ -19,9 +19,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/constant_value.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -30,28 +36,199 @@ class ValueRangeTest : public HloTestBase {};
 
 TEST_F(ValueRangeTest, AddedValue) {
   constexpr absl::string_view hlo_string = R"(
-HloModule module
+  HloModule module
 
-ENTRY entry {
-  c0 = s32[] constant(124)
-  p0 = s32[] parameter(0)
-  ROOT %a = s32[] add(p0, c0)
-}
-)";
+  ENTRY entry {
+    c0 = s32[] constant(124)
+    p0 = s32[] parameter(0)
+    ROOT %a = s32[] add(p0, c0)
+  }
+  )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* p0 = root->operand(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
-  fs.insert(std::make_pair(
-      p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
-                ConstantValue::GetSigned(5, 32), /*is_linear=*/true}));
+  fs.insert(
+      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
+                               ConstantValue::GetSigned(5, 32),
+                               ConstantValue::GetOne(32, /*is_signed=*/false),
+                               /*is_linear=*/true}));
   auto range = RecursivelyIdentifyRange(root, fs);
   EXPECT_FALSE(range.IsEmpty());
   EXPECT_FALSE(range.IsSingleValue());
   EXPECT_TRUE(range.IsLinear());
   EXPECT_EQ(range.min().GetSignedValue(), 124);
   EXPECT_EQ(range.max().GetSignedValue(), 129);
+  EXPECT_EQ(range.step().GetSignedValue(), 1);
+}
+
+TEST_F(ValueRangeTest, MultiplyValue) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+
+  ENTRY entry {
+    c0 = s32[] constant(1024)
+    p0 = s32[] parameter(0)
+    ROOT %a = s32[] multiply(p0, c0)
+  }
+  )";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* p0 = root->operand(0);
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  fs.insert(
+      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
+                               ConstantValue::GetSigned(5, 32),
+                               ConstantValue::GetOne(32, /*is_signed=*/false),
+                               /*is_linear=*/true}));
+  auto range = RecursivelyIdentifyRange(root, fs);
+  EXPECT_FALSE(range.IsEmpty());
+  EXPECT_FALSE(range.IsSingleValue());
+  EXPECT_TRUE(range.IsLinear());
+  EXPECT_EQ(range.min().GetSignedValue(), 0);
+  EXPECT_EQ(range.max().GetSignedValue(), 5120);
+  EXPECT_EQ(range.step().GetSignedValue(), 1024);
+}
+
+TEST_F(ValueRangeTest, ConstantValuePred) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    false_pred = pred[] constant(false)
+    true_pred = pred[] constant(true)
+    ROOT out = tuple(false_pred, true_pred)
+  }
+  )";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  const HloInstruction* tuple = module->entry_computation()->root_instruction();
+  auto false_range = RecursivelyIdentifyRange(tuple->operand(0), {});
+  VLOG(3) << "false_range: " << false_range.ToString();
+  EXPECT_FALSE(false_range.IsEmpty());
+  EXPECT_TRUE(false_range.IsSingleValue());
+  EXPECT_TRUE(false_range.IsLinear());
+  EXPECT_EQ(false_range.min().GetUnsignedValue(), 0);
+
+  auto true_range = RecursivelyIdentifyRange(tuple->operand(1), {});
+  VLOG(3) << "true_range: " << true_range.ToString();
+  EXPECT_FALSE(true_range.IsEmpty());
+  EXPECT_TRUE(true_range.IsSingleValue());
+  EXPECT_TRUE(true_range.IsLinear());
+  EXPECT_EQ(true_range.min().GetUnsignedValue(), 1);
+}
+
+TEST_F(ValueRangeTest, ConstantValueWithConditional) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+  region1 {
+    region1_param = s32[] parameter(0)
+    region1_c0 = s32[] constant(1024)
+    %add = s32[] add(region1_param, region1_c0)
+    ROOT out = (s32[], s32[]) tuple(%add, %add)
+  }
+  region2 {
+    region2_param = s32[] parameter(0)
+    region2_c0 = s32[] constant(1024)
+    %mult = s32[] multiply(region2_param, region2_c0)
+    ROOT out = (s32[], s32[]) tuple(%mult, %mult)
+  }
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    branch_index = s32[] parameter(1)
+    ROOT conditional.1 = (s32[], s32[]) conditional(branch_index, p0, p0), branch_computations={region1, region2}
+  }
+  )";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  HloComputation* region1 = module->GetComputationWithName("region1");
+  HloComputation* region2 = module->GetComputationWithName("region2");
+  HloInstruction* add = region1->GetInstructionWithName("add");
+  HloInstruction* mult = region2->GetInstructionWithName("mult");
+  const HloInstruction* p0 =
+      module->entry_computation()->parameter_instruction(0);
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  fs.insert(
+      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
+                               ConstantValue::GetSigned(5, 32),
+                               ConstantValue::GetOne(32, /*is_signed=*/false),
+                               /*is_linear=*/true}));
+
+  auto add_range = RecursivelyIdentifyRange(add, fs, alias_analysis.get());
+  EXPECT_FALSE(add_range.IsEmpty());
+  EXPECT_FALSE(add_range.IsSingleValue());
+  EXPECT_TRUE(add_range.IsLinear());
+  EXPECT_EQ(add_range.min().GetSignedValue(), 1024);
+  EXPECT_EQ(add_range.max().GetSignedValue(), 1029);
+  EXPECT_EQ(add_range.step().GetSignedValue(), 1);
+
+  auto mult_range = RecursivelyIdentifyRange(mult, fs, alias_analysis.get());
+  EXPECT_FALSE(mult_range.IsEmpty());
+  EXPECT_FALSE(mult_range.IsSingleValue());
+  EXPECT_TRUE(mult_range.IsLinear());
+  EXPECT_EQ(mult_range.min().GetSignedValue(), 0);
+  EXPECT_EQ(mult_range.max().GetSignedValue(), 5120);
+  EXPECT_EQ(mult_range.step().GetSignedValue(), 1024);
+}
+
+TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+  region1 {
+    region1_param = s32[] parameter(0)
+    region1_c0 = s32[] constant(1024)
+    %add = s32[] add(region1_param, region1_c0)
+    
+    compare_const = s32[] constant(1030) // this valueis bigger than the max of add
+    compare1 = pred[] compare(%add, compare_const), direction=LT
+    select1 = s32[] select(compare1, region1_param, %add)
+    
+    ROOT out = (s32[], s32[]) tuple(%add, %add)
+  }
+  region2 {
+    region2_param = s32[] parameter(0)
+    region2_c0 = s32[] constant(1024)
+    %mult = s32[] multiply(region2_param, region2_c0)
+    
+    compare_const = s32[] constant(5121) // this valueis bigger than the max of mult
+    compare2 = pred[] compare(%mult, compare_const), direction=LT
+    select2 = s32[] select(compare2, region2_param, %mult)
+    
+    ROOT out = (s32[], s32[]) tuple(%mult, %mult)
+  }
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    branch_index = s32[] parameter(1)
+    ROOT conditional.1 = (s32[], s32[]) conditional(branch_index, p0, p0), branch_computations={region1, region2}
+  }
+  )";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  HloComputation* region1 = module->GetComputationWithName("region1");
+  HloComputation* region2 = module->GetComputationWithName("region2");
+  HloInstruction* select1 = region1->GetInstructionWithName("select1");
+  HloInstruction* select2 = region2->GetInstructionWithName("select2");
+  const HloInstruction* p0 =
+      module->entry_computation()->parameter_instruction(0);
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  fs.insert(
+      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
+                               ConstantValue::GetSigned(5, 32),
+                               ConstantValue::GetOne(32, /*is_signed=*/false),
+                               /*is_linear=*/true}));
+
+  auto select1_range =
+      RecursivelyIdentifyRange(select1, fs, alias_analysis.get());
+  auto select2_range =
+      RecursivelyIdentifyRange(select2, fs, alias_analysis.get());
+  // We expect the select ranges to be the same as the parameter range since
+  // both selects return true values.
+  EXPECT_EQ(select1_range, select2_range);
 }
 
 TEST_F(ValueRangeTest, AddedValueUnsigned) {

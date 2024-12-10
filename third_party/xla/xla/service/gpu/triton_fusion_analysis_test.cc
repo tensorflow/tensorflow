@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -580,6 +581,68 @@ ENTRY e {
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
                                     /*slice_start=*/0, /*slice_limit=*/4,
                                     /*subfragments=*/ElementsAre(4))));
+}
+
+TEST_F(TritonDotAnalysisTest, BroadcastFromTriviallySizedDimensionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+f {
+  p0 = f16[2] parameter(0)
+  bc0 = f16[1,2] bitcast(p0)
+  br = f16[1,4,2] broadcast(bc0), dimensions={0,2}
+  bc1 = f16[4,2] bitcast(br)
+  p1 = f16[3,2] parameter(1)
+  d = f16[4,3] dot(bc1, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+e {
+  p0 = f16[2] parameter(0)
+  p1 = f16[3,2] parameter(1)
+  f = f16[4,3] fusion(p0, p1), kind=kCustom, calls=f
+})"));
+  const HloComputation& dot_computation = *module->entry_computation()
+                                               ->root_instruction()
+                                               ->called_computations()[0];
+  const HloInstruction* p0 = dot_computation.parameter_instruction(0);
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(dot_computation));
+  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0)->size(),
+            1);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/1,
+                                    /*slice_start=*/0, /*slice_limit=*/1,
+                                    /*subfragments=*/ElementsAre(1))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*slice_start=*/0, /*slice_limit=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
+}
+
+TEST_F(TritonDotAnalysisTest, BroadcastWithinDimensionIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+f {
+  a = f16[5,7] parameter(0)
+  br = f16[2,5,7] broadcast(a), dimensions={1,2}
+  bc = f16[10,7] bitcast(br)
+  b = f16[3,7] parameter(1)
+  d = f16[10,3] dot(bc, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+e {
+  a = f16[5,7] parameter(0)
+  b = f16[3,7] parameter(1)
+  f = f16[10,3] fusion(a, b), kind=kCustom, calls=f
+})"));
+  const HloComputation& dot_computation = *module->entry_computation()
+                                               ->root_instruction()
+                                               ->called_computations()[0];
+  EXPECT_THAT(
+      TritonFusionAnalysis::Execute(dot_computation),
+      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             ::testing::HasSubstr("Unsupported broadcast")));
 }
 
 TEST_F(TritonDotAnalysisTest, OutputBroadcastIsNotAccepted) {

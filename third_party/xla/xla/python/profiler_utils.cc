@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {
 

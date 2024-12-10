@@ -16,10 +16,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <numeric>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>

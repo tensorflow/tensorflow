@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <utility>
 
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -26,12 +27,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -86,7 +89,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   }
 
   *output = input.Clone();
-  output->mutable_shape_do_not_use()->Swap(&shape);
+  std::swap(*output->mutable_shape_do_not_use(), shape);
   return absl::OkStatus();
 }
 
@@ -252,10 +255,9 @@ absl::Status ResolveDeviceAssignment(
   }
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
-  gpu_options.set_nccl_clique_id_callback(
-      [=](const xla::gpu::NcclCliqueKey& key) {
-        return xla::gpu::NcclCliqueId::FromString(communicator_key);
-      });
+  gpu_options.set_clique_id_callback([=](const xla::CliqueKey& key) {
+    return xla::CliqueId(communicator_key);
+  });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return absl::OkStatus();

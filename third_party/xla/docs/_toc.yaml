@@ -23,12 +23,14 @@ toc:
     path: /xla/copybara
   - title: Determinism
     path: /xla/determinism
+  - title: Emitters
+    path: /xla/emitters
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
     path: /xla/indexing
   - title: Multi-host HLO runner
-    path: /xla/tools_multi_host_hlo_runner
+    path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
     path: /xla/persisted_autotuning
   - title: Shapes and layout
@@ -51,10 +53,16 @@ toc:
     path: /xla/build_from_source
   - title: Develop a new backend for XLA
     path: /xla/developing_new_backend
-  - title: Develop a new PJRT plugin
-    path: /xla/pjrt_integration
   - title: Developer guide
     path: /xla/developer_guide
+- title: PJRT Plugins
+  section:
+  - title: Develop a new PJRT plugin
+    path: /xla/pjrt/pjrt_integration
+  - title: PJRT C++ API Overview
+    path: /xla/pjrt/cpp_api_overview
+  - title: PJRT Examples
+    path: /xla/pjrt/examples
 - title: Using XLA in TensorFlow
   # These should be in alphabetical order unless otherwise noted.
   section:

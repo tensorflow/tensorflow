@@ -53,11 +53,16 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
     return result;
   }
 
+  // The original_value may refer to an empty array, such as origin {}, so let's
+  // check whether that's the case before accessing them. Generally speaking the
+  // index _should_ be good, but let's double check.
   const auto& leaf = original_value.element(shape_index);
-  absl::StrAppend(
-      &result, "{", "\"", leaf->instruction_name, "\"",
-      (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
-      "}");
+  if (leaf.has_value()) {
+    absl::StrAppend(
+        &result, "{", "\"", leaf->instruction_name, "\"",
+        (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
+        "}");
+  }
   return result;
 }
 

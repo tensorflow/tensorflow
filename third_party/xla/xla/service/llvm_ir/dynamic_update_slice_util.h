@@ -72,7 +72,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // modify the input/output buffer without touching any of the other elements.
 absl::Status EmitDynamicUpdateSliceInPlace(
     absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
-    absl::string_view name, llvm::IRBuilder<>* b);
+    absl::string_view name, llvm::IRBuilderBase* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
@@ -80,7 +80,7 @@ absl::Status EmitDynamicUpdateSliceInPlace(
 // place.
 absl::Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const IrArray& fusion_output_array,
-    FusedIrEmitter* fused_emitter, llvm::IRBuilder<>* b);
+    FusedIrEmitter* fused_emitter, llvm::IRBuilderBase* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions for arbitrarily many independent dynamic slice
@@ -90,7 +90,7 @@ absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,
     FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
+    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

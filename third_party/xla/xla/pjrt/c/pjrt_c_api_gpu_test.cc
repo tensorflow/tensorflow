@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api_gpu.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/client/client_library.h"
 #include "xla/ffi/api/ffi.h"
 #include "xla/ffi/execution_context.h"
@@ -53,12 +56,18 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
+
+using ::testing::HasSubstr;
+using ::testing::IsNull;
+using ::tsl::testing::StatusIs;
 
 #ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
@@ -154,6 +163,74 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   std::iota(float_data.begin(), float_data.end(), 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
+}
+
+class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
+ public:
+  PjrtCApiGpuBufferTest() : PjrtCApiGpuTest() {
+    auto buffer_and_event = create_buffer();
+    buffer_ = std::move(buffer_and_event.first);
+    event_ = buffer_and_event.second;
+  }
+
+  ~PjrtCApiGpuBufferTest() override {
+    // event_ needs to complete before the client is destroyed; otherwise there
+    // is a data race between destroying the client and trying to access the
+    // host context in the client for the callback after host to device transfer
+    // is completed.
+    TF_EXPECT_OK(event_.Await());
+    // buffer_ must be destroyed before the client is destroyed or else the
+    // unique_ptr for buffer_ will go out of scope causing heap-use-after-free
+    // error.
+    buffer_.reset(nullptr);
+  }
+
+  std::unique_ptr<PJRT_Buffer, PJRT_BufferDeleter> buffer_;
+  xla::PjRtFuture<> event_;
+};
+
+TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
+  size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
+  PJRT_Buffer_CopyRawToHost_Args args;
+  args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = buffer_.get();
+  args.dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.offset = 0;
+  args.transfer_size = size;
+  PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
+  ASSERT_THAT(error, IsNull());
+  xla::PjRtFuture<> copy_to_host_event =
+      ConvertCEventToCppFuture(args.event, api_);
+  TF_EXPECT_OK(copy_to_host_event.Await());
+  EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
+  tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
+                              size);
+}
+
+TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
+  size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
+  PJRT_Buffer_CopyRawToHost_Args args;
+  args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = buffer_.get();
+  args.dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.offset = size + 1;  // offset is invalid
+  args.transfer_size = size;
+  PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
+  ASSERT_EQ(error, nullptr);
+  xla::PjRtFuture<> copy_to_host_event =
+      ConvertCEventToCppFuture(args.event, api_);
+  absl::Status status = copy_to_host_event.Await();
+  std::string expected_message = absl::StrFormat(
+      "Copy raw buffer called on buffer size %lld with "
+      "invalid offset %lld, transfer size %lld",
+      size, args.offset, args.transfer_size);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr(expected_message)));
+  free(args.dst);
 }
 
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
@@ -511,6 +588,10 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[0]->device_kind(),
             "Tesla V100-SXM2-32GB");
+  for (int i = 0; i < pjrt_topology->topology->DeviceDescriptions().size() - 1;
+       ++i) {
+    EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);
+  }
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;

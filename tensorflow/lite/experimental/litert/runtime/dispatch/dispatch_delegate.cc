@@ -27,11 +27,14 @@
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 namespace {
+
+using ::litert::internal::kLiteRtDispatchOpCustomCode;
 
 // A TFL Delegate that can recognize subgraphs that run on Dispatch API capable
 // accelerators, e.g. TPU, DSP, ... It replaces such subgraphs and offloads
@@ -66,7 +69,6 @@ class DispatchDelegate : public tflite::SimpleOpaqueDelegateInterface {
 
  private:
   static constexpr absl::string_view kDelegateName = "DispatchDelegate";
-  static constexpr absl::string_view kDispatchNodeCustomCode = "dispatch_node";
 
   explicit DispatchDelegate(litert::DispatchDelegateOptionsPtr&& options)
       : options_(std::move(options)) {}
@@ -79,7 +81,7 @@ bool DispatchDelegate::IsNodeSupportedByDelegate(
     const TfLiteOperator* op, const TfLiteOpaqueNode* node,
     TfLiteOpaqueContext* context) const {
   auto custom_code = absl::string_view(TfLiteOperatorGetCustomName(op));
-  return custom_code == kDispatchNodeCustomCode;
+  return custom_code == kLiteRtDispatchOpCustomCode;
 }
 
 TfLiteStatus DispatchDelegate::Initialize(TfLiteOpaqueContext* context) {
@@ -95,11 +97,11 @@ DispatchDelegate::CreateDelegateKernelInterface() {
 
   auto kernel = litert::internal::DispatchDelegateKernel::Create(
       std::move(dispatch_graph_name), *options_);
-  if (kernel.ok()) {
+  if (kernel) {
     return std::move(*kernel);
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create a dispatch delegate kernel: %s",
-               kernel.status().message().data());
+               kernel.Error().Message().data());
     return nullptr;
   }
 }
@@ -121,23 +123,9 @@ TfLiteStatus LiteRtAddDispatchDelegateOption(
   return kTfLiteOk;
 }
 
-TfLiteStatus LiteRtAddDispatchDelegateExecInfoOption(
-    LiteRtDispatchDelegateOptions* options, const char* exec_tag,
-    const void* bytecode_addr, size_t bytecode_size,
-    const char* function_name) {
-  if (!options || !exec_tag || !bytecode_addr) {
-    LITERT_LOG(LITERT_ERROR, "Null input");
-    return kTfLiteError;
-  }
-
-  LiteRtDispatchDelegateOptions::ExecInfo exec_info;
-  exec_info.bytecode =
-      absl::MakeSpan(static_cast<const uint8_t*>(bytecode_addr), bytecode_size);
-  if (function_name) {
-    exec_info.function_name = function_name;
-  }
-
-  options->AddExecInfo(exec_tag, std::move(exec_info));
+TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
+    LiteRtDispatchDelegateOptions* options, const void* alloc_base) {
+  AddAllocBaseOption(alloc_base, *options);
   return kTfLiteOk;
 }
 

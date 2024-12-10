@@ -68,8 +68,15 @@ class PadAndConv2DModel : public MultiOpModel {
                      /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/delegate != nullptr,
                      /*allocate_and_delegate=*/false);
+    SetSubgraphNames();
   }
 
+  void SetSubgraphNames() {
+    for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+      interpreter_->subgraph(i)->SetName(
+          std::string("subgraph_" + std::to_string(i)).c_str());
+    }
+  }
   int input() const { return input_; }
   int output() const { return output_; }
   void SetProfiler(Profiler* profiler) { interpreter_->SetProfiler(profiler); }
@@ -129,7 +136,8 @@ bool AreRuntimeSubgraphsEqual(const RuntimeSubgraph& subgraph_1,
   auto proto_to_tuple = [](const RuntimeSubgraph& subgraph) {
     return std::make_tuple(subgraph.subgraph_id(), subgraph.subgraph_type(),
                            subgraph.execution_plan().size(),
-                           subgraph.nodes_size(), subgraph.edges_size());
+                           subgraph.nodes_size(), subgraph.edges_size(),
+                           subgraph.name());
   };
 
   if (proto_to_tuple(subgraph_1) == proto_to_tuple(subgraph_2) &&
@@ -175,6 +183,7 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
 
   RuntimeSubgraph* subgraph = expected_model_runtime_details.add_subgraphs();
   subgraph->set_subgraph_id(0);
+  subgraph->set_name("subgraph_0");
   subgraph->set_subgraph_type(RuntimeSubgraph::TFLITE_SUBGRAPH);
   if (is_xnnpack_delegate) {
     subgraph->add_execution_plan(2);

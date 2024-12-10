@@ -234,7 +234,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/tools/graph_transforms:transform_graph_lib"]),
 )
 
 tf_python_pybind_extension(
@@ -362,11 +362,17 @@ pytype_strict_library(
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/py/tensorflow_core:__subpackages__",
+    # "//tensorflow:__pkg__",
+    # "//tensorflow:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//third_party/py/tensorflow_core:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":tf_decorator_py",
         ":tf_inspect",
@@ -745,7 +751,13 @@ py_strict_library(
 py_strict_library(
     name = "deprecation",
     srcs = ["deprecation.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
@@ -895,7 +907,13 @@ py_strict_library(
     name = "compat",
     srcs = ["compat.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1065,7 +1083,13 @@ py_strict_library(
     name = "keras_deps",
     srcs = ["keras_deps.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1078,7 +1102,13 @@ py_strict_library(
 py_strict_library(
     name = "nest",
     srcs = ["nest.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":__init__",
         ":nest_util",
@@ -1109,7 +1139,13 @@ py_strict_library(
     name = "all_util",
     srcs = ["all_util.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":tf_inspect",
         # global_test_configuration is added here because all major tests depend on this

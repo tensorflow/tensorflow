@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -78,7 +82,7 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
     config.set_debug_options(debug_options);
-    *config.mutable_fdo_profile() = fdo_profile;
+    config.set_fdo_profile(fdo_profile);
     return config;
   }
 };
@@ -371,7 +375,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
   // Since we allow 2 collectives in-flight, we should expect this pattern:
-  // ar(rs)-start -> rs(ar)-start -> add -> ar(rs)-done -> ar(rs)-done
+  // ar(rs)-start -> rs(ar)-start -> add -> ar(rs)-done -> rs(ar)-done
   EXPECT_TRUE(GetIndexByName(instruction_sequence, "ar_0") <
                   GetIndexByName(instruction_sequence, "rs_1") &&
               GetIndexByName(instruction_sequence, "rs_0") <
@@ -384,6 +388,60 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                   GetIndexByName(instruction_sequence, "ar_1") &&
               GetIndexByName(instruction_sequence, "add_0") <
                   GetIndexByName(instruction_sequence, "rs_1"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       OverlappingRanksPreventOverlappingCollectives) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 100000.0 }
+    costs { name: "ar_0" cost_us: 10.0 }
+    costs { name: "rs_0" cost_us: 10.0 }
+  )pb";
+  ;
+  absl::string_view kHloModule = R"(
+    HloModule m
+
+    reduce {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT _ = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[2] parameter(1)
+      p2 = f32[2] parameter(2)
+      ar_0 = f32[] all-reduce-start(p0), to_apply=reduce, replica_groups={{0,1}}
+      ar_1 = f32[] all-reduce-done(ar_0)
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}, replica_groups={{0, 1}}
+      rs_1 = f32[1] reduce-scatter-done(rs_0)
+      add_0 = f32[2] add(p1, p2)
+      ROOT _ = (f32[], f32[1], f32[2]) tuple(ar_1, rs_1, add_0)
+    }
+  )";
+
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  // AR and RS have two ranks in common so cannot be overlapped, expect pattern:
+  // rs(ar)-start -> add -> rs(ar)-done -> ar(rs)-start -> ar(rs)-done
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "ar_1") <
+                  GetIndexByName(instruction_sequence, "rs_0") ||
+              GetIndexByName(instruction_sequence, "rs_1") <
+                  GetIndexByName(instruction_sequence, "ar_0"));
+  EXPECT_TRUE((GetIndexByName(instruction_sequence, "ar_0") <
+                   GetIndexByName(instruction_sequence, "add_0") &&
+               GetIndexByName(instruction_sequence, "add_0") <
+                   GetIndexByName(instruction_sequence, "ar_1")) ||
+              (GetIndexByName(instruction_sequence, "rs_0") <
+                   GetIndexByName(instruction_sequence, "add_0") &&
+               GetIndexByName(instruction_sequence, "add_0") <
+                   GetIndexByName(instruction_sequence, "rs_1")));
 }
 
 }  // namespace

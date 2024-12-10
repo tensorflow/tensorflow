@@ -32,16 +32,16 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -55,6 +55,7 @@ namespace gpu {
 // producer and consumer are considered as one fusion, otherwise it's only the
 // producer.
 bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                              const se::DeviceDescription& device_info,
                               const HloInstruction* producer,
                               const HloInstruction* consumer) {
   // Transposing minor dimension breaks coalescing.
@@ -92,8 +93,8 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
   }
   // Fusing two row reductions breaks coalescing.
   if (fusion_kind == HloFusionAnalysis::EmitterFusionKind::kReduction &&
-      IsInputFusibleReduction(*producer) && consumer &&
-      IsInputFusibleReduction(*consumer)) {
+      IsInputFusibleReduction(*producer, device_info) && consumer &&
+      IsInputFusibleReduction(*consumer, device_info)) {
     return false;
   }
   return true;
@@ -628,7 +629,8 @@ CoalescingAnalysis::CoalescingAnalysis(
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
   is_coalesced_computed_by_heuristic_ =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(), instr);
+      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
+                               fusion_analysis.device_info(), instr);
 }
 
 CoalescingAnalysis::CoalescingAnalysis(
@@ -646,7 +648,8 @@ CoalescingAnalysis::CoalescingAnalysis(
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
   is_coalesced_computed_by_heuristic_ = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), producer, consumer);
+      fusion_analysis.GetEmitterFusionKind(), fusion_analysis.device_info(),
+      producer, consumer);
 }
 
 bool CoalescingAnalysis::ComputeCoalescingForAllOperands(

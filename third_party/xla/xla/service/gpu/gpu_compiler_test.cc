@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -81,6 +82,8 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::IsEmpty;
+using ::testing::IsSupersetOf;
+using ::testing::Matches;
 using ::testing::Not;
 using ::testing::TempDir;
 
@@ -93,13 +96,6 @@ class GpuCompilerTest : public HloTestBase {
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
-  }
-
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
   }
 };
 
@@ -391,6 +387,72 @@ int64_t CountCopies(const HloModule& module) {
   return count;
 }
 
+TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
+  // Simple IR with AllReduce subjectible to pipelining.
+  absl::string_view kHloString = R"(
+     HloModule module
+      add {
+        lhs = bf16[] parameter(0)
+        rhs = bf16[] parameter(1)
+        ROOT add = bf16[] add(lhs, rhs)
+      }
+
+      while_cond {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        gte = s32[] get-tuple-element(param), index=0
+        constant.1 = s32[] constant(3)
+        ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+      }
+
+      while_body {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        current-loop-index = s32[] get-tuple-element(param), index=0
+        output-buffer = bf16[3,8,128] get-tuple-element(param), index=1
+        input-buffer = bf16[3,8,128] get-tuple-element(param), index=2
+        constant.1 = s32[] constant(1)
+        next-loop-index = s32[] add(current-loop-index, constant.1)
+        constant.0 = s32[] constant(0)
+        sliced-input-buffer = bf16[1,8,128] dynamic-slice(input-buffer,
+          current-loop-index, constant.0, constant.0),
+            dynamic_slice_sizes={1,8,128}
+        all-reduce = bf16[1,8,128] all-reduce(sliced-input-buffer),
+          replica_groups={}, to_apply=add, channel_id=1
+        dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer,
+          all-reduce, current-loop-index, constant.0, constant.0)
+        ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(
+        next-loop-index, dynamic-update-slice, input-buffer)
+      }
+
+      ENTRY entry {
+        c0 = s32[] constant(0)
+        p0 = bf16[3,8,128] parameter(0)
+        tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+        while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
+          condition=while_cond, body=while_body
+        ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+      }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_enable_pipelined_all_reduce(true);
+  debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
+  TF_ASSERT_OK_AND_ASSIGN(auto parsed,
+                          ParseAndReturnVerifiedModule(kHloString, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(std::move(parsed)));
+
+  absl::string_view kExpected = R"(
+    CHECK: all-reduce-start{{.*}}"is_pipelined":true
+  )";
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                          RunFileCheck(module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
 TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
   const absl::string_view hlo_string = R"(
 HloModule all_gather_overlapping
@@ -598,8 +660,6 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)));
 
 TEST_P(FloatNormalizationTest, Fp8Normalization) {
-  // TODO(b/344573710) Make this test not require a GPU when AutotuneCacheKey is
-  // more stable.
   const PrimitiveType lhs_type = GetParam().first;
   const PrimitiveType rhs_type = GetParam().second;
   const std::string lhs_name =
@@ -757,11 +817,11 @@ ENTRY test_computation {
 CHECK:       recv-done
 CHECK-SAME:    channel_id=[[CHANNEL_ID:[0-9]+]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       send-done
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
 CHECK:       %[[CUSTOM_CALL:.*]] = custom-call
-CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
@@ -831,9 +891,12 @@ class KernelCacheTest : public HloTestBase {
     CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
-                            dynamic_cast<GpuCompiler*>(backend().compiler())
-                                ->CanUseLinkModules(config));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool can_use_link_modules,
+        dynamic_cast<GpuCompiler*>(backend().compiler())
+            ->CanUseLinkModules(
+                config,
+                backend().default_stream_executor()->GetDeviceDescription()));
     if (!can_use_link_modules) {
       GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
     }
@@ -1053,10 +1116,10 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
     })";
 
   const char* kExpected = R"(
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
   // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   )";
 
   DebugOptions debug_options;
@@ -1180,10 +1243,6 @@ using GpuCompilerPassTest = GpuCompilerTest;
 
 TEST_F(GpuCompilerPassTest,
        GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "TritonGemmRewriter disabled for ROCm until autotuner "
-                 << "is included.";
-  }
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -1266,6 +1325,12 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
+  void SetAndCompileEfficiencyEffort(float exec_effort) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.set_exec_time_optimization_effort(exec_effort);
+    CompileModule(config);
+  }
+
   // Fails if any of the passes with names matching the regular expression
   // `first_pass_regex` run after any of the passes matching `last_pass_regex`
   // or if none of the executed passes matches `first_pass_regex` or
@@ -1323,7 +1388,9 @@ class PassOrderTest : public GpuCompilerTest {
     }
   }
 
- private:
+ protected:
+  absl::Status ScheduleModule() { return Schedule(optimized_module_.get()); }
+
   void CompileModule(const HloModuleConfig& config) {
     constexpr absl::string_view constant_module = R"(
 ENTRY main {
@@ -1380,6 +1447,44 @@ TEST_F(PassOrderTest,
   VerifyPassOrder(
       /*first_pass_regex=*/".*all-gather-optimizer.*",
       /*last_pass_regex=*/".*all-gather-dynamic-slice-simplifier.*");
+}
+
+TEST_F(PassOrderTest, StableSortExpanderRunsAfterDynamicPadder) {
+  VerifyPassOrder(
+      /*first_pass_regex=*/"dynamic_padder",
+      /*last_pass_regex=*/"stable-sort-expander");
+}
+
+MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
+  std::vector<absl::string_view> run_pass_names;
+  auto metadata = arg->metadata()->proto();
+  run_pass_names.reserve(metadata.pass_metadata_size());
+  for (auto& pass_metadata : metadata.pass_metadata()) {
+    run_pass_names.push_back(pass_metadata.pass_name());
+  }
+  return Matches(IsSupersetOf(expected_pass_names))(run_pass_names);
+}
+
+TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+
+  // Make sure passes are not enabled by default.
+  std::vector<std::string> kExpectedPasses = {
+      "loop-double-buffer-transformer",
+      "collective-pipeliner-forward",
+      "collective-pipeliner-backward",
+      "latency-hiding-scheduler",
+  };
+  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
+
+  // Make sure only after setting the correct optimization effort they are
+  // enabled.
+  config.set_exec_time_optimization_effort(0.2);
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+  EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {

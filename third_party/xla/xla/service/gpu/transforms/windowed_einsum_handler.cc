@@ -91,7 +91,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
            operand->opcode() == HloOpcode::kCopy ||
            operand->opcode() == HloOpcode::kReshape ||
            operand->opcode() == HloOpcode::kTranspose) {
-      unaries[k].emplace_back(operand);
+      unaries[k].push_back(operand);
       operand = operand->mutable_operand(0);
     }
     std::reverse(unaries[k].begin(), unaries[k].end());

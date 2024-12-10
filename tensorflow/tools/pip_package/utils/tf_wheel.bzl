@@ -20,7 +20,10 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 3) `--version` - tensorflow version.
 4) `--headers` - paths to header file.
 5) `--srcs` - paths to source files
-6) `--xla_aot` - paths to files that should be in xla_aot directory. 
+6) `--dests` - json file with source to destination mappings for files whose original
+location does not match its destination in packaged wheel; if the destination is an
+empty string the source file will be ignored.
+7) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -55,26 +58,33 @@ def _get_full_wheel_name(platform_name, platform_tag):
         wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
     )
 
+def _is_dest_file(basename, dest_files_suffixes):
+    for suffix in dest_files_suffixes:
+        if basename.endswith(suffix):
+            return True
+    return False
+
 def _tf_wheel_impl(ctx):
     include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
-    if include_cuda_libs:
-        override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
-        if not override_include_cuda_libs:
-            fail("TF wheel shouldn't be built with CUDA dependencies." +
-                 " Please provide `--config=cuda_wheel` for bazel build command." +
-                 " If you absolutely need to add CUDA dependencies, provide `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
+    override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
+    if include_cuda_libs and not override_include_cuda_libs:
+        fail("TF wheel shouldn't be built with CUDA dependencies." +
+             " Please provide `--config=cuda_wheel` for bazel build command." +
+             " If you absolutely need to add CUDA dependencies, provide" +
+             " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
+    verify_manylinux = ctx.attr.verify_manylinux[BuildSettingInfo].value
     full_wheel_name = _get_full_wheel_name(
         platform_name = ctx.attr.platform_name,
         platform_tag = ctx.attr.platform_tag,
     )
     wheel_dir_name = "wheel_house"
-    output_dir = ctx.actions.declare_directory(wheel_dir_name)
     output_file = ctx.actions.declare_file("{wheel_dir}/{wheel_name}".format(
         wheel_dir = wheel_dir_name,
         wheel_name = full_wheel_name,
     ))
+    wheel_dir = output_file.path[:output_file.path.rfind("/")]
     args = ctx.actions.args()
     args.add("--project-name", WHEEL_NAME)
     args.add("--platform", _get_wheel_platform_name(
@@ -82,7 +92,7 @@ def _tf_wheel_impl(ctx):
         ctx.attr.platform_tag,
     ))
     args.add("--collab", str(WHEEL_COLLAB))
-    args.add("--output-name", output_dir.path)
+    args.add("--output-name", wheel_dir)
     args.add("--version", VERSION)
 
     headers = ctx.files.headers[:]
@@ -97,21 +107,41 @@ def _tf_wheel_impl(ctx):
     for src in ctx.attr.source_files:
         for f in src.files.to_list():
             srcs.append(f)
-            args.add("--srcs=%s" % (f.path))
+            if _is_dest_file(f.basename, ctx.attr.dest_files_suffixes):
+                args.add("--dests=%s" % (f.path))
+            else:
+                args.add("--srcs=%s" % (f.path))
 
     args.set_param_file_format("flag_per_line")
     args.use_param_file("@%s", use_always = False)
     ctx.actions.run(
         arguments = [args],
         inputs = srcs + headers + xla_aot,
-        outputs = [output_dir, output_file],
+        outputs = [output_file],
         executable = executable,
     )
-    return [DefaultInfo(files = depset(direct = [output_file]))]
+    auditwheel_show_log = None
+    if ctx.attr.platform_name == "linux":
+        auditwheel_show_log = ctx.actions.declare_file("auditwheel_show.log")
+        args = ctx.actions.args()
+        args.add("--wheel_path", output_file.path)
+        if verify_manylinux:
+            args.add("--compliance-tag", ctx.attr.manylinux_compliance_tag)
+        args.add("--auditwheel-show-log-path", auditwheel_show_log.path)
+        ctx.actions.run(
+            arguments = [args],
+            inputs = [output_file],
+            outputs = [auditwheel_show_log],
+            executable = ctx.executable.verify_manylinux_compliance_binary,
+        )
+
+    auditwheel_show_output = [auditwheel_show_log] if auditwheel_show_log else []
+    return [DefaultInfo(files = depset(direct = [output_file] + auditwheel_show_output))]
 
 tf_wheel = rule(
     attrs = {
         "source_files": attr.label_list(allow_files = True),
+        "dest_files_suffixes": attr.string_list(default = ["_wheel_locations.json"]),
         "headers": attr.label_list(allow_files = True),
         "xla_aot_compiled": attr.label_list(allow_files = True),
         "wheel_binary": attr.label(
@@ -123,6 +153,13 @@ tf_wheel = rule(
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
+        "verify_manylinux_compliance_binary": attr.label(
+            default = Label("@local_tsl//third_party/py:verify_manylinux_compliance"),
+            executable = True,
+            cfg = "exec",
+        ),
+        "verify_manylinux": attr.label(default = Label("@local_tsl//third_party/py:verify_manylinux")),
+        "manylinux_compliance_tag": attr.string(mandatory = True),
     },
     implementation = _tf_wheel_impl,
 )

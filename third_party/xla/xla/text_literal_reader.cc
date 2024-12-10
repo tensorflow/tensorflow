@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/text_literal_reader.h"
 
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>

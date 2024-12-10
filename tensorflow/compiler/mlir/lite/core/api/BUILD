@@ -62,7 +62,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@flatbuffers//:runtime_cc",

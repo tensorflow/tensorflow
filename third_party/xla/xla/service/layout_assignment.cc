@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -2905,6 +2904,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:

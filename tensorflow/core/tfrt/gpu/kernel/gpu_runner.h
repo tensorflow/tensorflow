@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GPU_KERNEL_GPU_RUNNER_H_
 #define TENSORFLOW_CORE_TFRT_GPU_KERNEL_GPU_RUNNER_H_
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"

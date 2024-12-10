@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+import gc
 import threading
 import time
 import weakref
@@ -182,6 +183,44 @@ class WeakrefLRUCacheTest(absltest.TestCase):
 
     for key in keys:
       cache(key, 7)
+
+  def testTpTraverse(self):
+    class WRKey:
+      pass
+
+    def CacheContextFn():
+      return None
+
+    def CallFn(x, y, *args, **kwargs):
+      del x, args, kwargs
+      return y
+
+    cache = xla_client.weakref_lru_cache(CacheContextFn, CallFn, 2048)
+
+    keys = [WRKey() for _ in range(10)]
+    values = [str(i) for i in range(10)]
+    args = [str(i) for i in range(10)]
+    kwargs = {"a": "b"}
+
+    for key, value in zip(keys, values):
+      cache(key, value, *args, **kwargs)
+
+    expected_refs = (
+        [
+            CacheContextFn,
+            CallFn,
+            xla_client._xla.WeakrefLRUCache,
+            kwargs,
+        ]
+        + [weakref.getweakrefs(key)[0] for key in keys]
+        + values
+        + args
+    )
+
+    # Can't use assertContainsSubset because it doesn't support kwargs since
+    # dicts aren't hashable.
+    for ref in expected_refs:
+      self.assertIn(ref, gc.get_referents(cache))
 
 
 if __name__ == "__main__":

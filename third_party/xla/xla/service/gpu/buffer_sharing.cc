@@ -41,9 +41,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
-                                             const HloInstruction* operand,
-                                             const ShapeIndex& user_index) {
+std::optional<bool> FusionCanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion == nullptr) {
     return std::nullopt;
@@ -78,8 +79,6 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // Allow multiple output users, if they end in reductions.
   // This only works for the reduction emitter, as it calculates the reduction
   // first, i.e. before processing other outputs (that may overwrite the input).
-  stream_executor::GpuDeviceInfoProto device_info;
-  stream_executor::DeviceDescription device_description(device_info);
   auto analysis = HloFusionAnalysis::Create(*user, device_description);
   bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
                               HloFusionAnalysis::EmitterFusionKind::kReduction;
@@ -220,9 +219,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   return found_path_to_output;
 }
 
-std::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                       const HloInstruction* operand,
-                                       const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectiveBroadcast:
@@ -244,7 +244,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     case HloOpcode::kFusion:
-      return FusionCanShareBufferHint(user, operand, user_index);
+      return FusionCanShareBufferHint(user, operand, user_index,
+                                      device_description);
     default:
       return std::nullopt;
   }

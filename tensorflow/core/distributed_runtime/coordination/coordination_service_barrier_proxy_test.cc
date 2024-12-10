@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
 #include <atomic>
-#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -59,6 +58,12 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
 
   // All the following member functions are not needed for testing.
+  MOCK_METHOD(absl::Status, Initialize,
+              (Env * env, std::string_view job_name, int task_id,
+               const CoordinationServiceConfig& configs,
+               std::unique_ptr<CoordinationClient> leader_client,
+               StatusCallback error_fn, bool recoverable),
+              (override));
   MOCK_METHOD(absl::Status, Initialize,
               (Env * env, std::string_view job_name, int task_id,
                const CoordinationServiceConfig& configs,

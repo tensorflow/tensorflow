@@ -261,7 +261,7 @@ class FlatBufferModelBase {
 
   void ByteSwapTFLiteModel(const tflite::Model* tfl_model,
                            bool from_big_endian) {
-    bool buffer_swapped[tfl_model->buffers()->size()] = {};
+    std::vector<bool> buffer_swapped(tfl_model->buffers()->size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_model->subgraphs()->size();
          subgraph_idx++) {
       const tflite::SubGraph* subgraph =
@@ -316,7 +316,7 @@ class FlatBufferModelBase {
 
   void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt, bool from_big_endian) {
     size_t bytes_per_elem = 0;
-    bool buffer_swapped[tfl_modelt->buffers.size()] = {};
+    std::vector<bool> buffer_swapped(tfl_modelt->buffers.size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_modelt->subgraphs.size();
          subgraph_idx++) {
       tflite::SubGraphT* subgraph =
@@ -391,6 +391,11 @@ class FlatBufferModelBase {
       // is found.
 #if defined(_WIN32)
       options.assert = true;
+#if defined(FLATBUFFER_VERIFIER_HAS_CHECK_BUFFER_ALIGNMENT)
+      // `check_buf_alignment` is not supported in all implementations of
+      // `flatbuffers::Verifier`.
+      options.check_buf_alignment = true;
+#endif
 #endif
       flatbuffers::Verifier base_verifier(
           reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size,

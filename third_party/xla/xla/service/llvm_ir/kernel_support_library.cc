@@ -86,7 +86,7 @@ absl::Status KernelSupportLibrary::IfWithStatus(
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilderBase* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -121,7 +121,7 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
                                           llvm::GlobalValue::InternalLinkage,
                                           module_config, kernel_name, module);
 
-    llvm::IRBuilder<>::InsertPointGuard guard(*b);
+    llvm::IRBuilderBase::InsertPointGuard guard(*b);
 
     auto* entry_bb =
         llvm::BasicBlock::Create(b->getContext(), "entry", function);

@@ -58,12 +58,18 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "file_io",
     srcs = ["file_io.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_pywrap_file_io",
         "//tensorflow/python/framework:errors",

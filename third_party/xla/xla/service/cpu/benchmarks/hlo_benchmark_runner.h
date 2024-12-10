@@ -45,6 +45,15 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              StrToStrMapping replacements = {},
                              bool disable_parallel_task_assigner = false);
 
+// Benchmarks the given HLO's compilation time.
+//
+// Takes the same options as RunHloBenchmark, except no arguments since the
+// HLO is only compiled, not run.
+absl::Status CompileHloBenchmark(benchmark::State& state,
+                                 std::string_view hlo_module,
+                                 StrToStrMapping replacements = {},
+                                 bool disable_parallel_task_assigner = false);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_

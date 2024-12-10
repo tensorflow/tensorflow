@@ -153,30 +153,32 @@ class MultinomialOp : public OpKernel {
   void DoCompute(OpKernelContext* ctx, const Tensor& logits_t,
                  const Tensor& num_samples_t, GuardedPhiloxRandom* generator) {
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
-                errors::InvalidArgument("logits should be a matrix, got shape ",
-                                        logits_t.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
-        errors::InvalidArgument("num_samples should be a scalar, got shape ",
-                                num_samples_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("logits should be a matrix, got shape ",
+                                 logits_t.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_samples should be a scalar, got shape ",
+                                 num_samples_t.shape().DebugString())));
 
     const int num_samples = num_samples_t.scalar<int>()();
     OP_REQUIRES(ctx, num_samples >= 0,
-                errors::InvalidArgument(
-                    "num_samples should be nonnegative, got ", num_samples));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_samples should be non-negative, got ", num_samples)));
 
-    for (int i = 0; i < 2; i++) {
-      const int64_t dim = logits_t.dim_size(i);
-      OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
-                  errors::InvalidArgument(
-                      "logits.shape = ", logits_t.shape().DebugString(),
-                      " too large for int"));
-    }
     const int batch_size = static_cast<int>(logits_t.dim_size(0));
     const int num_classes = static_cast<int>(logits_t.dim_size(1));
+
+    OP_REQUIRES(ctx, batch_size == logits_t.dim_size(0),
+                absl::InvalidArgumentError("batch_size cannot exceed max int"));
+
+    OP_REQUIRES(
+        ctx, num_classes == logits_t.dim_size(1),
+        absl::InvalidArgumentError("num_classes cannot exceed max int"));
+
     OP_REQUIRES(ctx, num_classes > 0,
-                errors::InvalidArgument("num_classes should be positive, got ",
-                                        num_classes));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_classes should be positive, got ", num_classes)));
 
     Tensor* samples_t;
     OP_REQUIRES_OK(
@@ -287,9 +289,10 @@ class StatelessMultinomialOp : public MultinomialOp<Device, T, OutputType> {
     const Tensor& num_samples_t = ctx->input(1);
 
     const Tensor& seed_t = ctx->input(2);
-    OP_REQUIRES(ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_t.shape().DebugString())));
 
     random::PhiloxRandom::Key key;
     random::PhiloxRandom::ResultType counter;

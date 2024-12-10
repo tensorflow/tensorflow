@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -28,10 +29,12 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 namespace op = xla::testing::opcode_matchers;
 using CollectivePermuteDecomposerTest = HloTestBase;
@@ -142,7 +145,31 @@ TEST_F(CollectivePermuteDecomposerTest, NotTransformedDefaultChannelId) {
                           ParseAndReturnUnverifiedModule((kModuleStr)));
   CollectivePermuteDecomposer decomposer(/*threshold_in_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+
+  HloInstruction* after_all = FindInstruction(module.get(), "after-all");
+  HloInstruction* recv = FindInstruction(module.get(), "recv");
+  EXPECT_EQ(recv->operand(0), after_all);
+  EXPECT_FALSE(recv->channel_id().has_value());
+  EXPECT_THAT(
+      recv->ToString(),
+      HasSubstr(
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
+  HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
+  EXPECT_EQ(recv_done->operand(0), recv);
+
+  HloInstruction* send = FindInstruction(module.get(), "send");
+  EXPECT_EQ(send->operand(1), after_all);
+  EXPECT_FALSE(send->channel_id().has_value());
+  EXPECT_THAT(
+      send->ToString(),
+      HasSubstr(
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
+  HloInstruction* send_done = FindInstruction(module.get(), "send-done");
+  EXPECT_EQ(send_done->operand(0), send);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ThresholdNotTransformed) {
@@ -231,8 +258,8 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
   EXPECT_THAT(send_done->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"0\""));
 
-  EXPECT_FALSE(recv_done->control_predecessors().empty());
-  EXPECT_EQ(recv_done->control_predecessors()[0], send);
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
+  EXPECT_THAT(recv_done->control_predecessors(), ElementsAre(send));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
@@ -314,6 +341,10 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
   HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
   EXPECT_THAT(send_done1->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"1\""));
+
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
+  EXPECT_THAT(recv1->control_predecessors(), ElementsAre(send));
+  EXPECT_THAT(send1->control_predecessors(), ElementsAre(recv1));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
@@ -419,10 +450,12 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
   HloInstruction* recv_done_bwd =
       hlo_query::FindInstruction(while_body, "recv-done.1");
 
-  // TODO: b/356201477 - Investigate potential NCCL deadlock in
-  // collective_permute_decomposer
-  EXPECT_EQ(recv_done_fwd->control_predecessors()[0], send_bwd);
-  EXPECT_EQ(recv_done_bwd->control_predecessors()[0], send_fwd);
+  EXPECT_THAT(send_bwd->control_predecessors(), ElementsAre(recv_bwd));
+  EXPECT_THAT(recv_fwd->control_predecessors(), ElementsAre(send_bwd));
+  EXPECT_THAT(send_fwd->control_predecessors(), ElementsAre(recv_fwd));
+
+  EXPECT_THAT(recv_done_fwd->control_predecessors(), ElementsAre(send_bwd));
+  EXPECT_THAT(recv_done_bwd->control_predecessors(), ElementsAre(send_fwd));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
@@ -498,6 +531,57 @@ TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
   EXPECT_THAT(send1->ToString(),
               HasSubstr("_xla_send_recv_source_target_pairs={{0,3}}"));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
+
+  EXPECT_THAT(send1->control_predecessors(), ElementsAre(recv1));
+  EXPECT_THAT(recv->control_predecessors(), ElementsAre(send1));
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
+}
+
+TEST_F(CollectivePermuteDecomposerTest,
+       DecomposeCrossReplicaCollectivePermute) {
+  const char* const kModuleStr = R"(
+    HloModule module
+    ENTRY body {
+      data = f32[16] parameter(0)
+      ROOT data_ = f32[16] collective-permute(data),
+          source_target_pairs={{0,1}, {1,2}, {2,3}}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+
+  CollectivePermuteDecomposer decomposer(/*threshold_in_bytes=*/0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* comp = module->entry_computation();
+  HloInstruction* root = comp->root_instruction();
+  HloInstruction* send = hlo_query::FindInstruction(comp, "send");
+  HloInstruction* send_done = hlo_query::FindInstruction(comp, "send-done");
+  HloInstruction* recv = hlo_query::FindInstruction(comp, "recv");
+  HloInstruction* recv_done = hlo_query::FindInstruction(comp, "recv-done");
+
+  EXPECT_THAT(send, op::Send(op::Parameter(0), op::AfterAll()));
+  EXPECT_EQ(
+      send->frontend_attributes().map().at(kSendRecvSourceTargetPairsAttr),
+      "{{0,1},{1,2},{2,3}}");
+  EXPECT_FALSE(send->channel_id().has_value());
+
+  EXPECT_THAT(send_done, op::SendDone(send));
+  EXPECT_FALSE(send_done->channel_id().has_value());
+
+  EXPECT_THAT(recv, op::Recv(op::AfterAll()));
+  EXPECT_EQ(
+      recv->frontend_attributes().map().at(kSendRecvSourceTargetPairsAttr),
+      "{{0,1},{1,2},{2,3}}");
+  EXPECT_FALSE(recv->channel_id().has_value());
+
+  EXPECT_THAT(recv_done, op::RecvDone(recv));
+  EXPECT_FALSE(recv_done->channel_id().has_value());
+
+  EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
+
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
 }
 
 }  // namespace

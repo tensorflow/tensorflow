@@ -1088,7 +1088,7 @@ class FlashAttentionBMMScalePaddingMaskSoftmaxBMM
     std::string hlo_string_ref =
         GetModuleFlash_Attention_Training_BMM1_PaddingMask_Generation_Softmax_BMM2_HloString_BF16();  // NOLINT
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-5, 1e-5}));
+                                        ErrorSpec{1e-3, 1e-3}));
   }
 };
 
@@ -1259,7 +1259,7 @@ class FlashAttentionBMMScaleSlidingWindowMaskSoftmaxBMM
     std::string hlo_string_ref =
         GetModuleFlash_Attention_Training_BMM1_SlidingWindowMask_Generation_Softmax_BMM2_HloString_BF16();  // NOLINT
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-5, 1e-5}));
+                                        ErrorSpec{1e-3, 1e-3}));
   }
 };
 

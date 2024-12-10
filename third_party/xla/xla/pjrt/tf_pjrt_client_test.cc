@@ -22,7 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/test.h"
@@ -39,7 +40,8 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
       ROOT add = f32[3,2] add(x, y)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  xla::CpuClientOptions cpu_options{.asynchronous = true};
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::GetXlaPjrtCpuClient(cpu_options));
   client = TfPjRtClient::CreateTfPjRtClient(std::move(client));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));

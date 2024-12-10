@@ -353,6 +353,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_canonicalize_inc_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -1023,7 +1024,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        ":translate_cl_options",
+        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -1728,9 +1729,6 @@ aliased_targets = [
     "mlir_roundtrip_flags",
     "mlir_import_options",
     "translate_lib",
-    "translate_cl_options",
-    "translate_registration",
-    "split_into_island_per_op_pass",
     "upgrade_graph",
 ]
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/ndarray.h"
 #include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -601,6 +602,18 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
                       ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
   return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
                                             std::move(ifrt_array), false, true);
+}
+
+absl::StatusOr<nanobind::dlpack::dtype> PrimitiveTypeToNbDLDataType(
+    PrimitiveType type) {
+  TF_ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
+
+  nanobind::dlpack::dtype nb_type;
+  nb_type.lanes = dl_type.lanes;
+  nb_type.bits = dl_type.bits;
+  nb_type.code = dl_type.code;
+
+  return nb_type;
 }
 
 }  // namespace xla

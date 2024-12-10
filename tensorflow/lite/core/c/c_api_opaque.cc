@@ -400,6 +400,14 @@ TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
   return context->GetExecutionPlan(context, execution_plan);
 }
 
+TfLiteStatus TfLiteOpaqueContextGetExternalContext(
+    TfLiteOpaqueContext* opaque_context, void** external_context,
+    TfLiteExternalContextType type) {
+  auto context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  *external_context = context->GetExternalContext(context, type);
+  return kTfLiteOk;
+}
+
 TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     struct TfLiteOpaqueContext* opaque_context, int node_index,
     TfLiteOpaqueNode** node, TfLiteOperator** registration_external) {

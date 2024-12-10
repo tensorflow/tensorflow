@@ -118,8 +118,7 @@ class MlirTensor : public TracingTensorHandle {
     return type;
   }
 
-  tensorflow::Status Shape(
-      tensorflow::PartialTensorShape* shape) const override {
+  absl::Status Shape(tensorflow::PartialTensorShape* shape) const override {
     // TODO(b/173074167): Implement this and enable tests in
     // unified_api_test.cc.
     return Unimplemented("MlirTensor::Shape is not implemented yet.");

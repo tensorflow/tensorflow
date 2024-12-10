@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -121,6 +123,24 @@ int64_t GetNumberOfSteps(const RemapPlan::Interval& interval) {
   return (interval.end - interval.start + interval.step - 1) / interval.step;
 }
 
+bool CheckOneInputForOneOutput(const xla::ifrt::RemapPlan& plan) {
+  if (!plan.mappings) return false;
+  const auto& mappings = *plan.mappings;
+  absl::flat_hash_map<int, int> output_to_input;
+
+  for (const auto& mapping : mappings) {
+    int in_array = mapping.in_array;
+    int out_array = mapping.out_array;
+
+    const auto [it, inserted] = output_to_input.insert({out_array, in_array});
+    if (!inserted && it->second != in_array) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace
 
 std::string RemapPlan::Interval::DebugString() const {
@@ -149,37 +169,23 @@ absl::Status RemapPlan::Validate() const {
     return InvalidArgument("Must have at least one input");
   }
 
-  for (int i = 0; i < num_inputs; ++i) {
-    if (input_specs[i].dtype != input_specs.front().dtype) {
-      return InvalidArgument(
-          "Input must have the same dtype: %s (input 0) vs. %s (input "
-          "%d)",
-          input_specs.front().dtype.DebugString(),
-          input_specs[i].dtype.DebugString(), i);
-    }
-  }
-  const int num_outputs = output_specs.size();
-  for (int i = 0; i < num_outputs; ++i) {
-    if (output_specs[i].dtype != input_specs.front().dtype) {
-      return InvalidArgument(
-          "Input and output must have the same dtype: %s (input 0) vs. %s "
-          "(output %d)",
-          output_specs.front().dtype.DebugString(),
-          output_specs[i].dtype.DebugString(), i);
-    }
-  }
-
   std::vector<std::vector<bool>> in_used_buffers_list(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     in_used_buffers_list[i].resize(
         /*count=*/input_specs[i].sharding->devices()->size(),
         /*value=*/false);
   }
+
+  const int num_outputs = output_specs.size();
   std::vector<BasicDeviceList::Devices> out_assigned_devices_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
         /*n=*/output_specs[i].sharding->devices()->size(),
         /*v=*/nullptr);
+  }
+
+  if (!mappings || mappings->empty()) {
+    return InvalidArgument("Must have at least one mapping");
   }
 
   for (int64_t i = 0; i < mappings->size(); ++i) {
@@ -199,6 +205,15 @@ absl::Status RemapPlan::Validate() const {
           "mappings[%d].from and mappings[%d].to must have the same number of "
           "intervals, but has %d and %d intervals",
           i, i, mapping.from.size(), mapping.to.size());
+    }
+
+    if (input_specs[mapping.in_array].dtype !=
+        output_specs[mapping.out_array].dtype) {
+      return InvalidArgument(
+          "Input and output must have the same dtype: %v (input %d) vs. %v "
+          "(output %d)",
+          input_specs[mapping.in_array].dtype, mapping.in_array,
+          output_specs[mapping.out_array].dtype, mapping.out_array);
     }
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
@@ -334,6 +349,18 @@ std::string RemapPlan::DebugString() const {
   return absl::StrCat("RemapPlan(input_specs=", format_array_specs(input_specs),
                       ",output_specs=", format_array_specs(output_specs), ",",
                       "mappings=", format_mappings(*mappings), ")");
+}
+
+absl::Status RemapPlan::CheckArrayCopySemantics(
+    xla::ifrt::ArrayCopySemantics semantics) const {
+  if (semantics != xla::ifrt::ArrayCopySemantics::kDonateInput) {
+    if (!CheckOneInputForOneOutput(*this)) {
+      return absl::InvalidArgumentError(
+          "kDonateInput is required if multiple inputs are mapped to one "
+          "output");
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace ifrt

@@ -119,8 +119,8 @@ tt.func @sparse_dot_mismatch_meta_contracting(%lhs: tensor<128x32xbf16>, %rhs: t
 }
 
 // -----
-#mma0 = #triton_gpu.nvidia_mma<{versionMajor = 2, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
-#enc0 = #triton_gpu.dot_op<{opIdx=0, parent=#mma0, kWidth=2}>
+#mma0 = #ttg.nvidia_mma<{versionMajor = 2, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
+#enc0 = #ttg.dot_op<{opIdx=0, parent=#mma0, kWidth=2}>
 tt.func @sparse_dot_encoding_operand_mismatch(%lhs: tensor<128x32xbf16, #enc0>, %rhs: tensor<64x128xbf16>, %meta: tensor<128x4xi16>) {
   %acc = arith.constant dense<0.00e+00> : tensor<128x128xf32>
   // expected-error @+1 {{mismatching encoding between A and B operands}}

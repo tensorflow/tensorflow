@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <array>
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -20,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -31,13 +31,11 @@ limitations under the License.
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -62,28 +60,25 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
 namespace {
 
-#define GEN_PASS_DECL_LOWERTENSORSPASS
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
-using llvm::APFloat;
-using llvm::ArrayRef;
 using mlir::failure;
-using mlir::ImplicitLocOpBuilder;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
-using mlir::OpRewritePattern;
 using mlir::success;
 using mlir::Type;
 using mlir::TypedValue;
@@ -91,12 +86,14 @@ using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
 
-namespace ma = ::mlir::arith;
-namespace mc = ::mlir::complex;
-namespace mm = ::mlir::math;
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+
+bool IsAMD(const se::DeviceDescription& device_description) {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      device_description.gpu_compute_capability());
+}
 
 Value GetDestinationBuffer(Value dest) {
   while (dest.getDefiningOp()) {
@@ -249,7 +246,7 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
           load, b.create<mlir::arith::ConstantIntOp>(4, load.getType()));
       load = b.create<mlir::arith::TruncIOp>(
           op.getType(),
-          b.create<ma::SelectOp>(is_low_nibble, load, high_value));
+          b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
     }
 
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
@@ -378,7 +375,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
           body_builder.create<mlir::arith::ShLIOp>(
               scalar_value,
               body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
-      Value new_value = body_builder.create<ma::SelectOp>(
+      Value new_value = body_builder.create<mlir::arith::SelectOp>(
           is_low_nibble, low_updated, high_updated);
       body_builder.create<mlir::scf::YieldOp>(new_value);
       Value casted_result = b.create<mlir::UnrealizedConversionCastOp>(
@@ -653,11 +650,10 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
 
 class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
  public:
-  RewriteAtomicRMW(mlir::MLIRContext* context, bool is_amd,
-                   const std::string& gpu_arch)
+  RewriteAtomicRMW(mlir::MLIRContext* context,
+                   const se::DeviceDescription* device_description)
       : mlir::OpRewritePattern<AtomicRMWOp>(context),
-        is_amd_(is_amd),
-        gpu_arch_(gpu_arch) {}
+        device_description_(device_description) {}
 
   LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
@@ -749,7 +745,8 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
 
     Location loc = op.getLoc();
-    llvm::StringRef sync_scope = is_amd_ ? "agent" : "";
+    bool is_amd = IsAMD(*device_description_);
+    llvm::StringRef sync_scope = is_amd ? "agent" : "";
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
     Value addr = CreateGep(op.getInput(), op.getIndices(), b);
 
@@ -759,7 +756,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
             loc, modifier_arg, addr,
             /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
             /*volatile*/ false, /*isNonTemporal=*/false,
-            ml::AtomicOrdering::unordered);
+            /*isInvariantGroup=*/false, ml::AtomicOrdering::unordered);
         return success();
       }
       case ml::AtomicBinOp::add:
@@ -774,10 +771,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return is_amd_ ? emitAMDAtomicFAdd(loc, modifier_arg, addr, sync_scope,
-                                           gpu_arch_, rewriter)
-                       : emitNVidiaAtomicFAdd(loc, modifier_arg, addr,
-                                              sync_scope, gpu_arch_, rewriter);
+        return is_amd ? emitAMDAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->rocm_compute_capability(),
+                            rewriter)
+                      : emitNVidiaAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->cuda_compute_capability(),
+                            rewriter);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -789,11 +790,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitNVidiaAtomicFAdd(Location loc, Value modifier_arg,
-                                     Value addr, llvm::StringRef sync_scope,
-                                     llvm::StringRef cuda_arch,
-                                     OpBuilder& b) const {
-    se::CudaComputeCapability cuda_compute_capability(cuda_arch.str());
+  LogicalResult emitNVidiaAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::CudaComputeCapability& cuda_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
@@ -815,11 +815,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitAMDAtomicFAdd(Location loc, Value modifier_arg, Value addr,
-                                  llvm::StringRef sync_scope,
-                                  llvm::StringRef gcn_arch,
-                                  OpBuilder& b) const {
-    se::RocmComputeCapability rocm_compute_capability(gcn_arch.str());
+  LogicalResult emitAMDAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::RocmComputeCapability& rocm_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     bool is_supported_f16_atomic =
         element_type.isF16() &&
@@ -1048,108 +1047,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
         });
   }
 
-  bool is_amd_;
-  std::string gpu_arch_;
-};
-
-template <typename FType>
-Value EvaluatePolynomial(ImplicitLocOpBuilder& b, Value arg,
-                         ArrayRef<FType> coefficients) {
-  auto arg_type = mlir::cast<mlir::FloatType>(arg.getType());
-  Value poly =
-      b.create<ma::ConstantOp>(b.getFloatAttr(arg_type, coefficients[0]));
-  for (int i = 1; i < coefficients.size(); ++i) {
-    poly = b.create<mm::FmaOp>(
-        poly, arg,
-        b.create<ma::ConstantOp>(b.getFloatAttr(arg_type, coefficients[i])));
-  }
-  return poly;
-};
-
-struct RewriterExpm1Op : public OpRewritePattern<mc::Expm1Op> {
-  using OpRewritePattern<mc::Expm1Op>::OpRewritePattern;
-
-  // e^(a+bi)-1 = (e^a*cos(b)-1)+e^a*sin(b)i
-  //            [handle inaccuracies when a and/or b are small]
-  //            = ((e^a - 1) * cos(b) + cos(b) - 1) + e^a*sin(b)i
-  //            = (expm1(a) * cos(b) + cosm1(b)) + e^a*sin(b)i
-  mlir::LogicalResult matchAndRewrite(
-      mc::Expm1Op op, mlir::PatternRewriter& rewriter) const override {
-    auto type = op.getType();
-    auto element_type = mlir::cast<mlir::FloatType>(type.getElementType());
-
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    Value real = b.create<mc::ReOp>(op.getComplex());
-    Value imag = b.create<mc::ImOp>(op.getComplex());
-
-    Value zero = b.create<ma::ConstantOp>(b.getFloatAttr(element_type, 0.0));
-    Value one = b.create<ma::ConstantOp>(b.getFloatAttr(element_type, 1.0));
-
-    Value expm1_real = b.create<mm::ExpM1Op>(real);
-    Value exp_real = b.create<ma::AddFOp>(expm1_real, one);
-
-    Value sin_imag = b.create<mm::SinOp>(imag);
-    Value cosm1_imag = EmitCosm1(imag, b);
-    Value cos_imag = b.create<ma::AddFOp>(cosm1_imag, one);
-
-    Value real_result = b.create<ma::AddFOp>(
-        b.create<ma::MulFOp>(expm1_real, cos_imag), cosm1_imag);
-
-    Value imag_is_zero =
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OEQ, imag, zero);
-    Value imag_result = b.create<ma::SelectOp>(
-        imag_is_zero, zero, b.create<ma::MulFOp>(exp_real, sin_imag));
-
-    rewriter.replaceOpWithNewOp<mc::CreateOp>(op, type, real_result,
-                                              imag_result);
-    return mlir::success();
-  }
-
- private:
-  Value EmitCosm1(Value arg, ImplicitLocOpBuilder& b) const {
-    auto arg_type = mlir::cast<mlir::FloatType>(arg.getType());
-    auto negative_half =
-        b.create<ma::ConstantOp>(b.getFloatAttr(arg_type, -0.5));
-    auto negative_one =
-        b.create<ma::ConstantOp>(b.getFloatAttr(arg_type, -1.0));
-
-    // Algorithm copied from cephes cosm1:
-    //   cosm1(x) = -0.5 * x^2 + x^4 * P(x^2);
-    // that is suitable when abs(x) < pi/4, otherwise we'll use cos(x)-1.
-    //
-    // This is an alternative algorithm
-    //   cosm1(x) = -2 * sin(x/2)^2
-    // that is only slightly less accurate around abs(x) == 0.1 but
-    // otherwise equivalent accuracy-wise compared to cephes cosm1.
-    // However, we are not using it because it is notably less
-    // performant than cephes cosm1.
-
-    // TODO: define cosm1(x) as cosm1(x mod (2*pi)) to increase accuracy
-    // for large x values that are close to 2*pi*n where n is some integer.
-    static const std::array<double, 7> kCoeffs{
-        4.7377507964246204691685E-14, -1.1470284843425359765671E-11,
-        2.0876754287081521758361E-9,  -2.7557319214999787979814E-7,
-        2.4801587301570552304991E-5,  -1.3888888888888872993737E-3,
-        4.1666666666666666609054E-2,
-    };
-    Value cos = b.create<mm::CosOp>(arg);
-    Value for_large_x = b.create<ma::AddFOp>(cos, negative_one);
-
-    Value arg_pow_2 = b.create<ma::MulFOp>(arg, arg);
-    Value arg_pow_4 = b.create<ma::MulFOp>(arg_pow_2, arg_pow_2);
-    Value poly = EvaluatePolynomial(b, arg_pow_2, ArrayRef<double>(kCoeffs));
-
-    auto for_small_x =
-        b.create<ma::AddFOp>(b.create<ma::MulFOp>(arg_pow_4, poly),
-                             b.create<ma::MulFOp>(negative_half, arg_pow_2));
-
-    // (pi/4)^2 is approximately 0.61685
-    Value cond = b.create<ma::CmpFOp>(
-        ma::CmpFPredicate::OGE, arg_pow_2,
-        b.create<ma::ConstantOp>(b.getFloatAttr(arg_type, 0.61685)));
-    return b.create<ma::SelectOp>(cond, for_large_x, for_small_x);
-  }
+  const se::DeviceDescription* device_description_;
 };
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
@@ -1157,12 +1055,22 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
       : LowerTensorsPassBase(options) {}
 
+  explicit LowerTensorsPass(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
+
   void runOnOperation() override {
+    if (!gpu_device_info_.empty()) {
+      se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description_ = se::DeviceDescription(device_info);
+    }
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
-    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, is_amd_gpu_, gpu_arch_);
+
+    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, &device_description_);
     tensor_patterns
-        .add<RewriteAllocateShared, RewriterExpm1Op, RewriteNonScalarConstants,
+        .add<RewriteAllocateShared, RewriteNonScalarConstants,
              RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
              RewriteTensorInsert, RewriteTransferWrite>(mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
@@ -1211,16 +1119,21 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       signalPassFailure();
     });
   }
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace
 
 std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
-    bool is_amd_gpu, const std::string& gpu_arch) {
+    const std::string& gpu_device_info) {
   LowerTensorsPassOptions options;
-  options.is_amd_gpu_ = is_amd_gpu;
-  options.gpu_arch_ = gpu_arch;
+  options.gpu_device_info_ = gpu_device_info;
   return std::make_unique<LowerTensorsPass>(options);
+}
+
+std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
+    const se::DeviceDescription& device_description) {
+  return std::make_unique<LowerTensorsPass>(device_description);
 }
 
 }  // namespace gpu

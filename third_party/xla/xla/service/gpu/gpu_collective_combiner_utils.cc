@@ -22,10 +22,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -70,10 +71,29 @@ int64_t ComputeSuggestedCombinerThreshold(
 }
 
 absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
-  auto config = instr->backend_config<gpu::GpuBackendConfig>();
-  config->mutable_collective_backend_config()->set_is_pipelined(true);
-  TF_RETURN_IF_ERROR(instr->set_backend_config(*config));
-  return absl::OkStatus();
+  if (!IsCollective(instr)) {
+    return absl::OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(auto config,
+                      instr->backend_config<gpu::GpuBackendConfig>());
+  config.mutable_collective_backend_config()->set_is_pipelined(true);
+  return instr->set_backend_config(config);
+}
+
+bool ContainsPipelinedInstruction(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      auto backend_config = instr->backend_config<GpuBackendConfig>();
+      if (!backend_config.ok()) {
+        VLOG(2) << "Cannot read backend config for: " << instr->ToString();
+        continue;
+      }
+      if (backend_config->collective_backend_config().is_pipelined()) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace xla::gpu

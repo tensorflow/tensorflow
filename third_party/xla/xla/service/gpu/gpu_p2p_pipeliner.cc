@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +37,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+// Rather than pipelining the send/recv and *-done instructions, we only
+// pipeline send/recv instructions. This allows spanning async send/recv across
+// the loop boundary.
+bool PipelineOnlySendRecvStart(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr);
+}
 
 bool ShouldPipeline(const HloInstruction* instr) {
   if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
@@ -202,7 +210,20 @@ absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-void AddP2PPipeliner(HloPassPipeline& pipeline) {
+void AddP2PPipeliner(HloPassPipeline& pipeline,
+                     bool enable_experimental_pipeline_parallelism_opt) {
+  auto should_process = ShouldPipeline;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_op =
+      PostprocessPeeledP2P;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
+      PostprocessRotatedP2P;
+
+  if (enable_experimental_pipeline_parallelism_opt) {
+    should_process = PipelineOnlySendRecvStart;
+    postprocess_backward_peeled_op = std::nullopt;
+    postprocess_backward_rotated_op = std::nullopt;
+  }
+
   CollectivePipeliner::Config config{
       /*level_to_operate_on=*/0,
       // Pipeline everything annotated for pipelining.
@@ -212,14 +233,14 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
       CollectivePipeliner::PipeliningDirection::kBackward,
-      /*should_process=*/ShouldPipeline,
+      /*should_process=*/should_process,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
       /*should_allow_loop_variant_parameter_in_chain=*/
       ShouldAllowLoopVariantParameterInChain,
       /*should_allow_control_dependencies=*/true,
-      /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
-      /*=postprocess_backward_rotated_op*/ PostprocessRotatedP2P};
+      /*=postprocess_backward_peeled_op*/ postprocess_backward_peeled_op,
+      /*=postprocess_backward_rotated_op*/ postprocess_backward_rotated_op};
   pipeline.AddPass<CollectivePipeliner>(config);
 }
 

@@ -393,6 +393,23 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
+// Same as the above test but just pass attribute through
+// the backend config proto string instead.
+TEST_F(CustomCallTest, PassAttributesByBackendConfig) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "__xla_test$$always_fail", /*operands=*/{},
+      ShapeUtil::MakeShape(F32, {}), /*opaque=*/
+      R"({"custom_call_backend_config": {"attributes": "{value = 42 : i32}"}})",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
+}
+
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
   se::DeviceMemoryBase dst_mem = dst->device_memory();

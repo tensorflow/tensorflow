@@ -14,22 +14,32 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
 namespace litert {
 
-bool Tensor::IsSubgraphOutput() const {
-  return internal::MatchTensorNoUses(Get());
-}
+bool Tensor::IsSubgraphOutput() const { return Uses().empty(); }
 
 bool Tensor::IsSubgraphInput() const {
-  return internal::MatchTensorNoDefiningOp(Get()) &&
-         internal::MatchNoWeights(Get());
+  return !HasWeights() && !DefiningOp().has_value();
 }
 
 bool Tensor::IsConstant() const {
-  return internal::MatchTensorNoDefiningOp(Get()) &&
-         !internal::MatchNoWeights(Get());
+  return HasWeights() && !DefiningOp().has_value();
+}
+
+SmallVec<Tensor::TensorUse> Tensor::Uses() const {
+  LiteRtParamIndex num_uses;
+  LiteRtOpArray users;
+  LiteRtParamIndex* user_arg_inds;
+  litert::internal::AssertOk(LiteRtGetTensorUses, Get(), &num_uses, &users,
+                             &user_arg_inds);
+  SmallVec<Tensor::TensorUse> res;
+  for (int i = 0; i < num_uses; ++i) {
+    res.push_back(Tensor::TensorUse{Op(users[i]), user_arg_inds[i]});  // NOLINT
+  }
+  return res;
 }
 
 }  // namespace litert

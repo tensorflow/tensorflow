@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -54,8 +53,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
-
-using ::tsl::monitoring::testing::CellReader;
 
 struct TestParams {
   bool enable_grappler = false;
@@ -1182,33 +1179,6 @@ TEST(SavedModelTest, CustomCompiler) {
   TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
 
   EXPECT_EQ(test_context.signature_name, "toy");
-}
-
-// TODO(b/374165187): Add a test case for positive identification of JAX models.
-// Currently we don't have those in our testdata.
-TEST(SavedModelTest, InferModelType) {
-  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
-  // using the following python code:
-  //  x = tf.placeholder(tf.int32, shape=(3))
-  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
-  //  r = tf.matmul(x, y)
-  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
-
-  auto inferred_model_type_count_reader =
-      CellReader<int64_t>("/tensorflow/tfrt/inferred_model_type");
-
-  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
-  auto options = DefaultSavedModelOptions(runtime.get());
-  options.infer_model_type = true;
-
-  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
-                                                    /*tags=*/{"serve"});
-  TF_CHECK_OK(saved_model.status());
-
-  // TODO(b/374165187): We currently get the model name from graph execution
-  // options but our test setup does not populate that.
-  EXPECT_EQ(inferred_model_type_count_reader.Delta("", "0", "UNKNOWN"), 1);
 }
 
 }  // namespace

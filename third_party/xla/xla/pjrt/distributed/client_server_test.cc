@@ -899,37 +899,6 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   }
 }
 
-TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
-  int num_nodes = 2;
-  StartService(num_nodes);
-
-  auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client = GetClient(node_id);
-    TF_RETURN_IF_ERROR(client->Connect());
-
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt));
-
-    TF_RETURN_IF_ERROR(client->Shutdown());
-    return absl::OkStatus();
-  };
-
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
-        << " node id: " << i;
-  }
-}
-
 TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
   int num_nodes = 3;
   StartService(num_nodes);

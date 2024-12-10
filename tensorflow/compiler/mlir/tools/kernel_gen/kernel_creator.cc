@@ -119,12 +119,12 @@ bool IsSmallAlloc(Value alloc) {
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
-Status LowerHloToJITInvocation(mlir::ModuleOp module,
-                               llvm::ArrayRef<int64_t> tile_sizes,
-                               llvm::ArrayRef<int64_t> unroll_factors,
-                               bool enable_ftz, bool index_64bit,
-                               bool jit_i64_indexed_for_large_tensors,
-                               bool apply_cl_options) {
+absl::Status LowerHloToJITInvocation(mlir::ModuleOp module,
+                                     llvm::ArrayRef<int64_t> tile_sizes,
+                                     llvm::ArrayRef<int64_t> unroll_factors,
+                                     bool enable_ftz, bool index_64bit,
+                                     bool jit_i64_indexed_for_large_tensors,
+                                     bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -148,11 +148,12 @@ Status LowerHloToJITInvocation(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
-Status LowerHlotoLoops(mlir::ModuleOp module,
-                       llvm::ArrayRef<int64_t> tile_sizes,
-                       llvm::ArrayRef<int64_t> unroll_factors, bool enable_ftz,
-                       bool index_64bit, bool jit_i64_indexed_for_large_tensors,
-                       bool apply_cl_options) {
+absl::Status LowerHlotoLoops(mlir::ModuleOp module,
+                             llvm::ArrayRef<int64_t> tile_sizes,
+                             llvm::ArrayRef<int64_t> unroll_factors,
+                             bool enable_ftz, bool index_64bit,
+                             bool jit_i64_indexed_for_large_tensors,
+                             bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   if (jit_i64_indexed_for_large_tensors) {
@@ -238,8 +239,8 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
-Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
-                       bool apply_cl_options) {
+absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
+                             bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -307,8 +308,8 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   return absl::OkStatus();
 }
 
-Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
-                                     bool apply_cl_options) {
+absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
+                                           bool apply_cl_options) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return absl::InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -353,8 +354,8 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
-Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
-                                            bool apply_cl_options) {
+absl::Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
+                                                  bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -369,11 +370,11 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
              : absl::OkStatus();
 }
 
-Status GenerateDeviceCode(mlir::ModuleOp module,
-                          llvm::StringRef gpu_binary_attr_name,
-                          llvm::ArrayRef<std::string> architectures,
-                          bool print_ptx, bool print_llvmir, bool enable_ftz,
-                          bool apply_cl_options) {
+absl::Status GenerateDeviceCode(mlir::ModuleOp module,
+                                llvm::StringRef gpu_binary_attr_name,
+                                llvm::ArrayRef<std::string> architectures,
+                                bool print_ptx, bool print_llvmir,
+                                bool enable_ftz, bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -390,7 +391,8 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
              : absl::OkStatus();
 }
 
-Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
+absl::Status LowerHostSideToFinalForm(mlir::ModuleOp module,
+                                      bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -423,8 +425,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
   if (!module) {
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "invalid kernel IR");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "invalid kernel IR");
   }
   return module;
 }
@@ -437,7 +439,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     bool jit_compile, bool jit_i64_indexed_for_large_tensors,
     bool apply_cl_options) {
   if (jit_compile && jit_i64_indexed_for_large_tensors) {
-    return tensorflow::Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "jit compilation for large tensors "
         "(`jit_i64_indexed_for_large_tensors`) and unconditioned jit "

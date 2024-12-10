@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -41,11 +41,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info,
                              const HloSendInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
+    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                           replica_count, partition_count)),
@@ -65,9 +65,9 @@ absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclSendThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -95,8 +95,10 @@ absl::Status NcclSendThunk::RunNcclCollective(
   VLOG(3) << "Performing Send from device ordinal: " << device_ordinal
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode);
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
-                                          comm_wrapper.comm_handle));
+
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),
+                                          {buffer}, comm_handle.comm));
 
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
@@ -129,9 +131,9 @@ absl::Status NcclSendThunk::RunNcclCollective(
     }
 
     if (should_run) {
-      TF_RETURN_IF_ERROR(nccl_api()->Send(src_addr, buffer.element_type,
-                                          buffer.element_count, *target_id,
-                                          comm_wrapper.comm_handle, &stream));
+      TF_RETURN_IF_ERROR(comm_handle.comm->Send(
+          src_addr, buffer.element_type, buffer.element_count, *target_id,
+          GpuCollectives::On(stream)));
     }
   }
 

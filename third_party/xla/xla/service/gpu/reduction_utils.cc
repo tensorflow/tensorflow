@@ -16,31 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 
 #include <algorithm>
-#include <array>
-#include <atomic>
 #include <cstdint>
 #include <ostream>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/const_init.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
-
-#ifdef GOOGLE_CUDA
-#include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
-#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -79,56 +69,6 @@ Vector3 PartitionShapeByMiddleDimensions(
 
 }  // namespace
 
-int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config) {
-#ifdef GOOGLE_CUDA
-  // The call to `GetAsmCompilerVersion` is expensive, but the result never
-  // changes during one execution and doesn't really depend on
-  // `hlo_module_config`. To avoid repeated calls, we cache the result in a
-  // static variable.
-  static absl::Mutex mutex(absl::kConstInit);
-  static std::atomic<bool*> use_reduced_thread_count_atomic = nullptr;
-
-  bool* use_reduced_thread_count =
-      use_reduced_thread_count_atomic.load(std::memory_order_acquire);
-
-  if (use_reduced_thread_count == nullptr) {
-    absl::MutexLock lock(&mutex);
-    // We might have raced with another thread, so check again!
-    // Note: We can use relaxed memory ordering here because we hold
-    //       the mutex lock and all updates happen under the same lock.
-    //       When unsure, use release and acquire pairs for stores and loads.
-    use_reduced_thread_count =
-        use_reduced_thread_count_atomic.load(std::memory_order_relaxed);
-
-    if (use_reduced_thread_count == nullptr) {
-      auto ptxas_config =
-          PtxOptsFromDebugOptions(hlo_module_config.debug_options());
-      auto ptxas_version_tuple =
-          se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir);
-
-      use_reduced_thread_count = new bool(false);
-
-      // ptxas versions prior to 12.2 have a very rare bug when very high
-      // register spilling occurs with some order of instructions, so use less
-      // threads to reduce register pressure.
-      if (!ptxas_version_tuple.ok() ||
-          ptxas_version_tuple.value() <
-              stream_executor::SemanticVersion{12, 2, 0}) {
-        *use_reduced_thread_count = true;
-      }
-
-      use_reduced_thread_count_atomic.store(use_reduced_thread_count,
-                                            std::memory_order_release);
-    }
-  }
-
-  if (*use_reduced_thread_count) {
-    return 512;
-  }
-#endif  // GOOGLE_CUDA
-  return 1024;
-}
-
 Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
@@ -141,25 +81,27 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
 }
 
 int64_t ReductionDimensionRaceFreeBound(
-    const HloModuleConfig& hlo_module_config,
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    const se::DeviceDescription& device_description) {
   Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   if (reduction_dimensions.is_row_reduction) {
-    return MinThreadsXRowReduction(hlo_module_config) * reduction_tiling[2];
+    return MinThreadsXRowReduction() * reduction_tiling[2];
   }
-  return WarpSize() * reduction_tiling[1];
+  return WarpSize(device_description) * reduction_tiling[1];
 }
 
 bool IsUnnestedReductionFasterThanElemental(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    const se::DeviceDescription& device_description) {
+  const int64_t warp_size = WarpSize(device_description);
   if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
     // For very small reductions with a power-of-two size, we can fit multiple
     // reductions inside a single warp, which is more efficient than a loop.
-    return (reduction_dimensions.dimensions[2] >= WarpSize()) ||
-           ((WarpSize() % reduction_dimensions.dimensions[2]) == 0);
+    return (reduction_dimensions.dimensions[2] >= warp_size) ||
+           ((warp_size % reduction_dimensions.dimensions[2]) == 0);
   }
 
   // For column reduction, the tile block is tile_size_y x tile_size_x, and we
@@ -170,15 +112,17 @@ bool IsUnnestedReductionFasterThanElemental(
 
   // Rule generated by sweeping the search space of small column reductions.
   bool prefer_elemental_emitter =
-      (major_size < WarpSize()) ||
-      (major_size < 2 * WarpSize() && minor_size < WarpSize()) ||
-      (major_size < 4 * WarpSize() && minor_size < 8) ||
-      (major_size < 8 * WarpSize() && minor_size < 3);
+      (major_size < warp_size) ||
+      (major_size < 2 * warp_size && minor_size < warp_size) ||
+      (major_size < 4 * warp_size && minor_size < 8) ||
+      (major_size < 8 * warp_size && minor_size < 3);
 
   return !prefer_elemental_emitter;
 }
 
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
+bool IsReductionFromOrToContiguousDimensions(
+    const HloInstruction& reduce,
+    const se::DeviceDescription& device_description) {
   if (reduce.opcode() != HloOpcode::kReduce) {
     return false;
   }
@@ -201,23 +145,24 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
           LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
                                                dims_to_reduce)) &&
          IsUnnestedReductionFasterThanElemental(
-             GetReductionKindAndContiguousComponents(reduce));
+             GetReductionKindAndContiguousComponents(reduce),
+             device_description);
 }
 
-bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
-                         const ReductionDimensions& reduction_dimensions) {
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const se::DeviceDescription& device_description) {
   if (reduction_dimensions.is_row_reduction) {
     return reduction_dimensions.dimensions[2] <=
-               ReductionDimensionRaceFreeBound(hlo_module_config,
-                                               reduction_dimensions) &&
+               ReductionDimensionRaceFreeBound(reduction_dimensions,
+                                               device_description) &&
            reduction_dimensions.dimensions[0] <=
                BatchedReductionRaceFreeBound();
   }
 
   // Column reduction.
   return reduction_dimensions.dimensions[1] <=
-         ReductionDimensionRaceFreeBound(hlo_module_config,
-                                         reduction_dimensions);
+         ReductionDimensionRaceFreeBound(reduction_dimensions,
+                                         device_description);
 }
 
 std::ostream& operator<<(std::ostream& os,
@@ -275,14 +220,14 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
   return {/*is_row_reduction=*/false, shape_partition};
 }
 
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero) {
-  if (!IsReductionFromOrToContiguousDimensions(hero)) {
+bool IsRealReductionHero(const HloInstruction& root, const HloInstruction& hero,
+                         const se::DeviceDescription& device_description) {
+  if (!IsReductionFromOrToContiguousDimensions(hero, device_description)) {
     return false;
   }
   return &root == &hero ||
-         ReductionIsRaceFree(hero.GetModule()->config(),
-                             GetReductionKindAndContiguousComponents(hero));
+         ReductionIsRaceFree(GetReductionKindAndContiguousComponents(hero),
+                             device_description);
 }
 
 bool AreReductionsMultiOutputFusionCompatible(

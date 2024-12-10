@@ -93,7 +93,12 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     if (it == cloned_map.end()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    // Only update add control dependencies between ops outside of the loop or
+    // within the loop body. If the control dependency crosses the loop boundary
+    // it is enforced by the loop structure.
+    if (it->second->parent() == new_instr->parent()) {
+      TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    }
   }
   return absl::OkStatus();
 }
@@ -150,7 +155,7 @@ bool CheckIndexIsMonotonic(
   // we want to make the function more powerful we need to have a more
   // sophisticated check for monotonicity.
   Range range = RecursivelyIdentifyRange(index, induction_map);
-  VLOG(5) << "Range for: " << index->ToString() << " " << range.ToString();
+  VLOG(6) << "Range for: " << index->ToString() << " " << range.ToString();
   return !range.IsEmpty() && range.IsLinear();
 }
 
@@ -170,7 +175,7 @@ bool CheckParameterUsageIsCompatible(const HloInstruction* gte,
       return false;
     }
     // Expected same index as dynamic-update-slice().
-    if (user->operand(static_cast<HloDynamicSliceInstruction*>(user)
+    if (user->operand(static_cast<HloDynamicUpdateSliceInstruction*>(user)
                           ->first_index_operand_number() +
                       sliced_index) != dus_idx) {
       VLOG(5) << "CheckParameterUsageIsCompatible(): Idx is not the same as "
@@ -337,7 +342,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kBitcast>(i) ||
+                            HloOpcode::kBroadcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
@@ -698,7 +703,9 @@ template <typename Comp>
 absl::StatusOr<HloInstruction*> CloneBackwardChain(
     Comp& target_computation, const WhileMoveInfo& move_info,
     InstructionMap& clone_map, int64_t loop_iter_idx, int64_t& next_channel_id,
-    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr) {
+    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr,
+    CollectivePipeliner::HloPostprocessor postprocess_pipelined_ops =
+        std::nullopt) {
   std::vector<HloInstruction*> to_clone(move_info.formatting_ops.begin(),
                                         move_info.formatting_ops.end());
   to_clone.push_back(move_info.collectives_to_move[0]);
@@ -715,6 +722,9 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id);
     clone_map[chain_op] = cloned;
+    if (postprocess_pipelined_ops.has_value()) {
+      TF_RETURN_IF_ERROR((*postprocess_pipelined_ops)(cloned));
+    }
     last_cloned = cloned;
     if (loop_variant_parameter_info != nullptr &&
         chain_op->opcode() == HloOpcode::kGetTupleElement &&
@@ -1913,6 +1923,9 @@ absl::Status TransformLoopForward(
           formatting_op->CloneWithNewOperands(formatting_op->shape(),
                                               new_operands));
       cloned_map[formatting_op] = processed;
+      if (post_processing_fn.has_value()) {
+        TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
+      }
     }
     return processed;
   };
@@ -2721,10 +2734,11 @@ static absl::Status TransformLoopBackward(
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0];
     TF_ASSIGN_OR_RETURN(
         new_init_operands[idx],
-        CloneBackwardChain(*while_loop->parent(),
-                           loop_analysis.GetMoveInfos()[i], chain_clone_map,
-                           *loop_analysis.GetLoopIterationIdx(),
-                           next_channel_id));
+        CloneBackwardChain(
+            *while_loop->parent(), loop_analysis.GetMoveInfos()[i],
+            chain_clone_map, *loop_analysis.GetLoopIterationIdx(),
+            next_channel_id, /*loop_variant_parameter_info=*/nullptr,
+            post_processing_fn));
 
     if (post_processing_fn.has_value()) {
       TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx]));
@@ -2774,11 +2788,11 @@ static absl::Status TransformLoopBackward(
     if (it != collective_to_move_map.end()) {
       TF_ASSIGN_OR_RETURN(
           cloned_instr,
-          CloneBackwardChain(body_builder,
-                             loop_analysis.GetMoveInfos()[it->second],
-                             collective_to_move_clone_map,
-                             *loop_analysis.GetLoopIterationIdx(),
-                             next_channel_id, &loop_variant_parameter_info));
+          CloneBackwardChain(
+              body_builder, loop_analysis.GetMoveInfos()[it->second],
+              collective_to_move_clone_map,
+              *loop_analysis.GetLoopIterationIdx(), next_channel_id,
+              &loop_variant_parameter_info, post_processing_fn));
 
       if (post_processing_fn.has_value()) {
         TF_RETURN_IF_ERROR((*post_processing_fn)(cloned_instr));
@@ -2825,7 +2839,9 @@ static absl::Status TransformLoopBackward(
               [new_root_operands[*loop_analysis.GetLoopIterationIdx()]],
           body_builder.AddInstruction(
               HloInstruction::CreateConstant(*CreateLiteralOfShape(
-                  loop_index_shape, next_loop_iteration.GetSignedValue())))));
+                  loop_index_shape,
+                  loop_analysis.GetLoopIncrement()->GetSignedValue())))));
+
   HloInstruction* new_loop_root =
       body_builder.AddInstruction(HloInstruction::CreateTuple(
           MapNewOperands(new_root_operands, while_body_replacement_map,
@@ -2940,6 +2956,23 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
+bool IsForwardSinkIterationFeasible(HloInstruction* while_inst,
+                                    int64_t collective_size_threshold) {
+  for (HloInstruction* inst :
+       while_inst->while_body()->root_instruction()->operands()) {
+    if (inst->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        inst->operand(1)->IsCustomCall(
+            CollectivePipeliner::kSunkByPreviousStep)) {
+      HloInstruction* cc = inst->mutable_operand(1);
+      if (ShapeUtil::ElementsIn(cc->shape()) >= collective_size_threshold) {
+        VLOG(1) << "Encountered a large collective which was sunk by the "
+                   "previous step, should stop the iteration.";
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
@@ -2988,6 +3021,11 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   for (auto& [instruction, loop_analysis] : loop_analyses) {
     VLOG(1) << "While iterations: "
             << loop_analysis->GetLoopIterationCount()->ToString();
+    if (config_.pipelining_direction == PipeliningDirection::kForwardSink &&
+        !IsForwardSinkIterationFeasible(
+            instruction, config_.collective_size_threshold_to_stop_sinking)) {
+      continue;
+    }
     loop_analysis->CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,

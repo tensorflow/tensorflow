@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_RESHAPE_MOVER_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_RESHAPE_MOVER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {

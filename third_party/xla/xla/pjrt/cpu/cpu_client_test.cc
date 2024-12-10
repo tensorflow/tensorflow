@@ -28,8 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -53,9 +52,11 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -445,5 +446,69 @@ TEST(TfrtCpuClientTest, ForwardUserDataToFfiHandler) {
       *result_literal));
 }
 
+static absl::Status MemsetFromAttr(
+    float attr, ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result) {
+  for (size_t i = 0; i < result->element_count(); ++i) {
+    result->typed_data()[i] = attr;
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetFromAttr, MemsetFromAttr,
+                       ffi::Ffi::Bind()
+                           .Attr<float>("attr")
+                           .Ret<ffi::BufferR1<PrimitiveType::F32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "MemsetFromAttr", "HOST",
+                         kMemsetFromAttr);
+
+TEST(TfrtCpuClientTest, PassAttrToFfiHandler) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+          custom_call_target="MemsetFromAttr",
+          api_version=API_VERSION_TYPED_FFI,
+          backend_config={"custom_call_config": {"attributes": "{attr = 3.0 : f32}"}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->Compile(xla_computation, {}));
+
+  ExecuteOptions opts;
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
+}
+
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_CreateZeroCopyBuffer(benchmark::State& state) {
+  auto client = GetTfrtCpuClient({});
+  PjRtDevice* device = (*client)->devices().front();
+
+  alignas(32) float value = 1.0f;
+
+  for (auto _ : state) {
+    auto buffer = (*client)->BufferFromHostBuffer(
+        &value, PrimitiveType::F32, {}, std::nullopt,
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+    CHECK_OK(buffer) << "Failed to create a buffer from a host buffer";
+  }
+}
+
+BENCHMARK(BM_CreateZeroCopyBuffer);
+
 }  // namespace xla

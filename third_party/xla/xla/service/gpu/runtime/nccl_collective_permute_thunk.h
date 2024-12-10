@@ -18,12 +18,17 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
@@ -91,7 +96,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   const HloCollectivePermuteInstruction* instr,
                                   int64_t replica_count,
                                   int64_t partition_count, const Buffer& buffer,
@@ -104,7 +109,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
  private:
   const NcclP2PConfig config_;
@@ -115,9 +120,10 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 };
 
 absl::Status RunCollectivePermute(
-    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
-    absl::string_view device_string, int64_t current_id, bool use_memcpy,
+    GpuCollectives* collectives,
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, Communicator* comm, absl::string_view device_string,
+    int64_t current_id, bool use_memcpy,
     NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
 
 }  // namespace gpu

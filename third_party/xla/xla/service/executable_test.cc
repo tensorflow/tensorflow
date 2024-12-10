@@ -43,8 +43,7 @@ class TestExecutable : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override {
+      std::vector<ExecutionInput> arguments) override {
     return absl::UnimplementedError("Not needed for this test.");
   }
 };

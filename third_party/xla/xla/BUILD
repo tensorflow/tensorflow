@@ -1,14 +1,4 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tf_proto_library",
-    # copybara:uncomment "tf_pyclif_proto_library",
-)
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
@@ -16,6 +6,12 @@ load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
+)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -206,6 +202,7 @@ cc_library(
     hdrs = ["test.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:test",
     ],
@@ -241,15 +238,16 @@ cc_library(
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -266,32 +264,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "status",
-    hdrs = ["status.h"],
-    deprecation = "Use @com_google_absl//absl/status instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
-    name = "statusor",
-    hdrs = [
-        "statusor.h",
-    ],
-    linkopts = select({
-        "//xla/tsl:freebsd": ["-lexecinfo"],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1129,12 +1101,12 @@ xla_cc_test(
     deps =
         [
             ":parse_flags_from_env",
+            "//xla/tsl/platform:subprocess",
             "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:macros",
-            "@local_tsl//tsl/platform:subprocess",
             "@local_tsl//tsl/platform:test",
         ],
 )
@@ -1147,7 +1119,6 @@ cc_library(
     ],
     hdrs = ["debug_options_flags.h"],
     copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = internal_visibility([":friends"]),
     deps =
         [
@@ -1177,8 +1148,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla/backends/cpu:alignment",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1368,8 +1339,8 @@ bzl_library(
     srcs = ["lit.bzl"],
     deps = [
         "//xla/tsl:tsl_bzl",
+        "//xla/tsl/platform/default:cuda_build_defs_bzl",
         "@bazel_skylib//lib:paths",
-        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ],
 )
 

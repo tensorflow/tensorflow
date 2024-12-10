@@ -43,7 +43,7 @@ dnnl::stream MakeOneDnnStream(
 dnnl::post_ops PopulateOneDnnPostOps(
     const dnnl::engine& cpu_engine,
     const std::vector<dnnl::memory::desc>& fused_mds,
-    const OneDnnFusionConfig* fusion_config, const int output_ndims,
+    const OneDnnFusionConfig* fusion_config,
     FusedOperandsRef* fused_operands_ref, dnnl::memory::desc* bias_md) {
   dnnl::post_ops post_ops;
   int fused_operand_idx = 0;
@@ -69,14 +69,6 @@ dnnl::post_ops PopulateOneDnnPostOps(
         break;
       case OneDnnFusionConfig::BIAS: {
         *bias_md = fused_mds.at(fused_operand_idx);
-        // TODO(intel-tf): Move this check to the rewriter file
-        // Extend bias rank to match result rank.
-        auto missed_rank = output_ndims - bias_md->get_ndims();
-        if (missed_rank > 0) {
-          auto bias_dims = bias_md->get_dims();
-          bias_dims.insert(bias_dims.begin(), missed_rank, 1);
-          *bias_md = bias_md->reshape(bias_dims);
-        }
         if (fused_operands_ref) {
           fused_operands_ref->postop_args.emplace_back(
               DNNL_ARG_BIAS,
@@ -90,14 +82,6 @@ dnnl::post_ops PopulateOneDnnPostOps(
         break;
       case OneDnnFusionConfig::BINARY_ADD: {
         auto binary_md = fused_mds.at(fused_operand_idx);
-        // TODO(intel-tf): Move this check to the rewriter file
-        // Extend addend rank to match result rank.
-        auto missed_rank = output_ndims - binary_md.get_ndims();
-        if (missed_rank > 0) {
-          auto binary_dims = binary_md.get_dims();
-          binary_dims.insert(binary_dims.begin(), missed_rank, 1);
-          binary_md = binary_md.reshape(binary_dims);
-        }
         if (fused_operands_ref) {
           auto arg_idx =
               DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;

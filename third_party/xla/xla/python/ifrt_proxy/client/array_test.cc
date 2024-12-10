@@ -119,12 +119,13 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
   IfrtResponse response;
   ASSERT_TRUE(TextFormat::ParseFromString(
       R"pb(response_metadata {}
-           fully_replicated_shard_response { array_handle: 5678 })pb",
+           fully_replicated_shard_response { array_handle: 1 })pb",
       &response));
 
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(fully_replicated_shard_request {
                                     array_handle: 1234
+                                    result_handle: 1
                                   })pb")))))
       .WillOnce(MockClientSessionReturnResponse(response));
 

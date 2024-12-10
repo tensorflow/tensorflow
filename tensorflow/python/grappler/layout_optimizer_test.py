@@ -1289,7 +1289,7 @@ class LayoutOptimizerTest(test.TestCase):
         nodes.append(node.name)
 
       # The reduce op Mean needs to dim map the input reduce index to NCDHW.
-      # Then, the output needs to be tranposed back to NDHWC.
+      # Then, the output needs to be transposed back to NDHWC.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
@@ -1332,7 +1332,7 @@ class LayoutOptimizerTest(test.TestCase):
         nodes.append(node.name)
 
       # The binary ops mul_1 and add_1 in batch norm need to transpose one of
-      # the two inputs to NCDHW. The other input has already been tranposed via
+      # the two inputs to NCDHW. The other input has already been transposed via
       # Conv3D.
       expected_num_transposes = 4
       self.assertEqual(expected_num_transposes, num_transposes)

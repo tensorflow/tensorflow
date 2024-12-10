@@ -24,8 +24,8 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace litert::internal {
@@ -42,14 +42,13 @@ TEST(TestBuildStamp, MakeBuildStampInputsTooLarge) {
   // NOLINTNEXTLINE
   std::string long_manufacturer(256, 'a');
   auto res = MakeBuildStamp(long_manufacturer, kSocModel, kSerialization);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestBuildStamp, MakeBuildStamp) {
-  ASSERT_RESULT_OK_ASSIGN(auto stamp,
-                          MakeBuildStamp(kSocMan, kSocModel, kSerialization));
-  ASSERT_RESULT_OK_ASSIGN(auto pstamp, ParseBuildStamp(stamp));
-  auto [man, model, serial] = pstamp;
+  auto stamp = MakeBuildStamp(kSocMan, kSocModel, kSerialization);
+  auto pstamp = ParseBuildStamp(*stamp);
+  auto [man, model, serial] = *pstamp;
   EXPECT_EQ(man, kSocMan);
   EXPECT_EQ(model, kSocModel);
   EXPECT_EQ(serial, kSerialization);
@@ -58,25 +57,25 @@ TEST(TestBuildStamp, MakeBuildStamp) {
 TEST(TestByteCodePlaceholder, ParseBadPlaceholder) {
   OwningBufferRef<uint8_t> placeholder;
   auto res = ParseByteCodePlaceholder(placeholder);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestByteCodePlaceholder, BuildAndParseEmptyInvalid) {
   auto placeholder = MakeByteCodePlaceholder();
   ASSERT_THAT(placeholder.StrView(), StartsWith(kByteCodePrefix));
   auto res = ParseByteCodePlaceholder(placeholder);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestByteCodePlaceholder, BuildAndFinishByteCodePlaceholder) {
   auto placeholder = MakeByteCodePlaceholder();
 
   static constexpr size_t kByteCodeSize = 200;
-  ASSERT_STATUS_OK(FinishByteCodePlaceholders(placeholder, kByteCodeSize));
+  LITERT_ASSERT_STATUS_OK(
+      FinishByteCodePlaceholders(placeholder, kByteCodeSize));
 
-  ASSERT_RESULT_OK_ASSIGN(auto p_placeholder,
-                          ParseByteCodePlaceholder(placeholder));
-  auto [offset, size] = p_placeholder;
+  auto p_placeholder = ParseByteCodePlaceholder(placeholder);
+  auto [offset, size] = *p_placeholder;
   EXPECT_EQ(offset, placeholder.Size());
   EXPECT_EQ(size, kByteCodeSize);
 }
@@ -85,14 +84,15 @@ TEST(TestByteCodePlaceholder, BuildAndFinishByteCodePlaceholderTooLarge) {
   auto placeholder = MakeByteCodePlaceholder();
 
   static constexpr size_t kByteCodeSize = std::numeric_limits<size_t>::max();
-  ASSERT_STATUS_HAS_CODE(FinishByteCodePlaceholders(placeholder, kByteCodeSize),
-                         kLiteRtStatusErrorInvalidArgument);
+  LITERT_ASSERT_STATUS_HAS_CODE(
+      FinishByteCodePlaceholders(placeholder, kByteCodeSize),
+      kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestExecInfo, ExecInfo) {
-  ASSERT_RESULT_OK_ASSIGN(auto exec_info, MakeExecInfo("entry_point", "key"));
-  ASSERT_RESULT_OK_ASSIGN(auto p_exec_info, ParseExecInfo(exec_info));
-  auto [entry_point, key] = p_exec_info;
+  auto exec_info = MakeExecInfo("entry_point", "key");
+  auto p_exec_info = ParseExecInfo(*exec_info);
+  auto [entry_point, key] = *p_exec_info;
   EXPECT_EQ(entry_point, "entry_point");
   EXPECT_EQ(key, "key");
 }
@@ -101,7 +101,7 @@ TEST(TestExecInfo, ExecInfoTooLarge) {
   // NOLINTNEXTLINE
   std::string long_entry_point(256, 'a');
   auto res = MakeExecInfo(long_entry_point, "key");
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 }  // namespace
