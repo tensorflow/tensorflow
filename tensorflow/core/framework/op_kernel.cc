@@ -817,7 +817,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel().name_view().data(), step_id(), "output", type,
       [&shape]() { return shape.DebugString(); });
   auto output_tensor = std::make_unique<Tensor>();
@@ -848,7 +848,7 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel().name_view().data(), step_id(), "temp", type,
       [&shape]() { return shape.DebugString(); });
   Status s =
@@ -953,7 +953,7 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
-    profiler::ScopedMemoryDebugAnnotation op_annotation(
+    tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
         op_kernel().name_view().data(), step_id(), "output", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
     auto new_tensor = std::make_unique<Tensor>();
