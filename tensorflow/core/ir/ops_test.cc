@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/ops.h"
 
-#include <optional>
+#include <cassert>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
