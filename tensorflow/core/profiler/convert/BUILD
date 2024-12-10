@@ -113,6 +113,26 @@ cc_library(
 )
 
 cc_library(
+    name = "op_stats_to_roofline_model",
+    srcs = ["op_stats_to_roofline_model.cc"],
+    hdrs = ["op_stats_to_roofline_model.h"],
+    deps = [
+        ":op_metrics_db_combiner",
+        ":op_metrics_to_record",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:roofline_model_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:diagnostics",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
+cc_library(
     name = "op_stats_to_op_profile",
     srcs = ["op_stats_to_op_profile.cc"],
     hdrs = ["op_stats_to_op_profile.h"],
@@ -665,6 +685,7 @@ cc_library(
         ":op_stats_to_op_profile",
         ":op_stats_to_overview_page",
         ":op_stats_to_pod_viewer",
+        ":op_stats_to_roofline_model",
         ":op_stats_to_tf_stats",
         ":preprocess_single_host_xplane",
         ":process_megascale_dcn",

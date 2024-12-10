@@ -106,6 +106,16 @@ inline bool IsRematerialization(absl::string_view hlo_expression,
          IsFrameworkRematerialization(framework_op_name);
 }
 
+inline bool IsInfeedOrOutfeed(absl::string_view category) {
+  return category == kHloInfeed || category == kHloOutfeed ||
+         absl::StrContains(category, kHloInfeed) ||
+         absl::StrContains(category, kHloOutfeed);
+}
+inline bool MayHaveInnerOps(absl::string_view category) {
+  return category == kHloCall || category == kHloConditional ||
+         category == kHloWhile || category == kHloMegacoreFusion;
+}
+
 }  // namespace profiler
 }  // namespace tsl
 
