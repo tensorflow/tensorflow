@@ -1120,21 +1120,24 @@ xla_test(
     srcs = ["gather_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "test_hlo_pjrt_runner",
+        "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
-        ":hlo_test_base",
+        ":hlo_pjrt_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array",
         "//xla:execution_options_util",
+        "//xla:literal",
         "//xla:literal_util",
-        "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
         "//xla/service",
+        "//xla/service:hlo_module_config",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
