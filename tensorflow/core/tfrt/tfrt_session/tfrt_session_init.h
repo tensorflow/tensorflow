@@ -24,7 +24,7 @@ namespace tensorflow {
 //
 // TODO(jingdong): Merge this function with the InitializeTfrtSession() in
 // tfrt_session.h after we decouple TPU logic from TfrtSession.
-inline Status InitializeTfrtSession() {
+inline absl::Status InitializeTfrtSession() {
   SetDefaultLocalSessionImpl(LocalSessionImpl::kTfrtSession);
   return absl::OkStatus();
 }
