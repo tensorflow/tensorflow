@@ -145,6 +145,11 @@ class TestCoordinationClient : public CoordinationClient {
                           StatusCallback done) override {
     done(absl::UnimplementedError("CancelBarrierAsync"));
   }
+  void GetAliveTasksAsync(const tsl::GetAliveTasksRequest* request,
+                          tsl::GetAliveTasksResponse* response,
+                          StatusCallback done) override {
+    done(absl::UnimplementedError("GetAliveTasksAsync"));
+  }
   void RegisterTaskAsync(tsl::CallOptions*,
                          const tsl::RegisterTaskRequest* request,
                          tsl::RegisterTaskResponse* response,
