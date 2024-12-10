@@ -232,7 +232,7 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_split_configs(SplitConfig::CreateFromProto(split_config_proto));
   }
   if (proto.has_physical_shape()) {
-    *layout.mutable_physical_shape() = Shape(proto.physical_shape());
+    *layout.mutable_physical_shape() = Shape::FromProto(proto.physical_shape());
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(
       proto.dynamic_shape_metadata_prefix_bytes());
