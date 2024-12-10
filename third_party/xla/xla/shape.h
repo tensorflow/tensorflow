@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -48,6 +49,7 @@ class Shape {
   Shape& operator=(Shape&&);
 
   // Construct a shape from a ShapeProto.
+  ABSL_DEPRECATED("Use FromProto() instead.")
   explicit Shape(const ShapeProto& shape_proto);
 
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
@@ -63,6 +65,9 @@ class Shape {
   ShapeProto ToProto() const;
   // Sets a ShapeProto to the representation of the Shape.
   void SetProto(ShapeProto& proto) const;
+
+  // Returns a Shape from a ShapeProto, reverse of ToProto().
+  static Shape FromProto(const ShapeProto& proto);
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -152,18 +157,10 @@ class Shape {
     return absl::MakeSpan(dynamic_dimensions_);
   }
 
-  // Add dimension_upper_bound().
-
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
   void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message ShapeProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
 
   // Methods for accessing the primitive type.
   PrimitiveType element_type() const { return element_type_; }
@@ -200,7 +197,9 @@ class Shape {
   int tuple_shapes_size() const { return tuple_shapes_.size(); }
   const Shape& tuple_shapes(int index) const;
   Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_[index]; }
+  ABSL_DEPRECATED("use add_tuple_shape(Shape&) instead")
   Shape* add_tuple_shapes();
+  void add_tuple_shape(const Shape& shape);
   void clear_tuple_shapes() { tuple_shapes_.clear(); }
   const std::vector<Shape>& tuple_shapes() const { return tuple_shapes_; }
   std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
@@ -211,6 +210,7 @@ class Shape {
     CHECK(has_layout()) << ShortDebugString();
     return *layout_;
   }
+  void set_layout(const Layout& layout) { layout_ = layout; }
   Layout* mutable_layout() {
     CHECK(IsArray()) << ShortDebugString();
     if (layout_ == std::nullopt) {
