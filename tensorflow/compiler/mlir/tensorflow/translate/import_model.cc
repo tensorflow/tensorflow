@@ -1706,29 +1706,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
       graph, debug_info, graph.flib_def(), specs, context);
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
-    const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
-  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      graph, debug_info, flib_def, specs, context, tf_name_to_mlir_name);
-}
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
-    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
-    mlir::MLIRContext* context) {
-  tensorflow::GraphDebugInfo dummy_debug_info;
-  tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->record->fdef().signature().name();
-  specs.enable_shape_inference = false;
-  specs.graph_as_function = true;
-  for (const auto* control_ret_node : fbody->control_ret_nodes)
-    specs.control_outputs.push_back(control_ret_node->name());
-  return ConvertGraphToMlir(*fbody->graph, dummy_debug_info, flib_def, specs,
-                            context);
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, MLIRImportOptions options) {
