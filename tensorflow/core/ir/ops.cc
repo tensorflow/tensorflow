@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <array>
+#include <cassert>
+#include <iterator>
 #include <list>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
