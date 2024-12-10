@@ -77,7 +77,7 @@ absl::StatusOr<nb::bytes> JsonToPprofProfile(std::string json) {
   auto status = tsl::protobuf::util::JsonStringToMessage(json, &profile);
   if (!status.ok()) {
     // TODO(phawkins): the explicit `std::string` cast here is to work around
-    // https://github.com/google/jax/issues/9534 which appears to be an ABSL and
+    // https://github.com/jax-ml/jax/issues/9534 which appears to be an ABSL and
     // protobuf version compatibility problem.
     return InvalidArgument("JSON parsing failed: %s",
                            std::string{status.message()});
@@ -93,7 +93,7 @@ absl::StatusOr<std::string> PprofProfileToJson(nb::bytes binary_proto) {
   auto status = tsl::protobuf::util::MessageToJsonString(profile, &output);
   if (!status.ok()) {
     // TODO(phawkins): the explicit `std::string` cast here is to work around
-    // https://github.com/google/jax/issues/9534 which appears to be an ABSL and
+    // https://github.com/jax-ml/jax/issues/9534 which appears to be an ABSL and
     // protobuf version compatibility problem.
     return InvalidArgument("JSON printing failed: %s",
                            std::string{status.message()});

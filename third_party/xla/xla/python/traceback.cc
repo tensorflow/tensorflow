@@ -152,7 +152,7 @@ nb::object Traceback::AsPythonTraceback() const {
   for (const std::pair<PyCodeObject*, int>& frame : frames_) {
     int lineno = PyCode_Addr2Line(frame.first, frame.second);
     // Under Python 3.11 we observed crashes when using a fake PyFrameObject
-    // with a real PyCodeObject (https://github.com/google/jax/issues/16027).
+    // with a real PyCodeObject (https://github.com/jax-ml/jax/issues/16027).
     // because the frame does not have fields necessary to compute the locals,
     // notably the closure object, leading to crashes in CPython in
     // _PyFrame_FastToLocalsWithError
