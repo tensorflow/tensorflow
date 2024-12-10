@@ -56,7 +56,7 @@ namespace tensorflow {
 
 using tensorflow::quantization::PyFunctionLibrary;
 
-Status HandleInputOutputArraysWithModule(
+absl::Status HandleInputOutputArraysWithModule(
     const tflite::ModelFlags& model_flags,
     mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::func::FuncOp entry_function = nullptr;
@@ -132,7 +132,7 @@ Status HandleInputOutputArraysWithModule(
   return absl::OkStatus();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
+absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
