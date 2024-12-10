@@ -138,6 +138,7 @@ cc_library(
         "//xla/service:sharding_remover",
         "//xla/service:topk_rewriter",
         "//xla/service:triangular_solve_expander",
+        "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
