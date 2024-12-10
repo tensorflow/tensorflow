@@ -24,14 +24,13 @@ limitations under the License.
 namespace tfrt {
 class DecodedDiagnostic;
 
-tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
-    const tensorflow::Status& status);
+tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(const absl::Status& status);
 
-tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error);
+absl::Status CreateTfErrorStatus(const DecodedDiagnostic& error);
 
-tensorflow::Status ToTfStatus(const AsyncValue* av);
+absl::Status ToTfStatus(const AsyncValue* av);
 
-inline std::string MakeStatusString(tensorflow::Status status) {
+inline std::string MakeStatusString(absl::Status status) {
   switch (static_cast<absl::StatusCode>(status.code())) {
     case absl::StatusCode::kOk:
       return "OK";
@@ -72,7 +71,7 @@ inline std::string MakeStatusString(tensorflow::Status status) {
   }
 }
 
-inline llvm::Error MakeStatusError(tensorflow::Status status) {
+inline llvm::Error MakeStatusError(absl::Status status) {
   return MakeStringError(MakeStatusString(status));
 }
 

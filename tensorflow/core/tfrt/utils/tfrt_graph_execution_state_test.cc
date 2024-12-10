@@ -97,14 +97,15 @@ TEST_F(PruneGraphDefTest, ConstFeedWithInput) {
   CompareGraphs(expected, graphdef);
 }
 
-Status LessThanTenCond(const Scope& scope, const std::vector<Output>& inputs,
-                       Output* output) {
+absl::Status LessThanTenCond(const Scope& scope,
+                             const std::vector<Output>& inputs,
+                             Output* output) {
   *output = ops::Less(scope, inputs[0], 10);
   return scope.status();
 }
 
-Status AddOneBody(const Scope& scope, const std::vector<Output>& inputs,
-                  std::vector<Output>* outputs) {
+absl::Status AddOneBody(const Scope& scope, const std::vector<Output>& inputs,
+                        std::vector<Output>* outputs) {
   outputs->push_back(ops::AddN(scope, {inputs[0], 1}));
   return scope.status();
 }

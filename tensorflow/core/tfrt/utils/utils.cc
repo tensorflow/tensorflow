@@ -51,9 +51,9 @@ DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype) {
   }
 }
 
-tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
-                                         tfrt::BEFFile* bef_file,
-                                         absl::string_view fallback_init_func) {
+absl::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
+                                   tfrt::BEFFile* bef_file,
+                                   absl::string_view fallback_init_func) {
   auto* host = exec_ctx.host();
 
   auto* func = bef_file->GetFunction(
