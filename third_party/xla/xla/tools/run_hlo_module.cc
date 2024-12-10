@@ -228,7 +228,8 @@ absl::Status RunAndCompareInternal(
       for (int i = 0; i < args.size(); ++i) {
         if (!literal_comparison::EqualShapes(
                  xla::Shape(args[i].shape()),
-                 xla::Shape(iteration_literals_proto->arguments(i).shape()))
+                 xla::Shape::FromProto(
+                     iteration_literals_proto->arguments(i).shape()))
                  .ok()) {
           if (test_run_result != nullptr) {
             *test_run_result = ModuleResult::kOtherError;

@@ -85,7 +85,7 @@ absl::StatusOr<Shape> GetShardedShape(const Shape& shape,
 }
 
 absl::StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
-  const Shape unsharded_shape(instr.shape());
+  const Shape unsharded_shape = Shape::FromProto(instr.shape());
   Shape sharded_shape;
   if (instr.has_sharding()) {
     TF_ASSIGN_OR_RETURN(sharded_shape,
