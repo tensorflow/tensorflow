@@ -83,6 +83,21 @@ Expected<TflQuantizationPtr> MapQuantizationDetail<LiteRtQuantizationPerTensor>(
   return tfl_quantization;
 }
 
+template <>
+Expected<TflQuantizationPtr>
+MapQuantizationDetail<LiteRtQuantizationPerChannel>(
+    const LiteRtQuantizationPerChannel& litert_quantization) {
+  auto tfl_quantization = std::make_unique<TflQuantization>();
+
+  for (int i = 0; i < litert_quantization.num_channels; ++i) {
+    tfl_quantization->scale.push_back(litert_quantization.scales[i]);
+    tfl_quantization->zero_point.push_back(litert_quantization.zero_points[i]);
+  }
+  tfl_quantization->quantized_dimension =
+      litert_quantization.quantized_dimension;
+  return tfl_quantization;
+}
+
 }  // namespace
 
 Expected<TflTensorType> MapTensorType(const TensorType& litert_tensor_type) {
@@ -101,6 +116,8 @@ Expected<TflQuantizationPtr> MapQuantization(
       return TflQuantizationPtr(nullptr);
     case kLiteRtQuantizationPerTensor:
       return MapQuantizationDetail(litert_quantization.second.per_tensor);
+    case kLiteRtQuantizationPerChannel:
+      return MapQuantizationDetail(litert_quantization.second.per_channel);
     default:
       return Error(kLiteRtStatusErrorUnsupported);
   }

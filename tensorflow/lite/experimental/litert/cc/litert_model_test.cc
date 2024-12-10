@@ -281,6 +281,36 @@ TEST(CcTensorTest, QuantizationPerTensor) {
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
 }
 
+TEST(CcTensorTest, QuantizationPerChannel) {
+  static constexpr auto kNumChannels = 2;
+  static constexpr auto kQuantizedDimension = 0;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZeroPoints[kNumChannels] = {0, 0};
+
+  LiteRtTensorT litert_tensor;
+  litert_tensor.q_type_id = kLiteRtQuantizationPerChannel;
+  litert_tensor.q_type_detail.per_channel.scales = const_cast<float*>(kScales);
+  litert_tensor.q_type_detail.per_channel.zero_points =
+      const_cast<int64_t*>(kZeroPoints);
+  litert_tensor.q_type_detail.per_channel.num_channels = kNumChannels;
+  litert_tensor.q_type_detail.per_channel.quantized_dimension =
+      kQuantizedDimension;
+
+  Tensor tensor(&litert_tensor);
+  ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerChannel);
+  ASSERT_TRUE(tensor.HasQuantization());
+
+  const auto per_channel_quantization = tensor.PerChannelQuantization();
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      ::testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      ::testing::ElementsAreArray(kZeroPoints));
+  EXPECT_EQ(per_channel_quantization.num_channels, kNumChannels);
+  EXPECT_EQ(per_channel_quantization.quantized_dimension, kQuantizedDimension);
+}
+
 //===----------------------------------------------------------------------===//
 //                               CC Subgraph                                  //
 //===----------------------------------------------------------------------===//

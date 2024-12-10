@@ -15,6 +15,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/litert_to_flatbuffer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -50,6 +51,25 @@ TEST(LiteRtToFlatbufferTest, MapPerTensorQuantization) {
   ASSERT_TRUE(tfl_q);
   EXPECT_THAT(tfl_q->get()->scale, ElementsAreArray({kScale}));
   EXPECT_THAT(tfl_q->get()->zero_point, ElementsAreArray({kZp}));
+}
+
+TEST(LiteRtToFlatbufferTest, MapPerChannelQuantization) {
+  static constexpr size_t kRank = 2;
+  static constexpr size_t kQuantizedDimension = 1;
+  static constexpr float kScales[kRank] = {1.0, 2.0};
+  static constexpr int64_t kZps[kRank] = {2, 3};
+
+  Quantization q;
+  q.first = kLiteRtQuantizationPerChannel;
+  q.second.per_channel.scales = const_cast<float*>(kScales);
+  q.second.per_channel.zero_points = const_cast<int64_t*>(kZps);
+  q.second.per_channel.num_channels = kRank;
+  q.second.per_channel.quantized_dimension = kQuantizedDimension;
+
+  auto tfl_q = MapQuantization(q);
+  ASSERT_TRUE(tfl_q);
+  EXPECT_THAT(tfl_q->get()->scale, ElementsAreArray(kScales));
+  EXPECT_THAT(tfl_q->get()->zero_point, ElementsAreArray(kZps));
 }
 
 TEST(LiteRtToFlatbufferTest, MapDynamicTensorType) {

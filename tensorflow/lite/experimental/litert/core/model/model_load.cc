@@ -69,7 +69,7 @@ LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
   }
 
   target.q_type_id = quantization->first;
-  target.q_type_detail = quantization->second;
+  target.SetQuantizationParameters(quantization->second);
 
   target.name = tfl_tensor.name;
 

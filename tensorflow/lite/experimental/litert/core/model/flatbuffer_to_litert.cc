@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/flatbuffer_to_litert.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -132,19 +133,36 @@ Expected<Quantization> MapQuantization(
                           LiteRtQuantizationTypeDetail());
   }
 
-  auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
-  if (!per_tensor_qparams) {
-    LITERT_LOG(LITERT_ERROR,
-               "Only per tensor quantization currently supported");
-    return Error(kLiteRtStatusErrorUnsupported);
+  LiteRtQuantizationTypeId quantization_type;
+  LiteRtQuantizationTypeDetail qparams;
+
+  if (IsPerTensorQuantized(tfl_quantization)) {
+    quantization_type = kLiteRtQuantizationPerTensor;
+    auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
+    if (!per_tensor_qparams) {
+      LITERT_LOG(LITERT_ERROR, "Per-tensor quantization parameters not found.");
+      return Error(kLiteRtStatusErrorNotFound);
+    }
+    auto [zero_point, scale] = *per_tensor_qparams;
+    qparams.per_tensor.scale = scale;
+    qparams.per_tensor.zero_point = zero_point;
   }
-  auto [zero_point, scale] = *per_tensor_qparams;
+  if (IsPerChannelQuantized(tfl_quantization)) {
+    quantization_type = kLiteRtQuantizationPerChannel;
+    auto per_channel_qparams = AsPerChannelQparams(tfl_quantization);
+    if (!per_channel_qparams) {
+      LITERT_LOG(LITERT_ERROR,
+                 "Per-channel quantization parameters not found.");
+      return Error(kLiteRtStatusErrorNotFound);
+    }
+    auto [quantized_dimension, num_channels, zero_points, scales] =
+        *per_channel_qparams;
+    qparams.per_channel.scales = const_cast<float*>(scales->data());
+    qparams.per_channel.zero_points = const_cast<int64_t*>(zero_points->data());
+    qparams.per_channel.quantized_dimension = quantized_dimension;
+    qparams.per_channel.num_channels = num_channels;
+  }
 
-  LiteRtQuantizationTypeDetail detail;
-  detail.per_tensor.scale = scale;
-  detail.per_tensor.zero_point = zero_point;
-
-  return std::make_pair(kLiteRtQuantizationPerTensor, detail);
+  return std::make_pair(quantization_type, qparams);
 }
-
 }  // namespace litert::internal

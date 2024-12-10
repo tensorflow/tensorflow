@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -25,6 +26,8 @@
 
 namespace litert::internal {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 TEST(FlatbufferToLiteRtTest, MapStaticTensorType) {
   static constexpr int32_t kDims[] = {2, 2};
@@ -89,7 +92,15 @@ TEST(FlatbufferToLiteRtTest, MapPerChannelQuantization) {
   tfl_q.quantized_dimension = kQDim;
 
   auto q = MapQuantization(&tfl_q);
-  ASSERT_FALSE(q);
+  ASSERT_TRUE(q);
+  ASSERT_EQ(q->first, kLiteRtQuantizationPerChannel);
+  EXPECT_THAT(absl::MakeConstSpan(q->second.per_channel.scales, kRank),
+              ElementsAreArray(kScales));
+
+  EXPECT_THAT(absl::MakeConstSpan(q->second.per_channel.zero_points, kRank),
+              ElementsAreArray(kZps));
+  EXPECT_EQ(q->second.per_channel.quantized_dimension, kQDim);
+  EXPECT_EQ(q->second.per_channel.num_channels, kRank);
 }
 
 }  // namespace

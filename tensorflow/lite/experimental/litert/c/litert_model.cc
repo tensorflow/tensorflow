@@ -391,6 +391,24 @@ LiteRtStatus LiteRtGetPerTensorQuantization(
   } else if (tensor->q_type_id != kLiteRtQuantizationPerTensor) {
     return kLiteRtStatusErrorInvalidIrType;
   }
-  *per_tensor_quantization = tensor->q_type_detail.per_tensor;
+  per_tensor_quantization->scale = tensor->q_type_detail.per_tensor.scale;
+  per_tensor_quantization->zero_point =
+      tensor->q_type_detail.per_tensor.zero_point;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetPerChannelQuantization(
+    LiteRtTensor tensor,
+    LiteRtQuantizationPerChannel* per_channel_quantization) {
+  if (tensor->q_type_id != kLiteRtQuantizationPerChannel) {
+    return kLiteRtStatusErrorInvalidIrType;
+  }
+  per_channel_quantization->scales = tensor->q_type_detail.per_channel.scales;
+  per_channel_quantization->zero_points =
+      tensor->q_type_detail.per_channel.zero_points;
+  per_channel_quantization->num_channels =
+      tensor->q_type_detail.per_channel.num_channels;
+  per_channel_quantization->quantized_dimension =
+      tensor->q_type_detail.per_channel.quantized_dimension;
   return kLiteRtStatusOk;
 }
