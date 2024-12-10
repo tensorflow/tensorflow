@@ -324,12 +324,8 @@ xla_test(
         "gpu_v100",
         "gpu_b100",
         "gpu_amd_any",
-<<<<<<< HEAD
     ] + if_oss(["gpu_b100"]),
     tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
-=======
-    ],
->>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
