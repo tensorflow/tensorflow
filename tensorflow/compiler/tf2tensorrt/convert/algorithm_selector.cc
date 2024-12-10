@@ -52,9 +52,16 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::IAlgorithm& alg) {
 
 std::ostream& operator<<(std::ostream& os,
                          const nvinfer1::IAlgorithmIOInfo& info) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   os << "IOTensor(format=" << info.getTensorFormat()
      << ",dtype=" << info.getDataType() << ",strides=" << info.getStrides()
      << ")";
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  os << "IOTensor(dtype=" << info.getDataType()
+     << ",strides=" << info.getStrides()
+     << ",vectorized_dim=" << info.getVectorizedDim()
+     << ",vectorized_components=" << info.getComponentsPerElement() << ")";
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   return os;
 }
 }  // namespace nvinfer1
@@ -199,11 +206,13 @@ bool TftrtAlgorithmSelector::AlgorithmPolicy(
     return false;
   }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   if (selector_.IsShuffleLayer(variant.getImplementation())) {
     return selector_.AllowShuffleAlgorithm(
         tactic_id, alg.getAlgorithmIOInfo(0).getDataType(),
         alg.getAlgorithmIOInfo(0).getTensorFormat());
   }
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
   return true;
 }
 
