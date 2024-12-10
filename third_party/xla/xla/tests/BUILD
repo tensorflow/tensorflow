@@ -156,6 +156,21 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_interpreter_client_registry",
+    testonly = True,
+    srcs = [
+        "pjrt_interpreter_client_registry.cc",
+    ],
+    deps = [
+        ":pjrt_client_registry",
+        "//xla/pjrt:interpreter_device",
+        "//xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cc_library(
     name = "hlo_test_base",
     testonly = True,
     srcs = ["hlo_test_base.cc"],
