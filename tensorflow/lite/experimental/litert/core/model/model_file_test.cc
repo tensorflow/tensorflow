@@ -16,12 +16,12 @@
 #include <filesystem>  // NOLINT
 #include <fstream>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -46,7 +46,7 @@ namespace {
 
 using ::litert::testing::ValidateTopology;
 
-Model LoadModelThroughRoundTrip(std::string_view path) {
+Model LoadModelThroughRoundTrip(absl::string_view path) {
   auto model = litert::testing::LoadTestFileModel(path);
 
   OwningBufferRef buf;
@@ -116,8 +116,8 @@ TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
 TEST(TestSerializeModel, TestMetadata) {
   auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
 
-  constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
-  constexpr static std::string_view kMetadataData = "My_Meta_Data";
+  constexpr static absl::string_view kMetadataName = "an_soc_manufacturer";
+  constexpr static absl::string_view kMetadataData = "My_Meta_Data";
 
   LITERT_ASSERT_STATUS_OK(model.Get()->PushMetadata(
       kMetadataName, OwningBufferRef<uint8_t>(kMetadataData)));
