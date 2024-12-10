@@ -13,14 +13,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <utility>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/TypeInference.h"
 #include "stablehlo/transforms/Passes.h"
@@ -28,6 +35,7 @@ limitations under the License.
 #include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
 #include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
+#include "stablehlo_ext/transforms/sdy_refine_shapes.h"
 
 namespace mlir {
 namespace stablehlo_ext {
@@ -130,6 +138,34 @@ struct RefineDynamicTopKOpPattern
   }
 };
 
+struct RefineInferTypeOpInterfacePattern
+    : public OpInterfaceRewritePattern<InferTypeOpInterface> {
+  explicit RefineInferTypeOpInterfacePattern(MLIRContext* context)
+      : OpInterfaceRewritePattern(context, /*benefit=*/0) {}
+  LogicalResult matchAndRewrite(InferTypeOpInterface op,
+                                PatternRewriter& rewriter) const override {
+    // Unlike in TensorFlow's type inference pass, here we work only with
+    // allowlisted ops to focus our support on well-defined semantics of
+    // StableHLO programs.
+    if (!isa<chlo::ChloDialect, stablehlo::StablehloDialect, sdy::SdyDialect>(
+            op->getDialect()))
+      return rewriter.notifyMatchFailure(op, "unsupported dialect");
+
+    // For the ops that implement InferTypeOpInterface, we reinfer their return
+    // types and see what happens.
+    // Operands of these ops might have been refined elsewhere (e.g. someone
+    // might have updated argument types of a function) or earlier during this
+    // pass, and this might enable refinement opportunities downstream.
+    SmallVector<Type> inferredReturnTypes;
+    if (failed(op.inferReturnTypes(getContext(), /*location=*/{},
+                                   op->getOperands(), op->getAttrDictionary(),
+                                   op->getPropertiesStorage(), op->getRegions(),
+                                   inferredReturnTypes)))
+      return rewriter.notifyMatchFailure(op, "inferReturnTypes failed");
+    return stablehlo::refineReturnTypes(rewriter, op, inferredReturnTypes);
+  }
+};
+
 struct StablehloRefineShapesPass
     : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
   using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
@@ -157,6 +193,8 @@ struct StablehloRefineShapesPass
     patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
     patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
     patterns.add<RefineDynamicTopKOpPattern>(&getContext());
+    patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
+    populateSdyShapeRefinementPatterns(&patterns, &getContext());
     if (failed(
             applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
       func.emitError()
