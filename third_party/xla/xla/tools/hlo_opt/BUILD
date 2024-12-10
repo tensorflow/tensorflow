@@ -69,6 +69,7 @@ cc_library(
         "opt_lib.h",
         "transforms_example_passes.h",
     ],
+    tags = ["nozapfhahn"],
     deps = [
         "//xla/hlo/analysis:indexed_array_analysis",
         "//xla/hlo/ir:hlo",
@@ -187,7 +188,10 @@ cc_library(
     name = "gpu_opt",
     testonly = True,
     srcs = if_gpu_is_configured(["gpu_opt.cc"]),
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "nozapfhahn",
+    ],
     deps = [
         ":compiled_opt_lib",
         "//xla:debug_options_flags",
@@ -256,6 +260,7 @@ cc_library(
     name = "cpu_opt",
     testonly = True,
     srcs = ["cpu_opt.cc"],
+    tags = ["nozapfhahn"],
     deps = [
         ":compiled_opt_lib",
         ":opt_lib",
