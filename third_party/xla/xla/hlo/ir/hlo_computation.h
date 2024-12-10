@@ -420,11 +420,23 @@ class HloComputation {
   // with respect to HloComputation::Equal() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloComputation& computation) {
+    // Walk the computation in post-order, computing (and caching) the
+    // Absl::Hash after each instruction to use to as an operand for
+    // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
+    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
+    instruction_hash_cache.reserve(instructions.size());
     for (auto* instruction : instructions) {
-      h = H::combine(std::move(h), *instruction);
+      absl::InlinedVector<size_t, 2> operand_hashes;
+      for (auto* operand : instruction->operands()) {
+        operand_hashes.push_back(instruction_hash_cache[operand]);
+      }
+      instruction_hash_cache.emplace(
+          instruction, instruction->AbslHashWithOperandHashes(operand_hashes));
     }
-    return H::combine(std::move(h), instructions.size());
+    return H::combine(std::move(h),
+                      instruction_hash_cache[computation.root_instruction()],
+                      instructions.size());
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<

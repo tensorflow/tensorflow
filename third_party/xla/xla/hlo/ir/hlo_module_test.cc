@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -202,6 +203,272 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   EXPECT_EQ(pm2->config().device_type(), m1.config().device_type());
   EXPECT_NE(pm2->config().device_memory_size(),
             m1.config().device_memory_size());
+}
+
+TEST(HloModuleTest, AbslHashInstructionOrdering) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Add.0 and add.1 are swapped.
+  const std::string string2 = R"(
+    HloModule HashTest
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.1 = f32[32,32] add(b, c)
+        add.0 = f32[32,32] add(a, b)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_EQ(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashInstructionOpcodes) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Second add changed to sub
+  const std::string string2 = R"(
+    HloModule HashTest
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] subtract(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_NE(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashInstructionShapes) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Second add has different shape.
+  const std::string string2 = R"(
+    HloModule HashTest
+      ENTRY main {
+        a = f32[16,16] parameter(0)
+        b = f32[16,16] parameter(1)
+        c = f32[16,16] parameter(2)
+        add.0 = f32[16,16] add(a, b)
+        add.1 = f32[16,16] add(b, c)
+        ROOT result = f32[16,16] add(add.0, add.1)
+      }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_NE(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashInstructionNaming) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Added x to all names
+  const std::string string2 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        ax = f32[32,32] parameter(0)
+        bx = f32[32,32] parameter(1)
+        cx = f32[32,32] parameter(2)
+        add.0x = f32[32,32] add(ax, bx)
+        add.1x = f32[32,32] add(bx, cx)
+        ROOT resultx = f32[32,32] add(add.0x, add.1x)
+      }
+      )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_EQ(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashGraphChanges) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Changed from (a+b)+(b+c) to ((a+b)+c)+a
+  const std::string string2 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(add.0, c)
+        ROOT result = f32[32,32] add(add.1, a)
+      }
+      )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_NE(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashParameterChanges) {
+  const std::string string1 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  // Change parameter numbers
+  const std::string string2 = R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(1)
+        b = f32[32,32] parameter(0)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_NE(h1, h2);
+}
+
+TEST(HloModuleTest, AbslHashConstantValues) {
+  const std::string string1 = R"(
+    HloModule HashTest
+
+    ENTRY main {
+      a = s32[32,32] parameter(0)
+      c = s32[] constant(42)
+      b = s32[32,32] broadcast(c), dimensions={}
+      ROOT result = s32[32,32] add(a, b)
+    }
+      )";
+
+  // Changed from 42 to 43
+  const std::string string2 = R"(
+    HloModule HashTest
+
+    ENTRY main {
+      a = s32[32,32] parameter(0)
+      c = s32[] constant(43)
+      b = s32[32,32] broadcast(c), dimensions={}
+      ROOT result = s32[32,32] add(a, b)
+    }
+      )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(string1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(string2));
+
+  auto h1 = absl::HashOf(*module1);
+  auto h2 = absl::HashOf(*module2);
+
+  EXPECT_NE(h1, h2);
 }
 
 }  // namespace

@@ -1343,6 +1343,11 @@ class HloConstantInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kConstant;
   }
 
+  size_t AbslHashWithOperandHashes(
+      absl::Span<const size_t> operand_hashes) const override {
+    return absl::HashOf(opcode(), shape(), literal(), operand_hashes);
+  }
+
  private:
   bool IsElementwiseImpl(
       const std::optional<int64_t>& operand_idx) const override;
@@ -1699,6 +1704,11 @@ class HloParameterInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kParameter;
+  }
+
+  size_t AbslHashWithOperandHashes(
+      absl::Span<const size_t> operand_hashes) const override {
+    return absl::HashOf(opcode(), shape(), parameter_number(), operand_hashes);
   }
 
  private:

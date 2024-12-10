@@ -1128,6 +1128,17 @@ class LiteralBase {
     const Shape* subshape_ = nullptr;
 
     ArrayValueState array_value_state_ = ArrayValueState::kKnown;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const Piece& piece) {
+      if (auto* dense_rep = piece.GetDenseRep()) {
+        h = H::combine(std::move(h), dense_rep->data);
+      } else if (auto* inlined_rep = piece.GetDenseInlinedRep()) {
+        h = H::combine_contiguous(std::move(h), inlined_rep->data,
+                                  piece.total_bytes_dense());
+      }
+      return h;
+    }
   };  // class Piece
 
   const Piece& piece(const ShapeIndex& shape_index) const;
@@ -1427,6 +1438,11 @@ class Literal : public MutableLiteralBase {
       const Shape& shape, Piece* piece, bool allocate_arrays,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
   Piece root_piece_;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Literal& literal) {
+    return H::combine(std::move(h), literal.root_piece());
+  }
 };
 
 // The underlying buffer is not owned by this class and is always owned by

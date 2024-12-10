@@ -1705,6 +1705,11 @@ class HloInstruction {
                              /*ignore_commutative_operand_order=*/true);
   }
 
+  virtual size_t AbslHashWithOperandHashes(
+      absl::Span<const size_t> operand_hashes) const {
+    return absl::HashOf(opcode(), shape(), operand_hashes);
+  }
+
   // Generates a hash value of an HLO instruction. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO instructions,
