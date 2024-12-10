@@ -22,17 +22,23 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/dialect/Register.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -52,6 +58,14 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
   return absl::OkStatus();
 }
 }  // namespace
+
+void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
+  mlir::stablehlo::registerAllDialects(registry);
+  mlir::func::registerAllExtensions(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+                  mlir::shape::ShapeDialect>();
+}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {

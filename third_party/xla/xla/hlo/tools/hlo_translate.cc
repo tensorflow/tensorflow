@@ -22,11 +22,7 @@ limitations under the License.
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -35,13 +31,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
-#include "stablehlo/dialect/Register.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/stablehlo.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
@@ -79,12 +73,6 @@ llvm::cl::opt<bool> print_sugar(
     llvm::cl::desc(
         "Print async ops using syntactic sugar in the generated HLO text"),
     llvm::cl::init(true));
-
-static void RegisterInputMlirDialects(mlir::DialectRegistry& registry) {
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::tensor::TensorDialect, mlir::mhlo::MhloDialect>();
-}
 
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
@@ -208,7 +196,7 @@ static mlir::TranslateToMLIRRegistration HloToMlirTranslateRegistration(
 
 static mlir::TranslateFromMLIRRegistration MlirToHloTranslateRegistration(
     "mlir-to-hlo", "mlir to hlo translation", MlirToHloTranslate,
-    RegisterInputMlirDialects);
+    xla::RegisterMlirToHloDependentDialects);
 
 int main(int argc, char** argv) {
   return failed(
