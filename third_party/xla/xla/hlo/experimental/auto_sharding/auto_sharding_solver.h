@@ -51,6 +51,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 // - "random"
 // - "greedy-node-cost"
 // - "greedy-node-memory"
+// - "brkga"
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
 
@@ -101,6 +102,15 @@ struct AutoShardingEvaluation {
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverOutput& result);
 
+// Computes the objective value of the sharding strategy. If the objective value
+// is infinite or the sharding is infeasible (e.g., violates the peak-memory
+// constraint), then a negated `AutoShardingViolationCode` value is returned.
+// This function is used instead of `Evaluate` for faster iteration loops in the
+// heuristic solver library.
+double ComputeShardingStrategyCost(
+    const AutoShardingSolverRequest& request,
+    const std::vector<NodeStrategyIdx>& node_strategies);
+
 // Creates and returns a variable for makespan.
 operations_research::MPVariable* CreateMakespanVar(
     const AutoShardingSolverRequest& request,
@@ -142,6 +152,8 @@ class StrategyShaver {
 absl::Status ValidateRequest(const AutoShardingSolverRequest& request);
 
 void SolverRequestCallback(const AutoShardingSolverRequest& request);
+
+AutoShardingSolverOutput SolveBrkga(const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

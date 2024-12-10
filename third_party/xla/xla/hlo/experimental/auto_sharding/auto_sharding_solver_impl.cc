@@ -49,5 +49,11 @@ void SolverRequestCallback(const AutoShardingSolverRequest& request) {
   // TODO(mofftt): Implement this.
 }
 
+AutoShardingSolverOutput SolveBrkga(const AutoShardingSolverRequest& request) {
+  // TODO(fahrbach): Implement this.
+  AutoShardingSolverOutput output;
+  return output;
+}
+
 }  // namespace spmd
 }  // namespace xla
