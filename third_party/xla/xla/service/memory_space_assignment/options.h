@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -45,6 +45,8 @@ limitations under the License.
 namespace xla {
 namespace memory_space_assignment {
 
+class MsaAlgorithm;
+
 using IsAllowedInAlternateMemoryFunction = std::function<bool(const HloValue&)>;
 using IsUseAllowedInAlternateMemoryFunction =
     std::function<bool(const HloUse&)>;
@@ -63,6 +65,18 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
+
+// MSA allows for custom post-allocation transformations. When a post-allocation
+// transformation is performed on an instruction, this result is returned. It
+// tells MSA:
+//  1. A list of instructions that MSA should delete.
+//  2. A list of HloUses that the transformation replaced, so MSA can update its
+//  data structures appropriately.
+struct PostAllocationTransformationInfo {
+  bool changed;
+  std::vector<HloInstruction*> to_be_removed;
+  absl::flat_hash_map<HloUse, HloUse> update_use_map;
+};
 
 // The different options to be passed to the Run() API.
 struct Options {
@@ -144,6 +158,19 @@ struct Options {
   // AllocateSegment().
   std::function<void(AllocationRequest&)>
       allocation_request_modifier_testing_fn = nullptr;
+
+  // Given the MsaAlgorithm object, apply post allocation transformation the
+  // instructions of the module. The transformation function is allowed to do
+  // the following:
+  //  1. Mark instructions for removal.
+  //  2. Modify existing instructions.
+  // This transformation is NOT allowed to:
+  //  1. Directly remove instructions (or nullify them).
+  //  2. Add new instructions.
+  // Note that it is up to the transformation function to ensure that the
+  // changes to the module preserves the semantics of the original program.
+  std::function<absl::StatusOr<PostAllocationTransformationInfo>(MsaAlgorithm*)>
+      post_allocation_transformation_fn;
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate

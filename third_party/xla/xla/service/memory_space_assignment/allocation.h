@@ -127,6 +127,7 @@ class Allocation {
   bool has_no_uses() const { return uses_.empty(); }
   // Adds a use to this allocation.
   void AddUse(HloUse use);
+  void RemoveUse(HloUse use);
   // Replaces all uses of the allocation with the copy_complete instruction.
   absl::Status UpdateUses(HloComputation* computation,
                           HloInstruction* producing_instruction);

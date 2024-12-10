@@ -77,7 +77,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -715,6 +714,14 @@ bool MsaAlgorithm::IsUseAllowedInAlternateMemory(const AllocationValue& value,
   }
 
   return true;
+}
+
+std::vector<HloInstruction*> MsaAlgorithm::GetFailedAsyncConversions() const {
+  std::vector<HloInstruction*> failed_async_conversions;
+  for (const auto& [instruction, result] : failed_async_conversions_) {
+    failed_async_conversions.push_back(instruction);
+  }
+  return failed_async_conversions;
 }
 
 namespace {
@@ -1378,7 +1385,7 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
 
 void MsaAlgorithm::UpdateSyncDataMovementCandidatesForJointProcessedValues(
     const std::vector<const HloValue*>& joint_processed_values) {
-  absl::flat_hash_set<const HloInstruction*> replaceable_sync_instructions;
+  absl::flat_hash_set<HloInstruction*> replaceable_sync_instructions;
   absl::flat_hash_set<const HloInstruction*> do_not_touch_instructions;
   for (const HloValue* value : joint_processed_values) {
     for (const auto& use : value->GetUses()) {
@@ -1590,6 +1597,46 @@ bool MsaAlgorithm::RepackAllocationsIncludeConvertedSyncMemOp() {
   }
   return false;
 }
+
+namespace {
+// Fixes the AllocationSequence after post-allocation transformation:
+//  1. Remove the allocations with to_be_removed instructions as the defining
+//  positions.
+//  2. Update the vector of uses for all allocations according to the
+//     update_use_map.
+//  3. Mark the to_be_removed instructions as nullptr.
+void FixAllocationSequenceAfterPostAllocationTransformation(
+    AllocationSequence* allocations,
+    PostAllocationTransformationInfo& transformation_info) {
+  // (1)
+  allocations->erase(
+      std::remove_if(
+          allocations->begin(), allocations->end(),
+          [transformation_info](const std::unique_ptr<Allocation>& allocation) {
+            return absl::c_contains(
+                transformation_info.to_be_removed,
+                allocation->defining_position().instruction);
+          }),
+      allocations->end());
+
+  // (2)
+  for (auto& allocation : *allocations) {
+    for (const HloUse& use : allocation->uses()) {
+      auto new_use_it = transformation_info.update_use_map.find(use);
+      if (new_use_it != transformation_info.update_use_map.end()) {
+        allocation->RemoveUse(use);
+        allocation->AddUse(new_use_it->second);
+      }
+    }
+  }
+
+  // Do not remove the instruction, since the schedule will be
+  // incorrect.
+  for (HloInstruction* remove : transformation_info.to_be_removed) {
+    remove = nullptr;
+  }
+}
+}  // namespace
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
@@ -1848,12 +1895,28 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Sync copy replacement summary: ";
+    VLOG(3) << "\tnumber of successful async conversion: "
+            << successful_async_conversion_set_.size();
+    VLOG(3) << "\tnumber of failed async conversion: "
+            << failed_async_conversions_.size();
     for (const HloInstruction* inst : successful_async_conversion_set_) {
       VLOG(3) << "Successful copy replacement: " << inst->ToString();
     }
     for (auto& failure : failed_async_conversions_) {
       VLOG(3) << "Failed copy replacement: " << failure.first->ToString()
               << ", reason: " << int(failure.second);
+    }
+  }
+
+  // Run post allocation transformation and fix the allocation sequence if
+  // needed.
+  if (options_.post_allocation_transformation_fn) {
+    TF_ASSIGN_OR_RETURN(PostAllocationTransformationInfo transformation_info,
+                        options_.post_allocation_transformation_fn(this));
+    if (transformation_info.changed) {
+      VLOG(3) << "Ran post allocation transformation on module";
+      FixAllocationSequenceAfterPostAllocationTransformation(
+          allocations_, transformation_info);
     }
   }
 
@@ -2488,8 +2551,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
 }
 
 bool MsaAlgorithm::VerifyAllConversionsAreSuccessful() {
-  for (const HloInstruction* instruction :
-       sorted_async_conversion_candidates_) {
+  for (HloInstruction* instruction : sorted_async_conversion_candidates_) {
     if (absl::c_find(not_finalized_async_conversions_, instruction) ==
         not_finalized_async_conversions_.end()) {
       if (!failed_async_conversions_.contains(instruction)) {
