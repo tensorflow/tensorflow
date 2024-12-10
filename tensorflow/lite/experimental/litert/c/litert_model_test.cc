@@ -28,7 +28,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
@@ -188,7 +188,8 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
 
   LiteRtTensorT tensor;
   tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  tensor.q_type_detail.scale = {kScale};
+  tensor.q_type_detail.zero_point = {kZeroPoint};
 
   LiteRtQuantizationTypeId q_type_id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
@@ -200,6 +201,42 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
 
   EXPECT_EQ(per_tensor_quantization.scale, kScale);
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
+TEST(LiteRtTensorTest, QuantizationPerChannel) {
+  static constexpr size_t kNumChannels = 2;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZps[kNumChannels] = {2, 3};
+
+  LiteRtTensorT tensor;
+  tensor.q_type_id = kLiteRtQuantizationPerChannel;
+  tensor.q_type_detail.scale = {1.0, 2.0};
+  tensor.q_type_detail.zero_point = {2, 3};
+
+  LiteRtQuantizationTypeId q_type_id;
+  LiteRtParamIndex num_channels;
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetPerChannelQuantizationChannels(&tensor, &num_channels));
+  ASSERT_EQ(num_channels, kNumChannels);
+
+  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  ASSERT_EQ(q_type_id, kLiteRtQuantizationPerChannel);
+
+  LiteRtQuantizationPerChannel per_channel_quantization;
+  per_channel_quantization.scales = new float[kNumChannels];
+  per_channel_quantization.zero_points = new int64_t[kNumChannels];
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetPerChannelQuantization(&tensor, &per_channel_quantization));
+
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      testing::ElementsAreArray(kZps));
+  delete[] per_channel_quantization.scales;
+  delete[] per_channel_quantization.zero_points;
 }
 
 TEST(LiteRtOpTest, GetOpCode) {

@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -177,6 +178,20 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     internal::AssertOk(LiteRtGetPerTensorQuantization, Get(),
                        &per_tensor_quantization);
     return per_tensor_quantization;
+  }
+
+  LiteRtQuantizationPerChannel PerChannelQuantization() const {
+    internal::AssertEq([&]() { return QTypeId(); },
+                       kLiteRtQuantizationPerChannel);
+    LiteRtQuantizationPerChannel per_channel_quantization;
+    LiteRtParamIndex num_channels;
+    internal::AssertOk(LiteRtGetPerChannelQuantizationChannels, Get(),
+                       &num_channels);
+    per_channel_quantization.scales = new float[num_channels];
+    per_channel_quantization.zero_points = new int64_t[num_channels];
+    internal::AssertOk(LiteRtGetPerChannelQuantization, Get(),
+                       &per_channel_quantization);
+    return per_channel_quantization;
   }
 
   bool HasWeights() const {

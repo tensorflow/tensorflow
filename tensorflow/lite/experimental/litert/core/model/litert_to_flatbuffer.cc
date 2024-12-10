@@ -15,6 +15,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/litert_to_flatbuffer.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -68,18 +69,11 @@ Expected<TflTensorType> MapTensorTypeDetail<LiteRtRankedTensorType>(
   return std::make_pair(*tfl_element_type, TflShapeInfo(litert_shape));
 }
 
-template <class LiteRtQuantDetail>
 Expected<TflQuantizationPtr> MapQuantizationDetail(
-    const LiteRtQuantDetail& litert_quantization) {
-  return Error(kLiteRtStatusErrorUnsupported);
-}
-
-template <>
-Expected<TflQuantizationPtr> MapQuantizationDetail<LiteRtQuantizationPerTensor>(
-    const LiteRtQuantizationPerTensor& litert_quantization) {
+    const LiteRtQuantizationParameters& litert_quantization) {
   auto tfl_quantization = std::make_unique<TflQuantization>();
-  tfl_quantization->scale.assign({litert_quantization.scale});
-  tfl_quantization->zero_point.assign({litert_quantization.zero_point});
+  tfl_quantization->scale = litert_quantization.scale;
+  tfl_quantization->zero_point = litert_quantization.zero_point;
   return tfl_quantization;
 }
 
@@ -96,14 +90,10 @@ Expected<TflTensorType> MapTensorType(const TensorType& litert_tensor_type) {
 
 Expected<TflQuantizationPtr> MapQuantization(
     const Quantization& litert_quantization) {
-  switch (litert_quantization.first) {
-    case kLiteRtQuantizationNone:
-      return TflQuantizationPtr(nullptr);
-    case kLiteRtQuantizationPerTensor:
-      return MapQuantizationDetail(litert_quantization.second.per_tensor);
-    default:
-      return Error(kLiteRtStatusErrorUnsupported);
+  if (litert_quantization.first == kLiteRtQuantizationNone) {
+    return TflQuantizationPtr(nullptr);
   }
+  return MapQuantizationDetail(litert_quantization.second);
 }
 
 }  // namespace litert::internal

@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
+#include <sys/stat.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -270,7 +272,8 @@ TEST(CcTensorTest, QuantizationPerTensor) {
 
   LiteRtTensorT litert_tensor;
   litert_tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  litert_tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  litert_tensor.q_type_detail.scale = {kScale};
+  litert_tensor.q_type_detail.zero_point = {kZeroPoint};
 
   Tensor tensor(&litert_tensor);
   ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerTensor);
@@ -279,6 +282,31 @@ TEST(CcTensorTest, QuantizationPerTensor) {
   const auto per_tensor_quantization = tensor.PerTensorQuantization();
   EXPECT_EQ(per_tensor_quantization.scale, kScale);
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
+TEST(CcTensorTest, QuantizationPerChannel) {
+  static constexpr auto kNumChannels = 2;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZeroPoints[kNumChannels] = {0, 0};
+
+  LiteRtTensorT litert_tensor;
+  litert_tensor.q_type_id = kLiteRtQuantizationPerChannel;
+  litert_tensor.q_type_detail.scale = {1.0, 2.0};
+  litert_tensor.q_type_detail.zero_point = {0, 0};
+
+  Tensor tensor(&litert_tensor);
+  ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerChannel);
+  ASSERT_TRUE(tensor.HasQuantization());
+
+  const auto per_channel_quantization = tensor.PerChannelQuantization();
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      ::testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      ::testing::ElementsAreArray(kZeroPoints));
+  delete[] per_channel_quantization.scales;
+  delete[] per_channel_quantization.zero_points;
 }
 
 //===----------------------------------------------------------------------===//

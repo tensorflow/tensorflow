@@ -147,5 +147,18 @@ TEST(FlatbufferToolsTest, PerTensorQuantizedTest) {
   ASSERT_TRUE(per_tensor);
 }
 
+TEST(FlatbufferToolsTest, PerChannelQuantizedTest) {
+  auto flatbuffer = TestFlatbuffer("static_w8_a16_quantized_k_einsum.tflite");
+  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors[1];
+
+  const auto* const q_parms = tensor->quantization.get();
+
+  ASSERT_TRUE(IsQuantized(q_parms));
+  EXPECT_TRUE(IsPerChannelQuantized(q_parms));
+
+  auto per_channel = AsPerChannelQparams(q_parms);
+  ASSERT_TRUE(per_channel);
+}
+
 }  // namespace
 }  // namespace litert::internal

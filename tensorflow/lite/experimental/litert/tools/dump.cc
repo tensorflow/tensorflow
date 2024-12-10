@@ -37,6 +37,8 @@ namespace litert::internal {
 
 namespace {
 
+static constexpr int kMaxDisplayCount = 16;
+
 void DumpNode(const LiteRtTensorT& tensor, std::ostream& out) {
   switch (tensor.type_id) {
     case kLiteRtRankedTensorType:
@@ -401,13 +403,28 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
 }
 
 void Dump(Quantization quantization, std::ostream& out) {
+  const int max_display_count =
+      kMaxDisplayCount < quantization.second.zero_point.size()
+          ? kMaxDisplayCount
+          : quantization.second.zero_point.size();
   switch (quantization.first) {
     case kLiteRtQuantizationNone:
       return;
     case kLiteRtQuantizationPerTensor:
       out << absl::StreamFormat(" <q PerTensor [ .z = %ld, .s = %f ]>",
-                                quantization.second.per_tensor.zero_point,
-                                quantization.second.per_tensor.scale);
+                                quantization.second.zero_point[0],
+                                quantization.second.scale[0]);
+      return;
+    case kLiteRtQuantizationPerChannel:
+      out << absl::StreamFormat(" <q PerChannel [ .z = [ ");
+      for (int i = 0; i < max_display_count; ++i) {
+        out << absl::StreamFormat("%ld, ", quantization.second.zero_point[i]);
+      }
+      out << "...], .s = [ ";
+      for (int i = 0; i < max_display_count; ++i) {
+        out << absl::StreamFormat("%f, ", quantization.second.scale[i]);
+      }
+      out << "...]>";
       return;
     default:
       out << " <q UNKNOWN>";
