@@ -49,7 +49,7 @@ class GPURuntimeCache : public tensorflow::ResourceBase {
 
   ~GPURuntimeCache() override;
   static constexpr const char* kDefaultResourceName = "mlir-gpu-runtime-cache";
-  static tensorflow::Status Create(GPURuntimeCache** dst);
+  static absl::Status Create(GPURuntimeCache** dst);
   std::string DebugString() const override;
 
   // Assumes that no two modules are loaded from the same memory location over

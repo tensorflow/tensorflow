@@ -40,8 +40,7 @@ static void ReportInternalError(tensorflow::OpKernelContext *ctx,
     LOG(WARNING) << msg << "\n";
     return;
   }
-  ctx->CtxFailureWithWarning(
-      tensorflow::Status{absl::StatusCode::kInternal, msg});
+  ctx->CtxFailureWithWarning(absl::Status{absl::StatusCode::kInternal, msg});
 }
 
 #if GOOGLE_CUDA
@@ -90,7 +89,7 @@ GPURuntimeCache::~GPURuntimeCache() {
   }
 }
 
-tensorflow::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
+absl::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
   *dst = new GPURuntimeCache;
   return absl::OkStatus();
 }

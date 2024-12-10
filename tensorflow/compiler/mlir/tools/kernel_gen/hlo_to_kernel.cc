@@ -124,13 +124,13 @@ absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   return ostream.str().str();
 }
 
-Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-           llvm::StringRef host_triple,
-           llvm::ArrayRef<std::string> architectures,
-           llvm::ArrayRef<int64_t> tile_sizes,
-           llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
-           bool print_llvmir, bool enable_ftz, bool index_64bit,
-           bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+                 llvm::StringRef host_triple,
+                 llvm::ArrayRef<std::string> architectures,
+                 llvm::ArrayRef<int64_t> tile_sizes,
+                 llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+                 bool print_llvmir, bool enable_ftz, bool index_64bit,
+                 bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
   TF_RETURN_IF_ERROR(
