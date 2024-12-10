@@ -55,6 +55,7 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
