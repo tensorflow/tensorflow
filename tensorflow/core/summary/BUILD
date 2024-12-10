@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:summary_interface",
         "//tensorflow/core/lib/db:sqlite",
+        "//tensorflow/core/platform:numbers",
     ],
 )
 

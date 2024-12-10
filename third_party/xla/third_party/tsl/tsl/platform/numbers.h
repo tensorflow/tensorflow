@@ -46,7 +46,7 @@ namespace strings {
 //     Int64, UInt64, Int, Uint:        22 bytes
 //     Time:                            30 bytes
 // Use kFastToBufferSize rather than hardcoding constants.
-static const int kFastToBufferSize = 32;
+constexpr int kFastToBufferSize = 32;
 
 // ----------------------------------------------------------------------
 // FastInt32ToBufferLeft()

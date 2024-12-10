@@ -1067,6 +1067,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
     ],
 )

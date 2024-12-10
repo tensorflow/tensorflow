@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/numbers.h"
 
 using ::tensorflow::strings::Scanner;
 

@@ -409,6 +409,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/platform:numbers",
     ] + tf_protos_all(),
 )
 

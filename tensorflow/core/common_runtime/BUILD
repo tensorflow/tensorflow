@@ -1596,7 +1596,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@local_tsl//tsl/platform:env",
+        "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 

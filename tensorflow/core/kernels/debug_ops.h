@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/util/debug_events_writer.h"
 
 namespace tensorflow {

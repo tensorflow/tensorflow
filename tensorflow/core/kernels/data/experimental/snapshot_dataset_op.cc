@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"

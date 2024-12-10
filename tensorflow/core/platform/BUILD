@@ -794,15 +794,7 @@ cc_library(
 cc_library(
     name = "strcat",
     hdrs = ["strcat.h"],
-    deps = [
-        ":logging",
-        ":macros",
-        ":numbers",
-        ":stringpiece",
-        ":types",
-        "@com_google_absl//absl/meta:type_traits",
-        "@local_tsl//tsl/platform:strcat",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_library(

@@ -222,6 +222,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:numbers",
     ],
 )
 
@@ -837,10 +838,9 @@ tf_kernel_library(
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:numbers",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
 )

@@ -328,6 +328,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
         "//tensorflow/core/nccl:collective_communicator",
+        "//tensorflow/core/platform:numbers",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",

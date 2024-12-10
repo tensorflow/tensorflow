@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/numbers.h"
 
 namespace tensorflow {
 namespace data {

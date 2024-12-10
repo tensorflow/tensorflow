@@ -374,6 +374,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/status",
     ],
 )

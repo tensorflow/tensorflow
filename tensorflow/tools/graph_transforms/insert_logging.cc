@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 #include "tsl/platform/tracing.h"

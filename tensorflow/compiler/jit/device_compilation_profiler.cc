@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/platform/mutex.h"
 

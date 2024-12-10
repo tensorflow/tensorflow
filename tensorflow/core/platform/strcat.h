@@ -16,36 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STRCAT_H_
 #define TENSORFLOW_CORE_PLATFORM_STRCAT_H_
 
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/types.h"
-#include "tsl/platform/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace tensorflow {
 namespace strings {
 
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::strings::AlphaNum;
-using tsl::strings::Hex;
-using tsl::strings::kZeroPad10;
-using tsl::strings::kZeroPad11;
-using tsl::strings::kZeroPad12;
-using tsl::strings::kZeroPad13;
-using tsl::strings::kZeroPad14;
-using tsl::strings::kZeroPad15;
-using tsl::strings::kZeroPad16;
-using tsl::strings::kZeroPad2;
-using tsl::strings::kZeroPad3;
-using tsl::strings::kZeroPad4;
-using tsl::strings::kZeroPad5;
-using tsl::strings::kZeroPad6;
-using tsl::strings::kZeroPad7;
-using tsl::strings::kZeroPad8;
-using tsl::strings::kZeroPad9;
-using tsl::strings::PadSpec;
-using tsl::strings::StrAppend;
-using tsl::strings::StrCat;
+using absl::AlphaNum;
+using absl::Hex;
+using absl::kZeroPad10;
+using absl::kZeroPad11;
+using absl::kZeroPad12;
+using absl::kZeroPad13;
+using absl::kZeroPad14;
+using absl::kZeroPad15;
+using absl::kZeroPad16;
+using absl::kZeroPad2;
+using absl::kZeroPad3;
+using absl::kZeroPad4;
+using absl::kZeroPad5;
+using absl::kZeroPad6;
+using absl::kZeroPad7;
+using absl::kZeroPad8;
+using absl::kZeroPad9;
+using absl::PadSpec;
+using absl::StrAppend;
+using absl::StrCat;
 // NOLINTEND(misc-unused-using-decls)
 
 }  // namespace strings

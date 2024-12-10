@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {

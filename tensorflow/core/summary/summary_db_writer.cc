@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <deque>
 
-#include "tensorflow/core/summary/summary_converter.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -24,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/summary/summary_converter.h"
 #include "tensorflow/core/util/event.pb.h"
 
 // TODO(jart): Break this up into multiple files with excellent unit tests.

@@ -134,6 +134,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core/platform:numbers",
         "//tensorflow/core/util/tensor_bundle",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

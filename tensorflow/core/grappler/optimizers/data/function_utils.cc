@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/platform/numbers.h"
 
 namespace tensorflow {
 namespace grappler {
