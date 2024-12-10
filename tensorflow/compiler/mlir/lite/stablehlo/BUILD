@@ -508,6 +508,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

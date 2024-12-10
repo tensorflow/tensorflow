@@ -196,6 +196,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
