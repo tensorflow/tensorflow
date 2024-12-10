@@ -184,7 +184,7 @@ void ConvertReadVariableOpToIdentity(const NodeDef& node,
 // to graph inlining) is the following: VarHandleOp -> Identity -> Identity ->
 // ReadVariableOp. Calling the function on any of these nodes would return the
 // name of the VarHandleOp.
-StatusOr<string> GetVarHandleName(
+absl::StatusOr<string> GetVarHandleName(
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     string node_name) {
   const NodeDef* node = name_to_node_map.at(node_name);
@@ -208,10 +208,10 @@ StatusOr<string> GetVarHandleName(
 // want to freeze (i.e. its name is contained in variable_node_names). If there
 // is no such handle in the graph (or we do not want to save that variable)
 // then NotFound error is returned.
-StatusOr<string> GetHandleNameIfNeedsToFreeze(
+absl::StatusOr<string> GetHandleNameIfNeedsToFreeze(
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     string node_name, const std::unordered_set<string>& variable_node_names) {
-  StatusOr<string> var_handle_name =
+  absl::StatusOr<string> var_handle_name =
       GetVarHandleName(name_to_node_map, node_name);
   if (var_handle_name.ok() && variable_node_names.count(*var_handle_name)) {
     return var_handle_name;
@@ -262,7 +262,7 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
       ConvertReadVariableOpToIdentity(node, frozen_graph_def->add_node());
       continue;
     } else if (node.op() == "Identity") {
-      StatusOr<string> handle_name = GetHandleNameIfNeedsToFreeze(
+      absl::StatusOr<string> handle_name = GetHandleNameIfNeedsToFreeze(
           name_to_node_map, node.name(), variable_node_names);
       if (handle_name.ok()) {
         // Identity node that is forwarding the value of a frozen
