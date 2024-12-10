@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/java/src/main/native/graph_operation_builder_jni.h"
+
+#include <cstdint>
 #include <cstring>
 #include <memory>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
