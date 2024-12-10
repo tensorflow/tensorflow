@@ -78,13 +78,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const BlockLevelParameters& block_level_parameters,
-    ::mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
-
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info) {
   return "";

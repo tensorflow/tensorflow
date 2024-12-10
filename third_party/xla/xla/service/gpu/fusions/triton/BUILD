@@ -57,17 +57,59 @@ cc_library(
 )
 
 cc_library(
-    name = "triton_fusion_emitter",
+    name = "compilation_pipeline",
     srcs = if_gpu_is_configured(
-        ["triton_fusion_emitter.cc"],
-        ["triton_fusion_emitter_stub.cc"],
+        [],
+        ["compilation_pipeline_stub.cc"],
     ) + if_cuda_is_configured([
         "compilation_pipeline_cuda.cc",
     ]) + if_rocm_is_configured([
         "compilation_pipeline_rocm.cc",
     ]),
+    hdrs = ["compilation_pipeline.h"],
+    deps = [
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:Pass",
+    ] + if_gpu_is_configured([
+        ":xla_triton_passes",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:ArithToLLVM",
+        "@llvm-project//mlir:ControlFlowToLLVM",
+        "@llvm-project//mlir:IndexToLLVM",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:matmul_utils",
+        "@triton//:TritonDialects",
+        "@triton//:TritonGPUToLLVM",
+        "@triton//:TritonGPUTransforms",
+        "@triton//:TritonLLVMIR",
+        "@triton//:TritonNvidiaGPUTransforms",
+        "@triton//:TritonToTritonGPU",
+        "@triton//:TritonTransforms",
+    ]) + if_cuda_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
+        "@triton//third_party/nvidia:NVGPUToLLVM",
+        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+    ]) + if_rocm_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:llvm_gpu_backend",
+        "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@triton//third_party/amd:TritonAMDGPUToLLVM",
+        "@triton//third_party/amd:TritonAMDGPUTransforms",
+    ]),
+)
+
+cc_library(
+    name = "triton_fusion_emitter",
+    srcs = if_gpu_is_configured(
+        ["triton_fusion_emitter.cc"],
+        ["triton_fusion_emitter_stub.cc"],
+    ),
     hdrs = ["triton_fusion_emitter.h"],
     deps = [
+        ":compilation_pipeline",
         ":emitter_helpers",
         ":passes",
         ":triton_fusion_emitter_legacy_matmul",
@@ -222,10 +264,12 @@ cc_library(
 cc_library(
     name = "triton_fusion_emitter_stub_for_testing",
     srcs = [
+        "compilation_pipeline_stub.cc",
         "triton_fusion_emitter_legacy_matmul_stub.cc",
         "triton_fusion_emitter_stub.cc",
     ],
     hdrs = [
+        "compilation_pipeline.h",
         "triton_fusion_emitter.h",
         "triton_fusion_emitter_legacy_matmul.h",
     ],

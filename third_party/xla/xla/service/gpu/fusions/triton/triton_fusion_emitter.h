@@ -89,20 +89,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool emit_kernel = true);
 
-// Create Triton pipeline.
-//
-// `out_cluster_info` must be kept alive at least until pm.run() is called.
-// It should be read after that. We have to pass the cluster dims to
-// LaunchDimensions. Triton currently uses this as an out-parameter to return
-// the cluster dims determined based on `config.num_ctas` and a heuristic. There
-// are some signs that show that this was intended to be used as an in-out
-// parameter which would give a hint to Triton which cluster dims we prefer to
-// use, but that's not the case currently.
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const BlockLevelParameters& block_level_parameters,
-    ::mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
-
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
 
