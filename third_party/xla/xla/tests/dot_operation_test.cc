@@ -311,7 +311,7 @@ class ParametricDotTest : public DotOperationTest,
                                ->GetDeviceDescription()
                                .gpu_compute_capability();
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
-      std::string_view name(
+      absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
         GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
