@@ -1653,6 +1653,28 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
+TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  // Make sure LHS is off by default.
+  std::vector<std::string> kExpectedPasses = {
+      "latency-hiding-scheduler",
+  };
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
+
+  // Make sure we turn the LHS on with we schedule with profile data.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "cp" cost_us: 100.0 }
+  )pb";
+  config.set_fdo_profile(kProfile);
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+
+  EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
+}
+
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
   auto cc = backend()
                 .default_stream_executor()
