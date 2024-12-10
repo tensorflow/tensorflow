@@ -51,7 +51,6 @@ __device__ __inline__ auto Canonicalize(double elem) {
   return elem;
 }
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
 
 __global__ void xla_fp8_e4m3fnuz_comparison(__hip_fp8_storage_t* buffer_a,
@@ -140,17 +139,7 @@ __global__ void xla_fp32_comparison(float* buffer_a, float* buffer_b,
   float elem_a = buffer_a[idx];
   float elem_b = buffer_b[idx];
   if (isnan(elem_a) && isnan(elem_b)) return;
-  if (isinf(elem_a) && isinf(elem_b) && signbit(elem_a) == signbit(elem_b))
-=======
-template <typename T>
-__global__ void xla_fp_comparison(T* buffer_a, T* buffer_b,
-                                  float rel_error_threshold,
-                                  uint64_t buffer_length, int* mismatch_count) {
-  int idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx >= buffer_length) {
->>>>>>> upstream/master
-    return;
-  }
+  if (isinf(elem_a) && isinf(elem_b) && signbit(elem_a) == signbit(elem_b)) return;
 
   auto elem_a = Canonicalize(buffer_a[idx]);
   auto elem_b = Canonicalize(buffer_b[idx]);

@@ -30,7 +30,6 @@ class TreeReductionRewriterTest : public HloTestBase {
  public:
   void CheckTreeRewriter(absl::string_view hlo,
                          std::optional<absl::string_view> expected) {
-<<<<<<< HEAD
 #if GOOGLE_CUDA                          
     RunAndFilecheckHloRewrite(
         hlo,
@@ -47,13 +46,6 @@ class TreeReductionRewriterTest : public HloTestBase {
         hlo, gpu::GpuTreeReductionRewriter{se::RocmComputeCapability{"908"}},
         expected);   
 #endif        
-=======
-    stream_executor::DeviceDescription device_description{
-        stream_executor::GpuDeviceInfoProto{}};
-    device_description.set_threads_per_warp(32);
-    RunAndFilecheckHloRewrite(
-        hlo, gpu::TreeReductionRewriter{device_description}, expected);
->>>>>>> upstream/master
   }
 };
 

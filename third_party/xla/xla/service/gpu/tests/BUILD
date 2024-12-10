@@ -191,11 +191,7 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
-<<<<<<< HEAD
     tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
-=======
-    tags = ["cuda-only"],
->>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",

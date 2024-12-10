@@ -46,8 +46,6 @@ static se::StreamExecutor* GpuExecutor() {
 
 namespace stream_executor {
 
-<<<<<<< HEAD
-=======
 TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
   se::StreamExecutor* executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
@@ -76,7 +74,6 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
   EXPECT_TRUE(stream2->ok());
 }
 
->>>>>>> upstream/master
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
 #if CUDA_VERSION < 11030
   GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
@@ -117,12 +114,7 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
       /*sync_mode*/ false,
       /*compute_stats*/ true);
   allocator.SetStreamAndPreallocateMemory(
-<<<<<<< HEAD
-      se::gpu::AsGpuStreamValue(stream.get()));
-
-=======
       stream->platform_specific_handle().stream);
->>>>>>> upstream/master
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);

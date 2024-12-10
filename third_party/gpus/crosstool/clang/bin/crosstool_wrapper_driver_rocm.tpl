@@ -291,16 +291,12 @@ def main():
     # We not only want to pass -x to the CPU compiler, but also keep it in its
     # relative location in the argv list (the compiler is actually sensitive to
     # this).
-<<<<<<< HEAD
-    cpu_compiler_flags = SanitizeArgsForCpuCompiler(sys.argv[1:])
-=======
     cpu_compiler_flags = [flag for flag in sys.argv[1:]
                                if not flag.startswith(('--rocm_log'))]
 
     if not USE_CLANG:
       cpu_compiler_flags.append('-fno-canonical-system-headers')
 
->>>>>>> upstream/master
     # XXX: SE codes need to be built with gcc, but need this macro defined
     cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")
     if VERBOSE: print(' '.join([CPU_COMPILER] + cpu_compiler_flags))

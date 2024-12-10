@@ -251,11 +251,8 @@ python_repository = repository_rule(
         "WHEEL_NAME",
         "WHEEL_COLLAB",
         "USE_PYWRAP_RULES",
-<<<<<<< HEAD
         "OUTPUT_PATH",
-=======
         "MACOSX_DEPLOYMENT_TARGET",
->>>>>>> upstream/master
     ],
     local = True,
 )

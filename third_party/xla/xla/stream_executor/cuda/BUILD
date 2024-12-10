@@ -1,7 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
-<<<<<<< HEAD
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
 )
@@ -15,8 +14,6 @@ load(
     "if_cuda_newer_than",
 )
 load(
-=======
->>>>>>> upstream/master
     "//xla:xla.bzl",
     "xla_cc_test",
 )
@@ -211,7 +208,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     tags = [
@@ -252,8 +248,6 @@ cc_library(
 )
 
 cuda_only_cc_library(
-=======
->>>>>>> upstream/master
     name = "cuda_status",
     srcs = ["cuda_status.cc"],
     hdrs = ["cuda_status.h"],
@@ -269,7 +263,6 @@ cuda_only_cc_library(
     ],
 )
 
-<<<<<<< HEAD
 cuda_only_cc_library(
     name = "cuda_runtime",
     srcs = ["cuda_runtime.cc"],
@@ -290,9 +283,6 @@ cuda_only_cc_library(
 )
 
 cuda_only_cc_library(
-=======
-cc_library(
->>>>>>> upstream/master
     name = "cuda_collectives",
     hdrs = ["cuda_collectives.h"],
     tags = [
@@ -481,9 +471,6 @@ cuda_only_cc_library(
     alwayslink = True,
 )
 
-<<<<<<< HEAD
-cuda_only_cc_library(
-=======
 cc_library(
     name = "cuda_solver_context",
     srcs = ["cuda_solver_context.cc"],
@@ -511,7 +498,6 @@ cc_library(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "cuda_blas_utils",
     srcs = ["cuda_blas_utils.cc"],
     hdrs = ["cuda_blas_utils.h"],
@@ -1018,9 +1004,6 @@ xla_cc_test(
     ],
 )
 
-<<<<<<< HEAD
-cuda_only_cc_library(
-=======
 cc_library(
     name = "nvjitlink_known_issues",
     srcs = ["nvjitlink_known_issues.cc"],
@@ -1046,7 +1029,6 @@ xla_cc_test(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "cuda_asm_compiler",
     srcs = ["cuda_asm_compiler.cc"],
     hdrs = ["cuda_asm_compiler.h"],

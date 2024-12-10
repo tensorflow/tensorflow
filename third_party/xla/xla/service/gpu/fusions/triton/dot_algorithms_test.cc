@@ -802,10 +802,7 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
-<<<<<<< HEAD
   // TODO(rocm): weekly-sync 24-10-28
-=======
->>>>>>> upstream/master
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
@@ -829,10 +826,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
-<<<<<<< HEAD
   // TODO(rocm): weekly-sync 24-10-28
-=======
->>>>>>> upstream/master
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }

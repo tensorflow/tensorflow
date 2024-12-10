@@ -66,12 +66,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
-<<<<<<< HEAD
 #include "rocm/rocm_config.h"
 
 #include <hip/hip_fp16.h>
 #include <hip/hip_bfloat16.h>
-=======
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -80,7 +78,6 @@ limitations under the License.
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #endif
->>>>>>> upstream/master
 
 namespace {
 

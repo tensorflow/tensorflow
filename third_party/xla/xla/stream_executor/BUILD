@@ -529,7 +529,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
     name = "command_buffer",
     hdrs = ["command_buffer.h"],
     visibility = [":internal"],
@@ -566,8 +565,6 @@ cc_library(
 )
 
 cc_library(
-=======
->>>>>>> upstream/master
     name = "executor_cache",
     srcs = ["executor_cache.cc"],
     hdrs = ["executor_cache.h"],

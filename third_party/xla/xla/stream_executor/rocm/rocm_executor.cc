@@ -585,10 +585,6 @@ void RocmExecutor::UnloadKernel(const Kernel* kernel) {
 
   absl::MutexLock lock{&in_memory_modules_mu_};
   loaded_kernels_.erase(kernel);
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
     VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
