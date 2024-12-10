@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 #include <Shlwapi.h>
 #include <Windows.h>

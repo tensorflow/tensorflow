@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 #include <cerrno>
 #include <cstddef>

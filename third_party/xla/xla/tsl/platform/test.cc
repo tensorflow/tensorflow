@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 #include <cstdio>
 #include <cstdlib>
