@@ -316,6 +316,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"peak_sram_wr_bw_gigabytes_per_second",
         kDevCapPeakSramWrBwGigabytesPerSecond},
        {"device_vendor", kDevVendor},
+       // For TPU, if it has 2 cores per chip.
+       {"has_megacore", kDevHasMegacore},
+       {"has_merged_vmem", kDevHasMergedVmem},
        // Batching related.
        {"batch_size_after_padding", kBatchSizeAfterPadding},
        {"padding_amount", kPaddingAmount},
