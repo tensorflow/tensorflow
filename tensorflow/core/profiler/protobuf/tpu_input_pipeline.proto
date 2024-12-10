@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
+
+// Per-step details on TPU.
+// Next ID: 25
+message PerTpuStepDetails {
+  // The step number of a step.
+  int32 step_number = 1;
+
+  // The TensorCore compute time in this step.
+  double tc_compute_time_ms = 13;
+
+  // The maximum TensorCore idle time that is due to host overhead (but not
+  // input-related).
+  double tc_idle_time_ms = 14;
+
+  // The part of a step (in ms) TC spends sending data to the host via outfeed.
+  double tc_outfeed_time_ms = 15;
+
+  // The part of a step (in ms) on TC that is waiting for input data from the
+  // host.
+  double tc_infeed_time_ms = 3;
+
+  // Average infeed-dequeue time across cores (as percentage of step time).
+  double infeed_percent_average = 4;
+
+  // Minimum infeed-dequeue time across cores (as percentage of step time).
+  double infeed_percent_minimum = 5;
+
+  // Maximum infeed-dequeue time across cores (as percentage of step time).
+  double infeed_percent_maximum = 6;
+
+  // The core with the maximum infeed time in this step.
+  uint32 coreid_max_infeed_time = 7;
+
+  // The part of a step (in ms) that is spent on the all-reduce compute.
+  double all_reduce_compute_time_ms = 11;
+
+  // The part of a step (in ms) that is spent on the all-reduce synchronization.
+  double all_reduce_sync_time_ms = 12;
+
+  // The part of a step (in ms) that is spent on SparseCoreV0 compute.
+  double scv0_compute_time_ms = 16;
+
+  // The part of a step (in ms) that spent on infeed from host to SparseCoreV0.
+  double scv0_infeed_time_ms = 17;
+
+  // The part of the step (in ms) that is spent waiting for device to host or
+  // host to device transfer.
+  double host_transfer_ms = 18;
+
+  // The SparseCore compute time in this step.
+  double sc_compute_time_ms = 20;
+
+  // The maximum SparseCore idle time that is due to host overhead (but not
+  // input-related).
+  double sc_idle_time_ms = 21;
+
+  // The part of a step (in ms) SC spends sending data to the host via outfeed.
+  double sc_outfeed_time_ms = 22;
+
+  // The part of a step (in ms) on SC that is waiting for input data from the
+  // host.
+  double sc_infeed_time_ms = 23;
+
+  // Sparse core step time in ms.
+  double sc_step_time_ms = 24;
+
+  reserved 2, 8, 9, 10;
+}
+
+// Next Id: 9
+message TpuStepTimeBreakdown {
+  // Summary of all TensorCore compute op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary tc_compute_ms_summary = 1;
+
+  // Summary of all SparseCoreV0 compute op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary scv0_compute_ms_summary = 2;
+
+  // Summary of all TensorCore infeed op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary tc_infeed_ms_summary = 3;
+
+  // Summary of all TensorCore outfeed op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary tc_outfeed_ms_summary = 6;
+
+  // Summary of all SparseCoreV0 infeed op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary scv0_infeed_ms_summary = 4;
+
+  // Summary of all TensorCore idle (but not input-related) duration as a part
+  // of step in ms.
+  tensorflow.profiler.StepSummary tc_idle_ms_summary = 5;
+
+  // Summary of all Host to Device and Device to Host transfer part of the step
+  // in ms.
+  tensorflow.profiler.StepSummary host_transfer_ms_summary = 7;
+  // Summary of all sparsecore step summary info.
+  SparseCoreStepSummary sparse_core_step_summary = 8;
+}
+
+// Similar to TpuStepTimeBreakdown, this is for sparse core step time info.
+message SparseCoreStepSummary {
+  // Summary of all SparseCore compute op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary sc_compute_ms_summary = 1;
+  // Summary of all SparseCore infeed op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary sc_infeed_ms_summary = 2;
+  // Summary of all SparseCore outfeed op duration as a part of step in ms.
+  tensorflow.profiler.StepSummary sc_outfeed_ms_summary = 3;
+  // Summary of all SparseCore idle (but not input-related) duration as a part
+  // of step in ms.
+  tensorflow.profiler.StepSummary sc_idle_ms_summary = 4;
+  // Summary of all SparseCore step time in ms.
+  tensorflow.profiler.StepSummary sc_step_time_ms_summary = 5;
+}
+
+message TpuBottleneckAnalysis {
+  // Percentage of step time that is spent on input.
+  double input_percent = 11;
+
+  // Indicates if input is a bottleneck. Possible values:  "host", "device",
+  // "both", or "unknown"
+  string input_classification = 1;
+
+  // A human-readable description of the input bottleneck.
+  string input_statement = 2;
+
+  // Indicates if output is a bottleneck. Possible values:  "host", "device",
+  // "both", or "unknown"
+  double output_percent = 12;
+
+  // Percentage of step time that is spent on output.
+  string output_classification = 9;
+
+  // A human-readable description of the output bottleneck.
+  string output_statement = 10;
+
+  // Percentage of step time where the TC is idle (other than I/O).
+  double tc_idle_percent = 13;
+
+  // Indicates if TensorCore being idle (other than input) is a bottleneck.
+  // Possible values: "no", "yes".
+  string tc_idle_classification = 3;
+
+  // A human-readable description of the TC-idle bottleneck.
+  string tc_idle_statement = 4;
+
+  // Indicates if SparseCoreV0 is a bottleneck. Possible values: "no",
+  // "moderate", "high".
+  string scv0_classification = 5;
+
+  // A human-readable description of the SparseCoreV0 bottleneck.
+  string scv0_statement = 6;
+
+  // Indicates if all-reduce is a bottleneck. Possible values: "no", "yes".
+  string all_reduce_classification = 7;
+
+  // A human-readable description of the all-reduce bottleneck.
+  string all_reduce_statement = 8;
+
+  // Percentage of step time that is spent on compute.
+  double compute_percent = 14;
+}
