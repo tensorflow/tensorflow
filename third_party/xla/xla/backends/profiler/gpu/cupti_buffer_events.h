@@ -363,11 +363,11 @@ class CallbackAnnotationsAndEvents {
 
   size_t NumAnnotations() const { return annotations_.Size(); }
 
-  std::string_view DedupAnnotation(std::string_view str) {
+  absl::string_view DedupAnnotation(absl::string_view str) {
     return annotations_.Dedup(str);
   }
 
-  std::string_view DedupNvtxRange(std::string_view str) {
+  absl::string_view DedupNvtxRange(absl::string_view str) {
     return nvtx_ranges_.Dedup(str);
   }
 

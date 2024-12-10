@@ -26,8 +26,8 @@ namespace detail {
 
 // Convert between tensorflow::StringPiece (aka absl::string_view) and Python.
 //
-// pybind11 supports std::string_view, and absl::string_view is meant to be a
-// drop-in replacement for std::string_view, so we can just use the built in
+// pybind11 supports absl::string_view, and absl::string_view is meant to be a
+// drop-in replacement for absl::string_view, so we can just use the built in
 // implementation.
 template <>
 struct type_caster<tensorflow::StringPiece>

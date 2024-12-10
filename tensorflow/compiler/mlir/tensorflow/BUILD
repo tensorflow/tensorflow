@@ -950,6 +950,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:managed_stack_trace",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir/utils:error_util",

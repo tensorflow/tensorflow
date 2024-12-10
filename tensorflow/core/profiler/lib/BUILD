@@ -226,6 +226,7 @@ cc_library(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",

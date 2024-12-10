@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -46,7 +46,7 @@ using Arguments = absl::InlinedVector<NanoRtExecutable::Argument, 8>;
 using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
 
 TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
     HloModule add
 
     ENTRY e {
@@ -80,7 +80,7 @@ TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
 }
 
 TEST(NanoRtClientTest, CompileAndRunTupledComputation) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
     HloModule add_and_mul
 
     ENTRY e {
@@ -119,7 +119,7 @@ TEST(NanoRtClientTest, CompileAndRunTupledComputation) {
 }
 
 TEST(NanoRtClientTest, CompileAndRunConstantComputation) {
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule cst
 
     ENTRY e {
@@ -149,7 +149,7 @@ TEST(NanoRtClientTest, CompileAndRunConstantComputation) {
 }
 
 TEST(NanoRtClientTest, CompileAndRunConditionalComputation) {
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule conditional
 
     %add (x: f32[]) -> f32[] {

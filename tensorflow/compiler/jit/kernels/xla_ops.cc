@@ -21,7 +21,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
@@ -205,7 +205,7 @@ XlaComputationLaunchContext GetLaunchContext(
   return launch_context;
 }
 
-absl::Status GetTaskName(const std::string_view device_name,
+absl::Status GetTaskName(const absl::string_view device_name,
                          std::string* task_name) {
   string ignored;
   if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {

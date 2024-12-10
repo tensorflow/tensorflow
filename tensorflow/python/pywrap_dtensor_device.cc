@@ -414,7 +414,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              return *mesh;
            }),
            py::arg("mesh_proto"), "Returns a Mesh from a MeshProto.")
-      .def(py::init([](std::string_view mesh_str) {
+      .def(py::init([](absl::string_view mesh_str) {
              auto mesh = Mesh::FromString(mesh_str);
              if (!mesh.ok()) {
                throw py::value_error(std::string(mesh.status().message()));
@@ -436,7 +436,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
            "Returns True if a Mesh contains the given dimension name.")
       .def(
           "dim_size",
-          [](const Mesh& mesh, std::string_view name) {
+          [](const Mesh& mesh, absl::string_view name) {
             auto dim_size = mesh.dim_size(name);
             if (!dim_size.ok()) {
               throw py::value_error(std::string(dim_size.status().message()));
@@ -512,7 +512,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              return *layout;
            }),
            py::arg("layout_proto"), "Returns a Layout from a LayoutProto.")
-      .def(py::init([](std::string_view layout_str) {
+      .def(py::init([](absl::string_view layout_str) {
              auto layout = Layout::FromString(layout_str);
              if (!layout.ok()) {
                throw py::value_error(std::string(layout.status().message()));
