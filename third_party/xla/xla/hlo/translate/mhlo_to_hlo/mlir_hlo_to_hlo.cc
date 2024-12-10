@@ -2546,14 +2546,54 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  token = xla::internal::XlaBuilderFriend::BuildRecv(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
-  xla::XlaOp xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  auto get_sharding = [](const xla::OpSharding& sharding) {
+    xla::OpSharding ret;
+    if (sharding.type() != xla::OpSharding::TUPLE) {
+      ret = sharding;
+    } else {
+      ret = sharding.tuple_shardings(0);
+    }
+    return ret;
+  };
+  if (ctx.builder->sharding().has_value()) {
+    // HLO Recv needs a 3-tuple sharding. Get the sharding from the builder and
+    // make it a 3-tuple sharding.
+    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
+    xla::OpSharding single_sharding = get_sharding(*sharding);
+    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+    tuple_shardings->Clear();
+    for (int i = 0; i < 3; ++i) {
+      tuple_shardings->Add(xla::OpSharding(single_sharding));
+    }
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  } else {
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
 
-  auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  xla::XlaOp xla_result;
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
+                                                    ctx.builder->sharding());
+    xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
+
+  xla::XlaOp data_tuple_element;
+  if (ctx.builder->sharding().has_value()) {
+    // HLO GetTupleElement needs a single sharding,
+    xla::XlaScopedShardingAssignment sharding_scope(
+        ctx.builder, get_sharding(*ctx.builder->sharding()));
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  } else {
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  }
+
   if (subshapes.size() == 1) {
     value_map[op.getResult(0)] = data_tuple_element;
   } else {
@@ -2788,9 +2828,25 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
-  token = xla::internal::XlaBuilderFriend::BuildSend(
-      ctx.builder, operand, token,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
+  // tuple sharding with 3 entries.
+  if (ctx.builder->sharding().has_value()) {
+    xla::OpSharding sharding = *ctx.builder->sharding();
+    const xla::OpSharding single_sharding = *ctx.builder->sharding();
+    sharding.set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = sharding.mutable_tuple_shardings();
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  } else {
+    token = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
   value_map[op] = xla::internal::XlaBuilderFriend::BuildSendDone(
       ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
       op.getIsHostTransfer());
@@ -3505,7 +3561,6 @@ LogicalResult ConvertToHloModule::LowerReturn(
                 /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().message();
-
         returns[index] = reshape.value();
       }
     }
