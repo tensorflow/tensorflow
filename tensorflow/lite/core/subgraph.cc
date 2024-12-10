@@ -497,9 +497,12 @@ const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
 TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
                                       std::vector<NodeSubset>* node_subsets) {
   const InterpreterInfo info(this);
-  return PartitionGraphIntoIndependentNodeSubsets(
+  // Tensor preservation requires node fusion to be disabled.
+  const bool disable_node_fusion = ShouldPreserveAllTensors();
+  return tflite::PartitionGraphIntoIndependentNodeSubsets(
       &info, nodes_to_replace, node_subsets,
-      /*greedily=*/!DisableDelegateClustering(), control_edges_);
+      /*greedily=*/!DisableDelegateClustering(), control_edges_,
+      disable_node_fusion);
 }
 
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(

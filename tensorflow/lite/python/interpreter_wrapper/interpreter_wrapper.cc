@@ -210,6 +210,7 @@ bool RegisterCustomOpByName(const char* registerer_name,
 static constexpr int kBuiltinOpResolver = 1;
 static constexpr int kBuiltinRefOpResolver = 2;
 static constexpr int kBuiltinOpResolverWithoutDefaultDelegates = 3;
+static constexpr int kBuiltinOpResolverWithXNNPACK = 4;
 
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::unique_ptr<InterpreterWrapper::Model> model, int op_resolver_id,
@@ -240,6 +241,10 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
       case kBuiltinOpResolverWithoutDefaultDelegates:
         resolver = std::make_unique<
             tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+        break;
+      case kBuiltinOpResolverWithXNNPACK:
+        resolver = std::make_unique<
+            tflite::ops::builtin::BuiltinOpResolverWithXNNPACK>();
         break;
       default:
         // This should not never happen because the eventual caller in

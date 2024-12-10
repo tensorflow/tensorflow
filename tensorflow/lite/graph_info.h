@@ -154,7 +154,8 @@ using ControlEdges = std::vector<ControlEdge>;
 TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
     std::vector<NodeSubset>* node_subsets, bool greedily,
-    const ControlEdges* control_edges = nullptr);
+    const ControlEdges* control_edges = nullptr,
+    bool disable_node_fusion = false);
 
 }  // namespace tflite
 
