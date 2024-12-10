@@ -2,13 +2,6 @@
 
 def _unpacked_wheel_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.label.name)
-    libs = []
-    for dep in ctx.attr.cc_deps:
-        linker_inputs = dep[CcInfo].linking_context.linker_inputs.to_list()
-        for linker_input in linker_inputs:
-            if linker_input.libraries and linker_input.libraries[0].dynamic_library:
-                lib = linker_input.libraries[0].dynamic_library
-                libs.append(lib)
     wheel = None
     for w in ctx.files.wheel_rule_outputs:
         if w.basename.endswith(".whl"):
@@ -16,17 +9,20 @@ def _unpacked_wheel_impl(ctx):
             break
     script = """
     {zipper} x {wheel} -d {output}
-    for lib in {libs}; do
-        cp $lib {output}/tensorflow
+    for wheel_dep in {wheel_deps}; do
+        {zipper} x $wheel_dep -d {output}
     done
     """.format(
         zipper = ctx.executable.zipper.path,
         wheel = wheel.path,
         output = output_dir.path,
-        libs = " ".join(["'%s'" % lib.path for lib in libs]),
+        wheel_deps = " ".join([
+            "'%s'" % wheel_dep.path
+            for wheel_dep in ctx.files.wheel_deps
+        ]),
     )
     ctx.actions.run_shell(
-        inputs = ctx.files.wheel_rule_outputs + libs,
+        inputs = ctx.files.wheel_rule_outputs + ctx.files.wheel_deps,
         command = script,
         outputs = [output_dir],
         tools = [ctx.executable.zipper],
@@ -45,16 +41,20 @@ _unpacked_wheel = rule(
             cfg = "exec",
             executable = True,
         ),
-        "cc_deps": attr.label_list(providers = [CcInfo]),
+        "wheel_deps": attr.label_list(allow_files = True),
     },
 )
 
-def py_import(name, wheel, deps = [], cc_deps = []):
+def py_import(
+        name,
+        wheel,
+        deps = [],
+        wheel_deps = []):
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
         wheel_rule_outputs = wheel,
-        cc_deps = cc_deps,
+        wheel_deps = wheel_deps,
     )
     native.py_library(
         name = name,
@@ -68,6 +68,6 @@ def py_import(name, wheel, deps = [], cc_deps = []):
 Args:
   wheel: wheel file to unpack.
   deps: dependencies of the py_library.
-  cc_deps: dependencies that will be copied in the folder
-           with the unpacked wheel content.
+  wheel_deps: additional wheels to unpack. These wheels will be unpacked in the
+              same folder as the wheel.
 """  # buildifier: disable=no-effect

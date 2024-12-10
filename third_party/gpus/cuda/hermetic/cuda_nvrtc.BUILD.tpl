@@ -1,4 +1,9 @@
 licenses(["restricted"])  # NVIDIA proprietary license
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
+
 %{multiline_comment}
 cc_import(
     name = "nvrtc_main",
@@ -16,5 +21,6 @@ cc_library(
         %{comment}":nvrtc_main",
         %{comment}":nvrtc_builtins",
     %{comment}],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cuda_nvrtc/lib"),
     visibility = ["//visibility:public"],
 )
