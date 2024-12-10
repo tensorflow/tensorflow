@@ -807,6 +807,10 @@ message DebugOptions {
   // Filter out kernels that spill registers during autotuning.
   bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
+  // If true, PTX compilation will fail if a kernel spills registers.
+  // This is meant for debugging and only applies to CUDA PTX compilation.
+  bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
+
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
@@ -1073,7 +1077,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 353
+  // Next id: 354
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

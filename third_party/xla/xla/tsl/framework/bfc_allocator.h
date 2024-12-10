@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/bits.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
@@ -225,22 +225,21 @@ class BFCAllocator : public Allocator {
     string DebugString(BFCAllocator* a,
                        bool recurse) ABSL_NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
-      strings::StrAppend(
+      absl::StrAppend(
           &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
           " | Requested Size: ", strings::HumanReadableNumBytes(requested_size),
           " | in_use: ", in_use(), " | bin_num: ", bin_num);
       if (recurse && prev != BFCAllocator::kInvalidChunkHandle) {
         Chunk* p = a->ChunkFromHandle(prev);
-        strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));
+        absl::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));
       }
       if (recurse && next != BFCAllocator::kInvalidChunkHandle) {
         Chunk* n = a->ChunkFromHandle(next);
-        strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
+        absl::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
 #ifdef TENSORFLOW_MEM_DEBUG
-      strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
-                         ", stepid: ", step_id,
-                         ", last_action: ", action_count);
+      absl::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
+                      ", stepid: ", step_id, ", last_action: ", action_count);
 #endif
       return dbg;
     }
