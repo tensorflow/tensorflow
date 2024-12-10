@@ -127,11 +127,14 @@ constexpr char kApproxTopK[] = "ApproxTopK";
 constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
+constexpr char kChannelId[] = "channel_id";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
+constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
 constexpr char kRecallTarget[] = "recall_target";
 constexpr char kReductionDim[] = "reduction_dim";
 constexpr char kReductionInputSizeOverride[] = "reduction_input_size_override";
+constexpr char kReplicaGroups[] = "replica_groups";
 constexpr char kTopK[] = "top_k";
 
 // MHLO attributes. Module level attributes require namespacing.
@@ -2264,6 +2267,34 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                               aggregate_to_topk, reduction_input_size_override);
     }
     BuildGetTupleElementsForTupleResults(op, cc_op, ctx);
+    return success();
+  } else if (op.getCallTargetName() == kRaggedAllToAll) {
+    auto backend_config =
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(op.getBackendConfigAttr());
+    auto isSupportedAttrName = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == kCallTargetName || name == kBackendConfig ||
+             name == kApiVersion || name == kCalledComputations ||
+             name == kHasSideEffect;
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!isSupportedAttrName(attr))
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for RaggedAllToAll";
+    }
+    DenseIntElementsAttr replica_groups =
+        backend_config.getAs<DenseIntElementsAttr>(kReplicaGroups);
+    mlir::mhlo::ChannelHandleAttr channel_handle_attr =
+        backend_config.getAs<mlir::mhlo::ChannelHandleAttr>(kChannelId);
+    xla::ChannelHandle channel_handle;
+    if (channel_handle_attr) {
+      channel_handle = Convert_channel_handle(channel_handle_attr);
+    }
+    xla::XlaOp ragged_all_to_all_op =
+        RaggedAllToAll(args[0], args[1], args[2], args[3], args[4], args[5],
+                       Convert_replica_groups(replica_groups), channel_handle);
+    value_map[op.getResult(0)] = ragged_all_to_all_op;
     return success();
   }
 
