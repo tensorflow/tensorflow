@@ -204,9 +204,10 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
         default:
           LOG(ERROR) << "Not supported type by blaslt "
                      << blas::DataTypeString(dtype) << " fall back to blas";
-          return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
-                                          dtype, alpha, a, lda, b, ldb, beta, c,
-                                          ldc, numeric_options, context);
+          return TBlasSupport::DoBlasGemmStridedBatched(
+              stream, transa, transb, m, n, k, dtype, alpha, a, lda, stride_a,
+              b, ldb, stride_b, beta, c, ldc, stride_c, batch_count,
+              numeric_options, context);
       };
     } else {
       return TBlasSupport::DoBlasGemmStridedBatched(
