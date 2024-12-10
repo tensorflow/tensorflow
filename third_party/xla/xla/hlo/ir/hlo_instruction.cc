@@ -2296,6 +2296,7 @@ void HloInstruction::SetupDerivedInstruction(
   if (has_rare()) {
     derived_instruction->set_frontend_attributes(frontend_attributes());
     derived_instruction->set_statistics_viz(statistics_viz());
+    derived_instruction->set_result_accuracy(result_accuracy());
   } else if (derived_instruction->has_rare()) {
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
     derived_instruction->mutable_rare()->statistics_viz.Clear();
