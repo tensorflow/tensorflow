@@ -198,9 +198,9 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
                           saved_model_bundle);
 }
 
-tensorflow::Status ExportModule(mlir::ModuleOp module,
-                                const std::string& output_filename,
-                                bool elide_large_elements_attrs) {
+absl::Status ExportModule(mlir::ModuleOp module,
+                          const std::string& output_filename,
+                          bool elide_large_elements_attrs) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
@@ -227,8 +227,8 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
-tensorflow::Status ConvertTFToStableHLO(
-    ModuleOp tf_module, const PassPipelineCLParser& pass_pipeline) {
+absl::Status ConvertTFToStableHLO(ModuleOp tf_module,
+                                  const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
   if (failed(applyPassManagerCLOptions(pm))) {
     return tensorflow::errors::Aborted(
@@ -273,7 +273,7 @@ tensorflow::Status ConvertTFToStableHLO(
   return absl::OkStatus();
 }
 
-tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
+absl::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   DialectRegistry registry;
   registerAllDialects(registry);
   RegisterAllTensorFlowDialects(registry);
