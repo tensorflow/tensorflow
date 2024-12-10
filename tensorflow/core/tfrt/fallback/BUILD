@@ -90,6 +90,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/device.h"
@@ -91,6 +92,11 @@ class OpKernelRunner {
     DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
              << op_kernel_->def().DebugString()
              << ", on Device: " << context->device()->name();
+    // TODO: b/381849919 - Remove this check once the bug is fixed.
+    if (!op_kernel_) {
+      context->SetStatus(absl::FailedPreconditionError("OpKernel is null"));
+      return;
+    }
 
     // For TFRT GPU or TPU, we currently only run xla clusters on GPU or TPU,
     // and all other ops are run on CPU.
