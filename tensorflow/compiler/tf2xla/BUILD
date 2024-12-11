@@ -226,8 +226,8 @@ filegroup(
         "@local_xla//xla/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
     ],
     visibility = [
-        "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
+        "//visibility:private",
     ],
 )
 
@@ -243,8 +243,8 @@ filegroup(
         "@local_xla//xla/service/cpu:runtime_srcs",
     ],
     visibility = [
-        "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
+        "//visibility:private",
     ],
 )
 
@@ -1260,11 +1260,6 @@ cc_library(
     name = "mlir_bridge_pass_registration",
     srcs = [
         "mlir_bridge_pass_registration.cc",
-    ],
-    visibility = [
-        # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
-        "//learning/brain/tfrt/tf_tpu:__pkg__",
-        ":internal",
     ],
     deps = [
         ":mlir_bridge_pass",
