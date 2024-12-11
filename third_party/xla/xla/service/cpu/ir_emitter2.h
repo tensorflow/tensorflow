@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -80,20 +81,6 @@ class IrEmitter2 {
   struct KernelParameter {
     Shape shape;
     BufferAllocation::Slice slice;
-  };
-
-  // Thread dimensions of the kernel invocation.
-  struct KernelThreadDims {
-    llvm::Value* x;
-    llvm::Value* y;
-    llvm::Value* z;
-  };
-
-  // Thread coordinates of the kernel invocation.
-  struct KernelThread {
-    llvm::Value* x;
-    llvm::Value* y;
-    llvm::Value* z;
   };
 
   // Emitted kernel information that defines how to launch it at run time.
@@ -167,8 +154,8 @@ class IrEmitter2 {
     llvm::BasicBlock* return_block;
 
     // LLVM values identifying kernel invocation thread coordinates.
-    KernelThreadDims thread_dims;
-    KernelThread thread;
+    KernelApiIrBuilder::ThreadDims thread_dims;
+    KernelApiIrBuilder::ThreadId thread;
 
     // LLVM values corresponding to the kernel arguments and results arrays. All
     // tuples are flattened as we do not have any tuples at run time and only
@@ -221,16 +208,6 @@ class IrEmitter2 {
       absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
 
-  KernelThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& b,
-                                        llvm::Value* call_frame);
-
-  KernelThread EmitKernelThread(llvm::IRBuilderBase& b,
-                                llvm::Value* call_frame);
-
-  llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& b,
-                                      llvm::Value* call_frame, int64_t index,
-                                      const Shape& shape);
-
   // Returns parallel config for the given instruction or std::nullopt if
   // the instruction has to be compiled to a single threaded loop.
   std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
@@ -268,11 +245,7 @@ class IrEmitter2 {
   // to reductions inside fusions).
   IrEmitter* nested_ir_emitter_;
 
-  // LLVM types defining HostKernel API (see host_kernel_c_api.h).
-  llvm::StructType* call_frame_ty_;
-  llvm::StructType* thread_dims_ty_;
-  llvm::StructType* thread_ty_;
-  llvm::StructType* arg_ty_;
+  KernelApiIrBuilder kernel_api_ir_builder_;
 
   // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
