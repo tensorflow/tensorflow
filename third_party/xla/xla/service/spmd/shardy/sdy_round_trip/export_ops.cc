@@ -121,7 +121,7 @@ class ShardingGroupPattern : public OpConversionPattern<ShardingGroupOp> {
         op, op->getResultTypes(), adaptor.getInput());
 
     customCallOp.setCallTargetName(kShardingGroupCustomCallTargetName);
-    addFrontendAttribute(customCallOp, kShardingGroupIdAttr,
+    setFrontendAttribute(customCallOp, kShardingGroupIdAttr,
                          op.getGroupIdAttr());
     customCallOp.setHasSideEffectAttr(rewriter.getBoolAttr(true));
     return success();

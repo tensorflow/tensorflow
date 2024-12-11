@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cassert>
+#include <cstdint>
 #include <memory>
-#include <stdexcept>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
