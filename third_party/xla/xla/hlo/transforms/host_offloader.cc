@@ -142,7 +142,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_insert_copies_before;
   std::vector<InstructionAndShapeIndex> buffers_to_set_to_host_memory;
-  std::vector<HloInstruction*> dynamic_update_slices;
+  std::vector<HloInstruction*> dynamic_update_slices_to_add_allocate_buffer_for;
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
   std::queue<InstructionAndShapeIndex> queue;
@@ -169,13 +169,10 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       custom_calls_to_insert_copies_before.insert(instruction);
       continue;
     } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      if (instruction == starting_instruction) {
-        dynamic_update_slices.push_back(instruction);
-      } else {
-        // The input to this DynamicUpdateSlice is already in host memory. Save
-        // this so that we don't try to create an AllocateBuffer later.
-        dynamic_update_slices_already_allocated_.insert(instruction);
+      if (instruction != starting_instruction) {
+        continue;
       }
+      dynamic_update_slices_to_add_allocate_buffer_for.push_back(instruction);
     } else if (host_offload_utils::IsValidDuringPureMemoryOffload(
                    instruction)) {
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
@@ -287,7 +284,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       buffers_to_set_to_host_memory, kHostMemorySpaceColor);
   changed = changed || set_buffers_changed;
 
-  for (HloInstruction* dus : dynamic_update_slices) {
+  for (HloInstruction* dus : dynamic_update_slices_to_add_allocate_buffer_for) {
     // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
     // will update-slice into.
     TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));

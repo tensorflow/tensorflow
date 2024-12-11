@@ -4278,6 +4278,48 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
 }
 
+TEST_F(HostOffloaderTest, DynamicUpdateSliceAllGatherDecomposer) {
+  const absl::string_view hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(s32[4]{0:T(256)S(5)})->s32[32]{0:T(256)S(5)}}, num_partitions=8
+
+add {
+  x = s32[]{:T(256)} parameter(0)
+  y = s32[]{:T(256)} parameter(1)
+  ROOT add.1 = s32[]{:T(256)} add(x, y)
+}
+
+ENTRY main.5_spmd {
+  constant.3 = s32[]{:T(256)} constant(0)
+  broadcast = s32[32]{0:T(256)} broadcast(constant.3), dimensions={}
+  param = s32[4]{0:T(256)} parameter(0), sharding={devices=[8]<=[8]}, metadata={op_name="x"}
+  replica-id = u32[]{:T(256)} replica-id()
+  constant.1 = u32[]{:T(256)} constant(8)
+  multiply = u32[]{:T(256)} multiply(replica-id, constant.1)
+  partition-id.1 = u32[]{:T(256)} partition-id()
+  add = u32[]{:T(256)} add(multiply, partition-id.1)
+  constant.2 = u32[]{:T(256)} constant(4)
+  multiply.1 = u32[]{:T(256)} multiply(add, constant.2)
+  dynamic-update-slice = s32[32]{0:T(256)} dynamic-update-slice(broadcast, param, multiply.1), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"3","ones":"0","bitwidth":"32"}],"is_index_aligned":[false]},"used_scoped_memory_configs":[]}
+  all-reduce = s32[32]{0:T(256)} all-reduce(dynamic-update-slice), channel_id=1, replica_groups=[1,8]<=[8], use_global_device_ids=true, to_apply=add
+  ROOT custom-call.1 = s32[32]{0:T(256)} custom-call(all-reduce), custom_call_target="MoveToHost"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* dynamic_update_slice =
+      FindInstruction(module.get(), "dynamic-update-slice");
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->operand(0)->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(dynamic_update_slice->operand(1)->shape(),
+                          Layout::kHostMemorySpace);
+}
+
 }  // namespace
 
 }  // namespace xla
