@@ -821,15 +821,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_rpath",
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
-        ],
-    }),
-)
-
-cc_library(
     name = "stream_executor_rocm",
     tags = [
         "gpu",
@@ -837,12 +828,12 @@ cc_library(
     ],
     deps = [
         ":rocm_platform_id",
-        ":rocm_rpath",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
+        "@local_config_rocm//rocm:rocm_rpath",
     ] + if_static(
         [":all_runtime"],
     ),
