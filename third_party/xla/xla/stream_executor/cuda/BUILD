@@ -1,19 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-    "if_cuda_newer_than",
-)
-load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
@@ -51,6 +38,7 @@ load(
 )
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
 load(":build_defs.bzl", "stage_in_bin_subdirectory")
@@ -207,46 +195,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cuda_driver",
-    srcs = ["cuda_driver.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        ":cuda_context",
-        ":cuda_diagnostics",  # buildcleaner: keep
-        ":cuda_status",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:context",
-        "//xla/stream_executor/gpu:context_map",
-        "//xla/stream_executor/gpu:gpu_diagnostics_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/stream_executor/gpu:scoped_activate_context",
-        "//xla/tsl/cuda",
-        "//xla/tsl/cuda:cudart",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cuda_only_cc_library(
     name = "cuda_status",
     srcs = ["cuda_status.cc"],
@@ -260,25 +208,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cuda_only_cc_library(
-    name = "cuda_runtime",
-    srcs = ["cuda_runtime.cc"],
-    hdrs = ["cuda_runtime.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
