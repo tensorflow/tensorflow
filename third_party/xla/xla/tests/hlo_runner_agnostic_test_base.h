@@ -95,6 +95,9 @@ namespace xla {
 // other implementations. We plan to incrementally migrate tests to this class
 // and away from HloTestBase.
 class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
+ public:
+  static const ErrorSpec kDefaultErrorSpec;
+
  protected:
   explicit HloRunnerAgnosticTestBase(
       absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
