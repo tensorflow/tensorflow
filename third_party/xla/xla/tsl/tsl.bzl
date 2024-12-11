@@ -35,7 +35,6 @@ load(
 load(
     "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
-    _pybind_extension = "pybind_extension",
 )
 
 # Internally this loads a macro, but in OSS this is a function
@@ -838,4 +837,4 @@ def tsl_extra_config_settings_targets():
     return []
 
 # TODO(b/356020232): remove after migration is done
-tsl_pybind_extension = _pybind_extension if use_pywrap_rules() else tsl_pybind_extension_opensource
+tsl_pybind_extension = tsl_pybind_extension_opensource

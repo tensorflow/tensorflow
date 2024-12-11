@@ -1510,7 +1510,6 @@ pywrap_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_function_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
-        "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",

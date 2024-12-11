@@ -132,7 +132,6 @@ def saved_model_compile_aot(
             "{}_makefile.inc".format(name),
         ],
         cmd = (
-            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
             "$(location {}) aot_compile_cpu ".format(
                 clean_dep("//tensorflow/python/tools:saved_model_cli"),
             ) +
