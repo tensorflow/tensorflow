@@ -199,3 +199,17 @@ cc_library(
         "@llvm-project//llvm:Support",
     ],
 )
+
+cc_library(
+    name = "kernel_api_ir_builder",
+    srcs = ["kernel_api_ir_builder.cc"],
+    hdrs = ["kernel_api_ir_builder.h"],
+    deps = [
+        "//xla:cpu_function_runtime",
+        "//xla:shape_util",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
