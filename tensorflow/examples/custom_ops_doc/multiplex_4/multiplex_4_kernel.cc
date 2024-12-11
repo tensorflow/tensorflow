@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 
