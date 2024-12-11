@@ -1064,7 +1064,7 @@ absl::StatusOr<bool> HostOffloader::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  // First remove redundant copies to and from host (conservatively) starting
+  // Remove redundant copies to and from host (conservatively) starting
   // from the outputs of the host offloaded computations. Iterate over all
   // instructions and look for XLA host offload annotations.
   bool changed_in_loop;
