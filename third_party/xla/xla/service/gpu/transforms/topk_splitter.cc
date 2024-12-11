@@ -75,7 +75,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     if (n % kRequiredAlignment != 0) {
       return absl::OkStatus();
     }
-    if (n < split_threshold_) return absl::OkStatus();
+    if (n <= split_threshold_) return absl::OkStatus();
     int new_batch =
         std::min(absl::bit_floor(n / split_threshold_), kMaximumBatchSize);
     int new_n = n / new_batch;
