@@ -22,6 +22,7 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "gpu_any",
     "gpu_a100",
     "gpu_h100",
+    "gpu_b100",
 ]
 
 AMD_GPU_DEFAULT_BACKENDS = ["gpu_amd_any"]
