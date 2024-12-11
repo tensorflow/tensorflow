@@ -95,7 +95,7 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
     tensorflow::PartialTensorShape shape;
-    const tensorflow::Status status =
+    const absl::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
             ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
@@ -232,7 +232,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   tensorflow::AttrValueMap attributes;
 
   if (get_attr_values_fn) {
-    tensorflow::Status status =
+    absl::Status status =
         get_attr_values_fn(op, op_name, op_reg_data,
                            /*ignore_unregistered_attrs=*/true, &attributes);
     if (!status.ok()) {
@@ -243,7 +243,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   } else {
     auto* dialect = cast<TFGraphDialect>(op->getDialect());
     tensorflow::NodeDef node_def;
-    tensorflow::Status status = ConvertToNodeDef(
+    absl::Status status = ConvertToNodeDef(
         op, &node_def, dialect,
         [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok()) {
