@@ -65,9 +65,10 @@ absl::StatusOr<bool> AsyncWrapper::Run(
         continue;
       }
 
-      // Otherwise, follow any `calls` to discover other instructions that can
-      // potentially be made async.
-      if (HloPredicateIsOp<HloOpcode::kCall>(instruction)) {
+      // Otherwise, follow anything other than `fusion`s to discover other
+      // instructions that can potentially be made async.
+      if (HloPredicateIsOp<HloOpcode::kCall, HloOpcode::kConditional,
+                           HloOpcode::kWhile>(instruction)) {
         std::copy(instruction->called_computations().begin(),
                   instruction->called_computations().end(),
                   std::back_inserter(computations));
