@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/nest.h"
 
-#include <utility>
+#include <cstddef>
+#include <string>
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
