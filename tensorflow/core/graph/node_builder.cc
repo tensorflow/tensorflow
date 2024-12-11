@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/graph/node_builder.h"
 
-#include <unordered_map>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"

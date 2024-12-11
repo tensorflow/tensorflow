@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/graph/subgraph.h"
 
-#include <algorithm>
-#include <deque>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
