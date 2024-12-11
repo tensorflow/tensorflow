@@ -27,22 +27,23 @@ namespace tensorflow {
 using tsl::StatusOr;
 
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
-Status ConvertDataType(DataType dtype, mlir::Builder builder, mlir::Type* type);
+absl::Status ConvertDataType(DataType dtype, mlir::Builder builder,
+                             mlir::Type* type);
 
 // Converts a scalar MLIR type to a TensorFlow Datatype.
-Status ConvertScalarTypeToDataType(mlir::Type type, DataType* dtype);
+absl::Status ConvertScalarTypeToDataType(mlir::Type type, DataType* dtype);
 
 // Converts an MLIR type to TensorFlow DataType. If 'type' is a scalar type, it
 // is converted directly. If it is a shaped type, the element type is converted.
-Status ConvertToDataType(mlir::Type type, DataType* dtype);
+absl::Status ConvertToDataType(mlir::Type type, DataType* dtype);
 
 // Converts an TensorFlow shape to the one used in MLIR.
 void ConvertToMlirShape(const TensorShape& input_shape,
                         llvm::SmallVectorImpl<int64_t>* shape);
 
 // Converts an TensorFlow shape proto to the one used in MLIR.
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape);
+absl::Status ConvertToMlirShape(const TensorShapeProto& input_shape,
+                                llvm::SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
 absl::StatusOr<mlir::Type> ConvertToMlirTensorType(
