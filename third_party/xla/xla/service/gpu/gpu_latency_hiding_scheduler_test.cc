@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -76,11 +78,15 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     return module;
   }
 
-  HloModuleConfig GetModuleConfig(absl::string_view fdo_profile) {
+  HloModuleConfig GetModuleConfig(
+      absl::string_view fdo_profile,
+      bool enable_experimental_pipeline_parallelism_opt = false) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
+    debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
+        enable_experimental_pipeline_parallelism_opt);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(fdo_profile);
     return config;
@@ -442,6 +448,109 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                    GetIndexByName(instruction_sequence, "add_0") &&
                GetIndexByName(instruction_sequence, "add_0") <
                    GetIndexByName(instruction_sequence, "rs_1")));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
+  absl::string_view kHloModule = R"(
+  HloModule m
+
+  while_condition {
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) parameter(0)
+    i = get-tuple-element(tuple), index=3
+    n = u32[] constant(13)
+    ROOT predicate = pred[] compare(i, n), direction=LT
+  }
+
+  while_body {
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) parameter(0)
+    send_ctx = get-tuple-element(tuple), index=0
+    recv_ctx = get-tuple-element(tuple), index=1
+    some_arg = get-tuple-element(tuple), index=2
+    i = get-tuple-element(tuple), index=3
+    some_res = f32[16,16] dot(some_arg, some_arg), lhs_contracting_dims={0},
+        rhs_contracting_dims={1}
+    recv_done = (f32[16], token[]) recv-done(recv_ctx),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    send_done = token[] send-done(send_ctx), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    after_all = token[] after-all()
+    send_ctx_ = (f32[16,16], u32[], token[]) send(some_arg, after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+        control-predecessors={send_done}
+    recv_ctx_ = (f32[16,16], u32[], token[]) recv(after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+        control-predecessors={recv_done}
+    c1 = u32[] constant(1)
+    i_ = add(i, c1)
+    ROOT tuple_ = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) tuple(send_ctx_, recv_ctx_, some_res, i_)
+  }
+
+
+  ENTRY main {
+    some_arg = f32[16,16] parameter(0)
+    after_all = token[] after-all()
+    send_ctx = (f32[16,16], u32[], token[]) send(some_arg, after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    recv_ctx = (f32[16,16], u32[], token[]) recv(after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    c0 = u32[] constant(0)
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[])
+        tuple(send_ctx, recv_ctx, some_arg, c0)
+    tuple_ = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[])
+        while(tuple), body=while_body, condition=while_condition
+    send_ctx_ = (f32[16,16], u32[], token[]) get-tuple-element(tuple_), index=0
+    recv_ctx_ = (f32[16,16], u32[], token[]) get-tuple-element(tuple_), index=1
+    recv_done = (f32[16], token[]) recv-done(recv_ctx_), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    send_done = token[] send-done(send_ctx_), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+  }
+  )";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(
+      kFdoProfile, /*enable_experimental_pipeline_parallelism_opt=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(
+      ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                     /*strictness=*/DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  auto schedule = module->schedule();
+  VLOG(3) << module->schedule().ToString();
+
+  // Expect send/recv and send/recv-done to be scheduled late so that they
+  // appear at the top of the while loop body. This is to ensure their execution
+  // overlaps with the present compute.
+  HloComputation* while_body = FindComputation(module.get(), "while_body");
+  std::vector<HloInstruction*> while_body_instrs =
+      schedule.sequence(while_body).instructions();
+
+  // Expect: `recv_ctx` -> `recv_done` -> `recv_ctx_` -> `some_res`
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_ctx"),
+            GetIndexByName(while_body_instrs, "recv_done"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_done"),
+            GetIndexByName(while_body_instrs, "recv_ctx_"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_ctx_"),
+            GetIndexByName(while_body_instrs, "some_res"));
+
+  // Expect: `send_ctx` -> `send_done` -> `send_ctx_` -> `some_res`
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_ctx"),
+            GetIndexByName(while_body_instrs, "send_done"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_done"),
+            GetIndexByName(while_body_instrs, "send_ctx_"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_ctx_"),
+            GetIndexByName(while_body_instrs, "some_res"));
 }
 
 }  // namespace
