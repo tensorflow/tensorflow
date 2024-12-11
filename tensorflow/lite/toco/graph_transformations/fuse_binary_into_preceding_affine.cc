@@ -205,9 +205,9 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 }
 }  // namespace
 
-::tensorflow::Status FuseBinaryIntoPrecedingAffine::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status FuseBinaryIntoPrecedingAffine::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   const auto* binary_op = binary_it->get();

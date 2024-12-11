@@ -74,8 +74,8 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   return true;
 }
 
-::tensorflow::Status CreateIm2colArrays::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status CreateIm2colArrays::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

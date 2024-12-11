@@ -188,8 +188,8 @@ bool DequantizeArray(const std::string& array_name,
 
 }  // namespace
 
-::tensorflow::Status Dequantize::Run(Model* model, std::size_t op_index,
-                                     bool* modified) {
+absl::Status Dequantize::Run(Model* model, std::size_t op_index,
+                             bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();

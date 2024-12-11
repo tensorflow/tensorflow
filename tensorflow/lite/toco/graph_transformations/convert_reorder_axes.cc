@@ -88,8 +88,8 @@ TransposeOperator* CreateTransposeFromReorderAxes(
 
 // Converts ReorderAxes into Transpose and Reshape which are compatible with the
 // TFLite interpreter.
-::tensorflow::Status ConvertReorderAxes::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status ConvertReorderAxes::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto reorder_it = model->operators.begin() + op_index;
   if (reorder_it->get()->type != OperatorType::kReorderAxes)

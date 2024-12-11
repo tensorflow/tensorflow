@@ -31,9 +31,8 @@ namespace toco {
 // means that the data layout will never change with this op, just the shape.
 // By converting these to reshapes once we have run shape propagation we allow
 // standard reshape optimization transforms to do their magic.
-::tensorflow::Status ConvertSqueezeToReshape::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ConvertSqueezeToReshape::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto squeeze_it = model->operators.begin() + op_index;
   if (squeeze_it->get()->type != OperatorType::kSqueeze) {

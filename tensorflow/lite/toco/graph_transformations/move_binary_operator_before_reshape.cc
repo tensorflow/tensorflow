@@ -58,9 +58,9 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
 //
 // Note we are testing for one particular case of a broader set of possible
 // binary-reshape op transformations. This transformation could be generalized.
-::tensorflow::Status MoveBinaryOperatorBeforeReshape::Run(Model* model,
-                                                          std::size_t op_index,
-                                                          bool* modified) {
+absl::Status MoveBinaryOperatorBeforeReshape::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   Operator* binary_op = binary_it->get();

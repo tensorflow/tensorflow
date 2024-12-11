@@ -28,9 +28,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ConvertExpandDimsToReshape::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status ConvertExpandDimsToReshape::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   auto expand_it = model->operators.begin() + op_index;
   if (expand_it->get()->type != OperatorType::kExpandDims) {

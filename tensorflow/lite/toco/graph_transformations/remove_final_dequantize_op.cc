@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status RemoveFinalDequantizeOp::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto dequantize_it = model->operators.begin() + op_index;
   const auto* dequantize_op = dequantize_it->get();

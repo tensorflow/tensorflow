@@ -425,8 +425,8 @@ bool HardcodeMinMaxForPack(Model* model, Operator* op) {
 
 }  // namespace
 
-::tensorflow::Status HardcodeMinMax::Run(Model* model, std::size_t op_index,
-                                         bool* modified) {
+absl::Status HardcodeMinMax::Run(Model* model, std::size_t op_index,
+                                 bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

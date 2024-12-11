@@ -111,8 +111,9 @@ namespace toco {
 // we can foresee these 'fast int8 kernels' to remain important to have into
 // the 2020s.
 //
-::tensorflow::Status EnsureUint8WeightsSafeForFastInt8Kernels::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
+                                                           std::size_t op_index,
+                                                           bool* modified) {
   *modified = false;
   const auto& op = *model->operators[op_index];
   int weights_index = 0;
