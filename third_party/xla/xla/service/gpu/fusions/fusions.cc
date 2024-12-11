@@ -108,15 +108,15 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       return std::make_unique<MlirLoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-        return CreateMlirReductionFusion(analysis);
+      return CreateMlirReductionFusion(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-        return std::make_unique<MlirScatterFusion>(analysis);
+      return std::make_unique<MlirScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-        return std::make_unique<MlirTransposeFusion>(analysis);
+      return std::make_unique<MlirTransposeFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-        return std::make_unique<MlirConcatenateFusion>(analysis);
+      return std::make_unique<MlirConcatenateFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
