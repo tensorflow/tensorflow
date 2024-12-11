@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -162,7 +161,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
            {DebugOptions::NOOP, DebugOptions::ALLREDUCE,
             DebugOptions::ALLGATHER, DebugOptions::REDUCESCATTER,
             DebugOptions::COLLECTIVEBROADCAST, DebugOptions::ALLTOALL,
-            DebugOptions::COLLECTIVEPERMUTE}) {
+            DebugOptions::COLLECTIVEPERMUTE, DebugOptions::RAGGEDALLTOALL}) {
         debug_options.add_xla_gpu_disable_async_collectives(option);
       }
     }
@@ -1536,7 +1535,7 @@ ENTRY entry {
   EXPECT_TRUE(executable->has_module());
 }
 
-class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
+class RaggedAllToAllTest : public AsyncCollectiveOps {
  public:
   // Creates random test data for a ragged-all-to-all.
   //
@@ -1557,8 +1556,9 @@ class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
   // `input_sizes` is a 2D array of shape [num_replicas, num_replicas].
   // `input_sizes[i, j]` is the number of elements in the j-th ragged row of the
   // i-th replica input.
+  template <typename IndexType>
   void CreateRandomTestData(HloModule* module,
-                            const Array<int32_t>& input_sizes) {
+                            const Array<IndexType>& input_sizes) {
     auto ragged_all_to_all =
         FindInstruction(module, HloOpcode::kRaggedAllToAll);
     EXPECT_THAT(ragged_all_to_all, NotNull());
@@ -1575,12 +1575,12 @@ class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
     std::vector<Array<float>> output_data(num_replicas,
                                           Array<float>(ragged_tensor_sizes));
 
-    Array<int32_t> output_sizes = input_sizes;
+    Array<IndexType> output_sizes = input_sizes;
     output_sizes.TransposeDimensions({1, 0});
 
     // Computes ragged tensor offsets based on the sizes of the ragged rows.
-    auto get_offsets = [&](const Array<int32_t>& sizes) {
-      Array<int32_t> offsets(sizes.dimensions());
+    auto get_offsets = [&](const Array<IndexType>& sizes) {
+      Array<IndexType> offsets(sizes.dimensions());
       for (int i = 0; i < num_replicas; ++i) {
         for (int j = 1; j < num_replicas; ++j) {
           offsets(i, j) = offsets(i, j - 1) + sizes(i, j - 1);
@@ -1589,8 +1589,8 @@ class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
       return offsets;
     };
 
-    Array<int32_t> input_offsets = get_offsets(input_sizes);
-    Array<int32_t> output_offsets = get_offsets(output_sizes);
+    Array<IndexType> input_offsets = get_offsets(input_sizes);
+    Array<IndexType> output_offsets = get_offsets(output_sizes);
 
     std::vector<int64_t> chunk_sizes{ragged_tensor_sizes.begin(),
                                      ragged_tensor_sizes.end()};
@@ -1615,8 +1615,9 @@ class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
       }
     }
 
-    auto get_row = [&](int64_t row_id, const Array<int32_t>& data) {
-      Array<int32_t> row = data.Slice({row_id, 0}, {row_id + 1, num_replicas});
+    auto get_row = [&](int64_t row_id, const Array<IndexType>& data) {
+      Array<IndexType> row =
+          data.Slice({row_id, 0}, {row_id + 1, num_replicas});
       row.Reshape({num_replicas});
       return row;
     };
@@ -1667,7 +1668,7 @@ class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
   Literal output_init_;
 };
 
-TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs) {
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -1692,8 +1693,9 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData(module.get(), /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                      /*replica_1=*/{3, 1}});
+  CreateRandomTestData</*IndexType=*/int32_t>(
+      module.get(), /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                     /*replica_1=*/{3, 1}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -1706,17 +1708,17 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs_MultiDimData) {
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
   ENTRY entry {
     input = f32[16, 5, 32] parameter(0)
     output = f32[16, 5, 32] parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
+    input_offsets = s64[2] parameter(2)
+    send_sizes = s64[2] parameter(3)
+    output_offsets = s64[2] parameter(4)
+    recv_sizes = s64[2] parameter(5)
     ROOT ra2a = f32[16, 5, 32] ragged-all-to-all(input, output,
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
@@ -1736,8 +1738,9 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs_MultiDimData) {
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
   EXPECT_THAT(ragged_all_to_all, NotNull());
 
-  CreateRandomTestData(module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                                      /*replica_1=*/{2, 5}});
+  CreateRandomTestData</*IndexType=*/int64_t>(
+      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                     /*replica_1=*/{2, 5}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -1751,7 +1754,7 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs_MultiDimData) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_8GPUs) {
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -1780,7 +1783,7 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_8GPUs) {
   Array<int32_t> input_sizes({kNumReplicas, kNumReplicas});
   input_sizes.FillRandomUniform(0, 10);
 
-  CreateRandomTestData(module.get(), input_sizes);
+  CreateRandomTestData</*IndexType=*/int32_t>(module.get(), input_sizes);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -1794,6 +1797,9 @@ TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_8GPUs) {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(RaggedAllToAllTest, RaggedAllToAllTest,
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace xla

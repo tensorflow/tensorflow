@@ -503,6 +503,7 @@ message DebugOptions {
     COLLECTIVEBROADCAST = 4;
     ALLTOALL = 5;
     COLLECTIVEPERMUTE = 6;
+    RAGGEDALLTOALL = 7;
   }
 
   repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
