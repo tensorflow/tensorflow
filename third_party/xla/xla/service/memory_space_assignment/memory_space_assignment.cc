@@ -504,7 +504,6 @@ absl::Status MemorySpaceAssignment::Process(
         CHECK(
             !sliced_copy_allocation.cross_program_prefetch_index().has_value());
       }
-
       alternate_memory_assignments_.emplace_back(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =

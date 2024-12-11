@@ -170,7 +170,8 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
               producing_instruction,
               use.instruction->mutable_operand(use.operand_number),
               use.operand_index));
-    } else if (operand_shape != producing_instruction->shape()) {
+    } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
+                   operand_shape, producing_instruction->shape())) {
       // When processing allocations, we treat bitcasts as trivial positions and
       // do not create allocations for them. We insert bitcasts after copies, to
       // account for the fact that we don't have an allocation for the bitcast.
@@ -211,7 +212,8 @@ Allocation::Allocation(HloPosition defining_position, MemorySpace memory_space,
       start_time_(start_time),
       end_time_(end_time),
       is_scoped_allocation_(is_scoped_allocation),
-      cross_program_prefetch_index_(cross_program_prefetch_index) {
+      cross_program_prefetch_index_(cross_program_prefetch_index),
+      split_shape_(std::nullopt) {
   CHECK(!is_scoped_allocation ||
         original_defining_position_.index == ShapeIndex({}));
 }
@@ -272,6 +274,13 @@ absl::Status PinnedAllocation::Process() {
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
+
+  if (memory_space() == MemorySpace::kAlternate &&
+      mutable_split_shape().has_value()) {
+    CHECK(Shape::Equal().IgnoreSplitConfigInLayout()(
+        producing_instruction->shape(), mutable_split_shape().value()));
+    *producing_instruction->mutable_shape() = mutable_split_shape().value();
+  }
   return UpdateUses(computation, producing_instruction);
 }
 
@@ -325,6 +334,10 @@ int64_t CopyAllocation::earliest_available_time() const {
 absl::Status CopyAllocation::Process() {
   // Copy allocations need to insert asynchronous copy nodes.
   Shape shape = defining_position().shape();
+  if (memory_space() == MemorySpace::kAlternate && sync_mem_op_ != nullptr &&
+      mutable_split_shape().has_value()) {
+    *sync_mem_op_->mutable_shape() = mutable_split_shape().value();
+  }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
@@ -345,12 +358,22 @@ absl::Status CopyAllocation::Process() {
     TF_RETURN_IF_ERROR(
         copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
-    copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-        ShapeUtil::MakeTupleShape(
-            {shape, shape, ShapeUtil::MakeShape(U32, {})}),
-        producing_instruction, cross_program_prefetch_index()));
-    copy_done_ = computation->AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+    if (memory_space() == MemorySpace::kAlternate &&
+        mutable_split_shape().has_value()) {
+      copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+          ShapeUtil::MakeTupleShape({mutable_split_shape().value(), shape,
+                                     ShapeUtil::MakeShape(U32, {})}),
+          producing_instruction, cross_program_prefetch_index()));
+      copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
+          mutable_split_shape().value(), HloOpcode::kCopyDone, copy_start_));
+    } else {
+      copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+          ShapeUtil::MakeTupleShape(
+              {shape, shape, ShapeUtil::MakeShape(U32, {})}),
+          producing_instruction, cross_program_prefetch_index()));
+      copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
+          shape, HloOpcode::kCopyDone, copy_start_));
+    }
   }
   VLOG(4) << "Created " << copy_start_->name()
           << " for copy allocation: " << ToString();
@@ -521,7 +544,7 @@ absl::Status SlicedCopyAllocation::Process() {
 
   // If we bitcast to an array of bytes above, the result of the concatenated
   // slices will also be an array of bytes. Thus, we need to cast the
-  // concatentation back to the original shape.
+  // concatenation back to the original shape.
   if (IsUniformSliceSizingEnabled(sliced_prefetch_options_)) {
     concat_ = concat_->parent()->AddInstruction(
         HloInstruction::CreateBitcast(shape, concat_));

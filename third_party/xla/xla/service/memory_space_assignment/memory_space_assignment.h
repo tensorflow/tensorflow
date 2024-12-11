@@ -200,6 +200,7 @@ Useful logging and error messages
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {

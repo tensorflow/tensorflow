@@ -90,6 +90,11 @@ class Allocation {
   // Returns the cross-program prefetch index for this allocation.
   std::optional<int64_t> cross_program_prefetch_index() const;
 
+  void set_split_shape(const std::optional<Shape>& split_shape) {
+    split_shape_ = split_shape;
+  }
+  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+
   // Allocation timing methods
   // --------------------------------------------------------------------------
   // TODO(cl/604356742): update all timing methods to explicitly state that
@@ -187,9 +192,11 @@ class Allocation {
   std::optional<HeapSimulator::Chunk> chunk_;
   int64_t start_time_;
   int64_t end_time_;
-  const bool is_scoped_allocation_;
+  bool is_scoped_allocation_;
   std::vector<HloUse> uses_;
   std::optional<int64_t> cross_program_prefetch_index_;
+  // If present, indicates the newly split shape.
+  std::optional<Shape> split_shape_;
 };
 
 using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
