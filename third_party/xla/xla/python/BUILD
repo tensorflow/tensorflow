@@ -749,6 +749,21 @@ cc_library(
     ],
 )
 
+py_strict_test(
+    name = "pjit_test",
+    srcs = ["pjit_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ] + if_google(["//third_party/py/numpy"]),
+)
+
 cc_library(
     name = "pmap_lib",
     srcs = ["pmap_lib.cc"],
