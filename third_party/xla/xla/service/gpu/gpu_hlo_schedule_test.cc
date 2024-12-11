@@ -78,7 +78,6 @@ class GpuHloScheduleTest : public HloTestBase {
 
   struct TestConfig {
     bool enable_latency_hiding_scheduler = false;
-    bool enable_gpu_async_tracker = false;
     bool enable_pipelined_p2p = false;
     std::string fdo_profile = "";
   };
@@ -88,8 +87,6 @@ class GpuHloScheduleTest : public HloTestBase {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
         test_config.enable_latency_hiding_scheduler);
-    debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(
-        test_config.enable_gpu_async_tracker);
     debug_options.set_xla_gpu_enable_pipelined_p2p(
         test_config.enable_pipelined_p2p);
     config.set_debug_options(debug_options);
@@ -510,7 +507,6 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
   for (const SubTest& subtest : subtests) {
     TestConfig test_config;
     test_config.enable_latency_hiding_scheduler = true;
-    test_config.enable_gpu_async_tracker = true;
     test_config.fdo_profile = subtest.profile;
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
@@ -573,7 +569,6 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.fdo_profile = kProfile;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -634,7 +629,6 @@ TEST_F(
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.fdo_profile = kProfile;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -692,7 +686,6 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithRematData) {
   )pb";
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.fdo_profile = ar_long_latency_proto_text;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -876,7 +869,6 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.enable_pipelined_p2p = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -973,7 +965,6 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.enable_pipelined_p2p = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -1095,7 +1086,6 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.enable_pipelined_p2p = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -1291,7 +1281,6 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = true;
   test_config.enable_pipelined_p2p = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
@@ -1520,7 +1509,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
-TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
+TEST_F(GpuHloScheduleTest, LHSResourceModel) {
   const char* hlo_text = R"(
   HloModule AsyncModule
   apply_op {
@@ -1559,19 +1548,13 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
     ROOT t = (f32[32], f32[64], f32[32,32]) tuple(ar-done, %ag-done, add5)
   })";
 
-  const bool enable_gpu_async_tracker = GetParam();
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
-  test_config.enable_gpu_async_tracker = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(hlo_text, GetModuleConfig(test_config)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
 
-  // Count the number of collectives in flight. Without gpu async tracker, we
-  // will incorrectly have 2 in-flight (as base async tracker assumes each
-  // collective can be scheduled independently as they use different resource
-  // types), but with gpu async tracker we will have 1.
   uint32_t in_flight = 0;
   uint32_t max_in_flight = 0;
   for (const HloInstruction* inst :
@@ -1584,8 +1567,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
     }
   }
 
-  const uint32_t expected_max_in_flight = enable_gpu_async_tracker ? 1 : 2;
-  EXPECT_EQ(expected_max_in_flight, max_in_flight);
+  EXPECT_EQ(max_in_flight, 1);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
