@@ -77,7 +77,11 @@ class ContextDeviceMemory {
 
   ~ContextDeviceMemory() {
     if (device_memory_) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       device_memory_allocator_->free(device_memory_);
+#else
+      device_memory_allocator_->deallocate(device_memory_);
+#endif
     }
   }
 
@@ -194,7 +198,8 @@ class TRTEngineOp : public AsyncOpKernel {
   StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> BuildEngine(
       const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
       bool use_calibration, TRTInt8Calibrator* calibrator,
-      TRTEngineCacheResource* cache_resource, OpKernelContext* ctx);
+      TRTEngineCacheResource* cache_resource, OpKernelContext* ctx,
+      nvinfer1::IRuntime* runtime);
 
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
@@ -222,6 +227,7 @@ class TRTEngineOp : public AsyncOpKernel {
   bool calibration_mode_;
 
   // Whether to use implicit batch dimension for TensorRT.
+  // Note that this is no longer supported since TensorRT 10.0.
   bool use_implicit_batch_;
 
   // Whether to collect optimization profiles for TensorRT, only used when
@@ -498,6 +504,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
   }
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  OP_REQUIRES(
+      context, !use_implicit_batch_,
+      errors::InvalidArgument(
+          "_use_implicit_batch must be false when using TensorRT >= 10.0"));
+#endif
 
   status =
       context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
@@ -1003,18 +1015,35 @@ Status TRTEngineOp::ExecuteTrtEngine(
     VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
             << " bytes";
 #endif  // #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
+#else
+    VLOG(2) << "  Datatype of " << cuda_engine->getNbIOTensors()
+#endif
             << " inputs/outputs";
     string binding_types = "";
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
       binding_types += "    " + string(cuda_engine->getBindingName(i)) + ": " +
                        DebugString(cuda_engine->getBindingDataType(i)) + "\n";
     }
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+    for (int i = 0; i < cuda_engine->getNbIOTensors(); i++) {
+      binding_types += "    " + string(cuda_engine->getIOTensorName(i)) + ": " +
+                       DebugString(cuda_engine->getTensorDataType(
+                           cuda_engine->getIOTensorName(i))) +
+                       "\n";
+    }
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
     VLOG(2) << binding_types;
   }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
+#else
+  const int num_binding = cuda_engine->getNbIOTensors();
+#endif
 
   // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
   // for it.
@@ -1031,11 +1060,17 @@ Status TRTEngineOp::ExecuteTrtEngine(
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
   TF_RETURN_IF_ERROR(SetTrtEngineInputs(
-      cuda_engine, execution_context, trt_context_idx, buffers,
+      cuda_engine, execution_context, trt_context_idx,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+      buffers,
+#endif
       use_implicit_batch_, num_batch, profiles, ctx));
 
   TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine, execution_context,
-                                         trt_context_idx, buffers,
+                                         trt_context_idx,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                         buffers,
+#endif
                                          use_implicit_batch_, num_batch, ctx));
 
   // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
@@ -1054,8 +1089,11 @@ Status TRTEngineOp::ExecuteTrtEngine(
         execution_context, allocator, engine_context->GetDeviceMemorySize()));
   }
   // Enqueue the TensorRT engine for execution.
-  return TrtEnqueue(execution_context, buffers, stream, use_implicit_batch_,
-                    num_batch);
+  return TrtEnqueue(execution_context,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                    buffers,
+#endif
+                    stream, use_implicit_batch_, num_batch);
 }
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
@@ -1087,7 +1125,8 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
-    TRTEngineCacheResource* cache_resource, OpKernelContext* ctx) {
+    TRTEngineCacheResource* cache_resource, OpKernelContext* ctx,
+    nvinfer1::IRuntime* runtime) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::BuildEngine", tensorflow::profiler::TraceMeLevel::kInfo);
   TRT_ENSURE(cache_resource);
@@ -1116,9 +1155,9 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
   auto status = convert::ConvertGraphDefToEngine(
       segment_graph_def_, ctx, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
-      calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
-      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster,
-      ctx->device()->name());
+      runtime, calibrator, &engine, use_calibration, use_implicit_batch_,
+      nullptr, &cache_resource->profiles_, name(), use_explicit_precision_,
+      &cluster, ctx->device()->name());
   if (!status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine creation for " << name() << " failed. "
@@ -1152,6 +1191,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     return std::pair<EngineContext*, int>(&empty_context, 0);
   }
 
+  TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
+  infer->setGpuAllocator(allocator);
+
   // Handle the static engine case. For static engines, the cache will have a
   // single element containing the only engine.
   if (static_engine_) {
@@ -1172,14 +1214,17 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
 
-    TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
-    infer->setGpuAllocator(allocator);
     // Need to initialize plugins in order to deserialize engines that contain
     // plugins.
     MaybeInitializeTrtPlugins(&logger);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
-                                     serialized_segment_.size(), nullptr));
+                                     serialized_segment_.size()
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                         ,
+                                     nullptr
+#endif
+                                     ));
     int profile_id = 0;
     if (static_engine && !use_implicit_batch_) {
       // load profiles
@@ -1189,7 +1234,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
           static_engine.get(), &exec_contexts));
       cache.emplace(input_concrete_shapes,
-                    std::make_unique<EngineContext>(std::move(static_engine),
+                    std::make_unique<EngineContext>(std::move(infer),
+                                                    std::move(static_engine),
                                                     std::move(exec_contexts)));
       VLOG(1) << "Added new engine to cache of " << name()
               << ". Cache size: " << cache.size();
@@ -1218,9 +1264,10 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
                                             << "Reason: " << status;
         }
       }
-      auto result = BuildEngine(input_concrete_shapes, batch_size,
-                                /*use_calibration=*/false,
-                                /*calibrator=*/nullptr, cache_res, ctx);
+      auto result =
+          BuildEngine(input_concrete_shapes, batch_size,
+                      /*use_calibration=*/false,
+                      /*calibrator=*/nullptr, cache_res, ctx, infer.get());
       if (!result.ok()) {
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
@@ -1232,20 +1279,27 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 
     int max_batch_size = 1;
     if (use_implicit_batch_) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       max_batch_size = raw_static_engine->getMaxBatchSize();
       // Static engine will have max_batch_size for batch size so that all
       // inputs will map to this single engine.
       for (int i = 0; i < engine_input_shapes.size(); i++) {
         engine_input_shapes[i].set_dim(0, max_batch_size);
       }
+#else
+      return errors::Internal(
+          "Implicit batch is not supported since TensorRT 10.0. Pass "
+          "use_dynamic_shape=True to TrtGraphConverterV2 to avoid this error.");
+#endif
     }
 
     ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
-    cache.emplace(engine_input_shapes,
-                  std::make_unique<EngineContext>(std::move(static_engine),
-                                                  std::move(context)));
+    cache.emplace(
+        engine_input_shapes,
+        std::make_unique<EngineContext>(
+            std::move(infer), std::move(static_engine), std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -1294,7 +1348,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     // means calibration_mode_ is true and this path won't get executed.
     auto result =
         BuildEngine(input_concrete_shapes, batch_size, use_calibration_,
-                    calibrator_.get(), cache_res, ctx);
+                    calibrator_.get(), cache_res, ctx, infer.get());
     if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -1302,9 +1356,10 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));
-    cache.emplace(input_concrete_shapes,
-                  std::make_unique<EngineContext>(std::move(engine),
-                                                  std::move(exec_contexts)));
+    cache.emplace(
+        input_concrete_shapes,
+        std::make_unique<EngineContext>(std::move(infer), std::move(engine),
+                                        std::move(exec_contexts)));
     VLOG(1) << "Added new engine to cache of " << name()
             << ". Cache size: " << cache.size();
     engine_contexts = cache.at(input_concrete_shapes).get();
@@ -1390,6 +1445,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
                        grappler::GetDeviceInfo(full_parsed_name));
     tensorflow::grappler::VirtualCluster cluster(device_map);
 
+    TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
+    infer->setGpuAllocator(cache_res->allocator_.get());
+
     // ConvertGraphDefToEngine() will try to build the engine. This thread
     // will loop inside buildCudaEngine() consuming the calibration data
     // that is set by the TF op, and drive the builder until calibrator
@@ -1402,7 +1460,8 @@ Status TRTEngineOp::AllocateCalibrationResources(
         this->segment_graph_def_, ctx, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         conversion_input_shapes, &cache_res->GetLogger(),
-        cache_res->allocator_.get(), cres->calibrator_.get(), &cres->engine_,
+        cache_res->allocator_.get(), infer.get(),
+        cres->calibrator_.get(), &cres->engine_,
         /*use_calibration=*/true, this->use_implicit_batch_,
         /*convert_successfully=*/nullptr,
         /*profiles=*/&cache_res->profiles_, name(),
@@ -1423,13 +1482,15 @@ Status TRTEngineOp::AllocateCalibrationResources(
         auto calib_result = cache_res->profiles_.CreateExecutionContexts(
             cres->engine_.get(), &exec_contexts);
         cache_res->cache_.emplace(
-            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+            shapes, std::make_unique<EngineContext>(std::move(infer),
+                                                    std::move(cres->engine_),
                                                     std::move(exec_contexts)));
       } else {
         ExecutionContext context =
             ExecutionContext::Create(cres->engine_.get());
         cache_res->cache_.emplace(
-            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+            shapes, std::make_unique<EngineContext>(std::move(infer),
+                                                    std::move(cres->engine_),
                                                     std::move(context)));
       }
     }
