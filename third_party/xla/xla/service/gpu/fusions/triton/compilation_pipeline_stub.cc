@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/service/gpu/fusions/triton/compilation_pipeline.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    mlir::OpPassManager* pm, std::string arch_name, int num_warps, int num_ctas,
+    int num_stages, mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 

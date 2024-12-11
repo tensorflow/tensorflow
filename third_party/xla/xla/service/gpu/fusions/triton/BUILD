@@ -71,8 +71,6 @@ cc_library(
     ]),
     hdrs = ["compilation_pipeline.h"],
     deps = [
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:Pass",
     ] + if_gpu_is_configured([
@@ -85,6 +83,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",

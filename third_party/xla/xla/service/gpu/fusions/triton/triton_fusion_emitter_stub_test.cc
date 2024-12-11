@@ -49,7 +49,7 @@ TEST(TritonStub, CallStubApi) {
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(pm, {}, {}, cluster_info).ok());
+  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
   EmitterLocOpBuilder builder(&context);
