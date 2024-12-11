@@ -917,7 +917,7 @@ absl::Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
   TF_RETURN_IF_ERROR(ReadRecord(&c));
-  record.ParseFromCord(c);
+  record.ParseFromString(c);
 #else   // PLATFORM_GOOGLE
   tstring record_bytes;
   TF_RETURN_IF_ERROR(ReadRecord(&record_bytes));
