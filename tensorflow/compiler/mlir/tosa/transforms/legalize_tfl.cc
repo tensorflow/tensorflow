@@ -2015,16 +2015,11 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   a2_reshape_dims.push_back(a1_transpose_dims[2] / depth_multiplier.getInt());
   a2_reshape_dims.push_back(depth_multiplier.getInt());
 
-  std::optional<Value> a1_filter_transpose_perms = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{1, 2, 3, 0}, /*shape=*/{4});
-
-  if (!a1_filter_transpose_perms) return failure();
-
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
                             filter_type.getElementType()),
-      tfl_conv2d_op.getFilter(), a1_filter_transpose_perms.value());
+      tfl_conv2d_op.getFilter(), rewriter.getDenseI32ArrayAttr({1, 2, 3, 0}));
 
   auto a2_reshape_dims_value = getTosaConstShape(rewriter, op->getLoc(), a2_reshape_dims);
   auto a2_filter_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -2148,22 +2143,18 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   }
 
   if (transpose_lhs) {
-    Value perms =
-        getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3})
-            .value();
     Type output_type = UnrankedTensorType::get(lhs_ty.getElementType());
-    lhs = CreateOpAndInfer<tosa::TransposeOp>(rewriter, op->getLoc(),
-                                              output_type, lhs, perms)
+    lhs = CreateOpAndInfer<tosa::TransposeOp>(
+              rewriter, op->getLoc(), output_type, lhs,
+              rewriter.getDenseI32ArrayAttr({0, 2, 1}))
               .getResult();
   }
 
   if (transpose_rhs) {
-    Value perms =
-        getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3})
-            .value();
     Type output_type = UnrankedTensorType::get(rhs_ty.getElementType());
-    rhs = CreateOpAndInfer<tosa::TransposeOp>(rewriter, op->getLoc(),
-                                              output_type, rhs, perms)
+    rhs = CreateOpAndInfer<tosa::TransposeOp>(
+              rewriter, op->getLoc(), output_type, rhs,
+              rewriter.getDenseI32ArrayAttr({0, 2, 1}))
               .getResult();
   }
 
@@ -3007,10 +2998,21 @@ LogicalResult ConvertTFLTransposeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_transpose_op = cast<TFL::TransposeOp>(op);
 
+  // Get the constant values for perm input
+  ElementsAttr permsAttrElems;
+  if (!matchPattern(tfl_transpose_op.getPerm(), m_Constant(&permsAttrElems))) {
+    return rewriter.notifyMatchFailure(op, "perm value is not constant");
+  }
+
+  SmallVector<int32_t> perms;
+  for (auto v : permsAttrElems.getValues<APInt>()) {
+    perms.push_back(v.getSExtValue());
+  }
+
   Type output_type = tfl_transpose_op.getResult().getType();
-  CreateReplaceOpAndInfer<tosa::TransposeOp>(rewriter, op, output_type,
-                                             tfl_transpose_op.getInput(),
-                                             tfl_transpose_op.getPerm());
+  CreateReplaceOpAndInfer<tosa::TransposeOp>(
+      rewriter, op, output_type, tfl_transpose_op.getInput(),
+      rewriter.getDenseI32ArrayAttr(perms));
 
   return success();
 }

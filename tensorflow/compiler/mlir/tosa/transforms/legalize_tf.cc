@@ -1038,16 +1038,12 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[3]);
-  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{2, 0, 1, 3}, /*shape=*/{4});
-
-  if (!a1_filter_transpose_perm) return failure();
 
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
                                            filter_type.getElementType()),
-      tf_conv_op.getFilter(), a1_filter_transpose_perm.value());
+      tf_conv_op.getFilter(), rewriter.getDenseI32ArrayAttr({2, 0, 1, 3}));
 
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr outpad;
@@ -1595,9 +1591,20 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
     return failure();
   }
 
-  CreateReplaceOpAndInfer<tosa::TransposeOp>(rewriter, op, output_type,
-                                             tf_transpose_op.getX(),
-                                             tf_transpose_op.getPerm());
+  // Get the constant values for perm input
+  ElementsAttr permsAttrElems;
+  if (!matchPattern(tf_transpose_op.getPerm(), m_Constant(&permsAttrElems))) {
+    return rewriter.notifyMatchFailure(op, "perm value is not constant");
+  }
+
+  SmallVector<int32_t> perms;
+  for (auto v : permsAttrElems.getValues<APInt>()) {
+    perms.push_back(v.getSExtValue());
+  }
+
+  CreateReplaceOpAndInfer<tosa::TransposeOp>(
+      rewriter, op, output_type, tf_transpose_op.getX(),
+      rewriter.getDenseI32ArrayAttr(perms));
 
   return success();
 }

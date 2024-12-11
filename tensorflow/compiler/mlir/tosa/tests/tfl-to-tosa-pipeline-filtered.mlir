@@ -30,9 +30,8 @@ func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // CHECK-DAG: %[[CONST1:.*]] = tosa.const_shape {value = dense<[28, 1, 1, 19]> : tensor<4xindex>}
 // CHECK-DAG: %[[CONST2:.*]] = tosa.const_shape {value = dense<[14, 28]> : tensor<2xindex>}
 // CHECK-DAG: %[[CONST3:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}>
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<28xf32>}>
-// CHECK: %[[VAR1:.*]] = tosa.transpose %arg1, %[[CST]]
+// CHECK: %[[VAR1:.*]] = tosa.transpose %arg1 {perms = array<i32: 1, 0>}
 // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[CONST0]]
 // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR1]], %[[CONST1]]
 // CHECK-DAG: %[[VAR4:.*]] = tosa.conv2d %[[VAR2]], %[[VAR3]], %[[VAR0]], %[[CONST3]], %[[CONST3]] {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
