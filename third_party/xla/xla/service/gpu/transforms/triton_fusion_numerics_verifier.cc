@@ -138,15 +138,12 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
                                            fusion, config, debug_opts,
                                            RedzoneBuffers::kAllInputs));
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(std::optional<ProfilingOutput> profiling_output,
+  TF_ASSIGN_OR_RETURN(ProfilingOutput profiling_output,
                       util.ProfileExecutable(executable.get(), stream,
                                              rz_buffers.input_buffers(),
                                              rz_buffers.input_shapes()));
-  if (!profiling_output.has_value()) {
-    return Internal("No output after a successful verification run.");
-  }
 
-  return std::move(profiling_output->output);
+  return std::move(profiling_output).output;
 }
 
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,

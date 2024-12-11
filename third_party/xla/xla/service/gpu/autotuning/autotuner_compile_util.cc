@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -101,7 +100,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_kernel_cache_file("");
 }
 
-absl::StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>
+absl::StatusOr<AutotunerCompileUtil::ProfilingOutput>
 AutotunerCompileUtil::ProfileExecutable(
     Executable* executable, se::Stream* stream,
     absl::Span<se::DeviceMemoryBase const> input_buffers,
@@ -111,16 +110,9 @@ AutotunerCompileUtil::ProfileExecutable(
         ExecutionInputsFromBuffers(input_buffers, input_shapes);
     // Warmup: in and out buffers are reused while probing different configs,
     // so GPU caches should be in some comparable states during measurements.
-    absl::StatusOr<ExecutionOutput> execution_output =
-        Execute(*executable, std::move(execution_inputs));
-    // Treat register allocation error gracefully. If the compilation happens
-    // with the driver during execution then the error could surface here.
-    // It's enough to check this once here.
-    if (stream_executor::IsPtxRegisterAllocationError(
-            execution_output.status())) {
-      return std::nullopt;
-    }
-    TF_RETURN_IF_ERROR(execution_output.status());
+    TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
+                        Execute(*executable, std::move(execution_inputs)));
+
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   std::vector<ExecutionInput> execution_inputs =
@@ -132,9 +124,8 @@ AutotunerCompileUtil::ProfileExecutable(
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
       Execute(*executable, std::move(execution_inputs), &profile));
-  return std::make_optional<ProfilingOutput>(
-      absl::Nanoseconds(profile.compute_time_ns()),
-      execution_output.Commit().ConsumeResult());
+  return ProfilingOutput(absl::Nanoseconds(profile.compute_time_ns()),
+                         execution_output.Commit().ConsumeResult());
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
