@@ -1,5 +1,6 @@
 # Note that numpy 2.1.0 does not support python 3.9
-numpy >= 2.0.0, < 2.2.0
+numpy~=2.0.0; python_version<="3.12"
+numpy~=2.1.0; python_version>="3.13"
 wheel ~= 0.41.2
 h5py >= 3.11.0
 lit ~= 17.0.2
@@ -12,7 +13,7 @@ gast == 0.4.0
 termcolor == 2.3.0
 wrapt == 1.16.0
 tblib == 2.0.0
-ml_dtypes >= 0.4.0, < 0.5.0
+ml_dtypes >= 0.4.0, < 1.0.0
 auditwheel >= 6.1.0
 # Install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
@@ -29,7 +30,7 @@ packaging==23.2
 setuptools==70.0.0
 jax==0.4.7
 # The dependencies below are needed for TF wheel testing.
-tensorflow-io-gcs-filesystem==0.37.1
+tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"
 libclang >= 13.0.0
 google_pasta ~= 0.2
 flatbuffers ~= 24.3.25
