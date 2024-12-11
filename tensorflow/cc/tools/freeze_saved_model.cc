@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
-#include <iostream>
+#include <cstddef>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
