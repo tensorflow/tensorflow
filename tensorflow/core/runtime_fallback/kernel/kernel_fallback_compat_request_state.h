@@ -229,7 +229,7 @@ class KernelFallbackCompatRequestState {
 // function library runtime. They will be forwarded to tensorflow::OpKernel as
 // in tensorflow::Executor. If `runner` is nullptr, internally it will use a
 // default runner that executes tasks in the caller thread.
-Status SetUpKernelFallbackCompatRequestContext(
+absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,

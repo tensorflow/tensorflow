@@ -67,12 +67,12 @@ bool ParseBoolAttrValue(StringPiece attr_value) {
   }
 }
 
-Status ParseValue(StringPiece input, bool* value) {
+absl::Status ParseValue(StringPiece input, bool* value) {
   *value = ParseBoolAttrValue(input);
   return absl::OkStatus();
 }
 
-Status ParseValue(StringPiece input, int32* value) {
+absl::Status ParseValue(StringPiece input, int32* value) {
   bool parse_result = absl::SimpleAtoi(input, value);
   if (!parse_result) {
     return errors::InvalidArgument("Could not parse int32 from ", input);
@@ -80,17 +80,17 @@ Status ParseValue(StringPiece input, int32* value) {
   return absl::OkStatus();
 }
 
-Status ParseValue(StringPiece input, DataType* value) {
+absl::Status ParseValue(StringPiece input, DataType* value) {
   *value = ParseTFDataType(input);
   return absl::OkStatus();
 }
 
-Status ParseValue(StringPiece input, std::string* value) {
+absl::Status ParseValue(StringPiece input, std::string* value) {
   *value = std::string(input);
   return absl::OkStatus();
 }
 
-Status ParseValue(StringPiece input, std::vector<int32>* value) {
+absl::Status ParseValue(StringPiece input, std::vector<int32>* value) {
   std::vector<std::string> parts = str_util::Split(input, ",");
   value->reserve(parts.size());
   for (const auto& value_str : parts) {
@@ -105,13 +105,13 @@ Status ParseValue(StringPiece input, std::vector<int32>* value) {
   return absl::OkStatus();
 }
 
-Status ParseValue(StringPiece input, Padding* value) {
+absl::Status ParseValue(StringPiece input, Padding* value) {
   return GetPaddingFromString(input, value);
 }
 
-Status AddOpAttr(const std::string& name, const std::string& attr_value,
-                 tfrt::OpAttrs* opattrs) {
-  Status s;
+absl::Status AddOpAttr(const std::string& name, const std::string& attr_value,
+                       tfrt::OpAttrs* opattrs) {
+  absl::Status s;
   // Splits attr_value into type and value
   std::vector<absl::string_view> value_split = tfd::AttrValueSplit(attr_value);
   auto& type = value_split[0];
@@ -140,14 +140,15 @@ Status AddOpAttr(const std::string& name, const std::string& attr_value,
   return s;
 }
 
-Status FillOpAttrs(tfrt::RemainingAttributes attrs, tfrt::OpAttrs* opattrs) {
+absl::Status FillOpAttrs(tfrt::RemainingAttributes attrs,
+                         tfrt::OpAttrs* opattrs) {
   int num_tf_attrs = attrs.size() / 2;
-  Status status;
+  absl::Status status;
   for (int i = 0; i < num_tf_attrs; ++i) {
     // Each TF attribute is represented as a pair of name and value strings.
     std::string name = attrs.GetStringAttribute(i * 2).str();
     std::string attr_value = attrs.GetStringAttribute(i * 2 + 1).str();
-    Status s = AddOpAttr(name, attr_value, opattrs);
+    absl::Status s = AddOpAttr(name, attr_value, opattrs);
     status.Update(s);
   }
   return status;
