@@ -528,41 +528,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "command_buffer",
-    hdrs = ["command_buffer.h"],
-    visibility = [":internal"],
-    deps = [
-        ":bit_pattern",
-        ":device_memory",
-        ":kernel",
-        ":launch_dim",
-        ":platform",
-        "//xla/tsl/lib/gtl:int_type",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "trace_command_buffer_factory",
-    srcs = ["trace_command_buffer_factory.cc"],
-    hdrs = ["trace_command_buffer_factory.h"],
-    visibility = [":internal"],
-    deps = [
-        ":command_buffer",
-        ":stream",
-        ":stream_executor_h",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
 
 cc_library(
     name = "executor_cache",
