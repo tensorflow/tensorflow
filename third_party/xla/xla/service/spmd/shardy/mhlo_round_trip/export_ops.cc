@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/sharding_op_util.h"
@@ -54,6 +56,7 @@ namespace sdy {
 
 namespace {
 
+namespace stablehlo = ::mlir::stablehlo;
 namespace mhlo = ::mlir::mhlo;
 
 using ::mlir::ConversionPatternRewriter;
@@ -73,7 +76,7 @@ using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Converts `sdy::ConstantOp` to `mhlo::ConstantOp`.
+// Converts `sdy::ConstantOp` to `stablehlo::ConstantOp`.
 class ConstantPattern : public OpConversionPattern<ConstantOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -82,7 +85,7 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
       ConversionPatternRewriter& rewriter) const override {
     // We use the generic op builder so that unregistered attributes will be
     // added to the new op.
-    rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
+    rewriter.replaceOpWithNewOp<stablehlo::ConstantOp>(
         op, op->getResultTypes(), adaptor.getOperands(), op->getAttrs());
     return success();
   }
@@ -134,7 +137,7 @@ class ExportOpsPass
     // ShardingConstraintOp should be replaced by ReshardOp before this pass.
     // Hence, we add ShardingConstraintOp as an illegal op.
     target.addIllegalOp<ConstantOp, ReshardOp, ShardingConstraintOp>();
-    target.addLegalOp<mhlo::ConstantOp, mhlo::CopyOp>();
+    target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `mhlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in

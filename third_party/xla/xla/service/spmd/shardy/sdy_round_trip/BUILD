@@ -21,7 +21,6 @@ cc_library(
     srcs = ["export_shardy_attrs.cc"],
     hdrs = ["export_shardy_attrs.h"],
     deps = [
-        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
@@ -31,6 +30,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -39,7 +39,6 @@ cc_library(
     srcs = ["export_ops.cc"],
     hdrs = ["export_ops.h"],
     deps = [
-        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
@@ -48,6 +47,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -56,8 +56,6 @@ cc_library(
     srcs = ["import_shardy_attrs.cc"],
     hdrs = ["import_shardy_attrs.h"],
     deps = [
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
@@ -69,6 +67,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -95,7 +94,6 @@ cc_library(
     srcs = ["shard_map_import.cc"],
     hdrs = ["shard_map_import.h"],
     deps = [
-        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
@@ -107,6 +105,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

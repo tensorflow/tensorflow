@@ -56,6 +56,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
@@ -70,6 +71,7 @@ namespace sdy {
 namespace {
 
 using ::mlir::ArrayRef;
+using ::mlir::DictionaryAttr;
 using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
 using ::mlir::OpBuilder;
@@ -206,6 +208,29 @@ class ExportMhloShardingsPass
       }
     }
 
+    // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
+    // If they have a sharding annotation, we need to move it into
+    // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
+    moduleOp.walk([&](mlir::stablehlo::CustomCallOp customCall) {
+      StringRef callTargetName = customCall.getCallTargetName();
+      if (callTargetName != "mhlo.erf" && callTargetName != "mhlo.topk") {
+        return;
+      }
+      // TODO(bartchr): refactor `addFrontendAttribute` to take a key for the
+      // dictionary attribute. Then can re-use the logic instead of duplicating
+      // it here for `kMhloAttributesAttr`.
+      if (auto sdySharding =
+              customCall->getAttrOfType<StringAttr>(kXlaShardingAttr)) {
+        customCall->removeAttr(kXlaShardingAttr);
+        SmallVector<mlir::NamedAttribute> newAttributes(
+            customCall->getAttrOfType<DictionaryAttr>(kMhloAttributesAttr)
+                .getValue());
+        newAttributes.push_back(
+            builder.getNamedAttr(kXlaShardingAttr, sdySharding));
+        customCall->setAttr(kMhloAttributesAttr,
+                            builder.getDictionaryAttr(newAttributes));
+      }
+    });
     // Remove all mesh symbols
     for (MeshOp meshOp :
          llvm::make_early_inc_range(moduleOp.getOps<MeshOp>())) {
