@@ -1913,13 +1913,18 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   ++sched_state->scheduled_count;
   for (auto& resource : n->GetResources()) {
     if (resource.second == ResourceUsageType::kResourceRelease) {
-      sched_state->resource_occupiers_in_flight.at(resource.first)
-          .erase(&n->GetInstr());
+      // Some recv-dones exist without a corresponding recv op in the same
+      // computation. In this case, we cannot find the corresponding start op
+      // and thus cannot erase the start op from the map.
+      if (sched_state->resource_occupiers_in_flight.contains(resource.first)) {
+        sched_state->resource_occupiers_in_flight.at(resource.first)
+            .erase(&n->GetInstr());
+      }
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
-      // For async collective done ops, save their corresponding start ops to
-      // the map
-      if (async_tracker_->IsSupportedAsyncDone(n->GetInstr())) {
-        CHECK(async_tracker_->IsSupportedAsyncStart(*n->GetInstr().operand(0)));
+      // For supported async collective done ops, save their corresponding start
+      // ops in the map
+      if (async_tracker_->IsSupportedAsyncDone(n->GetInstr()) &&
+          async_tracker_->IsSupportedAsyncStart(*n->GetInstr().operand(0))) {
         sched_state->resource_occupiers_in_flight[resource.first].insert(
             n->GetInstr().operand(0));
       } else {
