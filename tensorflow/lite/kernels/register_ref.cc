@@ -29,6 +29,7 @@ TfLiteRegistration* Register_NUMERIC_VERIFY_REF();
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
+TfLiteRegistration* Register_GROUP_NORMALIZATION();
 
 }  // namespace custom
 
@@ -572,6 +573,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+  AddCustom("GroupNormalization",
+            tflite::ops::custom::Register_GROUP_NORMALIZATION());
 }
 
 }  // namespace builtin

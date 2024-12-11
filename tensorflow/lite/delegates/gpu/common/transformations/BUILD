@@ -152,6 +152,22 @@ cc_test(
 )
 
 cc_library(
+    name = "group_norm_mean_var_addition",
+    srcs = ["group_norm_mean_var_addition.cc"],
+    hdrs = ["group_norm_mean_var_addition.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_library(
     name = "make_fully_connected",
     srcs = ["make_fully_connected.cc"],
     hdrs = ["make_fully_connected.h"],
@@ -283,6 +299,7 @@ cc_library(
         ":merge_densify",
         ":merge_padding_with",
         ":remove_noop",
+        ":group_norm_mean_var_addition",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
     ] + tf_platform_alias("custom_transformations", "//tensorflow/lite/delegates/gpu/common/"),
 )
