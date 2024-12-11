@@ -480,9 +480,9 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
 }
 
-static absl::StatusOr<Shape> LayoutModeToXlaShape(
+absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
-    const Shape& sharded_shape,
+    const Shape& sharded_shape, MemorySpaceColor memory_space,
     std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   if (unsharded_shape.IsToken() || unsharded_shape.IsOpaque()) {
@@ -515,6 +515,10 @@ static absl::StatusOr<Shape> LayoutModeToXlaShape(
       // Don't set any layout on `result`.
       break;
     }
+  }
+  // When layout is AUTO, memory space can't be set since it will be partial.
+  if (result.has_layout()) {
+    result.mutable_layout()->set_memory_space(memory_space);
   }
   return result;
 }
@@ -587,12 +591,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     TF_ASSIGN_OR_RETURN(
         Shape layout,
         LayoutModeToXlaShape(arg_layout_modes[i], unsharded_arg_shapes[i],
-                             sharded_arg_shapes[i],
+                             sharded_arg_shapes[i], arg_memory_spaces[i],
                              choose_compact_layout_for_shape_function));
-    // When layout is AUTO, memory space can't be set since it will be partial.
-    if (layout.has_layout()) {
-      layout.mutable_layout()->set_memory_space(arg_memory_spaces[i]);
-    }
     flat_arg_layouts.emplace_back(std::move(layout));
   }
 
@@ -606,12 +606,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     TF_ASSIGN_OR_RETURN(
         Shape layout,
         LayoutModeToXlaShape(out_layout_modes[i], unsharded_out_shapes[i],
-                             sharded_out_shapes[i],
+                             sharded_out_shapes[i], out_memory_spaces[i],
                              choose_compact_layout_for_shape_function));
-    // When layout is AUTO, memory space can't be set since it will be partial.
-    if (layout.has_layout()) {
-      layout.mutable_layout()->set_memory_space(out_memory_spaces[i]);
-    }
     flat_out_layouts.emplace_back(std::move(layout));
   }
 
