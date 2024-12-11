@@ -655,9 +655,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   absl::MutexLock lock{&in_memory_modules_mu_};
   loaded_kernels_.insert(rocm_kernel.get());
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
-  loaded_kernels_.insert(rocm_kernel.get());
-
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
   rocm_kernel->set_arity(spec.arity());
