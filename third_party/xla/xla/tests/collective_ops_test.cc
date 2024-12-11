@@ -1435,7 +1435,6 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatterReassociate)) {
                         kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
 
-  const ErrorSpec es{1e-5, 1e-5};
   LiteralTestUtil::ExpectR1Equal<uint32_t>({26, 30, 34, 38}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
 }
@@ -1486,7 +1485,6 @@ XLA_TEST_F(CollectiveOpsTest,
                         kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
 
-  const ErrorSpec es{1e-5, 1e-5};
   LiteralTestUtil::ExpectR1Equal<uint32_t>({26, 30, 34, 38}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
 }
