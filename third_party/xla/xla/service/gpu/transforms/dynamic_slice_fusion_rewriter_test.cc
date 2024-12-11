@@ -2143,4 +2143,57 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDynamicSlice) {
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
+TEST_F(DynamicSliceFusionRewriterTest,
+       OffsetAsFunctionOfInductionVariableShouldFuse) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a, b)
+    }
+    body {
+      param.1 = (s32[], s32[32,32], s32[32,32]) parameter(0)
+      iter.1 = s32[] get-tuple-element(param.1), index=0
+      src = s32[32,32] get-tuple-element(param.1), index=1
+      dest = s32[32,32] get-tuple-element(param.1), index=2
+      
+      // offset as a function of only the loop induction variable.
+      add.1 = s32[] add(iter.1, iter.1)
+      c3 = s32[] constant(3)
+      multiply.1 = s32[] multiply(add.1, c3)
+      c16 = s32[] constant(16)
+      offset.1 = s32[] subtract(multiply.1, c16)
+      
+      c0 = s32[] constant(0)
+      rs = s32[16,32] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      dus = s32[32,32] dynamic-update-slice(dest, rs, offset.1, c0)
+      c1 = s32[] constant(1)
+      add.2 = s32[] add(iter.1, c1)
+      ROOT tuple = tuple(add.2, src, dus)
+    }
+    condition {
+      param.2 = (s32[], s32[32,32], s32[32,32]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      c16 = s32[] constant(16)
+      ROOT compare = pred[] compare(iter.2, c16), direction=LT
+    }
+    ENTRY main {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[32,32], s32[32,32]) tuple(c0, src, dest)
+      ROOT while = (s32[], s32[32,32], s32[32,32]) while(tuple), body=body, condition=condition
+    }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), R"(
+    // CHECK: dynamic-slice-fusion
+    // CHECK:    %[[rs:.+]] = {{.+}} reduce-scatter({{.+}})
+    // CHECK:    ROOT %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}})
+    // CHECK: body
+    // CHECK:   %[[fusion:.+]] = {{.+}} fusion({{.+}}), kind=kCustom, calls=%dynamic-slice-fusion,
+    // CHECK-SAME:  "fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"
+  )");
+}
+
 }  // namespace xla::gpu
