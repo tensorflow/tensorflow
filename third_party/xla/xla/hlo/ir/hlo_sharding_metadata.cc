@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

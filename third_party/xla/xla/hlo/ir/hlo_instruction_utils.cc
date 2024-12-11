@@ -16,6 +16,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
