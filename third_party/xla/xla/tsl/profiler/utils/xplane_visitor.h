@@ -209,6 +209,14 @@ class XEventVisitor : public XStatsOwner<XEvent> {
     return GetTimespan() < other.GetTimespan();
   }
 
+  bool operator==(const XEventVisitor& other) const {
+    return GetTimespan() == other.GetTimespan();
+  }
+
+  bool operator<=(const XEventVisitor& other) const {
+    return GetTimespan() <= other.GetTimespan();
+  }
+
   const XEventMetadata* metadata() const { return metadata_; }
 
   XEventMetadataVisitor Metadata() const {
