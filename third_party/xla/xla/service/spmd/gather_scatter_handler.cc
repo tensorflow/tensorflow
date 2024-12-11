@@ -193,6 +193,44 @@ std::vector<int64_t> GatherOutputDimsByPriority(
   return priority_dims_for_output;
 }
 
+PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
+                                  const Shape& operand_base_shape,
+                                  absl::Span<const int64_t> start_index_map,
+                                  int64_t index_vector_dim, SpmdBuilder* b) {
+  const PrimitiveType indices_type = indices.hlo()->shape().element_type();
+
+  HloInstruction* max_indices;
+  if (index_vector_dim < indices.rank()) {
+    std::vector<int32_t> max_indices_values;
+    max_indices_values.reserve(start_index_map.size());
+    for (int64_t operand_dim : start_index_map) {
+      max_indices_values.push_back(operand_base_shape.dimensions(operand_dim) -
+                                   1);
+    }
+    max_indices = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR1<int32_t>(max_indices_values)));
+    max_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
+        indices.hlo()->shape(), max_indices, {index_vector_dim}));
+  } else {
+    CHECK_EQ(start_index_map.size(), 1);
+    max_indices = CreateR0WithType<int32_t>(
+        indices_type, operand_base_shape.dimensions(start_index_map[0]) - 1, b);
+    max_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
+        indices.hlo()->shape(), max_indices, {}));
+  }
+
+  HloInstruction* constant_zero = CreateR0WithType<int32_t>(indices_type, 0, b);
+  HloInstruction* min_indices =
+      b->AddInstruction(HloInstruction::CreateBroadcast(indices.hlo()->shape(),
+                                                        constant_zero, {}));
+
+  HloInstruction* clamped_indices = b->AddInstruction(
+      HloInstruction::CreateTernary(indices.hlo()->shape(), HloOpcode::kClamp,
+                                    min_indices, indices.hlo(), max_indices));
+  clamped_indices->set_sharding(indices.sharding());
+  return PartitionedHlo(clamped_indices, indices.base_shape(), indices.state());
+}
+
 // Returns the min and max for the indices in a scatter/gather which has the
 // operand partitioned on trivial slice dimensions (slice size 1).
 std::pair<HloInstruction*, HloInstruction*>
@@ -451,11 +489,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
 
   SpmdBuilder* b = visitor->builder();
   const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
   if (std::optional<std::vector<int64_t>> trivial_slice_dims =
           GatherScatterOperandPartitionedOnTrivialSliceDims(
-              operand, start_index_map, slice_sizes)) {
+              operand, dnums.start_index_map(), slice_sizes)) {
     const HloSharding original_operand_sharding = operand.sharding();
     const int64_t num_groups = operand.sharding().NumTiles(*trivial_slice_dims);
     const int64_t num_tiles = operand.sharding().TotalNumTiles();
@@ -504,6 +540,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     // Reshard indices to its intended sharding before clamping and adjusting.
     indices =
         indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped));
+    indices = ClampGatherIndices(indices, operand.base_shape(),
+                                 dnums.start_index_map(),
+                                 dnums.index_vector_dim(), b);
     // Now the operand is partitioned in trivial slice dimensions, and the
     // indices are replicated. We execute a gather on partitioned operand,
     // with full number of indices, where out-of-bounds indices are clamped,
@@ -514,8 +553,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     HloInstruction* indices_max;
     std::tie(indices_min, indices_max) =
         IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
-            operand, indices, operand.state().partition_id, start_index_map,
-            *trivial_slice_dims, dnums.index_vector_dim(), b);
+            operand, indices, operand.state().partition_id,
+            dnums.start_index_map(), *trivial_slice_dims,
+            dnums.index_vector_dim(), b);
     // Clamp the indices.
     auto adjusted_indices = b->AddInstruction(
         HloInstruction::CreateTernary(indices.hlo()->shape(), HloOpcode::kClamp,
