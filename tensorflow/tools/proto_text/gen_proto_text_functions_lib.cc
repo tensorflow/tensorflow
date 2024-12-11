@@ -228,7 +228,7 @@ string GetProtoHeaderName(const FileDescriptor& fd) {
 string GetCppClass(const FieldDescriptor& d) {
   string cpp_class = d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
                          ? GetQualifiedName(*d.message_type())
-                         : d.cpp_type_name();
+                         : string(d.cpp_type_name());
 
   // In open-source TensorFlow, the definition of int64 varies across
   // platforms. The following line, which is manipulated during internal-
