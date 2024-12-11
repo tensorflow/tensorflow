@@ -20,7 +20,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
+#include "third_party/qairt/latest/include/QNN/QnnGraph.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -83,6 +85,9 @@ class GraphMapper {
 
   // Finalize QNN Graph. Call this after all ops have been mapped.
   LiteRtStatus Finalize();
+
+  // Pick graph config based on subgraph.
+  absl::Span<const QnnGraph_Config_t*> PickGraphConfigHeuristic();
 
   inline void RegisterOutput(LiteRtTensor litert_tensor) {
     graph_outpus_.insert(litert_tensor);
