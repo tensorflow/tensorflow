@@ -267,8 +267,9 @@ using ModelLoadOpCheckTest = TestWithModelPath;
 TEST_P(ModelLoadOpCheckTest, CheckOps) {
   const auto model_path = GetTestModelPath();
 
-  auto expected_fb = FlatbufferWrapper::CreateFromTflFile(model_path);
-  ASSERT_TRUE(expected_fb);
+  auto flatbuffer = FlatbufferWrapper::CreateFromTflFile(model_path);
+  ASSERT_TRUE(flatbuffer);
+  auto expected_fb = flatbuffer->get()->Unpack();
 
   auto model = LoadModelFromFile(model_path);
   ASSERT_TRUE(model);
@@ -276,8 +277,7 @@ TEST_P(ModelLoadOpCheckTest, CheckOps) {
   const auto& subgraph = model->get()->MainSubgraph();
   const auto& ops = subgraph.ops;
 
-  const auto& fb_subgraph =
-      *expected_fb->get()->UnpackedModel().subgraphs.front();
+  const auto& fb_subgraph = *expected_fb->subgraphs.front();
   const auto& fb_ops = fb_subgraph.operators;
   const auto& fb_tensors = fb_subgraph.tensors;
 
@@ -309,23 +309,23 @@ using ModelSerializeOpCheckTest = TestWithModelPath;
 TEST_P(ModelSerializeOpCheckTest, CheckOps) {
   const auto model_path = GetTestModelPath();
 
-  auto expected_fb = FlatbufferWrapper::CreateFromTflFile(model_path);
-  ASSERT_TRUE(expected_fb);
+  auto flatbuffer = FlatbufferWrapper::CreateFromTflFile(model_path);
+  ASSERT_TRUE(flatbuffer);
+  auto expected_fb = flatbuffer->get()->Unpack();
 
   auto model = LoadModelFromFile(model_path);
   ASSERT_TRUE(model);
 
   auto serialized = SerializeModel(std::move(**model));
-  auto actual_fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
-  ASSERT_TRUE(actual_fb);
+  auto serialized_fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
+  ASSERT_TRUE(serialized_fb);
+  auto actual_fb = serialized_fb->get()->Unpack();
 
-  const auto& expected_fb_subgraph =
-      *expected_fb->get()->UnpackedModel().subgraphs.front();
+  const auto& expected_fb_subgraph = *expected_fb->subgraphs.front();
   const auto& expected_fb_ops = expected_fb_subgraph.operators;
   const auto& expected_fb_tensors = expected_fb_subgraph.tensors;
 
-  const auto& actual_fb_subgraph =
-      *actual_fb->get()->UnpackedModel().subgraphs.front();
+  const auto& actual_fb_subgraph = *actual_fb->subgraphs.front();
   const auto& actual_fb_ops = actual_fb_subgraph.operators;
   const auto& actual_fb_tensors = actual_fb_subgraph.tensors;
 

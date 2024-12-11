@@ -21,6 +21,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 
 namespace litert::internal {
 namespace {
@@ -41,31 +42,33 @@ static const absl::string_view kData = "MyData";
 TEST(FlatbufferToolsTest, Metadata) {
   auto flatbuffer = TestFlatbuffer();
   ASSERT_NE(flatbuffer, nullptr);
+  auto tfl_model = flatbuffer->Unpack();
 
-  LITERT_ASSERT_STATUS_OK(
-      PushMetadata(kKey, flatbuffer->UnpackedModel(),
-                   BufferRef<uint8_t>(kData.data(), kData.size())));
+  LITERT_ASSERT_STATUS_OK(PushMetadata(
+      kKey, *tfl_model, BufferRef<uint8_t>(kData.data(), kData.size())));
 
-  auto metadata = GetMetadata(kKey, flatbuffer->UnpackedModel());
+  auto metadata = GetMetadata(kKey, *tfl_model);
   ASSERT_TRUE(metadata);
   EXPECT_EQ(metadata->StrView(), kData);
 }
 
 TEST(FlatbufferToolsTest, GetMetadataNotFound) {
   auto flatbuffer = TestFlatbuffer();
+  auto tfl_model = flatbuffer->Unpack();
   ASSERT_NE(flatbuffer, nullptr);
-  EXPECT_FALSE(GetMetadata(kKey, flatbuffer->UnpackedModel()));
+  EXPECT_FALSE(GetMetadata(kKey, *tfl_model));
 }
 
 TEST(FlatbufferToolsTest, TflBuffer) {
   auto flatbuffer = TestFlatbuffer();
   ASSERT_NE(flatbuffer, nullptr);
+  auto tfl_model = flatbuffer->Unpack();
 
-  auto ind = PushTflBuffer(flatbuffer->UnpackedModel(),
+  auto ind = PushTflBuffer((*tfl_model),
                            BufferRef<uint8_t>(kData.data(), kData.size()));
   ASSERT_TRUE(ind);
 
-  auto buf = GetTflBuffer(flatbuffer->UnpackedModel(), *ind);
+  auto buf = GetTflBuffer((*tfl_model), *ind);
   ASSERT_TRUE(buf);
   ASSERT_EQ(buf->StrView(), kData);
 }
@@ -73,30 +76,34 @@ TEST(FlatbufferToolsTest, TflBuffer) {
 TEST(FlatbufferToolsTest, GetTflBufferNotFound) {
   auto flatbuffer = TestFlatbuffer();
   ASSERT_NE(flatbuffer, nullptr);
+  auto tfl_model = flatbuffer->Unpack();
 
-  auto buf = GetTflBuffer(flatbuffer->UnpackedModel(), 100);
+  auto buf = GetTflBuffer((*tfl_model), 100);
   ASSERT_FALSE(buf);
 }
 
 TEST(FlatbufferToolsTest, GetTflOpCode) {
   auto flatbuffer = TestFlatbuffer();
   ASSERT_NE(flatbuffer, nullptr);
+  auto tfl_model = flatbuffer->Unpack();
 
-  auto op_code = GetTflOpCode(flatbuffer->UnpackedModel(), 0);
+  auto op_code = GetTflOpCode((*tfl_model), 0);
   ASSERT_TRUE(op_code);
 }
 
 TEST(FlatbufferToolsTest, GetTflOpCodeNotFound) {
   auto flatbuffer = TestFlatbuffer();
   ASSERT_NE(flatbuffer, nullptr);
+  auto tfl_model = flatbuffer->Unpack();
 
-  auto op_code = GetTflOpCode(flatbuffer->UnpackedModel(), 100);
+  auto op_code = GetTflOpCode((*tfl_model), 100);
   ASSERT_FALSE(op_code);
 }
 
 TEST(FlatbufferToolsTest, StaticTensorTypeTest) {
   auto flatbuffer = TestFlatbuffer();
-  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+  auto tfl_model = flatbuffer->Unpack();
+  auto& tensor = tfl_model->subgraphs.front()->tensors.front();
 
   TflShapeInfo shape(*tensor);
 
@@ -111,7 +118,8 @@ TEST(FlatbufferToolsTest, StaticTensorTypeTest) {
 
 TEST(FlatbufferToolsTest, UnrankedTensorTypeTest) {
   auto flatbuffer = TestFlatbuffer("unranked_tensor.tflite");
-  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+  auto tfl_model = flatbuffer->Unpack();
+  auto& tensor = tfl_model->subgraphs.front()->tensors.front();
 
   TflShapeInfo shape(*tensor);
 
@@ -120,7 +128,8 @@ TEST(FlatbufferToolsTest, UnrankedTensorTypeTest) {
 
 TEST(FlatbufferToolsTest, RankedDynamicTensorTypeTest) {
   auto flatbuffer = TestFlatbuffer("dynamic_shape_tensor.tflite");
-  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+  auto tfl_model = flatbuffer->Unpack();
+  auto& tensor = tfl_model->subgraphs.front()->tensors.front();
 
   TflShapeInfo shape(*tensor);
 
@@ -136,7 +145,8 @@ TEST(FlatbufferToolsTest, RankedDynamicTensorTypeTest) {
 TEST(FlatbufferToolsTest, PerTensorQuantizedTest) {
   auto flatbuffer =
       TestFlatbuffer("single_add_default_a16w8_recipe_quantized.tflite");
-  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+  auto tfl_model = flatbuffer->Unpack();
+  auto& tensor = tfl_model->subgraphs.front()->tensors.front();
 
   const auto* const q_parms = tensor->quantization.get();
 
@@ -149,7 +159,8 @@ TEST(FlatbufferToolsTest, PerTensorQuantizedTest) {
 
 TEST(FlatbufferToolsTest, PerChannelQuantizedTest) {
   auto flatbuffer = TestFlatbuffer("static_w8_a16_quantized_k_einsum.tflite");
-  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors[1];
+  auto tfl_model = flatbuffer->Unpack();
+  auto& tensor = tfl_model->subgraphs.front()->tensors[1];
 
   const auto* const q_parms = tensor->quantization.get();
 

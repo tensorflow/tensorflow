@@ -223,9 +223,10 @@ class FlatbufferWrapper {
     return *fb_model_;
   }
 
-  // Unpacked version of underlying model object.
-  const TflModel& UnpackedModel() const { return *unpacked_; }
-  TflModel& UnpackedModel() { return *unpacked_; }
+  // Unpack the contained flatbuffer.
+  TflModelPtr Unpack() const {
+    return TflModelPtr(fb_model_->GetModel()->UnPack());
+  }
 
  private:
   FlatbufferWrapper(::tflite::FlatBufferModel::Ptr fb_model,
@@ -233,13 +234,11 @@ class FlatbufferWrapper {
                     OwningBufferRef<uint8_t>&& model_buf)
       : fb_model_(std::move(fb_model)),
         alloc_(std::move(alloc)),
-        model_buf_(std::forward<OwningBufferRef<uint8_t>>(model_buf)),
-        unpacked_(TflModelPtr(fb_model_->GetModel()->UnPack())) {}
+        model_buf_(std::forward<OwningBufferRef<uint8_t>>(model_buf)) {}
 
   ::tflite::FlatBufferModel::Ptr fb_model_;
   ::tflite::Allocation::Ptr alloc_;
   OwningBufferRef<uint8_t> model_buf_;
-  TflModelPtr unpacked_;
 };
 
 }  // namespace litert::internal
