@@ -1,4 +1,219 @@
-# Run manually to reformat a file:
-# clang-format -i --style=file <file>
-BasedOnStyle: Google
-DerivePointerAlignment: false
+"use strict";
+(self["webpackChunkwinpkrf2_web"] = self["webpackChunkwinpkrf2_web"] || []).push([[93], {
+    74279: function(e, t, n) {
+        n.r(t),
+        n.d(t, {
+            default: function() {
+                return b
+            }
+        });
+        var s = function() {
+            var e = this
+              , t = e._self._c;
+            return t("div", {
+                staticClass: "iframe-wrapper",
+                class: {
+                    off: !e.showSideMenu
+                }
+            }, [t("iframe", {
+                ref: "gameIframe",
+                staticClass: "seamless-iframe",
+                attrs: {
+                    id: "seamless-game",
+                    allowfullscreen: "",
+                    webkitallowfullscreen: "",
+                    oallowfullscreen: "",
+                    msallowfullscreen: "",
+                    mozallowfullscreen: ""
+                }
+            })])
+        }
+          , a = []
+          , o = n(69870)
+          , r = n(17654)
+          , i = (n(28706),
+        n(57888))
+          , u = n(55373)
+          , c = n.n(u)
+          , l = "loginPopupModal"
+          , d = {
+            0: {
+                sportId: 1,
+                type: 0
+            },
+            1: {
+                sportId: 1,
+                type: 1
+            }
+        }
+          , h = {
+            created: function() {
+                this.wlgInit()
+            },
+            destroyed: function() {
+                this._destroyed()
+            },
+            methods: {
+                wlgInit: function() {
+                    this._bindEvents()
+                },
+                _bindEvents: function() {
+                    window.addEventListener("message", this._handleMessage, !1)
+                },
+                _handleMessage: function(e) {
+                    var t = e.data
+                      , n = t.type
+                      , s = t.url;
+                    t.sportMenu;
+                    switch (n) {
+                    case "parentLogin":
+                        this.$modal.show(l);
+                        break;
+                    case "updateUrl":
+                        console.log("wlg update url=", s);
+                        break;
+                    case "sportMenu":
+                        this.loaded = !0;
+                        break
+                    }
+                },
+                isWlgLoaded: function() {
+                    return !!this.loaded
+                },
+                getWlgLobbyURL: function() {
+                    var e = arguments.length > 0 && void 0 !== arguments[0] ? arguments[0] : "0";
+                    this.loaded = !1;
+                    var t = this.$store.state.home.resources
+                      , n = t.WLG_DOMAIN
+                      , s = void 0 === n ? {} : n
+                      , a = s.url
+                      , o = d[e || "0"]
+                      , r = (0,
+                    i.A)((0,
+                    i.A)({}, o), {}, {
+                        date: 0,
+                        is_back: 0
+                    })
+                      , u = {
+                        allowGuest: this.$store.state.Login.isLogin ? 0 : 1,
+                        redirectUri: "".concat(a, "/#/bet_lobby?").concat(c().stringify(r))
+                    };
+                    return 0 === u.allowGuest && (u.stoken = window.sessionStorage.getItem("token")),
+                    "".concat(a, "/#/sso?").concat(c().stringify(u))
+                },
+                switchMenu: function() {
+                    var e = arguments.length > 0 && void 0 !== arguments[0] ? arguments[0] : "0";
+                    this.$refs.gameIframe && (d[e] ? this.$refs.gameIframe.contentWindow.postMessage({
+                        type: "switchMenu",
+                        data: (0,
+                        i.A)({}, d[e])
+                    }, "*") : console.warn("wlgTypeConstant not found=", e))
+                },
+                _destroyed: function() {
+                    window.removeEventListener("message", this._handleMessage)
+                }
+            },
+            watch: {
+                "$store.state.Login.isLogin": function() {
+                    var e = window.sessionStorage.getItem("token");
+                    console.log("[WLG] sendStoken", e),
+                    this.$refs.gameIframe && this.$refs.gameIframe.contentWindow.postMessage({
+                        type: "sendStoken",
+                        stoken: e
+                    }, "*")
+                }
+            }
+        }
+          , f = n(52276)
+          , g = n(68770)
+          , m = {
+            name: "Seamless",
+            mixins: [h, f.z],
+            setup: function() {
+                var e = (0,
+                g.yP)()
+                  , t = e.showSideMenu;
+                return {
+                    showSideMenu: t
+                }
+            },
+            data: function() {
+                return {
+                    gameSrc: "",
+                    currentVendor: void 0,
+                    dragging: !1
+                }
+            },
+            computed: {
+                isGameChanged: function() {
+                    var e = this.$route.query
+                      , t = e.vendor
+                      , n = e.wlgType;
+                    return "".concat(t, "|").concat(n)
+                }
+            },
+            methods: {
+                launchGame: function() {
+                    var e = arguments
+                      , t = this;
+                    return (0,
+                    r.A)((0,
+                    o.A)().mark((function n() {
+                        var s, a, r;
+                        return (0,
+                        o.A)().wrap((function(n) {
+                            while (1)
+                                switch (n.prev = n.next) {
+                                case 0:
+                                    if (e.length > 0 && void 0 !== e[0] && e[0],
+                                    s = t.$route.query,
+                                    a = s.vendor,
+                                    r = s.wlgType,
+                                    t.currentVendor = a,
+                                    "WLG" !== a) {
+                                        n.next = 6;
+                                        break
+                                    }
+                                    return t.isWlgLoaded() && void 0 !== r ? t.switchMenu(r) : t.$refs.gameIframe.src = t.getWlgLobbyURL(r),
+                                    n.abrupt("return");
+                                case 6:
+                                    return n.abrupt("return", t.startGameInIframe());
+                                case 7:
+                                case "end":
+                                    return n.stop()
+                                }
+                        }
+                        ), n)
+                    }
+                    )))()
+                },
+                handleLaunchGameEvent: function(e) {
+                    this.launchGame(!0)
+                },
+                onDragging: function() {
+                    this.dragging = !0
+                },
+                onDragstop: function(e, t) {
+                    this.dragging = !1
+                }
+            },
+            mounted: function() {
+                this.launchGame(!1),
+                this.$root.$on("GAME_LAUNCH", this.handleLaunchGameEvent)
+            },
+            destroyed: function() {
+                this.$root.$off("GAME_LAUNCH", this.handleLaunchGameEvent)
+            },
+            watch: {
+                isGameChanged: function() {
+                    this.launchGame(!0)
+                }
+            }
+        }
+          , w = m
+          , p = n(81656)
+          , v = (0,
+        p.A)(w, s, a, !1, null, null, null)
+          , b = v.exports
+    }
+}]);
