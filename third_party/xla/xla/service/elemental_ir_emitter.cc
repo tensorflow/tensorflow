@@ -1829,7 +1829,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
   return Select(FCmpUNO(result, result), min, result);
 }
 
-StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+absl::StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
 ElementalIrEmitter::EmitLogComplexAbsHelper(PrimitiveType prim_type,
                                          llvm::Value* operand_value) {
   llvm::Value* real = EmitExtractReal(operand_value);
@@ -1848,7 +1848,7 @@ ElementalIrEmitter::EmitLogComplexAbsHelper(PrimitiveType prim_type,
 // This calculates log(sqrt(a^2+b^2)) = log(|a|) + 0.5*log(1+(b/a)^2)
 //  (assuming |a|>=|b|), to make it possible to avoid overflow when
 // |a| and/or |b| are just below FLT_MAX.
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitLogComplexAbs(
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLogComplexAbs(
     PrimitiveType prim_type, llvm::Value* operand_value) {
   llvm::Value* min;
   llvm::Value* max;
