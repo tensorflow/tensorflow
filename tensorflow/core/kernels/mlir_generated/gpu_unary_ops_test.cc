@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <complex>
+#include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
