@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <type_traits>
 

@@ -728,8 +728,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         
         OP_REQUIRES(context, blas != nullptr,
                     absl::InternalError("No blas support for stream"));
-        
-        // TODO: calling hipblaslt here to replace blas->DoBlasGemmBatched        
 
         bool blas_launch_status = blas->DoBlasGemmBatched(
             stream, blas_transpose_b, blas_transpose_a, n, m, k,

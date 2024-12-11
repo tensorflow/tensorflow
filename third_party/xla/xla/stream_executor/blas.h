@@ -717,32 +717,6 @@ class BlasSupport {
   void operator=(const BlasSupport &) = delete;
 };
 
-// struct GpuBlasLtAdaptor : public BlasSupport {
-//   absl::Status DoBlasGemmBatched(Stream *stream, blas::Transpose transa, 
-//                                 blas::Transpose transb, uint64_t m, 
-//                                 uint64_t n, uint64 k, float alpha, 
-//                                 DeviceMemorySlice<float> a, int lda, 
-//                                 DeviceMemorySlice<float> b, int ldb, float beta,
-//                                 DeviceMemorySlice<float> c, int ldc, int batch_count,
-//                                 const NumericOptions &numeric_options,
-//                                 ScratchAllocator *scratch_allocator, 
-//                                 blas::CallContext context) override {
-                            
-//     if (gpuBlasLtEnabled()) {
-//       auto& r = gpu::BlasLtGemmRunner::i(this);          
-//       CheckStatus(r.RunBatched(*this, transa, transb, m, n, k, alpha, 
-//                   a, lda, b, ldb, beta, c, ldc, batch_count, allocator));
-//       return *this;
-//     } else {
-//       DoBlasGemmBatched(stream, transa, transb, m, n, k,
-//                         alpha, a, lda, b, ldb, beta, c, ldc,
-//                         numeric_options, scratch_allocator,
-//                         context);
-//       return absl::OkStatus();
-//     }
-//   }
-// };
-
 // Macro used to quickly declare overrides for abstract virtuals in the
 // BlasSupport base class.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES                  \
