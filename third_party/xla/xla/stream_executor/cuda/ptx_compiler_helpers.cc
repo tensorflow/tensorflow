@@ -21,8 +21,24 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 
 namespace stream_executor {
+namespace {
+
+static constexpr absl::string_view kPtxasErrorPayloadKey = "ptxas_log";
+
+}  // namespace
+
+absl::Status PtxRegisterAllocationError(std::string_view message) {
+  absl::Status status = absl::ResourceExhaustedError(message);
+  status.SetPayload(kPtxasErrorPayloadKey, absl::Cord());
+  return status;
+}
+
+bool IsPtxRegisterAllocationError(absl::Status status) {
+  return status.GetPayload(kPtxasErrorPayloadKey).has_value();
+}
 
 bool IsPtxRegisterAllocationError(std::string_view str) {
   return absl::StrContains(str, "ptxas fatal") &&
@@ -43,7 +59,7 @@ absl::Status CreateErrorFromPTXASLog(std::string_view log,
         "Loaded PTX assembler is too old for %s.", architecture));
   }
   if (IsPtxRegisterAllocationError(log)) {
-    return absl::ResourceExhaustedError(log);
+    return PtxRegisterAllocationError(log);
   }
   if (absl::StrContains(log, "warning")) {
     LOG(INFO) << log;

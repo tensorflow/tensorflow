@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -112,17 +113,14 @@ AutotunerCompileUtil::ProfileExecutable(
     // so GPU caches should be in some comparable states during measurements.
     absl::StatusOr<ExecutionOutput> execution_output =
         Execute(*executable, std::move(execution_inputs));
-    if (!execution_output.ok()) {
-      // Treat register allocation error gracefully. If the compilation happens
-      // with the driver during execution then the error could surface here.
-      // It's enough to check this once here.
-      if (execution_output.status().code() ==
-          absl::StatusCode::kResourceExhausted) {
-        return {std::nullopt};
-      }
-      return execution_output.status();
+    // Treat register allocation error gracefully. If the compilation happens
+    // with the driver during execution then the error could surface here.
+    // It's enough to check this once here.
+    if (stream_executor::IsPtxRegisterAllocationError(
+            execution_output.status())) {
+      return std::nullopt;
     }
-
+    TF_RETURN_IF_ERROR(execution_output.status());
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   std::vector<ExecutionInput> execution_inputs =

@@ -102,5 +102,10 @@ TEST(PtxCompilerHelpersTest,
               IsOk());
 }
 
+TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationErrorStatus) {
+  EXPECT_TRUE(IsPtxRegisterAllocationError(
+      PtxRegisterAllocationError("Register allocation failed")));
+}
+
 }  // namespace
 }  // namespace stream_executor
