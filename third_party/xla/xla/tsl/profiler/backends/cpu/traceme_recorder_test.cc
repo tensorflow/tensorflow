@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 
 #include <atomic>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <utility>
@@ -119,7 +120,7 @@ TEST(RecorderTest, Multithreaded) {
     bool overlapping_sessions = false;
     std::set<uint64> events;
   };
-  absl::flat_hash_map<uint32 /*tid*/, ThreadState> thread_state;
+  absl::flat_hash_map<int64_t /*tid*/, ThreadState> thread_state;
   // We expect each thread to eventually have multiple events, not all in a
   // contiguous range.
   auto done = [&thread_state] {

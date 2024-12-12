@@ -138,8 +138,8 @@ class PythonHookContext {
   void operator=(PythonHookContext&&) = delete;
 
   // The thread id to entries map, Note: by convention the thread id is
-  // uint32_t to be consistent with cpu tracer when serialize to Xspace.
-  absl::flat_hash_map<uint32_t, PerThreadEvents> entries_;
+  // int64_t to be consistent with cpu tracer when serialize to Xspace.
+  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we

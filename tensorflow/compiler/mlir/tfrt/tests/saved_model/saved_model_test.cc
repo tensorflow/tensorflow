@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
+#include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
