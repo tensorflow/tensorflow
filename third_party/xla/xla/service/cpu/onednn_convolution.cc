@@ -185,44 +185,22 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   std::vector<void*> fused_bufs;
   for (int64_t i = 0; i < num_fused_operands; ++i) {
     MemrefInfo operand_minfo(args[arg_indx++]);
-    fused_mds.push_back(operand_minfo.GetOneDnnMemDesc());
+    auto mem_desc = operand_minfo.GetOneDnnMemDesc();
+    if (mem_desc.get_ndims() == new_res_md.get_ndims()) {
+      mem_desc = mem_desc.permute_axes(out_axes);
+    }
+    fused_mds.push_back(mem_desc);
     fused_bufs.push_back(operand_minfo.Data());
   }
 
   std::vector<std::pair<int, dnnl::memory>> postop_args;
+  FusedOperandsRef fused_operands_ref{fused_bufs, postop_args};
 
   auto bias_md = memory::desc();
 
-  dnnl::post_ops post_ops;
-  int fused_operand_idx = 0;
-  for (auto& fused_op : conv_config.fusions().ops()) {
-    switch (fused_op) {
-      case OneDnnFusionConfig::BIAS: {
-        bias_md = fused_mds.at(fused_operand_idx);
-        postop_args.emplace_back(
-            DNNL_ARG_BIAS,
-            dnnl::memory(bias_md, cpu_engine, fused_bufs[fused_operand_idx]));
-        fused_operand_idx++;
-      } break;
-      case OneDnnFusionConfig::BINARY_ADD: {
-        auto binary_md = fused_mds.at(fused_operand_idx);
-        binary_md = binary_md.permute_axes(out_axes);
-        auto arg_idx =
-            DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;
-        postop_args.emplace_back(
-            arg_idx,
-            dnnl::memory(binary_md, cpu_engine, fused_bufs[fused_operand_idx]));
-        post_ops.append_binary(dnnl::algorithm::binary_add, binary_md);
-        fused_operand_idx++;
-      } break;
-      default:
-        LOG(FATAL)
-            << __FILE__ << ":" << __LINE__
-            << " Attempt to call OneDNN Convolution runtime library with "
-               "unsupported post op."
-            << std::endl;
-    }
-  }
+  dnnl::post_ops post_ops =
+      PopulateOneDnnPostOps(cpu_engine, fused_mds, &conv_config.fusions(),
+                            &fused_operands_ref, &bias_md);
 
   auto any_ker_md =
       memory::desc(new_ker_md.get_dims(), new_ker_md.get_data_type(),
