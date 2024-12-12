@@ -22,15 +22,17 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/util.h"
 
 namespace xla {
 
@@ -113,6 +115,15 @@ NB_MODULE(kernel_runner_extention, kernel_runner_module) {
   nb::class_<DummyAddKernelRunner, KernelRunner>(kernel_runner_module,
                                                  "DummyAddKernelRunner")
       .def(nb::init<>());
+
+  nb::enum_<HloOpcode> hlo_opcode(kernel_runner_module, "HloOpcode");
+#define DECLARE_ENUM(enum_name, opcode_name, ...)                          \
+  hlo_opcode.value(absl::StrReplaceAll(opcode_name, {{"-", "_"}}).c_str(), \
+                   HloOpcode::enum_name);
+  HLO_OPCODE_LIST(DECLARE_ENUM)
+#undef DECLARE_ENUM
+
+  kernel_runner_module.def("opcode_arity", &HloOpcodeArity);
 }
 
 }  // namespace xla

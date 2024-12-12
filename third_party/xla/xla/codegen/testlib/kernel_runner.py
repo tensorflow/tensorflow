@@ -19,11 +19,19 @@ import numpy as np
 from xla.codegen.testlib import kernel_runner_extention
 from xla.python import xla_extension
 
-KernelSpec = kernel_runner_extention.KernelSpec
+# Classes first
+# go/keep-sorted start
+DummyAddKernelRunner = kernel_runner_extention.DummyAddKernelRunner
+HloOpcode = kernel_runner_extention.HloOpcode
 KernelEmmitter = kernel_runner_extention.KernelEmitter
 KernelRunner = kernel_runner_extention.KernelRunner
+KernelSpec = kernel_runner_extention.KernelSpec
+# go/keep-sorted end
 
-DummyAddKernelRunner = kernel_runner_extention.DummyAddKernelRunner
+# Functions
+# go/keep-sorted start
+opcode_arity = kernel_runner_extention.opcode_arity
+# go/keep-sorted end
 
 
 def create_literal_from_np(array: np.ndarray) -> xla_extension.Literal:

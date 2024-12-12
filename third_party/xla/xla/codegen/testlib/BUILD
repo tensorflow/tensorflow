@@ -39,16 +39,16 @@ tsl_pybind_extension(
     visibility = ["//visibility:private"],  # the extention should always be linked via kernel_runner_pylib
     deps = [
         ":kernel_runner",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:span",
-        "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
-        "//xla:util",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@nanobind",
     ],
 )
 

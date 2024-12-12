@@ -20,6 +20,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -28,10 +29,16 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/cpu/testlib/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -66,18 +73,28 @@ NB_MODULE(kernel_runner_extention, kernel_runner_module) {
                                            "LlvmIrKernelSpec");
 
   // Use a tuple and cast to ThreadDim to take advantage of built in bindings.
-  using NbThreadDim = std::tuple<int64_t, int64_t, int64_t>;
+  using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
   nb::class_<LlvmIrKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                  "LlvmIrKernelEmitter")
-      .def("__init__", [](LlvmIrKernelEmitter* self, std::string_view ir,
-                          std::string_view kernel_name,
-                          std::tuple<uint64_t, uint64_t, uint64_t> thread_dim) {
+      .def("__init__", [](LlvmIrKernelEmitter* self, absl::string_view ir,
+                          absl::string_view kernel_name,
+                          NbThreadDim thread_dim) {
         new (self) LlvmIrKernelEmitter(
             ir, kernel_name,
             se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
                           std::get<2>(thread_dim)},
             {});
       });
+
+  nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
+                                                    "ElementalKernelEmitter")
+      .def("__init__",
+           [](ElementalKernelEmitter* self, absl::string_view kernel_name,
+              HloOpcode opcode, std::vector<Shape> input_shapes,
+              const Shape& output_shape) {
+             new (self) ElementalKernelEmitter(
+                 kernel_name, opcode, std::move(input_shapes), output_shape);
+           });
 
   nb::class_<KernelRunner, xla::KernelRunner>(kernel_runner_module,
                                               "KernelRunner")

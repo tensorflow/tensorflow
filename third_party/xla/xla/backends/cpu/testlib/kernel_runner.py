@@ -16,6 +16,9 @@
 
 from xla.backends.cpu.testlib import kernel_runner_extention
 
-LlvmIrKernelSpec = kernel_runner_extention.LlvmIrKernelSpec
-LlvmIrKernelEmitter = kernel_runner_extention.LlvmIrKernelEmitter
+# go/keep-sorted start
+ElementalKernelEmitter = kernel_runner_extention.ElementalKernelEmitter
 KernelRunner = kernel_runner_extention.KernelRunner
+LlvmIrKernelEmitter = kernel_runner_extention.LlvmIrKernelEmitter
+LlvmIrKernelSpec = kernel_runner_extention.LlvmIrKernelSpec
+# go/keep-sorted end
