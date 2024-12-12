@@ -161,6 +161,7 @@ xla_cc_test(
     deps = [
         ":hlo",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/hash",
