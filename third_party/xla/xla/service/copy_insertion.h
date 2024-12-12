@@ -101,7 +101,7 @@ class CopyInsertion : public HloModulePass {
   virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      HloModule* module);
+      HloModule* module, HloAliasAnalysis& alias_analysis);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
@@ -118,7 +118,14 @@ class CopyInsertion : public HloModulePass {
  private:
   absl::Status AddCopiesToResolveInterference(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      HloAliasAnalysis& alias_analysis);
+
+  absl::Status RemoveUnnecessaryCopies(
+      HloModule* module, HloAliasAnalysis& alias_analysis,
+      bool check_live_range_ordering = false,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
+
   int64_t use_region_based_live_range_analysis_;
 };
 
