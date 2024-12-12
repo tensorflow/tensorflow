@@ -27,6 +27,8 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
+#include <cstdint>
+
 #ifdef __FreeBSD__
 #include <pthread_np.h>
 #endif
@@ -137,8 +139,9 @@ class PosixEnv : public Env {
     return new PThread(thread_options, name, std::move(fn));
   }
 
-  int32 GetCurrentThreadId() override {
-    static thread_local int32 current_thread_id = GetCurrentThreadIdInternal();
+  int64_t GetCurrentThreadId() override {
+    static thread_local int64_t current_thread_id =
+        GetCurrentThreadIdInternal();
     return current_thread_id;
   }
 
@@ -230,15 +233,15 @@ class PosixEnv : public Env {
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
 
-  int32 GetCurrentThreadIdInternal() {
+  int64_t GetCurrentThreadIdInternal() {
 #ifdef __APPLE__
     uint64_t tid64;
     pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int32>(tid64);
+    return static_cast<int64_t>(tid64);
 #elif defined(__FreeBSD__)
     return pthread_getthreadid_np();
 #elif defined(__NR_gettid)
-    return static_cast<int32>(syscall(__NR_gettid));
+    return static_cast<int64_t>(syscall(__NR_gettid));
 #else
     return std::hash<std::thread::id>()(std::this_thread::get_id());
 #endif

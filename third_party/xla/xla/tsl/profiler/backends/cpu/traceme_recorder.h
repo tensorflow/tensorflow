@@ -72,7 +72,7 @@ class TraceMeRecorder {
     int64_t end_time;
   };
   struct ThreadInfo {
-    uint32 tid;
+    int64_t tid;
     std::string name;
   };
   struct ThreadEvents {
