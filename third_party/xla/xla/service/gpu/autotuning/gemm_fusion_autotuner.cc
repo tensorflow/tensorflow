@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -1089,8 +1090,7 @@ absl::StatusOr<bool> GemmFusionAutotunerImpl::CheckRedZones(
   return false;
 }
 
-absl::StatusOr<std::optional<AutotuneResult>>
-GemmFusionAutotunerImpl::MeasurePerformance(
+absl::StatusOr<AutotuneResult> GemmFusionAutotunerImpl::MeasurePerformance(
     AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
     const ExecutableCandidate& candidate,
     std::optional<ScopedShapedBuffer>& reference_buffer) {
@@ -1108,32 +1108,28 @@ GemmFusionAutotunerImpl::MeasurePerformance(
                       RedzoneBuffers::FromInstruction(
                           *fusion_computation->FusionInstruction(), config_,
                           debug_options_, RedzoneBuffers::kAllInputs));
-  std::optional<ProfilingOutput> profiling_output;
-  TF_ASSIGN_OR_RETURN(profiling_output, compile_util.ProfileExecutable(
-                                            candidate.executable.get(), stream,
-                                            rz_buffers.input_buffers(),
-                                            rz_buffers.input_shapes()));
 
-  if (!profiling_output) {
-    VLOG(5) << "Skipping this tiling." << ToString(candidate.config);
-    return std::nullopt;
-  }
+  TF_ASSIGN_OR_RETURN(
+      ProfilingOutput profiling_output,
+      compile_util.ProfileExecutable(candidate.executable.get(), stream,
+                                     rz_buffers.input_buffers(),
+                                     rz_buffers.input_shapes()));
 
-  VLOG(5) << "Running the kernel took: " << profiling_output->duration;
-  LOG_IF(WARNING, profiling_output->duration >= absl::Seconds(1))
+  VLOG(5) << "Running the kernel took: " << profiling_output.duration;
+  LOG_IF(WARNING, profiling_output.duration >= absl::Seconds(1))
       << "Slow kernel for " << fusion.called_computations()[0]->ToString()
-      << " took: " << profiling_output->duration << ". "
+      << " took: " << profiling_output.duration << ". "
       << ToString(candidate.config);
 
   *res.mutable_run_time() =
-      tsl::proto_utils::ToDurationProto(profiling_output->duration);
+      tsl::proto_utils::ToDurationProto(profiling_output.duration);
 
   if (!config_.should_check_correctness()) {
     return res;
   }
 
   if (std::holds_alternative<CuBlasConfig>(candidate.config)) {
-    reference_buffer = std::move(profiling_output->output);
+    reference_buffer = std::move(profiling_output.output);
     return res;
   }
 
@@ -1144,7 +1140,7 @@ GemmFusionAutotunerImpl::MeasurePerformance(
     if (!rz_ok) return res;
 
     TF_RETURN_IF_ERROR(CompareBuffers(fusion, *reference_buffer,
-                                      profiling_output->output, res));
+                                      profiling_output.output, res));
   }
   return res;
 }
@@ -1158,15 +1154,22 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   });
   std::vector<AutotuneResult> results;
   std::optional<ScopedShapedBuffer> reference_buffer;
-  for (const ExecutableCandidate& candidate : candidates) {
-    TF_ASSIGN_OR_RETURN(
-        auto result,
-        MeasurePerformance(compile_util, fusion, candidate, reference_buffer));
-    VLOG(2) << "Ran " << results.size() + 1 << " configs of "
-            << candidates.size() << ".";
-    if (result.has_value()) {
-      results.push_back(std::move(*result));
+  for (int i = 0; i < candidates.size(); ++i) {
+    absl::StatusOr<AutotuneResult> result = MeasurePerformance(
+        compile_util, fusion, candidates[i], reference_buffer);
+    // Treat register allocation error gracefully. If the compilation happens
+    // with the driver during execution then the error could surface here.
+    // It's enough to check this once here.
+    if (stream_executor::IsPtxRegisterAllocationError(result.status())) {
+      VLOG(5) << "Skipping candidate: " << ToString(candidates[i].config)
+              << ": " << result.status();
+      continue;
     }
+
+    VLOG(2) << "Ran " << i + 1 << " configs out of " << candidates.size()
+            << ".";
+    TF_RETURN_IF_ERROR(result.status());
+    results.push_back(std::move(*result));
   }
   VLOG(2) << "Done running.";
   return results;

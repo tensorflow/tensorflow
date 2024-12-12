@@ -79,9 +79,8 @@ class AutotunerCompileUtil {
   // `extractor`.
   //
   // Runs the resulting executable with the given extractor, cached with
-  // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
-  // `Status` otherwise.
-  absl::StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
+  // `(cache_key, config)`.
+  absl::StatusOr<ProfilingOutput> ProfileExecutable(
       Executable* executable, se::Stream* stream,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
       absl::Span<Shape const> input_shapes);

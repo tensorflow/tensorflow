@@ -97,13 +97,12 @@ absl::StatusOr<std::vector<std::tuple<int, absl::Duration>>> ProfileKernels(
                             *fusion_instruction, autotune_config, debug_options,
                             RedzoneBuffers::kAllInputs));
 
-    std::optional<ScopedShapedBuffer> reference_buffer;
-    std::optional<AutotunerCompileUtil::ProfilingOutput> profiling_output;
-    TF_ASSIGN_OR_RETURN(profiling_output, compile_util.ProfileExecutable(
-                                              executable->get(), stream,
-                                              rz_buffers.input_buffers(),
-                                              rz_buffers.input_shapes()));
-    results.push_back({i, profiling_output->duration});
+    TF_ASSIGN_OR_RETURN(
+        AutotunerCompileUtil::ProfilingOutput profiling_output,
+        compile_util.ProfileExecutable(executable->get(), stream,
+                                       rz_buffers.input_buffers(),
+                                       rz_buffers.input_shapes()));
+    results.push_back({i, profiling_output.duration});
   }
   return results;
 }

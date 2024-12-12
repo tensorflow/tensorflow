@@ -168,7 +168,7 @@ class GemmFusionAutotunerImpl {
   //
   // If the candidate is not cuBLAS, this will check the redzones and compare
   // the outputs with the reference buffer.
-  absl::StatusOr<std::optional<AutotuneResult>> MeasurePerformance(
+  absl::StatusOr<AutotuneResult> MeasurePerformance(
       AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
       const ExecutableCandidate& candidate,
       std::optional<ScopedShapedBuffer>& reference_buffer);
