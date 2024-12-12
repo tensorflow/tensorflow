@@ -21,10 +21,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -125,7 +126,8 @@ class QueueRunner : public RunnerInterface {
   int runs_ = 0;
   absl::Status status_ TF_GUARDED_BY(mu_);
   absl::Status enqueue_status_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<BlockingCounter> counter_;
+  std::unique_ptr<absl::BlockingCounter> counter_;
+  std::unique_ptr<absl::Notification> notification_;
 
   Coordinator* coord_;
 

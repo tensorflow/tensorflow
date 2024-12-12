@@ -16,6 +16,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -186,7 +188,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
-  BlockingCounter finish_counter(cluster_size);
+  absl::Barrier finish_counter(cluster_size);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.
@@ -255,8 +257,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TF_DeleteStatus(status);
-    finish_counter.DecrementCount();
-    finish_counter.Wait();
+    finish_counter.Block();
     TFE_DeleteExecutor(executor);
     TFE_DeleteContext(ctx);
   };
@@ -273,9 +274,9 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
-  tensorflow::BlockingCounter counter1(cluster_size);
-  tensorflow::BlockingCounter counter2(cluster_size);
-  tensorflow::BlockingCounter counter3(cluster_size);
+  absl::BlockingCounter counter1(cluster_size);
+  absl::BlockingCounter counter2(cluster_size);
+  absl::BlockingCounter counter3(cluster_size);
 
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
@@ -345,9 +346,9 @@ TEST(CAPI, MultiClientPropagateError) {
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
   // Barrier for initializing the cluster.
-  tensorflow::BlockingCounter counter1(cluster_size);
+  absl::BlockingCounter counter1(cluster_size);
   // Barrier for finishing executing operations on all workers.
-  tensorflow::BlockingCounter counter2(cluster_size);
+  absl::BlockingCounter counter2(cluster_size);
 
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;

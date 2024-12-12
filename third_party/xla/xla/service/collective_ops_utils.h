@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -27,7 +29,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/barrier.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_device_list.h"
@@ -37,8 +42,8 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/slow_operation_alarm.h"
 #include "xla/stream_executor/device_memory.h"
-#include "tsl/platform/blocking_counter.h"
 
 namespace xla {
 
@@ -334,21 +339,18 @@ struct RendezvousKey {
   int64_t op_id;
 };
 
-template <typename DescFn>
-void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
+inline bool WaitAndLogIfStuck(absl::Barrier* barrier,
+                              std::function<std::string()> desc_fn) {
   VLOG(3) << "Begin: " << desc_fn();
-  const std::chrono::milliseconds timeout(5000);
-  bool ok = counter->WaitFor(timeout);
-  if (ok) {
-    VLOG(3) << "Finished: " << desc_fn();
-    return;
+  constexpr absl::Duration kTimeout = absl::Milliseconds(5000);
+  SlowOperationAlarm alarm(kTimeout, std::move(desc_fn));
+  bool is_last_thread_to_exit_barrier = barrier->Block();
+  alarm.cancel();
+  if (alarm.fired()) {
+    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
+                  "Perhaps the timeout is too short.";
   }
-  LOG(ERROR) << "This thread has been waiting for " << timeout.count()
-             << "ms for and may be stuck: " << desc_fn();
-  counter->Wait();
-  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                "Perhaps the timeout is too short: "
-             << desc_fn();
+  return is_last_thread_to_exit_barrier;
 }
 
 // Participant data for each rendezvous.
@@ -399,16 +401,20 @@ class Rendezvous {
     // An alternative way of accomplishing this goal would be to implement
     // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
     // erase() is deceptively complex to implement correctly.
-    std::shared_ptr<tsl::BlockingCounter> blocking_counter = p.second;
+    absl::Barrier* barrier = std::get<1>(p);
+    uintptr_t rendezvous_address =
+        reinterpret_cast<uintptr_t>(rendezvous.get());
     rendezvous.reset();
-    blocking_counter->DecrementCount();
-    xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
+    bool is_last_thread_to_exit_barrier = xla::WaitAndLogIfStuck(barrier, [&] {
       return absl::StrFormat(
           "participant waiting for all threads to drop their reference to the "
-          "rendezvous: %p",
-          rendezvous.get());
+          "rendezvous: %#x",
+          rendezvous_address);
     });
-    return std::move(p.first);
+    if (is_last_thread_to_exit_barrier) {
+      delete barrier;
+    }
+    return std::move(std::get<0>(p));
   }
 
  protected:
@@ -430,8 +436,8 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  absl::StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
-  SubmitParticipant(const I& participant) {
+  absl::StatusOr<std::tuple<O, absl::Barrier*>> SubmitParticipant(
+      const I& participant) {
     {
       absl::MutexLock lock(&mu_);
       CHECK(!participants_[participant.local_rank].has_value());
@@ -439,8 +445,7 @@ class Rendezvous {
     }
 
     // Wait for all participants to arrive.
-    all_participants_present_.DecrementCount();
-    WaitAndLogIfStuck(&all_participants_present_, [&] {
+    WaitAndLogIfStuck(&arrival_barrier_, [&] {
       return absl::StrFormat(
           "participant %s waiting for all participants to arrive at rendezvous "
           "%s",
@@ -448,16 +453,16 @@ class Rendezvous {
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));
-    return std::make_pair(std::move(output), returned_blocking_counter_);
+    return std::make_tuple(std::move(output), returned_barrier_);
   }
 
   const RendezvousKey key_;
 
-  tsl::BlockingCounter all_participants_present_{key_.num_local_participants};
+  absl::Barrier arrival_barrier_{key_.num_local_participants};
 
-  // tsl::BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
+  // absl::Barrier returned by SubmitParticipant.
+  absl::Barrier* returned_barrier_ =
+      new absl::Barrier(key_.num_local_participants);
 };
 
 // We only pipeline Send-Recv chains with channel_id > 0, where each chain

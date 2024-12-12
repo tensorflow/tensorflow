@@ -380,7 +380,6 @@ tsl_cc_test(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

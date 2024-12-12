@@ -51,6 +51,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
@@ -120,7 +121,6 @@ tf_cc_test(
     ],
     deps = [
         "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:c_test_util",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -128,7 +128,6 @@ tf_cc_test(
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -136,11 +135,8 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
-        "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:blocking_counter",
-        "//tensorflow/core/platform:env",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
