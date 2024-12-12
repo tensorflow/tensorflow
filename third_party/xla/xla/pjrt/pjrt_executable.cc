@@ -208,7 +208,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   return options;
 }
 
-CompiledMemoryStatsProto CompiledMemoryStats::ToProto() {
+CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   CompiledMemoryStatsProto proto;
   proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
   proto.set_argument_size_in_bytes(argument_size_in_bytes);
