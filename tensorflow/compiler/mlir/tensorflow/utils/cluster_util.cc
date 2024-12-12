@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
-#include <algorithm>
 #include <functional>
 #include <string>
-#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
