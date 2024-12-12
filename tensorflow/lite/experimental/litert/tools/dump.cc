@@ -158,6 +158,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflGreater:
       out << "TFL_GREATER";
       break;
+    case kLiteRtOpCodeTflQuantize:
+      out << "TFL_QUANTIZE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

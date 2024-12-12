@@ -45,6 +45,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/less_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/logical_and_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/mul_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/quantize_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/reshape_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/rsqrt_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/select_op_legalization.h"
@@ -85,6 +86,7 @@ LiteRtStatus RegisterAllLegalizations(
   legalizations.push_back(LogicalAndOpLegalization::Create());
   legalizations.push_back(LessOpLegalization::Create());
   legalizations.push_back(GreaterOpLegalization::Create());
+  legalizations.push_back(QuantizeOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }

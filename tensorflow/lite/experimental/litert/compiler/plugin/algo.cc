@@ -134,8 +134,10 @@ inline void CloneTensorData(const LiteRtTensorT& old_tensor,
   new_tensor.type_id = old_tensor.type_id;
   new_tensor.type_detail = old_tensor.type_detail;
   // Copy weights buffer from old tensor to new tensor.
-  new_tensor.weights.fb_buffer =
-      std::make_unique<tflite::BufferT>(*old_tensor.weights.fb_buffer);
+  if (old_tensor.weights.fb_buffer != nullptr) {
+    new_tensor.weights.fb_buffer =
+        std::make_unique<tflite::BufferT>(*old_tensor.weights.fb_buffer);
+  }
 }
 
 inline std::optional<LiteRtParamIndex> FindUseInd(LiteRtTensor tensor,
