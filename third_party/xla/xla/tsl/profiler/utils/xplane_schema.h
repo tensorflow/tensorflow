@@ -296,6 +296,8 @@ enum StatType {
   kDevCapPeakSramRdBwGigabytesPerSecond,
   kDevCapPeakSramWrBwGigabytesPerSecond,
   kDevVendor,
+  kDevHasMegacore,
+  kDevHasMergedVmem,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,
