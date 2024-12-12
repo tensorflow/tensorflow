@@ -189,8 +189,15 @@ xla_cc_binary(
     testonly = True,
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
-        "//xla/tools/hlo_opt:opt_main",
-    ],
+        "//xla/hlo/tools/hlo_opt:opt_main",
+        "//xla/tools/hlo_opt:cpu_opt",
+    ] + if_gpu_is_configured([
+        "//xla/tools/hlo_opt:gpu_opt",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
+    ]),
 )
 
 cc_library(

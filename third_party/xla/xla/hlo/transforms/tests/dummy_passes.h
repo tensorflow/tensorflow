@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TOOLS_HLO_OPT_TRANSFORMS_EXAMPLE_PASSES_H_
-#define XLA_TOOLS_HLO_OPT_TRANSFORMS_EXAMPLE_PASSES_H_
+#ifndef XLA_HLO_TRANSFORMS_TESTS_DUMMY_PASSES_H_
+#define XLA_HLO_TRANSFORMS_TESTS_DUMMY_PASSES_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -73,4 +73,4 @@ class BarToHelloModulePass : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_TOOLS_HLO_OPT_TRANSFORMS_EXAMPLE_PASSES_H_
+#endif  // XLA_HLO_TRANSFORMS_TESTS_DUMMY_PASSES_H_

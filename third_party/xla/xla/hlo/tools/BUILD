@@ -187,3 +187,12 @@ xla_cc_binary(
         "@stablehlo//:register",
     ],
 )
+
+xla_cc_binary(
+    name = "hlo-opt",
+    testonly = True,
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    deps = [
+        "//xla/hlo/tools/hlo_opt:opt_main",
+    ],
+)
