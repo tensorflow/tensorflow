@@ -373,6 +373,7 @@ func.func @OptimizeTranposeWithRank7orMoreEffectiveRank4(%arg0: tensor<56x8x56x1
   // CHECK: return %2
 }
 
+// CHECK-LABEL: @ConstPadToI32
 func.func @ConstPadToI32(%arg0: tensor<15600xf32>) -> tensor<15602xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<1x2xi64>} : () -> tensor<1x2xi64>
   %1 = "tfl.pad"(%arg0, %0) : (tensor<15600xf32>, tensor<1x2xi64>) -> tensor<15602xf32>

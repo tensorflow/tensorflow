@@ -3959,6 +3959,7 @@ func.func @fuseSigmoid(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %3 = tfl.div %cst, %2 {fused_activation_function = "NONE"} : tensor<10xf32>
   return %3 : tensor<10xf32>
 }
+
 // CHECK-LABEL:   func @fuseElu
 func.func @fuseElu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
   // CHECK: "tfl.elu"
@@ -3984,6 +3985,7 @@ func.func @fuseHardSwishJAX(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes 
   %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<10xf32>
   return %4 : tensor<10xf32>
 }
+
 // CHECK-LABEL:   func @fuseLeakyRelu
 func.func @fuseLeakyRelu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
   // CHECK: "tfl.leaky_relu"
@@ -4488,3 +4490,13 @@ func.func @reorder_gather_cast(%arg0: tensor<2x3x5xi8>, %arg1: tensor<2x7xi32>) 
 
 // CHECK: %0 = "tfl.gather"(%arg0, %arg1) <{axis = 1 : i32, batch_dims = 1 : i32}> : (tensor<2x3x5xi8>, tensor<2x7xi32>) -> tensor<2x7x5xi8>
 // CHECK: %1 = "tfl.cast"(%0) : (tensor<2x7x5xi8>) -> tensor<2x7x5xf32>
+
+// CHECK-LABEL: @RealDivWithConstDivisor
+func.func @RealDivWithConstDivisor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %1 = tfl.div(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %1 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<2.000000e-01> : tensor<f32>
+  // CHECK: %0 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
