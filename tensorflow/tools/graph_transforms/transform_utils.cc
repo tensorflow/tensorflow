@@ -512,7 +512,7 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
           const string& dest_name = input_to_rename.second;
           bool is_match;
           string match_name;
-          if (str_util::EndsWith(source_name, ":*")) {
+          if (absl::EndsWith(source_name, ":*")) {
             is_match = true;
             string prefix;
             string unused_node_name;
