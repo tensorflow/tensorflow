@@ -393,11 +393,12 @@ llvm::CallInst* EmitDeviceFunctionCall(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, module));
+        llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
   }
   llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type, module),  // Return type.
-      ir_input_types,                                       // Parameter types.
+      llvm_ir::PrimitiveTypeToIrType(output_type,
+                                     b->getContext()),  // Return type.
+      ir_input_types,                                   // Parameter types.
       false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.

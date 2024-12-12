@@ -10,7 +10,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = ["//xla/backends/cpu:xla_backend_cpu_internal_access"],
     licenses = ["notice"],
 )
 
@@ -197,5 +197,19 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "kernel_api_ir_builder",
+    srcs = ["kernel_api_ir_builder.cc"],
+    hdrs = ["kernel_api_ir_builder.h"],
+    deps = [
+        "//xla:cpu_function_runtime",
+        "//xla:shape_util",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ir_headers",
     ],
 )

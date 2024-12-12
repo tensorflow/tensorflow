@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -76,11 +78,15 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     return module;
   }
 
-  HloModuleConfig GetModuleConfig(absl::string_view fdo_profile) {
+  HloModuleConfig GetModuleConfig(
+      absl::string_view fdo_profile,
+      bool enable_experimental_pipeline_parallelism_opt = false) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
+    debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
+        enable_experimental_pipeline_parallelism_opt);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(fdo_profile);
     return config;
@@ -375,7 +381,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
   // Since we allow 2 collectives in-flight, we should expect this pattern:
-  // ar(rs)-start -> rs(ar)-start -> add -> ar(rs)-done -> ar(rs)-done
+  // ar(rs)-start -> rs(ar)-start -> add -> ar(rs)-done -> rs(ar)-done
   EXPECT_TRUE(GetIndexByName(instruction_sequence, "ar_0") <
                   GetIndexByName(instruction_sequence, "rs_1") &&
               GetIndexByName(instruction_sequence, "rs_0") <
@@ -388,6 +394,163 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                   GetIndexByName(instruction_sequence, "ar_1") &&
               GetIndexByName(instruction_sequence, "add_0") <
                   GetIndexByName(instruction_sequence, "rs_1"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       OverlappingRanksPreventOverlappingCollectives) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 100000.0 }
+    costs { name: "ar_0" cost_us: 10.0 }
+    costs { name: "rs_0" cost_us: 10.0 }
+  )pb";
+  ;
+  absl::string_view kHloModule = R"(
+    HloModule m
+
+    reduce {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT _ = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[2] parameter(1)
+      p2 = f32[2] parameter(2)
+      ar_0 = f32[] all-reduce-start(p0), to_apply=reduce, replica_groups={{0,1}}
+      ar_1 = f32[] all-reduce-done(ar_0)
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}, replica_groups={{0, 1}}
+      rs_1 = f32[1] reduce-scatter-done(rs_0)
+      add_0 = f32[2] add(p1, p2)
+      ROOT _ = (f32[], f32[1], f32[2]) tuple(ar_1, rs_1, add_0)
+    }
+  )";
+
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  // AR and RS have two ranks in common so cannot be overlapped, expect pattern:
+  // rs(ar)-start -> add -> rs(ar)-done -> ar(rs)-start -> ar(rs)-done
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "ar_1") <
+                  GetIndexByName(instruction_sequence, "rs_0") ||
+              GetIndexByName(instruction_sequence, "rs_1") <
+                  GetIndexByName(instruction_sequence, "ar_0"));
+  EXPECT_TRUE((GetIndexByName(instruction_sequence, "ar_0") <
+                   GetIndexByName(instruction_sequence, "add_0") &&
+               GetIndexByName(instruction_sequence, "add_0") <
+                   GetIndexByName(instruction_sequence, "ar_1")) ||
+              (GetIndexByName(instruction_sequence, "rs_0") <
+                   GetIndexByName(instruction_sequence, "add_0") &&
+               GetIndexByName(instruction_sequence, "add_0") <
+                   GetIndexByName(instruction_sequence, "rs_1")));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
+  absl::string_view kHloModule = R"(
+  HloModule m
+
+  while_condition {
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) parameter(0)
+    i = get-tuple-element(tuple), index=3
+    n = u32[] constant(13)
+    ROOT predicate = pred[] compare(i, n), direction=LT
+  }
+
+  while_body {
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) parameter(0)
+    send_ctx = get-tuple-element(tuple), index=0
+    recv_ctx = get-tuple-element(tuple), index=1
+    some_arg = get-tuple-element(tuple), index=2
+    i = get-tuple-element(tuple), index=3
+    some_res = f32[16,16] dot(some_arg, some_arg), lhs_contracting_dims={0},
+        rhs_contracting_dims={1}
+    recv_done = (f32[16], token[]) recv-done(recv_ctx),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    send_done = token[] send-done(send_ctx), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    after_all = token[] after-all()
+    send_ctx_ = (f32[16,16], u32[], token[]) send(some_arg, after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+        control-predecessors={send_done}
+    recv_ctx_ = (f32[16,16], u32[], token[]) recv(after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+        control-predecessors={recv_done}
+    c1 = u32[] constant(1)
+    i_ = add(i, c1)
+    ROOT tuple_ = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[]) tuple(send_ctx_, recv_ctx_, some_res, i_)
+  }
+
+
+  ENTRY main {
+    some_arg = f32[16,16] parameter(0)
+    after_all = token[] after-all()
+    send_ctx = (f32[16,16], u32[], token[]) send(some_arg, after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    recv_ctx = (f32[16,16], u32[], token[]) recv(after_all),
+        frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    c0 = u32[] constant(0)
+    tuple = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[])
+        tuple(send_ctx, recv_ctx, some_arg, c0)
+    tuple_ = ((f32[16,16], u32[], token[]), (f32[16,16], u32[], token[]),
+        f32[16,16], u32[])
+        while(tuple), body=while_body, condition=while_condition
+    send_ctx_ = (f32[16,16], u32[], token[]) get-tuple-element(tuple_), index=0
+    recv_ctx_ = (f32[16,16], u32[], token[]) get-tuple-element(tuple_), index=1
+    recv_done = (f32[16], token[]) recv-done(recv_ctx_), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    send_done = token[] send-done(send_ctx_), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+  }
+  )";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(
+      kFdoProfile, /*enable_experimental_pipeline_parallelism_opt=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(
+      ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                     /*strictness=*/DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  auto schedule = module->schedule();
+  VLOG(3) << module->schedule().ToString();
+
+  // Expect send/recv and send/recv-done to be scheduled late so that they
+  // appear at the top of the while loop body. This is to ensure their execution
+  // overlaps with the present compute.
+  HloComputation* while_body = FindComputation(module.get(), "while_body");
+  std::vector<HloInstruction*> while_body_instrs =
+      schedule.sequence(while_body).instructions();
+
+  // Expect: `recv_ctx` -> `recv_done` -> `recv_ctx_` -> `some_res`
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_ctx"),
+            GetIndexByName(while_body_instrs, "recv_done"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_done"),
+            GetIndexByName(while_body_instrs, "recv_ctx_"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "recv_ctx_"),
+            GetIndexByName(while_body_instrs, "some_res"));
+
+  // Expect: `send_ctx` -> `send_done` -> `send_ctx_` -> `some_res`
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_ctx"),
+            GetIndexByName(while_body_instrs, "send_done"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_done"),
+            GetIndexByName(while_body_instrs, "send_ctx_"));
+  EXPECT_LT(GetIndexByName(while_body_instrs, "send_ctx_"),
+            GetIndexByName(while_body_instrs, "some_res"));
 }
 
 }  // namespace

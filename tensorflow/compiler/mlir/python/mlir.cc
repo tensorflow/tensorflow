@@ -197,7 +197,15 @@ std::string ImportFunction(const std::string& functiondef_proto,
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
-  auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
+
+  tensorflow::GraphImportConfig specs;
+  specs.graph_func_name = fbody->record->fdef().signature().name();
+  specs.enable_shape_inference = false;
+  specs.graph_as_function = true;
+  for (const auto* control_ret_node : fbody->control_ret_nodes)
+    specs.control_outputs.push_back(control_ret_node->name());
+  auto module = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      *fbody->graph, {}, flib_def, specs, &context);
   if (!module.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";

@@ -18,7 +18,6 @@ def pybind_extension(
         win_def_file = None,  # original
         testonly = None,  # original
         compatible_with = None,  # original
-        outer_module_name = "",  # deprecate
         additional_exported_symbols = [],
         data = None,  # original
         # Garbage parameters, exist only to maingain backward compatibility for
@@ -89,7 +88,6 @@ def pybind_extension(
         win_def_file = win_def_file,
         testonly = testonly,
         compatible_with = compatible_with,
-        outer_module_name = outer_module_name,
         additional_exported_symbols = additional_exported_symbols,
         data = actual_data,
         default_deps = actual_default_deps,

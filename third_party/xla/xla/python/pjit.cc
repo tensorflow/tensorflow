@@ -481,7 +481,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         }
         continue;
       } else {
-        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+        CallShardArgFallback(arg, in_shardings[dce_index],
                              in_device_local_layout, shard_arg_fallback,
                              num_args_arrays, keep_alive_objects);
         continue;
@@ -503,7 +503,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       xla::Layout in_xc_layout = nb::cast<xla::Layout>(
           in_device_local_layout.attr("_to_xla_layout")(py_array.dtype()));
       if (in_xc_layout != GetXlaLayoutUnsafe(arr_layout)) {
-        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+        CallShardArgFallback(arg, in_shardings[dce_index],
                              in_device_local_layout, shard_arg_fallback,
                              num_args_arrays, keep_alive_objects);
         continue;
@@ -511,16 +511,16 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     }
 
     if (sharding.type().ptr() == jax::PmapSharding::type().ptr()) {
-      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           in_device_local_layout, shard_arg_fallback,
-                           num_args_arrays, keep_alive_objects);
+      CallShardArgFallback(arg, in_shardings[dce_index], in_device_local_layout,
+                           shard_arg_fallback, num_args_arrays,
+                           keep_alive_objects);
       continue;
     }
 
     if (sharding_num_devices != num_global_devices) {
-      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           in_device_local_layout, shard_arg_fallback,
-                           num_args_arrays, keep_alive_objects);
+      CallShardArgFallback(arg, in_shardings[dce_index], in_device_local_layout,
+                           shard_arg_fallback, num_args_arrays,
+                           keep_alive_objects);
       continue;
     }
 

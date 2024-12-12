@@ -87,9 +87,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         "Internally, `xla_test` sets `--xla_cpu_use_thunk_runtime`. Unused on"
         " OpenXLA CI."
     ),
-    "test_hlo_pjrt_runner": (
-        "Internally adds the appropriate"
-        " `xla/tests:pjrt_$BACKEND_client_registry`. Unused on OpenXLA CI."
+    "test_migrated_to_hlo_runner_pjrt": (
+        "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"
+        " annotated `xla_test` target. Adding this tag does not synthesize"
+        " additional targets."
     ),
     "multi_gpu": "Used by `xla_test` to signal that multiple GPUs are needed.",
     "multi_gpu_h100": (

@@ -109,8 +109,7 @@ std::string BasicDeviceList::ToString() const {
   return absl::StrCat("BasicDeviceList([",
                       absl::StrJoin(devices_, ",",
                                     [](std::string* out, Device* device) {
-                                      absl::StrAppend(out,
-                                                      device->DebugString());
+                                      absl::StrAppend(out, device->ToString());
                                     }),
                       "])");
 }

@@ -148,6 +148,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -233,6 +234,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
         "@pybind11",
     ] + if_pywrap(["//tensorflow/tools/graph_transforms:transform_graph_lib"]),
 )

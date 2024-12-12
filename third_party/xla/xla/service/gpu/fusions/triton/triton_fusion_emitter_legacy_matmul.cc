@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
@@ -66,6 +65,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/fusions/triton/emitter_helpers.h"
 #include "xla/service/gpu/fusions/triton/xla_triton_ops.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -98,7 +98,6 @@ namespace mh = ::mlir::mhlo;
 
 using ::llvm::SmallVector;
 using ::mlir::ArrayRef;
-using ::mlir::ImplicitLocOpBuilder;
 using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
@@ -106,7 +105,7 @@ using ::mlir::ValueRange;
 
 namespace {
 
-absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
+absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -141,7 +140,7 @@ absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
   }
 }
 
-Type StorageType(mlir::OpBuilder b, Type t) {
+Type StorageType(EmitterLocOpBuilder& b, Type t) {
   if (t.isInteger(1)) {
     return b.getI8Type();
   }
@@ -150,7 +149,7 @@ Type StorageType(mlir::OpBuilder b, Type t) {
 
 // Create a scalar constant.
 template <typename T>
-ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
+ma::ConstantOp CreateConst(EmitterLocOpBuilder b, Type type, T value) {
   if (mlir::isa<mlir::IntegerType>(type)) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
@@ -163,13 +162,14 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
 
 // Create a tensor constant.
 template <typename T>
-ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
+ma::ConstantOp CreateConst(EmitterLocOpBuilder b, Type type, T value,
                            llvm::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
-        tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                                 /*isSigned=*/std::is_signed_v<T>)));
+        tensor_type,
+        mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                    /*isSigned=*/std::is_signed_v<T>, /*implicitTrunc=*/true)));
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -178,7 +178,7 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
-Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
+Value ZerosLike(EmitterLocOpBuilder b, Value x) {
   if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
@@ -186,7 +186,7 @@ Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
   return CreateConst(b, x.getType(), 0);
 }
 
-Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
+Value OnesLike(EmitterLocOpBuilder b, Value x) {
   if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
@@ -199,7 +199,7 @@ bool IsFp8Type(Type t) {
          t.isFloat8E4M3FNUZ() || t.isFloat8E4M3B11FNUZ();
 }
 
-Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
+Value Cast(EmitterLocOpBuilder b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
@@ -277,14 +277,14 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     // TODO(b/266862493): Support unsigned integer types.
     // The current logic handles signed integer types only. Additional handling
     // is needed for unsigned integer types.
-    auto cst_int = [&](int64_t x) {
+    auto cst_int = [&](EmitterLocOpBuilder b, int64_t x) {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
       } else {
         return CreateConst(b, dst_element_ty, x);
       }
     };
-    auto cst_float = [&](int64_t x) {
+    auto cst_float = [&](EmitterLocOpBuilder b, int64_t x) {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
       } else {
@@ -297,16 +297,16 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
 
     // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
     auto clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OLE, value, cst_float(min)),
-        cst_int(min), fptosi);
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::OLE, value, cst_float(b, min)),
+        cst_int(b, min), fptosi);
     // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
     clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE, value, cst_float(max)),
-        cst_int(max), clamped);
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE, value, cst_float(b, max)),
+        cst_int(b, max), clamped);
     // isnan(value) ? 0 : ...
     return b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value), cst_int(0),
-        clamped);
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value),
+        cst_int(b, 0), clamped);
   }
 
   LOG(FATAL) << "Type conversion not supported: "
@@ -314,7 +314,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
              << llvm_ir::DumpToString(dst_element_ty);
 }
 
-Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
+Value Subtract(EmitterLocOpBuilder b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::SubIOp>(values[0], values[1]);
   } else {
@@ -322,7 +322,7 @@ Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   }
 }
 
-Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
+Value Compare(EmitterLocOpBuilder b, ValueRange values,
               mh::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::IntegerType>(type)) {
@@ -339,7 +339,7 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
+Value Maximum(EmitterLocOpBuilder b, const se::DeviceDescription& device_info,
               ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MaximumFOp>(values);
@@ -360,7 +360,7 @@ Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
+Value Minimum(EmitterLocOpBuilder b, const se::DeviceDescription& device_info,
               ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MinimumFOp>(values);
@@ -382,12 +382,12 @@ Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-Value Splat(ImplicitLocOpBuilder& b, Value value, ArrayRef<int64_t> shape) {
+Value Splat(EmitterLocOpBuilder b, Value value, ArrayRef<int64_t> shape) {
   auto type = mlir::RankedTensorType::get(shape, value.getType());
   return b.create<mt::SplatOp>(type, value);
 }
 
-absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
+absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder b,
                                       absl::string_view libdevice_path,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
@@ -474,7 +474,7 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
   }
 }
 
-absl::StatusOr<Value> EmitConstant(ImplicitLocOpBuilder& b,
+absl::StatusOr<Value> EmitConstant(EmitterLocOpBuilder b,
                                    const HloInstruction& constant) {
   CHECK_EQ(constant.opcode(), HloOpcode::kConstant);
   CHECK(ShapeUtil::IsEffectiveScalar(constant.shape()));
@@ -496,7 +496,7 @@ absl::StatusOr<Value> EmitConstant(ImplicitLocOpBuilder& b,
 }
 
 // Emit sequence of operations for unpacking 2xi4 -> i8.
-absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
+absl::StatusOr<Value> EmitUnpackInt4(EmitterLocOpBuilder& b,
                                      const HloInstruction* hlo,
                                      int64_t unpack_dim_idx, Value& value) {
   VLOG(6) << "EmitUnpackInt4: " << hlo->ToString();
@@ -522,21 +522,21 @@ absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
-Value Broadcast(ImplicitLocOpBuilder& b, TensorValue value,
+Value Broadcast(EmitterLocOpBuilder b, TensorValue value,
                 ArrayRef<int64_t> shape) {
   return b.create<mt::BroadcastOp>(value.getType().clone(shape), value);
 }
 
-Value Range(ImplicitLocOpBuilder& b, int32_t limit) {
+Value Range(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return b.create<mt::MakeRangeOp>(type, 0, limit);
 }
 
-Value AddPtr(ImplicitLocOpBuilder& b, Value ptr, Value offset) {
+Value AddPtr(EmitterLocOpBuilder b, Value ptr, Value offset) {
   return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
 }
 
-Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
+Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
                         ArrayRef<int32_t> boundary_checks) {
   // 0-D MakeTensorPtrOp
   //
@@ -606,7 +606,7 @@ struct Side {
   int64_t unpack_dim_idx = 0;
 };
 
-absl::StatusOr<Value> EmitBroadcast(ImplicitLocOpBuilder& b,
+absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
                                     const TritonFusionAnalysis* analysis,
                                     const Side& side,
                                     const HloInstruction& broadcast,
@@ -653,7 +653,7 @@ absl::StatusOr<Value> EmitBroadcast(ImplicitLocOpBuilder& b,
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
 absl::StatusOr<Value> EmitScope(
-    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const TritonFusionAnalysis* analysis, const Side& side,
     absl::Span<const HloInstruction* const> instructions,
@@ -953,7 +953,7 @@ absl::Status ValidateMatMulConfig(const TritonGemmConfig& config,
 // } else {
 //   return choices.back();
 // }
-absl::StatusOr<Value> EmitMultiSelect(ImplicitLocOpBuilder b, Value index,
+absl::StatusOr<Value> EmitMultiSelect(EmitterLocOpBuilder& b, Value index,
                                       ValueRange limits, ValueRange choices) {
   TF_RET_CHECK(choices.size() - 1 == limits.size());
   Value result = choices[0];
@@ -983,7 +983,7 @@ class MatMulEmitterHelper {
   MatMulEmitterHelper(absl::string_view libdevice_path,
                       const se::DeviceDescription& device_info,
                       const HloDotInstruction* dot_instr,
-                      ImplicitLocOpBuilder& b, Type index_ty, MatMulDims dims,
+                      EmitterLocOpBuilder& b, Type index_ty, MatMulDims dims,
                       const MatMulLaunchConfig& launch_config,
                       const TritonFusionAnalysis& analysis)
       : b_(b),
@@ -1471,7 +1471,7 @@ class MatMulEmitterHelper {
   Value Cst32(int32_t v) { return CreateConst(b_, i32_ty_, v); }
   Value Cst64(int64_t v) { return CreateConst(b_, i64_ty_, v); }
 
-  ImplicitLocOpBuilder& b_;
+  EmitterLocOpBuilder& b_;
   absl::string_view libdevice_path_;
   const se::DeviceDescription& device_info_;
   const HloDotInstruction* dot_instr_;
@@ -1531,7 +1531,7 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
 // Truncates |input| of F32 type to the number representable in Bf16 toward
 // zero.
 // It is used for Emit6xBfloat16MatMul.
-Value TruncateToBF16TowardsZero(ImplicitLocOpBuilder& b, Value input) {
+Value TruncateToBF16TowardsZero(EmitterLocOpBuilder& b, Value input) {
   ShapedType input_type = mlir::dyn_cast<ShapedType>(input.getType());
   Type input_type_as_i32 = input_type.clone(b.getI32Type());
   Value input_as_i32 = b.create<mt::BitcastOp>(input_type_as_i32, input);
@@ -1544,14 +1544,14 @@ Value TruncateToBF16TowardsZero(ImplicitLocOpBuilder& b, Value input) {
 
 // Finds the middle 8 bits of |input|'s mantissa.
 // It is used for Emit6xBfloat16MatMul.
-Value SoftMiddleEight(ImplicitLocOpBuilder& b, Value input) {
+Value SoftMiddleEight(EmitterLocOpBuilder& b, Value input) {
   Value high = TruncateToBF16TowardsZero(b, input);
   return b.create<ma::SubFOp>(input, high);
 }
 
 // Finds the low 8 bits of |input|'s mantissa.
 // It is used for Emit6xBfloat16MatMul.
-Value SoftLowEight(ImplicitLocOpBuilder& b, Value input) {
+Value SoftLowEight(EmitterLocOpBuilder& b, Value input) {
   // Find the middle bits of the middle bits, and these are the low eight
   // bits.
   return SoftMiddleEight(b, SoftMiddleEight(b, input));
@@ -1559,13 +1559,13 @@ Value SoftLowEight(ImplicitLocOpBuilder& b, Value input) {
 
 // Rounds |input| to BF16 type.
 // It is used for Emit6xBfloat16MatMul.
-Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
+Value RoundToBF16(EmitterLocOpBuilder& b, Value input) {
   return Cast(b, input, b.getBF16Type());
 }
 
 // Checks |input| is finite f32 (not Nan and not infinite).
 // It is used for Emit6xBfloat16MatMul and Emit3xBfloat16MatMul.
-Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
+Value CheckFiniteF32(EmitterLocOpBuilder& b, Value input) {
   Value positive_inf = CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
       mlir::cast<ShapedType>(input.getType()).getShape());
@@ -1575,7 +1575,7 @@ Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+absl::StatusOr<Value> Emit6xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs,
                                            Value rhs, Value acc) {
   Type f32 = b.getF32Type();
   TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
@@ -1623,7 +1623,7 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
 // Emit6xBfloat16MatMul.
-absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+absl::StatusOr<Value> Emit3xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs,
                                            Value rhs, Value acc) {
   Type f32 = b.getF32Type();
   TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
@@ -1690,7 +1690,7 @@ mt::InputPrecision InferDotPrecision(const HloDotInstruction* dot_instr) {
 }
 
 bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
-                        mlir::OpBuilder& builder, Value dot_input_lhs,
+                        EmitterLocOpBuilder& b, Value dot_input_lhs,
                         Value dot_input_rhs,
                         const se::DeviceDescription& device_info) {
   const PrecisionConfig::Algorithm algorithm =
@@ -1698,7 +1698,7 @@ bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
 
   if (algorithm == PrecisionConfig::ALG_UNSET) {
     const HloModule* hlo_module = dot_instr->GetModule();
-    Type f32 = builder.getF32Type();
+    Type f32 = b.getF32Type();
     return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_6way_gemm() &&
@@ -1712,7 +1712,7 @@ bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
 }
 
 bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
-                        mlir::OpBuilder& builder, Value dot_input_lhs,
+                        EmitterLocOpBuilder& b, Value dot_input_lhs,
                         Value dot_input_rhs,
                         const se::DeviceDescription& device_info) {
   const PrecisionConfig::Algorithm algorithm =
@@ -1720,7 +1720,7 @@ bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
 
   if (algorithm == PrecisionConfig::ALG_UNSET) {
     const HloModule* hlo_module = dot_instr->GetModule();
-    Type f32 = builder.getF32Type();
+    Type f32 = b.getF32Type();
     return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_3way_gemm() &&
@@ -1772,7 +1772,7 @@ absl::Status CheckGemmTilingComplexityHeuristic(
 
 class Scopes {
  public:
-  Scopes(ImplicitLocOpBuilder& b, const HloInstruction* dot_instr,
+  Scopes(EmitterLocOpBuilder& b, const HloInstruction* dot_instr,
          const TritonFusionAnalysis& analysis, const MatMulDims& dims,
          const TritonGemmConfig& config, const MatMulLaunchConfig launch_config,
          bool is_sparse)
@@ -1929,7 +1929,7 @@ class Scopes {
 
 enum MaskExpandDimension { kMajor = 0, kMinor = 1 };
 
-Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
+Value EmitMaskOnInput(EmitterLocOpBuilder& b,
                       MaskExpandDimension expand_along_dimension, Value input,
                       int dim_k_denom, Value k, int64_t dims_k, int64_t block_k,
                       Value pid_k, int64_t other_dim_block_size) {
@@ -1969,8 +1969,8 @@ Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
 
   auto if_op = b.create<mlir::scf::IfOp>(
       is_last_tile_cond, /*thenBranch=*/
-      [&](mlir::OpBuilder& builder, mlir::Location loc) {
-        ImplicitLocOpBuilder b(loc, builder);
+      [&, &parent_builder = b](mlir::OpBuilder& builder, mlir::Location loc) {
+        EmitterLocOpBuilder b(loc, builder, parent_builder.annotate_loc());
         // Make a range vector from 0 to block_k.
         auto range_from_0_to_k = Range(b, block_k_size);
         if (pid_k != nullptr) {
@@ -2005,10 +2005,10 @@ Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
         b.create<mlir::scf::YieldOp>(mlir::ValueRange(result));
       },
       /*elseBranch=*/
-      [&](mlir::OpBuilder& builder, mlir::Location loc) {
+      [&, &parent_builder = b](mlir::OpBuilder& builder, mlir::Location loc) {
         // We don't need to mask anything but we need to expand the input.
         // Otherwise Triton complains.
-        ImplicitLocOpBuilder b(loc, builder);
+        EmitterLocOpBuilder b(loc, builder, parent_builder.annotate_loc());
         b.create<mlir::scf::YieldOp>(mlir::ValueRange(expanded_input));
       });
   return if_op.getResult(0);
@@ -2019,7 +2019,7 @@ Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-absl::Status EmitMatMul(mlir::OpBuilder builder,
+absl::Status EmitMatMul(EmitterLocOpBuilder& b,
                         absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const HloFusionInstruction* fusion,
@@ -2064,7 +2064,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
       ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
       ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k > INT_MAX;
-  Type index_ty = builder.getIntegerType(use_64bit_indexing ? 64 : 32);
+  Type index_ty = b.getIntegerType(use_64bit_indexing ? 64 : 32);
 
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
@@ -2072,8 +2072,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
-  ImplicitLocOpBuilder b(loc, builder);
 
   TF_RETURN_IF_ERROR(ValidateMatMulConfig(config, *dot_instr));
   const int split_k = config.split_k;

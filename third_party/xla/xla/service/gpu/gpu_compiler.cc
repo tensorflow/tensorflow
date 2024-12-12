@@ -1157,12 +1157,13 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   // that actually need to run asynchronously with a GPU specific backend
   // config.
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
   config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
   config.convert_collective_permute = HloPredicateTrue;
-  config.convert_all_gather = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
-  config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
   absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
@@ -1190,6 +1191,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
             return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
           default:
             return false;
         }
@@ -1592,11 +1595,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options
-            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
-         rocm_cc != nullptr)) {
+    if ((cuda_cc != nullptr &&
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+        rocm_cc != nullptr) {
       // Triton compilation needs normalized operations on bf16 (i.e. converted
       // to f32).
       add_float_normalization(pipeline);

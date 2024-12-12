@@ -153,9 +153,10 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
-  // Gates the experimental feature coupling the Triton Softmax pattern matcher
-  // with priority fusion.
-  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+  // If true, XLA will annotate instructions in the dumps with emitter code
+  // location (source:line) annotations. This helps to identify the source of
+  // the code that emits a particular instruction.
+  bool xla_gpu_unsupported_annotate_with_emitter_loc = 501;
 
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
@@ -502,6 +503,7 @@ message DebugOptions {
     COLLECTIVEBROADCAST = 4;
     ALLTOALL = 5;
     COLLECTIVEPERMUTE = 6;
+    RAGGEDALLTOALL = 7;
   }
 
   repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
@@ -807,6 +809,10 @@ message DebugOptions {
   // Filter out kernels that spill registers during autotuning.
   bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
+  // If true, PTX compilation will fail if a kernel spills registers.
+  // This is meant for debugging and only applies to CUDA PTX compilation.
+  bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
+
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
@@ -1073,7 +1079,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 353
+  // Next id: 355
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1091,10 +1097,11 @@ message DebugOptions {
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
   // xla_gpu_enable_priority_fusion
+  // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      326, 332;
+      325, 326, 332;
 }
 
 // Contains flags which affects the GPU compilation result.

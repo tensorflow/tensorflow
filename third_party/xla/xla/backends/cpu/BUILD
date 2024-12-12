@@ -1,3 +1,4 @@
+load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -7,6 +8,8 @@ package(
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
+
+xla_cpu_backend_access()
 
 package_group(
     name = "friends",

@@ -102,5 +102,13 @@ TEST(PtxCompilerHelpersTest,
               IsOk());
 }
 
+TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationErrorStatus) {
+  EXPECT_TRUE(IsPtxRegisterAllocationError(
+      PtxRegisterAllocationError("Register allocation failed")));
+  EXPECT_FALSE(
+      IsPtxRegisterAllocationError(absl::ResourceExhaustedError("OOM")));
+  EXPECT_FALSE(IsPtxRegisterAllocationError(absl::OkStatus()));
+}
+
 }  // namespace
 }  // namespace stream_executor

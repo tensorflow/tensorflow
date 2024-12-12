@@ -82,6 +82,9 @@ extern const char kXlaCollectiveMatmulNone[];
 // XLA frontend attribute for specifying the number of sends this recv should
 // match.
 extern const char kXlaMultiRecvCountAttr[];
+
+// XLA frontend attribute for specifying the scheduling group id annotations.
+extern const char kXlaSchedulingGroupIdAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

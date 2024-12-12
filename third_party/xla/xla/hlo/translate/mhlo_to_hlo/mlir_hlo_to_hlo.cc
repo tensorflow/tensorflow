@@ -127,11 +127,14 @@ constexpr char kApproxTopK[] = "ApproxTopK";
 constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
+constexpr char kChannelId[] = "channel_id";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
+constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
 constexpr char kRecallTarget[] = "recall_target";
 constexpr char kReductionDim[] = "reduction_dim";
 constexpr char kReductionInputSizeOverride[] = "reduction_input_size_override";
+constexpr char kReplicaGroups[] = "replica_groups";
 constexpr char kTopK[] = "top_k";
 
 // MHLO attributes. Module level attributes require namespacing.
@@ -2265,6 +2268,34 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
     BuildGetTupleElementsForTupleResults(op, cc_op, ctx);
     return success();
+  } else if (op.getCallTargetName() == kRaggedAllToAll) {
+    auto backend_config =
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(op.getBackendConfigAttr());
+    auto isSupportedAttrName = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == kCallTargetName || name == kBackendConfig ||
+             name == kApiVersion || name == kCalledComputations ||
+             name == kHasSideEffect;
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!isSupportedAttrName(attr))
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for RaggedAllToAll";
+    }
+    DenseIntElementsAttr replica_groups =
+        backend_config.getAs<DenseIntElementsAttr>(kReplicaGroups);
+    mlir::mhlo::ChannelHandleAttr channel_handle_attr =
+        backend_config.getAs<mlir::mhlo::ChannelHandleAttr>(kChannelId);
+    xla::ChannelHandle channel_handle;
+    if (channel_handle_attr) {
+      channel_handle = Convert_channel_handle(channel_handle_attr);
+    }
+    xla::XlaOp ragged_all_to_all_op =
+        RaggedAllToAll(args[0], args[1], args[2], args[3], args[4], args[5],
+                       Convert_replica_groups(replica_groups), channel_handle);
+    value_map[op.getResult(0)] = ragged_all_to_all_op;
+    return success();
   }
 
   if (op.getCalledComputations().size() > 1)
@@ -2515,14 +2546,54 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  token = xla::internal::XlaBuilderFriend::BuildRecv(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
-  xla::XlaOp xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  auto get_sharding = [](const xla::OpSharding& sharding) {
+    xla::OpSharding ret;
+    if (sharding.type() != xla::OpSharding::TUPLE) {
+      ret = sharding;
+    } else {
+      ret = sharding.tuple_shardings(0);
+    }
+    return ret;
+  };
+  if (ctx.builder->sharding().has_value()) {
+    // HLO Recv needs a 3-tuple sharding. Get the sharding from the builder and
+    // make it a 3-tuple sharding.
+    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
+    xla::OpSharding single_sharding = get_sharding(*sharding);
+    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+    tuple_shardings->Clear();
+    for (int i = 0; i < 3; ++i) {
+      tuple_shardings->Add(xla::OpSharding(single_sharding));
+    }
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  } else {
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
 
-  auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  xla::XlaOp xla_result;
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
+                                                    ctx.builder->sharding());
+    xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
+
+  xla::XlaOp data_tuple_element;
+  if (ctx.builder->sharding().has_value()) {
+    // HLO GetTupleElement needs a single sharding,
+    xla::XlaScopedShardingAssignment sharding_scope(
+        ctx.builder, get_sharding(*ctx.builder->sharding()));
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  } else {
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  }
+
   if (subshapes.size() == 1) {
     value_map[op.getResult(0)] = data_tuple_element;
   } else {
@@ -2757,9 +2828,25 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
-  token = xla::internal::XlaBuilderFriend::BuildSend(
-      ctx.builder, operand, token,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
+  // tuple sharding with 3 entries.
+  if (ctx.builder->sharding().has_value()) {
+    xla::OpSharding sharding = *ctx.builder->sharding();
+    const xla::OpSharding single_sharding = *ctx.builder->sharding();
+    sharding.set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = sharding.mutable_tuple_shardings();
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    tuple_shardings->Add(xla::OpSharding(single_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  } else {
+    token = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
   value_map[op] = xla::internal::XlaBuilderFriend::BuildSendDone(
       ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
       op.getIsHostTransfer());
@@ -3474,7 +3561,6 @@ LogicalResult ConvertToHloModule::LowerReturn(
                 /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().message();
-
         returns[index] = reshape.value();
       }
     }

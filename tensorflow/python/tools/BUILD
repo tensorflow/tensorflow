@@ -502,7 +502,6 @@ genrule(
     name = "create_models_for_aot_compile",
     outs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
     cmd = (
-        "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
     tags = ["no_rocm"],

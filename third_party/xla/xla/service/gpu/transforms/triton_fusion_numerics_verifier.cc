@@ -64,7 +64,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 // Triton fusion. Otherwise, returns nullptr.
 absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     const HloInstruction* hlo) {
-  if (hlo->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo)) {
     return nullptr;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
@@ -90,7 +90,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
   new_module->mutable_config().set_debug_options(debug_opts);
   new_module->mutable_config()
       .mutable_debug_options()
-      .clear_xla_gpu_experimental_enable_triton_softmax_priority_fusion();
+      .add_xla_disable_hlo_passes("triton-softmax-rewriter");
 
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());

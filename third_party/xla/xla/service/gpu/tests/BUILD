@@ -876,6 +876,7 @@ xla_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

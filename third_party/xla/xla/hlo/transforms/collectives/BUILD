@@ -79,6 +79,7 @@ xla_cc_test(
     srcs = ["async_collective_creator_test.cc"],
     deps = [
         ":async_collective_creator",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

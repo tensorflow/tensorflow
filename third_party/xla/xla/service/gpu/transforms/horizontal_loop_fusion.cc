@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -68,6 +69,16 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
   }
 
   return first_output_type;
+}
+
+bool IsShapeDefaultMemorySpace(const Shape& shape) {
+  bool are_all_subshapes_default_space = true;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        are_all_subshapes_default_space &=
+            LayoutUtil::MemorySpace(subshape) == Layout::kDefaultMemorySpace;
+      });
+  return are_all_subshapes_default_space;
 }
 
 class HorizontalLoopFusionImpl {
@@ -178,6 +189,13 @@ bool IsFusibleCandidate(const HloInstruction& instr,
   if (IsNestableVariadicReduction(instr, device_description) ||
       IsNestableVariadicReduceWindow(instr)) {
     return false;
+  }
+
+  // Only consider instructions with default memory space operands and outputs
+  // to be fusable.
+  if (!IsShapeDefaultMemorySpace(instr.shape())) return false;
+  for (auto operand : instr.operands()) {
+    if (!IsShapeDefaultMemorySpace(operand->shape())) return false;
   }
 
   // Require no further check for element-wise instructions.

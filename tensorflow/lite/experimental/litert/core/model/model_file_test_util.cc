@@ -43,6 +43,22 @@ bool EqualsFbQuantizationDetail<LiteRtQuantizationPerTensor>(
          litert_quantization.scale == tfl_q_params->second;
 }
 
+template <>
+bool EqualsFbQuantizationDetail<LiteRtQuantizationPerChannel>(
+    LiteRtQuantizationPerChannel litert_quantization,
+    const TflQuantization* tfl_quantization) {
+  auto tfl_q_params = AsPerChannelQparams(tfl_quantization);
+  if (!tfl_q_params) return false;
+  auto [quantized_dimension, num_channels, zero_points, scales] = *tfl_q_params;
+  for (int i = 0; i < litert_quantization.num_channels; ++i) {
+    if (litert_quantization.zero_points[i] != zero_points->data()[i] ||
+        litert_quantization.scales[i] != scales->data()[i]) {
+      return false;
+    }
+  }
+  return litert_quantization.quantized_dimension == quantized_dimension &&
+         litert_quantization.num_channels == num_channels;
+}
 template <class LiteRtTenzorType>
 bool EqualsFbTensorTypeDetail(LiteRtTenzorType litert_tensor_type,
                               const TflTensorType& tfl_tensor) {
@@ -91,6 +107,9 @@ bool EqualsFbQuantization(const Quantization& litert_quantization,
   switch (litert_quantization.first) {
     case kLiteRtQuantizationPerTensor:
       return EqualsFbQuantizationDetail(litert_quantization.second.per_tensor,
+                                        tfl_quantization);
+    case kLiteRtQuantizationPerChannel:
+      return EqualsFbQuantizationDetail(litert_quantization.second.per_channel,
                                         tfl_quantization);
     case kLiteRtQuantizationNone:
       return !IsQuantized(tfl_quantization);

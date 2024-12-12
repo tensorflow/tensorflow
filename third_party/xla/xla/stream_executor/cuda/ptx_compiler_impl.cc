@@ -141,7 +141,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
           "Linked libnvptxcompiler is too old for %s.", architecture));
     }
     if (IsPtxRegisterAllocationError(error_log)) {
-      return absl::ResourceExhaustedError(error_log);
+      return PtxRegisterAllocationError(error_log);
     }
 
     return absl::InternalError(

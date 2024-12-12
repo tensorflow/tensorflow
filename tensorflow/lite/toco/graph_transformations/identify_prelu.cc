@@ -45,8 +45,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status IdentifyPRelu::Run(Model* model, std::size_t op_index,
-                                        bool* modified) {
+absl::Status IdentifyPRelu::Run(Model* model, std::size_t op_index,
+                                bool* modified) {
   *modified = false;
   const auto add_op_it = model->operators.begin() + op_index;
   const auto* add_op = add_op_it->get();

@@ -75,7 +75,7 @@ void GraphOptPass::runOnOperation() {
   GraphExportConfig confs;
   auto graph = std::make_unique<Graph>(flib_def);
   absl::flat_hash_set<Node*> control_ret_nodes;
-  Status status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
+  absl::Status status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       module_in, confs, &graph, &flib_def, &control_ret_nodes);
   if (!status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.message();
@@ -95,7 +95,7 @@ void GraphOptPass::runOnOperation() {
 
   for (auto pass : passes_) {
     assert(pass != nullptr);
-    Status status = pass->Run(options);
+    absl::Status status = pass->Run(options);
     if (!status.ok()) {
       mlir::emitError(mlir::UnknownLoc::get(&ctx))
           << pass->name() << ": " << status.message();

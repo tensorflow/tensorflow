@@ -24,7 +24,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -177,6 +176,15 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     internal::AssertOk(LiteRtGetPerTensorQuantization, Get(),
                        &per_tensor_quantization);
     return per_tensor_quantization;
+  }
+
+  LiteRtQuantizationPerChannel PerChannelQuantization() const {
+    internal::AssertEq([&]() { return QTypeId(); },
+                       kLiteRtQuantizationPerChannel);
+    LiteRtQuantizationPerChannel per_channel_quantization;
+    internal::AssertOk(LiteRtGetPerChannelQuantization, Get(),
+                       &per_channel_quantization);
+    return per_channel_quantization;
   }
 
   bool HasWeights() const {

@@ -20,10 +20,13 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -47,6 +50,7 @@ using TensorType = std::pair<LiteRtTensorTypeId, LiteRtTypeDetail>;
 
 typedef union {
   LiteRtQuantizationPerTensor per_tensor;
+  LiteRtQuantizationPerChannel per_channel;
 } LiteRtQuantizationTypeDetail;
 
 using Quantization =
@@ -85,9 +89,42 @@ struct LiteRtTensorT {
   // Authored name of tensor, may be empty.
   std::string name;
 
+  void SetQuantizationParameters(
+      LiteRtQuantizationTypeDetail quantization_detail) {
+    switch (q_type_id) {
+      case kLiteRtQuantizationPerTensor:
+        q_type_detail.per_tensor = quantization_detail.per_tensor;
+        break;
+      case kLiteRtQuantizationPerChannel:
+        q_type_detail.per_channel.num_channels =
+            quantization_detail.per_channel.num_channels;
+        per_channel_quantization_zero_points.reserve(
+            q_type_detail.per_channel.num_channels);
+        per_channel_quantization_scales.reserve(
+            q_type_detail.per_channel.num_channels);
+        for (int i = 0; i < q_type_detail.per_channel.num_channels; ++i) {
+          per_channel_quantization_zero_points.push_back(
+              quantization_detail.per_channel.zero_points[i]);
+          per_channel_quantization_scales.push_back(
+              quantization_detail.per_channel.scales[i]);
+        }
+        q_type_detail.per_channel.zero_points =
+            per_channel_quantization_zero_points.data();
+        q_type_detail.per_channel.scales =
+            per_channel_quantization_scales.data();
+        q_type_detail.per_channel.quantized_dimension =
+            quantization_detail.per_channel.quantized_dimension;
+        break;
+      default:
+        break;
+    }
+  }
+
  private:
   // TODO Unify mangement of dims and clean this up.
   litert::SmallVec<int32_t> dims;
+  std::vector<int64_t> per_channel_quantization_zero_points;
+  std::vector<float> per_channel_quantization_scales;
 };
 
 //
@@ -244,9 +281,9 @@ class LiteRtOpListT {
 
  private:
   // NOTE: This was originally a vector. Was encountering really odd
-  // segfaults when freeing after code on another side of a compilation boundary
-  // was doing pushes that resized. A list+copy to vector is not optimimal,
-  // revisit if bottleneck.
+  // segfaults when freeing after code on another side of a compilation
+  // boundary was doing pushes that resized. A list+copy to vector is not
+  // optimal, revisit if bottleneck.
   std::list<LiteRtOp> ops_;
 };
 

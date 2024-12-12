@@ -214,7 +214,8 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
   } else {
     CHECK(return_shape.IsTuple());
 
-    llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);
+    llvm::Type* tuple_type =
+        llvm_ir::ShapeToIrType(return_shape, module_->getContext());
 
     for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
       const Shape& element_shape = return_shape.tuple_shapes(i);
@@ -1599,7 +1600,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
 
   ShardedVectorType sharded_vector_type;
   llvm::Type* element_ir_type =
-      llvm_ir::PrimitiveTypeToIrType(element_type, module_);
+      llvm_ir::PrimitiveTypeToIrType(element_type, module_->getContext());
 
   for (int i = 0, e = 1 + Log2Ceiling(element_count); i < e; i++) {
     // For every power of two present in element_count, we generate one or more
@@ -3008,7 +3009,8 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       Load(IrShapeType(
                xla_while->while_condition()->root_instruction()->shape()),
            GetBufferForGlobalCallReturnValue(*xla_while->while_condition())),
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0));
+      llvm::ConstantInt::get(
+          llvm_ir::PrimitiveTypeToIrType(PRED, module_->getContext()), 0));
 
   // Branches to the body or to the while exit depending on the condition.
   llvm::BasicBlock* body_bb =
@@ -3343,7 +3345,7 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
       primitive_type_size,
       ::xla::cpu::MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_llvm_type =
-      llvm_ir::PrimitiveTypeToIrType(primitive_type, module);
+      llvm_ir::PrimitiveTypeToIrType(primitive_type, module->getContext());
 
   if (element_count == 1) {
     auto* load_instruction =
@@ -3439,11 +3441,11 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
     llvm::LoadInst* pred_value = Load(
         GetIrArrayFor(branch_index).GetBasePointeeType(),
         GetIrArrayFor(branch_index).GetBasePointer(), "load_predicate_value");
-    llvm::Value* pred_cond =
-        ICmpNE(pred_value,
-               llvm::ConstantInt::get(
-                   llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-               "boolean_predicate");
+    llvm::Value* pred_cond = ICmpNE(
+        pred_value,
+        llvm::ConstantInt::get(
+            llvm_ir::PrimitiveTypeToIrType(PRED, module_->getContext()), 0),
+        "boolean_predicate");
     llvm_ir::LlvmIfData if_data =
         llvm_ir::EmitIfThenElse(pred_cond, "conditional", b());
 
@@ -3814,7 +3816,7 @@ llvm::Value* IrEmitter::GetEmittedValueFor(const HloInstruction* hlo) {
 }
 
 llvm::Type* IrEmitter::IrShapeType(const Shape& shape) {
-  return llvm_ir::ShapeToIrType(shape, module_);
+  return llvm_ir::ShapeToIrType(shape, module_->getContext());
 }
 
 llvm::Value* IrEmitter::GetProfileCountersArgument() {
@@ -4076,7 +4078,7 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
   }
 
   llvm::Type* return_value_buffer_type =
-      llvm_ir::ShapeToIrType(return_shape, module_);
+      llvm_ir::ShapeToIrType(return_shape, module_->getContext());
   std::string retval_alloca_name = absl::StrCat(name, "_return_value_addr");
   int retval_alignment =
       is_scalar_return

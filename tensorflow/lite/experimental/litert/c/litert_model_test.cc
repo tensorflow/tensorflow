@@ -28,7 +28,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
@@ -200,6 +200,37 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
 
   EXPECT_EQ(per_tensor_quantization.scale, kScale);
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
+TEST(LiteRtTensorTest, QuantizationPerChannel) {
+  static constexpr size_t kNumChannels = 2;
+  static constexpr size_t kQuantizedDimension = 0;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZps[kNumChannels] = {2, 3};
+
+  LiteRtTensorT tensor;
+  tensor.q_type_id = kLiteRtQuantizationPerChannel;
+  tensor.q_type_detail.per_channel.zero_points = const_cast<int64_t*>(kZps);
+  tensor.q_type_detail.per_channel.scales = const_cast<float*>(kScales);
+  tensor.q_type_detail.per_channel.quantized_dimension = kQuantizedDimension;
+  tensor.q_type_detail.per_channel.num_channels = kNumChannels;
+
+  LiteRtQuantizationTypeId q_type_id;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  ASSERT_EQ(q_type_id, kLiteRtQuantizationPerChannel);
+
+  LiteRtQuantizationPerChannel per_channel_quantization;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetPerChannelQuantization(&tensor, &per_channel_quantization));
+
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      testing::ElementsAreArray(kZps));
+  ASSERT_EQ(per_channel_quantization.num_channels, kNumChannels);
+  ASSERT_EQ(per_channel_quantization.quantized_dimension, kQuantizedDimension);
 }
 
 TEST(LiteRtOpTest, GetOpCode) {

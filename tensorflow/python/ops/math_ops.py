@@ -4341,15 +4341,15 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 @tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
 @dispatch.add_dispatch_support
 def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
-  """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
+  """Compute the cumulative log-sum-exp of the tensor `x` along the `axis`.
 
-  By default, this op performs an inclusive cumulative log-sum-exp, which means
-  that the first element of the input is identical to the first element of
+  By default, this operation performs an inclusive cumulative log-sum-exp, which
+  means that the first element of the input is identical to the first element of
   the output.
 
   This operation is significantly more numerically stable than the equivalent
-  tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
-  computes the same result given infinite numerical precision. However, note
+  Tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
+  it computes the same result given infinite numerical precision. However, note
   that in some cases, it may be less stable than `tf.math.reduce_logsumexp`
   for a given element, as it applies the "log-sum-exp trick" in a different
   way.

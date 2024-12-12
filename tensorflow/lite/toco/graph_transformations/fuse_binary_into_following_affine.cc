@@ -152,9 +152,9 @@ void FuseMulOrDivParamsIntoFollowingAffine(Model* model, Operator* following_op,
 
 }  // namespace
 
-::tensorflow::Status FuseBinaryIntoFollowingAffine::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status FuseBinaryIntoFollowingAffine::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

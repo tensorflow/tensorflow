@@ -195,6 +195,14 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
                                           mlir::Location loc,
                                           mlir::Operation* op, mlir::Type type);
 
+// Create a TupleOp using the results of 'op'.
+mlir::Operation* WrapVariadicResultsInTuple(mlir::OpBuilder* builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op);
+
+// Returns true if the type is a tuple with no elements.
+bool IsEmptyTuple(const mlir::Type& type);
+
 mlir::TypeRange Untuple(const mlir::Type& type);
 
 static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(

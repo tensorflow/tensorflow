@@ -90,6 +90,13 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     const XlaComputation& computation);
 
+// Returns xla shape with layout set to reflect the given layout mode.
+absl::StatusOr<Shape> LayoutModeToXlaShape(
+    const LayoutMode& layout_mode, const Shape& unsharded_shape,
+    const Shape& sharded_shape, MemorySpaceColor memory_space,
+    std::function<absl::StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function);
+
 // Returns (arg shapes, output shape) with properly-set Layouts that can
 // be passed to XLA to reflect arg_layout_modes and out_layout_modes.
 absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(

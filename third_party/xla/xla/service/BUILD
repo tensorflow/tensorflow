@@ -1157,6 +1157,7 @@ cc_library(
         ":hlo_value",
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -6349,6 +6350,7 @@ cc_library(
     srcs = ["legalize_scheduling_annotations.cc"],
     hdrs = ["legalize_scheduling_annotations.h"],
     deps = [
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -6369,11 +6371,11 @@ xla_cc_test(
     srcs = ["legalize_scheduling_annotations_test.cc"],
     deps = [
         ":legalize_scheduling_annotations",
+        "//xla:side_effect_util",
         "//xla:test_helpers",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",

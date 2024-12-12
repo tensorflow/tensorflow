@@ -297,7 +297,7 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
     llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
 
     llvm::Type* ir_type =
-        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_module);
+        llvm_ir::ShapeToIrType(kernel_argument.shape(), context);
     llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
 
     if (!kernel_argument.written()) {

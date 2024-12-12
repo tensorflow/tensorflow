@@ -78,6 +78,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_hlo_as_long_text(false);
   opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
+  opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
   opts.set_xla_debug_buffer_assignment_show_max(15);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
@@ -209,7 +210,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(false);
-  opts.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -228,6 +228,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
+  opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
   opts.set_xla_gpu_llvm_verification_level(0);
   opts.set_xla_gpu_target_config_filename("");
   opts.set_xla_gpu_enable_cub_radix_sort(true);
@@ -297,7 +298,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(true);
-  opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(true);
+  opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   return opts;
 }
 
@@ -995,6 +996,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "us to dump into the directory specified by the environment variable "
       "TEST_UNDECLARED_OUTPUTS_DIR."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_annotate_with_emitter_loc",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_unsupported_annotate_with_emitter_loc),
+      debug_options->xla_gpu_unsupported_annotate_with_emitter_loc(),
+      "Forces emitters that use MLIR to annotate all the created MLIR "
+      "instructions with the emitter's C++ source file and line number. The "
+      "annotations should appear in the MLIR dumps. The emitters should use "
+      "EmitterLocOpBuilder for that."));
+  flag_list->push_back(tsl::Flag(
       "xla_dump_hlo_as_text",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_text),
       debug_options->xla_dump_hlo_as_text(),
@@ -1676,14 +1686,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "will try to make Triton fusions first and foremost where it is "
       "possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_triton_softmax_priority_fusion",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_triton_softmax_priority_fusion),
-      debug_options
-          ->xla_gpu_experimental_enable_triton_softmax_priority_fusion(),
-      "Enable fusion into Triton Softmax in PriorityFusion pass."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_results_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
       debug_options->xla_gpu_dump_autotune_results_to(),
@@ -1819,6 +1821,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
       debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
       "Filter out kernels that spill registers during autotuning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_fail_ptx_compilation_on_register_spilling",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_fail_ptx_compilation_on_register_spilling),
+      debug_options->xla_gpu_fail_ptx_compilation_on_register_spilling(),
+      "Fails the PTX compilation if a kernel spills registers."));
   flag_list->push_back(tsl::Flag(
       "xla_debug_buffer_assignment_show_max",
       int64_setter_for(&DebugOptions::set_xla_debug_buffer_assignment_show_max),

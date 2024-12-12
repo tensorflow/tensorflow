@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace {
 
-tensorflow::Status ReadModelProto(const std::string& input_file,
-                                  tensorflow::SavedModel* out) {
+absl::Status ReadModelProto(const std::string& input_file,
+                            tensorflow::SavedModel* out) {
   return tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input_file,
                                      out);
 }

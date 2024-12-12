@@ -48,6 +48,7 @@ limitations under the License.
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
@@ -183,21 +184,21 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::Module* module) {
+                                  llvm::LLVMContext& context) {
   switch (element_type) {
     case S2:
     case U2:
-      return llvm::Type::getIntNTy(module->getContext(), 2);
+      return llvm::Type::getIntNTy(context, 2);
     case S4:
     case U4:
-      return llvm::Type::getIntNTy(module->getContext(), 4);
+      return llvm::Type::getIntNTy(context, 4);
     case PRED:
     case S8:
     case U8:
-      return llvm::Type::getInt8Ty(module->getContext());
+      return llvm::Type::getInt8Ty(context);
     case S16:
     case U16:
-      return llvm::Type::getInt16Ty(module->getContext());
+      return llvm::Type::getInt16Ty(context);
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3:
@@ -206,24 +207,23 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F8E4M3FNUZ:
     case F8E3M4:
       // We represent F8 as an int since there is no LLVM F8 dtype.
-      return llvm::Type::getInt8Ty(module->getContext());
+      return llvm::Type::getInt8Ty(context);
     case BF16:
-      return llvm::Type::getBFloatTy(module->getContext());
+      return llvm::Type::getBFloatTy(context);
     case F16:
-      return llvm::Type::getHalfTy(module->getContext());
+      return llvm::Type::getHalfTy(context);
     case S32:
     case U32:
-      return llvm::Type::getInt32Ty(module->getContext());
+      return llvm::Type::getInt32Ty(context);
     case S64:
     case U64:
-      return llvm::Type::getInt64Ty(module->getContext());
+      return llvm::Type::getInt64Ty(context);
     case F32:
-      return llvm::Type::getFloatTy(module->getContext());
+      return llvm::Type::getFloatTy(context);
     case F64:
-      return llvm::Type::getDoubleTy(module->getContext());
+      return llvm::Type::getDoubleTy(context);
     case C64: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex64");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -233,31 +233,28 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
         // imaginary part of z.
         return llvm::StructType::create(
-            {llvm::Type::getFloatTy(module->getContext()),
-             llvm::Type::getFloatTy(module->getContext())},
+            {llvm::Type::getFloatTy(context), llvm::Type::getFloatTy(context)},
             "complex64", /*isPacked=*/true);
       }
       return cplx_t;
     }
     case C128: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex128");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex128");
       if (cplx_t == nullptr) {
-        return llvm::StructType::create(
-            {llvm::Type::getDoubleTy(module->getContext()),
-             llvm::Type::getDoubleTy(module->getContext())},
-            "complex128", /*isPacked=*/true);
+        return llvm::StructType::create({llvm::Type::getDoubleTy(context),
+                                         llvm::Type::getDoubleTy(context)},
+                                        "complex128", /*isPacked=*/true);
       }
       return cplx_t;
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::PointerType::getUnqual(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::PointerType::getUnqual(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -278,8 +275,9 @@ int GetSizeInBits(llvm::Type* type) {
   return bits;
 }
 
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
-  llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
+  llvm::Type* result_type =
+      PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
@@ -471,8 +469,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
-  return b->CreateZExt(comparison_result, llvm_ir::PrimitiveTypeToIrType(
-                                              PRED, ModuleFromIRBuilder(b)));
+  return b->CreateZExt(comparison_result,
+                       llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
 }
 
 // Internal helper that is called from emitted code to log an int64_t value with

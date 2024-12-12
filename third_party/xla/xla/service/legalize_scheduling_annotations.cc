@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,15 +42,15 @@ absl::StatusOr<int64_t> ExtractAnnotation(
     const ::google::protobuf::Map<std::string, std::string>& attrs,
     absl::string_view instr_name) {
   int64_t annotation_id;
-  if (!absl::SimpleAtoi(attrs.at("_scheduling_group_id"), &annotation_id)) {
+  if (!absl::SimpleAtoi(attrs.at(kXlaSchedulingGroupIdAttr), &annotation_id)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Instruction has a non-integer scheduling annotation, inst: ",
-        instr_name, ", annotation: ", attrs.at("_scheduling_group_id")));
+        instr_name, ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
   }
   if (annotation_id < 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Instruction has a negative scheduling annotation, inst: ", instr_name,
-        ", annotation: ", attrs.at("_scheduling_group_id")));
+        ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
   }
   return annotation_id;
 }
@@ -66,11 +67,11 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       const auto& attrs = instr->frontend_attributes().map();
-      if (!attrs.contains("_scheduling_group_id")) {
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
         continue;
       }
       VLOG(1) << "Annotated instruction: " << instr->name() << " "
-              << attrs.at("_scheduling_group_id");
+              << attrs.at(kXlaSchedulingGroupIdAttr);
       TF_ASSIGN_OR_RETURN(int64_t annotation_id,
                           ExtractAnnotation(attrs, instr->name()));
       if (annotation_to_computation.contains(annotation_id) &&
@@ -99,7 +100,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     int64_t seen_annotation = -1;
     for (HloInstruction* instr : computation->instructions()) {
       const auto& attrs = instr->frontend_attributes().map();
-      if (!attrs.contains("_scheduling_group_id")) {
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
         continue;
       }
       TF_ASSIGN_OR_RETURN(int64_t annotation_id,
@@ -123,7 +124,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     FrontendAttributes frontend_attributes =
         computation->FusionInstruction()->frontend_attributes();
     frontend_attributes.mutable_map()->insert(
-        {"_scheduling_group_id", std::to_string(seen_annotation)});
+        {kXlaSchedulingGroupIdAttr, std::to_string(seen_annotation)});
     computation->FusionInstruction()->set_frontend_attributes(
         frontend_attributes);
   }

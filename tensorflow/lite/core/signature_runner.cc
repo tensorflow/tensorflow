@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/signature_runner.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"

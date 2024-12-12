@@ -340,10 +340,9 @@ absl::Status PyClient::Defragment() {
   options.allow_zero_copy =
       (!force_copy && (host_buffer_semantics ==
                        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
-  // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-  TF_ASSIGN_OR_RETURN(
-      auto put_fn, DevicePut(argument.ptr(), client->ifrt_client_.get(), device,
-                             options, ifrt::MemoryKind()));
+  TF_ASSIGN_OR_RETURN(auto put_fn,
+                      DevicePut(argument, client->ifrt_client_.get(), device,
+                                options, ifrt::MemoryKind()));
   TF_ASSIGN_OR_RETURN(auto put, [&]() {
     // Must release the GIL before calling IFRT because backends may
     // decide to block/sleep for device buffer allocation.
@@ -634,14 +633,13 @@ absl::StatusOr<nb::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
 }
 
 absl::StatusOr<std::pair<uint64_t, nb::object>>
-PyClient::GetEmitPythonCallbackDescriptor(nb::callable callable,
-                                          nb::object operand_shapes,
-                                          nb::object result_shapes) {
-  TF_ASSIGN_OR_RETURN(auto loaded_host_callback,
-                      PyCpuLoadedHostCallback::Create(
-                          ifrt_client(), std::move(callable),
-                          nb::cast<std::vector<Shape>>(operand_shapes),
-                          nb::cast<std::vector<Shape>>(result_shapes)));
+PyClient::GetEmitPythonCallbackDescriptor(
+    nb::callable callable, absl::Span<Shape const> operand_shapes,
+    absl::Span<Shape const> result_shapes) {
+  TF_ASSIGN_OR_RETURN(
+      auto loaded_host_callback,
+      PyCpuLoadedHostCallback::Create(ifrt_client(), std::move(callable),
+                                      operand_shapes, result_shapes));
   const uint64_t descriptor = loaded_host_callback->descriptor();
 
   nb::capsule callback_capsule(

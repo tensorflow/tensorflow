@@ -14,15 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
+#include "xla/service/gpu/fusions/triton/compilation_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter_legacy_matmul.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -50,10 +49,10 @@ TEST(TritonStub, CallStubApi) {
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(pm, {}, {}, cluster_info).ok());
+  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
-  mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
+  EmitterLocOpBuilder builder(&context);
 
   EXPECT_TRUE(
       ir_emitter_triton_internal::ComputeDelinearizedTileIndex(builder, {})
@@ -74,7 +73,7 @@ TEST(TritonStub, CallLegacyMatMulApis) {
   EXPECT_FALSE(GetMatMulLaunchDimensions({}, *adaptor.get(), {}, {}).ok());
 
   mlir::MLIRContext context;
-  mlir::OpBuilder builder(&context);
+  EmitterLocOpBuilder builder(&context);
   EXPECT_FALSE(EmitMatMul(builder, {}, {}, nullptr, {}, {}).ok());
 }
 

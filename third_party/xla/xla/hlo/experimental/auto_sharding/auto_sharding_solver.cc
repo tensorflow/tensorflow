@@ -25,11 +25,11 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/btree_set.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 
@@ -360,7 +360,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
         AutoShardingSolverRequest_Group>& groups,
     const tsl::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Costs>& memory_costs,
-    std::string_view prim_type,
+    absl::string_view prim_type,
     std::vector<std::vector<MPVariable*>>& prim_vars,
     std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
     std::vector<MPVariable*>& group_vars,
@@ -539,7 +539,7 @@ void AddMemoryTerms(
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
-  const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
+  const AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
   // SAT or SCIP
@@ -1014,30 +1014,6 @@ std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
   return std::nullopt;
 }
 
-// Computes the objective value of the sharding strategy. If the objective value
-// is infinite or the sharding is infeasible (e.g., violates the peak-memory
-// constraint), then a negated `AutoShardingViolationCode` value is returned.
-double ComputeShardingStrategyCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies) {
-  double cost = 0.0;
-  for (NodeIdx v = 0; v < request.num_nodes(); ++v) {
-    NodeStrategyIdx strategy = node_strategies[v];
-    cost += request.computation_costs(v).costs(strategy) +
-            request.communication_costs(v).costs(strategy);
-  }
-  for (EdgeIdx e = 0; e < request.edges_size(); ++e) {
-    EdgeStrategyIdx strategy = GetEdgeStrategy(request, node_strategies, e);
-    cost += request.resharding_costs(e).costs(strategy);
-  }
-  std::optional<AutoShardingViolationCode> violation_code =
-      ShardingStrategyHasViolation(request, node_strategies);
-  if (violation_code.has_value()) {
-    cost = -1 * (*violation_code);
-  }
-  return cost;
-}
-
 // Assigns all nodes to their first sharding configuration. If the assignment is
 // infeasible, the output cost is negative and encodes the violation code.
 AutoShardingSolverOutput SolveTrivial(
@@ -1149,6 +1125,8 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     output = SolveGreedy(request, "node-cost");
   } else if (algorithm == "greedy-node-memory") {
     output = SolveGreedy(request, "node-memory");
+  } else if (algorithm == "brkga") {
+    output = SolveBrkga(request);
   } else {
     CHECK(false) << absl::Substitute("Algorithm $0 is not implemented.",
                                      algorithm);
@@ -1156,6 +1134,8 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
   auto duration = absl::Now() - start_time;
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   LOG(INFO) << "Objective value: " << output.cost;
+  LOG(INFO) << "Total Cost: "
+            << ComputeShardingStrategyCost(unscaled_request, output.s_val);
   return output;
 }
 
@@ -1369,6 +1349,27 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   }
   evaluation.total_makespan = EvaluateMakespan(request, result, evaluation);
   return evaluation;
+}
+
+double ComputeShardingStrategyCost(
+    const AutoShardingSolverRequest& request,
+    const std::vector<NodeStrategyIdx>& node_strategies) {
+  double cost = 0.0;
+  for (NodeIdx v = 0; v < request.num_nodes(); ++v) {
+    NodeStrategyIdx strategy = node_strategies[v];
+    cost += request.computation_costs(v).costs(strategy) +
+            request.communication_costs(v).costs(strategy);
+  }
+  for (EdgeIdx e = 0; e < request.edges_size(); ++e) {
+    EdgeStrategyIdx strategy = GetEdgeStrategy(request, node_strategies, e);
+    cost += request.resharding_costs(e).costs(strategy);
+  }
+  std::optional<AutoShardingViolationCode> violation_code =
+      ShardingStrategyHasViolation(request, node_strategies);
+  if (violation_code.has_value()) {
+    cost = -1 * (*violation_code);
+  }
+  return cost;
 }
 
 absl::Status ValidateRequest(const AutoShardingSolverRequest& request) {

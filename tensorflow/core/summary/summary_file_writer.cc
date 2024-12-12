@@ -14,17 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/summary/summary_converter.h"
+#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {

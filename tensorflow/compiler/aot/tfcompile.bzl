@@ -212,7 +212,6 @@ def _tf_library(
             ] + freeze_saver_srcs,
             outs = [freeze_file],
             cmd = (
-                "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
                 "CUDA_VISIBLE_DEVICES='' " +
                 "$(location " +
                 "//tensorflow/python/tools:freeze_graph)" +

@@ -45,24 +45,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
     const GraphImportConfig& specs, mlir::MLIRContext* context);
 
-// Given a Graph, returns a MLIR module containing the graph, expressed with
-// tf_executor dialect.
-ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertGraphToTfExecutor instead.")
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
-    const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name =
-        nullptr);
-
-// [Experimental]
-// Given a Function, returns a MLIR module containing the graph, expressed with
-// tf_executor dialect.
-ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertGraphToTfExecutor instead.")
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
-    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
-    mlir::MLIRContext* context);
-
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(

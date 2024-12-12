@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace tensorflow {
 
@@ -55,6 +56,8 @@ DynamicDeviceMgr::DynamicDeviceMgr(std::unique_ptr<Device>&& device)
 DynamicDeviceMgr::~DynamicDeviceMgr() {
   // Release resources ahead of destroying the device manager as the resource
   // destructors (e.g. ~IteratorResource) assume devices still exist.
+  VLOG(1) << "DynamicDeviceMgr::~DynamicDeviceMgr @@stacktrace\n "
+          << tsl::CurrentStackTrace();
   mutex_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
     // TODO(tf-runtime-team): clear devices' resource mgr in devices'

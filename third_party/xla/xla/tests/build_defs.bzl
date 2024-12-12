@@ -22,6 +22,7 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "gpu_any",
     "gpu_a100",
     "gpu_h100",
+    "gpu_b100",
 ]
 
 AMD_GPU_DEFAULT_BACKENDS = ["gpu_amd_any"]
@@ -285,6 +286,10 @@ def xla_test(
                 "//xla/service:cpu_plugin",
                 "//xla/tests:test_macros_cpu",
             ]
+
+            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
+            if "test_migrated_to_hlo_runner_pjrt" in tags:
+                backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS:
             backend_deps += [
                 "//xla/service:gpu_plugin",
@@ -295,11 +300,19 @@ def xla_test(
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
+
+            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
+            if "test_migrated_to_hlo_runner_pjrt" in tags:
+                backend_deps.append("//xla/tests:pjrt_gpu_client_registry")
         elif backend == "interpreter":
             backend_deps += [
                 "//xla/service:interpreter_plugin",
                 "//xla/tests:test_macros_interpreter",
             ]
+
+            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
+            if "test_migrated_to_hlo_runner_pjrt" in tags:
+                backend_deps.append("//xla/tests:pjrt_interpreter_client_registry")
         elif backend in plugins:
             backend_deps += plugins[backend]["deps"]
             this_backend_copts += plugins[backend]["copts"]

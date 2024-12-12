@@ -17,11 +17,15 @@
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -46,6 +50,9 @@ using TflQuantizationPtr = std::unique_ptr<TflQuantization>;
 using TflOpCodePtr = std::unique_ptr<TflOpCode>;
 
 using TflPerTensorQParams = std::pair<int64_t, float>;
+using TflPerChannelQParams =
+    std::tuple<int32_t, uint64_t, const std::vector<int64_t>*,
+               const std::vector<float>*>;
 
 // Mirror of all the tensor type related fields in flatbuffer tensor definition.
 struct TflShapeInfo {
@@ -179,8 +186,12 @@ bool IsBlockWiseQuantized(const TflQuantization* tfl_quantization);
 // Does tensor have custom quantization.
 bool IsCustomQuantized(const TflQuantization* tfl_quantization);
 
-// Get the per-tensor q-params if given tensor has them.
+// Get the per-tensor tensor q-params if given tensor has them.
 Expected<TflPerTensorQParams> AsPerTensorQparams(
+    const TflQuantization* tfl_quantization);
+
+// Get the per-channel tensor q-params if given tensor has them.
+Expected<TflPerChannelQParams> AsPerChannelQparams(
     const TflQuantization* tfl_quantization);
 
 // Flatbuffer management helpers.
@@ -212,9 +223,10 @@ class FlatbufferWrapper {
     return *fb_model_;
   }
 
-  // Unpacked version of underlying model object.
-  const TflModel& UnpackedModel() const { return *unpacked_; }
-  TflModel& UnpackedModel() { return *unpacked_; }
+  // Unpack the contained flatbuffer.
+  TflModelPtr Unpack() const {
+    return TflModelPtr(fb_model_->GetModel()->UnPack());
+  }
 
  private:
   FlatbufferWrapper(::tflite::FlatBufferModel::Ptr fb_model,
@@ -222,13 +234,11 @@ class FlatbufferWrapper {
                     OwningBufferRef<uint8_t>&& model_buf)
       : fb_model_(std::move(fb_model)),
         alloc_(std::move(alloc)),
-        model_buf_(std::forward<OwningBufferRef<uint8_t>>(model_buf)),
-        unpacked_(TflModelPtr(fb_model_->GetModel()->UnPack())) {}
+        model_buf_(std::forward<OwningBufferRef<uint8_t>>(model_buf)) {}
 
   ::tflite::FlatBufferModel::Ptr fb_model_;
   ::tflite::Allocation::Ptr alloc_;
   OwningBufferRef<uint8_t> model_buf_;
-  TflModelPtr unpacked_;
 };
 
 }  // namespace litert::internal

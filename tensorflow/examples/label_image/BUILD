@@ -47,6 +47,7 @@ tf_cc_binary(
         ],
     }) + [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "@local_xla//xla/tsl/util:command_line_flags",

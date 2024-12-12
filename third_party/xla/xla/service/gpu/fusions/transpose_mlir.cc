@@ -66,6 +66,7 @@ namespace {
 
 using llvm::SmallVector;
 using mlir::AffineExpr;
+using mlir::ImplicitLocOpBuilder;
 using mlir::MLIRContext;
 using mlir::RankedTensorType;
 using mlir::Value;
@@ -295,11 +296,12 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   for (int index : side_output_root_indices_) {
     side_output_inits.push_back(entry_function.getArgument(num_inputs + index));
   }
-  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+  auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
+                          ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
     auto input_indices = [&](const HloInstruction* instr) {
       return ApplyIndexing(GetIndexing(/*input=*/true, instr->shape(), ctx),
-                           thread_and_block_ids, symbol_values, builder);
+                           thread_and_block_ids, symbol_values, nested_b);
     };
 
     SmallVector<Value> side_outputs;
@@ -310,7 +312,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
       ValueRange param_values = mlir_converter::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
-          builder);
+          nested_b);
       side_outputs.append(param_values.begin(), param_values.end());
     }
 
@@ -318,7 +320,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     for (const auto& [value, indices, output] :
          llvm::zip(side_outputs, side_output_indices, output_tensors)) {
       result_tensors.push_back(
-          builder.create<mlir::tensor::InsertOp>(value, output, indices));
+          nested_b.create<mlir::tensor::InsertOp>(value, output, indices));
     }
 
     return result_tensors;
@@ -355,30 +357,31 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
       GetSharedMemoryIndexing(/*read=*/true, mlir_context);
   auto result_tensors = mlir_converter::EmitXlaLoopOp(
       builder, thread_and_block_ids, written.updated_outputs, output_indexing,
-      [&](ValueRange symbol_values, ValueRange map_results,
+      [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+          ValueRange map_results,
           ValueRange output_tensors) -> SmallVector<Value> {
         auto shmem_indices = ApplyIndexing(
-            shmem_read_indexing, thread_and_block_ids, symbol_values, builder);
+            shmem_read_indexing, thread_and_block_ids, symbol_values, nested_b);
         absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
             transpose_values;
         for (auto [transpose, shmem] :
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           transpose_values[transpose].push_back(
-              builder.create<mlir::tensor::ExtractOp>(shmem, shmem_indices));
+              nested_b.create<mlir::tensor::ExtractOp>(shmem, shmem_indices));
         }
         llvm::SmallVector<Value> epilogue_indices = thread_and_block_ids;
         absl::c_copy(symbol_values, std::back_inserter(epilogue_indices));
         auto result_scalars =
             EmitEpilogue(/*epilogue_index=*/0, computations, entry_function,
-                         transpose_values, epilogue_indices, builder);
+                         transpose_values, epilogue_indices, nested_b);
         SmallVector<Value> results = output_tensors;
         for (auto [root, indexing, root_index] :
              llvm::zip(shmem_transpose_roots_,
                        computations.epilogues().front().root_indexing,
                        shmem_transpose_root_indices_)) {
           llvm::SmallVector<Value> indices = ApplyIndexing(
-              indexing, thread_and_block_ids, symbol_values, builder);
-          results[root_index] = builder.create<mlir::tensor::InsertOp>(
+              indexing, thread_and_block_ids, symbol_values, nested_b);
+          results[root_index] = nested_b.create<mlir::tensor::InsertOp>(
               result_scalars.at(root).front(), results[root_index], indices);
         }
         return results;

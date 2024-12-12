@@ -49,9 +49,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite/ios:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 # LINT.IfChange(common)

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/util/onednn_threadpool.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
@@ -222,6 +223,12 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   TRANSPOSE_LAST_TWO_DIMS_IF(
       matmul_config.transpose_b() && weights_md.get_ndims() > 1, weights_md);
   auto output_md = output_minfo.GetOneDnnMemDesc();
+
+  Literal* reordered_weights_literal = nullptr;
+  void* rhs_data = weights_minfo.Data();
+
+  auto weight_format = tsl::port::IsAarch64CPU() ? memory::format_tag::any
+                                                 : memory::format_tag::ab;
   if (matmul_config.optimization_config().weights_prepacked()) {
     // Weight pre-packing is supported for 2D weights only.
     // Since prepacked weights array is flattened, try to infer the dims from
@@ -230,8 +237,48 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
     // array.
     weights_md =
         memory::desc({input_md.get_dims().back(), output_md.get_dims().back()},
-                     weights_md.get_data_type(), memory::format_tag::ab);
+                     weights_md.get_data_type(), weight_format);
+  } else if (tsl::port::IsAarch64CPU()) {
+    // Weights are not pre-packed, and this scenario requires
+    // weights reordering on ARM64 platform
+    auto weights_mem =
+        dnnl::memory{weights_md, cpu_engine, weights_minfo.Data()};
+
+    auto bias_md = dnnl::memory::desc{};
+
+    if (absl::c_count(matmul_config.fusions().ops(), OneDnnFusionConfig::BIAS) >
+        0) {
+      MemrefInfo bias_minfo(args[arg_indx]);
+      bias_md = bias_minfo.GetOneDnnMemDesc();
+    }
+
+    // extend bias rank to match result rank
+    if (!bias_md.is_zero()) {
+      auto missed_rank = output_md.get_ndims() - bias_md.get_ndims();
+      XLA_LIGHTWEIGHT_CHECK(missed_rank >= 0);
+      if (missed_rank > 0) {
+        auto bias_dims = bias_md.get_dims();
+        bias_dims.insert(bias_dims.begin(), missed_rank, 1);
+        bias_md = bias_md.reshape(bias_dims);
+      }
+    }
+    auto reordered_weights_md = OneDnnMatMulOptWeightsDesc(
+        cpu_engine, input_md, weights_md, bias_md, output_md);
+
+    auto reordered_weights_shape =
+        MemDescToXlaShapeFlattened(reordered_weights_md);
+    reordered_weights_literal = new Literal(reordered_weights_shape);
+
+    rhs_data = reordered_weights_literal->untyped_data();
+    auto reordered_weights_mem =
+        dnnl::memory{reordered_weights_md, cpu_engine, rhs_data};
+
+    dnnl::reorder rdr{weights_mem, reordered_weights_mem};
+    rdr.execute(onednn_stream, weights_mem, reordered_weights_mem);
+    onednn_stream.wait();
+    weights_md = reordered_weights_md;
   }
+
   const int64_t num_fused_operands = num_args - arg_indx;
   std::vector<memory::desc> fused_mds;
   std::vector<void*> fused_bufs;
@@ -250,8 +297,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   XLA_LIGHTWEIGHT_CHECK(num_args == arg_indx);
 
   auto lhs_mem = memory(input_md, cpu_engine, input_minfo.Data());
-  auto rhs_mem =
-      memory(matmul_pd->weights_desc(), cpu_engine, weights_minfo.Data());
+  auto rhs_mem = memory(matmul_pd->weights_desc(), cpu_engine, rhs_data);
   auto result_mem = memory(output_md, cpu_engine, output_minfo.Data());
 
   if (std::strstr(matmul_pd->impl_info_str(), "ref") != nullptr) {
@@ -275,6 +321,11 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   matmul_args.insert(postop_args.begin(), postop_args.end());
 
   matmul_prim.execute(onednn_stream, matmul_args);
+
+  if (reordered_weights_literal != nullptr) {
+    delete reordered_weights_literal;
+    reordered_weights_literal = nullptr;
+  }
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMulReorder(

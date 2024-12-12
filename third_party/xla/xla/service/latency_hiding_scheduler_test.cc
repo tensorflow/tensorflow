@@ -156,6 +156,9 @@ absl::StatusOr<bool> RunScheduler(
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
       [&shape_size_bytes](const Shape& shape) -> int64_t {
     int64_t shape_size = 0;
+    if (shape.IsToken()) {
+      return 0;
+    }
     if (shape.IsTuple()) {
       for (auto& sub_shape : shape.tuple_shapes()) {
         shape_size += shape_size_bytes(sub_shape);
@@ -3755,6 +3758,63 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "fusion"));
   EXPECT_LT(GetIndex(new_instruction_sequence, "gte"),
             GetIndex(new_instruction_sequence, "cpd"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, OutOfOrderStartAndDone) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_condition {
+  tuple = ((f32[16,16], u32[], token[]), f32[16,16], u32[]) parameter(0)
+  i = get-tuple-element(tuple), index=2
+  n = u32[] constant(2)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = ((f32[16,16], u32[], token[]), f32[16,16], u32[]) parameter(0)
+  gte = get-tuple-element(tuple), index=0
+  param = get-tuple-element(tuple), index=1
+  i = get-tuple-element(tuple), index=2
+  dot = f32[16,16] dot(param, param), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  recv_done = (f32[16], token[]) recv-done(gte), frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+  after_all = token[] after-all()
+  recv = (f32[16,16], u32[], token[]) recv(after_all), frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, control-predecessors={recv_done}
+  c1 = u32[] constant(1)
+  add = add(i, c1)
+  ROOT tuple_ = ((f32[16,16], u32[], token[]), f32[16,16], u32[]) tuple(recv, dot, add)
+}
+
+ENTRY main {
+  param0 = f32[16,16] parameter(0)
+  after_all0 = token[] after-all()
+  recv0 = (f32[16,16], u32[], token[]) recv(after_all0), frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+  c0 = u32[] constant(0)
+  tuple = ((f32[16,16], u32[], token[]), f32[16,16], u32[]) tuple(recv0, param0, c0)
+  while = ((f32[16,16], u32[], token[]), f32[16,16], u32[]) while(tuple), body=while_body, condition=while_condition
+  gte0 = (f32[16,16], u32[], token[]) get-tuple-element(while), index=0
+  ROOT recv_done0 = (f32[16], token[]) recv-done(gte0), frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.schedule_send_recvs = true;
+  sched_config.send_recv_host_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
 }
 
 }  // namespace xla

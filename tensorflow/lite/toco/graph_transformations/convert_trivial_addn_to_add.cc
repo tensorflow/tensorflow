@@ -23,9 +23,8 @@ namespace toco {
 
 // This pass will convert an AddN operator with only 2 inputs into a regular Add
 // operator, to which more optimizations may apply.
-::tensorflow::Status ConvertTrivialAddNToAdd::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ConvertTrivialAddNToAdd::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto addn_it = model->operators.begin() + op_index;
   if (addn_it->get()->type != OperatorType::kAddN) {

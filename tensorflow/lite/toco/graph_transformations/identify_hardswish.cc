@@ -37,8 +37,8 @@ namespace toco {
 
 using util::IsBinaryOp;
 
-::tensorflow::Status IdentifyHardSwish::Run(Model* model, std::size_t op_index,
-                                            bool* modified) {
+absl::Status IdentifyHardSwish::Run(Model* model, std::size_t op_index,
+                                    bool* modified) {
   *modified = false;
   const auto add_with_relu6_op_it = (model->operators.begin() + op_index);
   const auto add_with_relu6_op = add_with_relu6_op_it->get();

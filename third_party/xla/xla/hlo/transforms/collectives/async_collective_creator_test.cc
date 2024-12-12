@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -363,11 +364,13 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllGather) {
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
   EXPECT_TRUE(
-      done->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      done->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(done->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
   EXPECT_TRUE(
-      start->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      start->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
 }
 
 TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllReduce) {
@@ -394,11 +397,13 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllReduce) {
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
   EXPECT_TRUE(
-      done->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      done->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(done->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
   EXPECT_TRUE(
-      start->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      start->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
 }
 
 TEST_F(AsyncCollectiveCreatorTest,
@@ -421,11 +426,13 @@ TEST_F(AsyncCollectiveCreatorTest,
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
   EXPECT_TRUE(
-      done->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      done->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(done->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
   EXPECT_TRUE(
-      start->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      start->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
 }
 
 TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
@@ -447,11 +454,13 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
   EXPECT_TRUE(
-      done->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      done->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(done->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
   EXPECT_TRUE(
-      start->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+      start->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
+            "0");
 }
 }  // namespace
 }  // namespace xla

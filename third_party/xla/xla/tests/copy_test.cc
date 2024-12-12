@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
@@ -45,7 +46,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class CopyOpTest : public HloTestBase {
+class CopyOpTest : public HloPjRtTestBase {
  protected:
   CopyOpTest() : platform_(*PlatformUtil::GetDefaultPlatform()) {}
 
@@ -89,7 +90,7 @@ class CopyOpTest : public HloTestBase {
   se::Platform* platform() const { return platform_; }
 
  private:
-  se::Platform* platform_;
+  se::Platform* platform_ = nullptr;
 };
 
 XLA_TEST_F(CopyOpTest, CopyR0Bool) {
@@ -190,7 +191,7 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   module->AddEntryComputation(std::move(computation));
 
   Literal result = ExecuteAndTransfer(std::move(module), {&literal});
-  LiteralTestUtil::ExpectR0Near<float>(42.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(42.0f, result, ErrorSpec{0.0001});
 }
 
 XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
@@ -211,7 +212,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
   module->AddEntryComputation(std::move(computation));
   Literal result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, result,
-                                       error_spec_);
+                                       ErrorSpec{0.0001});
 }
 
 XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
@@ -240,7 +241,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   // The result of the computation has the default layout, which is the inverse
   // of the layout of the source literal.
   LiteralTestUtil::ExpectR2Near<float>({{1.0, 3.0}, {2.0, 4.0}}, result,
-                                       error_spec_);
+                                       ErrorSpec{0.0001});
 }
 
 void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {

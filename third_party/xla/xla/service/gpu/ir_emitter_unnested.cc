@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_group_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_recv_thunk.h"
 #include "xla/service/gpu/runtime/nccl_send_thunk.h"
 #include "xla/service/gpu/runtime/norm_thunk.h"
@@ -1911,7 +1912,34 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
                  src_shape.layout().memory_space(), dst,
                  dst_shape.layout().memory_space());
     }
+  } else if (kind == Thunk::Kind::kNcclRaggedAllToAll) {
+    // RaggedAllToAll operation has 6 operands: input, output, input_offset,
+    // send_size, output_offset, recv_size.
+    const Shape& input_shape = inst->operand(0)->shape();
+    const Shape& result_shape = inst->shape();
+    TF_ASSIGN_OR_RETURN(auto input_buffer,
+                        GetAllocationSliceForHlo(inst->operand(0)));
+    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
+    add_buffer(ShapeUtil::ElementsIn(input_shape), input_buffer,
+               input_shape.layout().memory_space(), result_buffer,
+               result_shape.layout().memory_space());
 
+    const Shape& output_shape = inst->operand(1)->shape();
+    TF_ASSIGN_OR_RETURN(auto output_buffer,
+                        GetAllocationSliceForHlo(inst->operand(1)));
+
+    add_buffer(ShapeUtil::ElementsIn(result_shape), output_buffer,
+               output_shape.layout().memory_space(), output_buffer,
+               output_shape.layout().memory_space());
+
+    for (int64_t i = 2; i < operand_count; i++) {
+      const Shape& shape = inst->operand(i)->shape();
+      TF_ASSIGN_OR_RETURN(auto slice,
+                          GetAllocationSliceForHlo(inst->operand(i)));
+      add_buffer(ShapeUtil::ElementsIn(shape), slice,
+                 shape.layout().memory_space(), slice,
+                 shape.layout().memory_space());
+    }
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
@@ -2519,6 +2547,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
         case HloOpcode::kAllToAll:
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
+        case HloOpcode::kRaggedAllToAll:
+          return EmitNcclAsyncDone(Thunk::kNcclRaggedAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
         case HloOpcode::kFusion:
@@ -2559,6 +2589,13 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
           return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
+        }
+        case HloOpcode::kRaggedAllToAll: {
+          auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(wrapped);
+          return EmitNcclThunk<NcclRaggedAllToAllStartThunk,
+                               HloRaggedAllToAllInstruction>(
+              Thunk::kNcclRaggedAllToAll, instr, ragged_all_to_all,
+              std::nullopt);
         }
         case HloOpcode::kCollectiveBroadcast: {
           auto* collective_broadcast =

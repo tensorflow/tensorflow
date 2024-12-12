@@ -152,7 +152,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   int64_t arithmetic_ops_count;
 
   // Convert model.
-  tensorflow::Status status =
+  absl::Status status =
       Convert(input_contents_txt, toco_flags, model_flags,
               &output_file_contents_txt, &arithmetic_ops_count);
 
@@ -257,8 +257,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
 
     // Register extra opdefs to TensorFlow global op registry.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](
-            tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> absl::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return absl::OkStatus();
         });

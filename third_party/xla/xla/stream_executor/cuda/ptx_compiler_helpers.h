@@ -21,8 +21,15 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
+
+// Creates a status with a payload indicating a register allocation error.
+absl::Status PtxRegisterAllocationError(std::string_view message);
+
 // Checks whether ptxas log contains errors related to register allocation.
 bool IsPtxRegisterAllocationError(std::string_view);
+
+// Checks whether the status is a register allocation error.
+bool IsPtxRegisterAllocationError(absl::Status status);
 
 // Identifies errors in the ptxas log and creates an error status.
 // `architecture` is the name of the GPU architecture, e.g. "sm_80" and is only

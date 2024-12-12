@@ -104,8 +104,9 @@ std::vector<int32> ReshapeToTranspose(const Model& model,
 // to be merged if the reshape does not affect memory ordering and does not
 // affects the number of dimensions. This only occurs when only unary dimensions
 // are shifting position.
-::tensorflow::Status MergeReshapeIntoPrecedingTranspose::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status MergeReshapeIntoPrecedingTranspose::Run(Model* model,
+                                                     std::size_t op_index,
+                                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* reshape_op = ConvertOperator<TensorFlowReshapeOperator*>(

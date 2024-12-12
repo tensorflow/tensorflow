@@ -334,7 +334,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     }
     if (IsPtxRegisterAllocationError(stderr_output)) {
       LOG(INFO) << stderr_output;
-      return absl::ResourceExhaustedError(stderr_output);
+      return PtxRegisterAllocationError(stderr_output);
     }
 
     return absl::InternalError(

@@ -112,7 +112,7 @@ SplitAndCreateArraysFromHostBuffer(
 
   // Fast path for output in the simple no split case.
   auto assign_or_copy_value_fn =
-      [&](const tensorflow::Tensor& input) -> Status {
+      [&](const tensorflow::Tensor& input) -> absl::Status {
     split_tensors[0] = input;
     return absl::OkStatus();
   };

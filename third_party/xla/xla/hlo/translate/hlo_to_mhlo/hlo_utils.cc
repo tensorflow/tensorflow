@@ -188,6 +188,26 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
   return tupleOp;
 }
 
+mlir::Operation* WrapVariadicResultsInTuple(mlir::OpBuilder* builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op) {
+  auto result_types = op->getResultTypes();
+  // Consider skipping wrapping result type of size 1.
+  assert(result_types.size() != 1 ||
+         !llvm::isa<mlir::TupleType>(result_types[0]) &&
+             "Cannot wrap single tuple arg in tuple");
+
+  auto tuple_type = builder->getTupleType(result_types);
+  return CreateTupleFromOpResults(builder, loc, op, tuple_type);
+}
+
+bool IsEmptyTuple(const mlir::Type& type) {
+  if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type)) {
+    return tuple_type.getTypes().empty();
+  }
+  return false;
+}
+
 mlir::TypeRange Untuple(const mlir::Type& type) {
   if (llvm::isa<mlir::TupleType>(type)) {
     return llvm::dyn_cast<mlir::TupleType>(type).getTypes();

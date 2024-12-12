@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <sstream>
 #include <utility>
 
@@ -96,6 +98,22 @@ TEST(DumpTest, TestDumpPerTensorQuantization) {
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationPerTensor, per_tensor_detail), q_dump);
   EXPECT_EQ(q_dump.view(), " <q PerTensor [ .z = 2, .s = 1.000000 ]>");
+}
+
+TEST(DumpTest, TestDumpPerChannelQuantization) {
+  static constexpr size_t kRank = 2;
+  static constexpr size_t kQuantizedDimension = 1;
+  static constexpr float kScales[kRank] = {1.0, 2.0};
+  static constexpr int64_t kZps[kRank] = {2, 3};
+  LiteRtQuantizationTypeDetail per_channel_detail;
+  per_channel_detail.per_channel.scales = const_cast<float*>(kScales);
+  per_channel_detail.per_channel.zero_points = const_cast<int64_t*>(kZps);
+  per_channel_detail.per_channel.quantized_dimension = kQuantizedDimension;
+  per_channel_detail.per_channel.num_channels = kRank;
+  std::ostringstream q_dump;
+  Dump(std::make_pair(kLiteRtQuantizationPerChannel, per_channel_detail),
+       q_dump);
+  EXPECT_FALSE(q_dump.view().empty());
 }
 
 TEST(DumpTest, TestDumpNoQuantization) {

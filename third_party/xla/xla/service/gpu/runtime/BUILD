@@ -145,7 +145,6 @@ cc_library(
         ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla:util",
-        "//xla/service:buffer_assignment",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -761,6 +760,36 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_ragged_all_to_all_thunk",
+    srcs = ["nccl_ragged_all_to_all_thunk.cc"],
+    hdrs = ["nccl_ragged_all_to_all_thunk.h"],
+    deps = [
+        ":nccl_collective_thunk",
+        ":thunk",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives:communicator",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "nccl_collective_broadcast_thunk",
     srcs = ["nccl_collective_broadcast_thunk.cc"],
     hdrs = ["nccl_collective_broadcast_thunk.h"],
@@ -1081,7 +1110,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/gtl:int_type",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
