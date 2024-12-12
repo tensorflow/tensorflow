@@ -268,9 +268,9 @@ LiteRtStatus LiteRtGetDefaultSignatureKey(const char** signature_key);
 LiteRtStatus LiteRtGetSignatureKey(LiteRtSignature signature,
                                    const char** signature_key);
 
-// Get the associated subgraph index for the given signature.
-LiteRtStatus LiteRtGetSignatureSubgraphIndex(LiteRtSignature signature,
-                                             LiteRtParamIndex* subgraph_index);
+// Get the associated subgraph for the given signature.
+LiteRtStatus LiteRtGetSignatureSubgraph(LiteRtSignature signature,
+                                        LiteRtSubgraph* subgraph);
 
 // Get the number of inputs for the given signature.
 LiteRtStatus LiteRtGetNumSignatureInputs(LiteRtSignature signature,

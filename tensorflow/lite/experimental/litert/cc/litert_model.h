@@ -327,10 +327,10 @@ class Signature : public internal::NonOwnedHandle<LiteRtSignature> {
     return key;
   }
 
-  int SubgraphIndex() const {
-    LiteRtParamIndex subgraph_index;
-    internal::AssertOk(LiteRtGetSignatureSubgraphIndex, Get(), &subgraph_index);
-    return subgraph_index;
+  LiteRtSubgraph Subgraph() const {
+    LiteRtSubgraph subgraph;
+    internal::AssertOk(LiteRtGetSignatureSubgraph, Get(), &subgraph);
+    return subgraph;
   }
 
   std::vector<absl::string_view> InputNames() const {
@@ -430,7 +430,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     if (!signature) {
       return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
     }
-    return Subgraph(signature->SubgraphIndex());
+    return litert::Subgraph(signature->Subgraph());
   }
 
   // Returns the list of signatures defined in the model.

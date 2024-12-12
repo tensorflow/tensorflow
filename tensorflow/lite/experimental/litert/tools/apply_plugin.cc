@@ -37,6 +37,7 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
@@ -50,6 +51,7 @@ using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
 using ::litert::internal::FinishByteCodePlaceholders;
 using ::litert::internal::GroupPartitions;
+using ::litert::internal::IsConstant;
 using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
 using ::litert::internal::kLiteRtDispatchOpCustomCode;
@@ -58,6 +60,7 @@ using ::litert::internal::MakeByteCodePlaceholder;
 using ::litert::internal::MakeExecInfo;
 using ::litert::internal::OutlinePartition;
 using ::litert::internal::Serialization;
+using ::litert::internal::SerializeModel;
 using ::litert::internal::VerifyFlatbuffer;
 using ::litert::tools::ApplyPluginRun;
 
@@ -206,14 +209,13 @@ Expected<Model> LoadModel(Context& ctx) {
 std::vector<LiteRtOp> ApplyPartition(Context& ctx, const Model& model,
                                      CompilerPlugin& plugin) {
   ctx.Dump().Start("Partition Model");
-  model.Get()->custom_op_code = kLiteRtDispatchOpCustomCode;
 
   ctx.Dump().Labeled() << "Input model: \n";
-  for (auto it = model.Get()->subgraphs.begin();
-       it < model.Get()->subgraphs.end(); ++it) {
+  for (auto it = model.Get()->Subgraphs().begin();
+       it < model.Get()->Subgraphs().end(); ++it) {
     ctx.Dump().Labeled();
     ctx.Dump().Indented() << "(input graph) ";
-    Dump(*it, ctx.Dump().Display());
+    Dump(**it, ctx.Dump().Display());
   }
 
   auto partition = plugin.PartitionModel(model);
@@ -231,20 +233,20 @@ std::vector<LiteRtOp> ApplyPartition(Context& ctx, const Model& model,
   std::vector<LiteRtOp> res;
   for (auto& partition : grouped_partitions) {
     LiteRtOp custom_op =
-        OutlinePartition(model.Get()->subgraphs.front(),
-                         &model.Get()->subgraphs.emplace_back(), partition);
+        OutlinePartition(*model.Get()->Subgraphs().front(),
+                         &model.Get()->EmplaceSubgraph(), partition);
     res.push_back(custom_op);
   }
 
   ctx.Dump().Labeled() << "Partitioned model: \n";
   ctx.Dump().Labeled();
   ctx.Dump().Indented() << "(initial graph) ";
-  Dump(model.Get()->subgraphs.front(), ctx.Dump().Display());
-  for (auto it = model.Get()->subgraphs.begin() + 1;
-       it < model.Get()->subgraphs.end(); ++it) {
+  Dump(model.Get()->Subgraph(0), ctx.Dump().Display());
+  for (auto it = model.Get()->Subgraphs().begin() + 1;
+       it < model.Get()->Subgraphs().end(); ++it) {
     ctx.Dump().Labeled();
     ctx.Dump().Indented() << "(new graph) ";
-    Dump(*it, ctx.Dump().Display());
+    Dump(**it, ctx.Dump().Display());
   }
 
   ctx.Dump().Done();
@@ -335,7 +337,7 @@ LiteRtStatus Noop(Context& ctx) {
     return model.Error().Status();
   }
 
-  auto serialized = SerializeModel(std::move(*model));
+  auto serialized = SerializeModel(std::move(*model->Get()));
   if (!serialized) {
     return serialized.Error().Status();
   }
@@ -375,7 +377,7 @@ LiteRtStatus Partition(Context& ctx) {
   }
 
   ctx.Dump().Start("Serializing model");
-  auto serialized = SerializeModel(std::move(*partitioned_model));
+  auto serialized = SerializeModel(std::move(*partitioned_model->Get()));
   DumpModelStats(ctx, *serialized);
   ctx.Dump().Done();
 
@@ -419,9 +421,9 @@ LiteRtStatus Compile(Context& ctx) {
   }
 
   std::vector<LiteRtSubgraph> compilation_input;
-  compilation_input.reserve(model->Get()->subgraphs.size());
-  for (auto& subgraph : model->Get()->subgraphs) {
-    compilation_input.push_back(&subgraph);
+  compilation_input.reserve(model->Get()->NumSubgraphs());
+  for (auto* subgraph : model->Get()->Subgraphs()) {
+    compilation_input.push_back(subgraph);
   }
 
   auto entry_points = CompilePartitions(ctx, compilation_input, *plugin);
@@ -456,11 +458,10 @@ Expected<OwningBufferRef<uint8_t>> DoMetadataSerialization(
   {
     auto call_it = call_info.begin();
     auto custom_op_it = custom_ops.begin();
-    for (; call_it < call_info.end() && custom_op_it < custom_ops.end();) {
-      (*custom_op_it)->custom_options =
-          OwningBufferRef<uint8_t>((*call_it).c_str());
-      ++call_it;
-      ++custom_op_it;
+    for (; call_it < call_info.end() && custom_op_it < custom_ops.end();
+         ++call_it, ++custom_op_it) {
+      auto& custom_op = **custom_op_it;
+      custom_op.SetCustomOptions(call_it->c_str());
     }
   }
 
@@ -469,11 +470,11 @@ Expected<OwningBufferRef<uint8_t>> DoMetadataSerialization(
         "Adding metadata byte code of size: %lu bytes\n",
         compilation_out.Size());
 
-    LITERT_EXPECT_OK(
-        model.Get()->PushMetadata(kByteCodeMetadataKey, compilation_out));
+    LITERT_EXPECT_OK(model.Get()->PushMetadata(
+        kByteCodeMetadataKey, compilation_out.Data(), compilation_out.Size()));
   }
 
-  auto serialized = SerializeModel(std::move(model));
+  auto serialized = SerializeModel(std::move(*model.Get()));
   if (!serialized) {
     return serialized.Error();
   }
@@ -504,18 +505,18 @@ Expected<OwningBufferRef<uint8_t>> DoAppendSerialization(
   {
     auto call_it = call_info.begin();
     auto custom_op_it = custom_ops.begin();
-    for (; call_it < call_info.end() && custom_op_it < custom_ops.end();) {
+    for (; call_it < call_info.end() && custom_op_it < custom_ops.end();
+         ++call_it, ++custom_op_it) {
       auto exec_info = MakeExecInfo(*call_it, kSharedByteCodePlaceholderName);
       if (!exec_info) {
         return exec_info;
       }
-      (*custom_op_it)->custom_options = std::move(*exec_info);
-      ++call_it;
-      ++custom_op_it;
+      auto& custom_op = **custom_op_it;
+      custom_op.SetCustomOptions(std::move(*exec_info));
     }
   }
 
-  auto serialized = SerializeModel(std::move(model));
+  auto serialized = SerializeModel(std::move(*model.Get()));
   if (!serialized) {
     return serialized;
   }
@@ -565,7 +566,7 @@ LiteRtStatus Apply(Context& ctx) {
   }
 
   static constexpr size_t kNumInputSubgraphs = 1;
-  LITERT_ENSURE_SUPPORTED(model->Get()->subgraphs.size() == kNumInputSubgraphs,
+  LITERT_ENSURE_SUPPORTED(model->Get()->NumSubgraphs() == kNumInputSubgraphs,
                           "Only single subgraph models currently supported.");
 
   // Query plugin for compilable ops and slice partitions out of the graph,
@@ -573,11 +574,15 @@ LiteRtStatus Apply(Context& ctx) {
   auto custom_ops = ApplyPartition(ctx, *model, *plugin);
   LITERT_ENSURE(!custom_ops.empty(), kLiteRtStatusErrorGraphModification,
                 "Failed to partition graph.");
+  ABSL_DCHECK_EQ(custom_ops.size(),
+                 model->Get()->NumSubgraphs() - kNumInputSubgraphs);
+
   // All new subgraphs to be compiled are appended to the model's subgraphs.
+  auto new_sg_start = model->Get()->Subgraphs().begin() + kNumInputSubgraphs;
+  auto new_sg_end = model->Get()->Subgraphs().end();
   std::vector<LiteRtSubgraph> compilation_input;
-  for (auto it = model->Get()->subgraphs.begin() + kNumInputSubgraphs;
-       it < model->Get()->subgraphs.end(); ++it) {
-    compilation_input.push_back(&*it);
+  for (auto it = new_sg_start; it < new_sg_end; ++it) {
+    compilation_input.push_back(*it);
   }
 
   // Call compilation method on the plugin.
@@ -591,7 +596,8 @@ LiteRtStatus Apply(Context& ctx) {
                 kLiteRtStatusErrorCompilation,
                 "Failed to verify entry point information.");
 
-  model->Get()->subgraphs.resize(kNumInputSubgraphs);
+  model->Get()->ResizeSubgraphsDown(kNumInputSubgraphs);
+
   LITERT_RETURN_STATUS_IF_NOT_OK(StampModel(ctx, model->Get()));
 
   BufferRef<uint8_t> compiled_buffer(compilation_out.view().data(),
@@ -599,15 +605,15 @@ LiteRtStatus Apply(Context& ctx) {
 
   // For each custom op, if the input tensor is a constant, it should be removed
   // from the input list.
+  // TODO(@lukeboyer) Move this to algo, use model_graph api, and test behavior.
   for (auto& custom_op : custom_ops) {
     std::vector<LiteRtTensor> new_inputs;
-    for (auto& input : custom_op->inputs) {
-      litert::Tensor input_tensor = litert::Tensor(input);
-      if (!input_tensor.IsConstant()) {
+    for (auto* input : custom_op->Inputs()) {
+      if (!IsConstant(*input)) {
         new_inputs.push_back(input);
       }
     }
-    custom_op->inputs = new_inputs;
+    custom_op->Inputs() = new_inputs;
   }
 
   ctx.SwapOut(out);

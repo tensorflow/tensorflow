@@ -55,8 +55,8 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
   const auto selected_ops = selected_op_list.Vec();
 
   ASSERT_EQ(selected_ops.size(), 2);
-  ASSERT_EQ(selected_ops[0]->op_code, kLiteRtOpCodeTflMul);
-  ASSERT_EQ(selected_ops[1]->op_code, kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[0]->OpCode(), kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[1]->OpCode(), kLiteRtOpCodeTflMul);
 }
 
 TEST(TestCallDummyPlugin, CompileMulSubgraph) {

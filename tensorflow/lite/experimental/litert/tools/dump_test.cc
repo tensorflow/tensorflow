@@ -41,8 +41,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtTensorT& in_tensor =
-        *model.Get()->subgraphs.front().inputs.front();
+    const LiteRtTensorT& in_tensor = model.Get()->Subgraph(0).Input(0);
     std::ostringstream in_tensor_dump;
     Dump(in_tensor, in_tensor_dump);
     EXPECT_EQ(in_tensor_dump.view(),
@@ -50,8 +49,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtTensorT& out_tensor =
-        *model.Get()->subgraphs.front().outputs.front();
+    const LiteRtTensorT& out_tensor = model.Get()->Subgraph(0).Output(0);
     std::ostringstream out_tensor_dump;
     Dump(out_tensor, out_tensor_dump);
     EXPECT_EQ(out_tensor_dump.view(),
@@ -59,7 +57,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtOpT& op = *model.Get()->subgraphs.front().ops.front();
+    const LiteRtOpT& op = model.Get()->Subgraph(0).Op(0);
     std::ostringstream op_dump;
     Dump(op, op_dump);
     EXPECT_EQ(op_dump.view(),
@@ -67,7 +65,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtSubgraphT& subgraph = model.Get()->subgraphs.front();
+    const LiteRtSubgraphT& subgraph = model.Get()->Subgraph(0);
     std::ostringstream subgraph_dump;
     Dump(subgraph, subgraph_dump);
     EXPECT_EQ(
@@ -79,7 +77,7 @@ TEST(DumpTest, TestDump) {
 
 TEST(DumpTest, TestDumpOptions) {
   auto model = LoadTestFileModel("simple_strided_slice_op.tflite");
-  const LiteRtOpT& op = *model.Get()->subgraphs.front().ops.front();
+  const LiteRtOpT& op = model.Get()->Subgraph(0).Op(0);
   std::ostringstream op_dump;
   DumpOptions(op, op_dump);
   EXPECT_EQ(op_dump.view(),
@@ -92,7 +90,7 @@ TEST(DumpTest, TestDumpOptions) {
 }
 
 TEST(DumpTest, TestDumpPerTensorQuantization) {
-  LiteRtQuantizationTypeDetail per_tensor_detail;
+  QuantizationDetail per_tensor_detail;
   per_tensor_detail.per_tensor.scale = 1.0;
   per_tensor_detail.per_tensor.zero_point = 2;
   std::ostringstream q_dump;
@@ -105,7 +103,7 @@ TEST(DumpTest, TestDumpPerChannelQuantization) {
   static constexpr size_t kQuantizedDimension = 1;
   static constexpr float kScales[kRank] = {1.0, 2.0};
   static constexpr int64_t kZps[kRank] = {2, 3};
-  LiteRtQuantizationTypeDetail per_channel_detail;
+  QuantizationDetail per_channel_detail;
   per_channel_detail.per_channel.scales = const_cast<float*>(kScales);
   per_channel_detail.per_channel.zero_points = const_cast<int64_t*>(kZps);
   per_channel_detail.per_channel.quantized_dimension = kQuantizedDimension;
@@ -117,14 +115,14 @@ TEST(DumpTest, TestDumpPerChannelQuantization) {
 }
 
 TEST(DumpTest, TestDumpNoQuantization) {
-  LiteRtQuantizationTypeDetail none_detail;
+  QuantizationDetail none_detail;
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationNone, none_detail), q_dump);
   EXPECT_TRUE(q_dump.view().empty());
 }
 
 TEST(DumpTest, TestDumpUnknownQuantization) {
-  LiteRtQuantizationTypeDetail detail;
+  QuantizationDetail detail;
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationBlockWise, detail), q_dump);
   EXPECT_EQ(q_dump.view(), " <q UNKNOWN>");

@@ -71,7 +71,6 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":dispatch_api",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core:filesystem",

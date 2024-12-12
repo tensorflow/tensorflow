@@ -102,7 +102,7 @@ TEST(TestQnnPlugin, PartitionMulOps) {
   const auto selected_ops = selected_op_list.Vec();
 
   ASSERT_EQ(selected_ops.size(), 1);
-  EXPECT_EQ(selected_ops[0]->op_code, kLiteRtOpCodeTflMul);
+  EXPECT_EQ(selected_ops[0]->OpCode(), kLiteRtOpCodeTflMul);
 }
 
 TEST(TestQnnPlugin, CompileMulSubgraph) {

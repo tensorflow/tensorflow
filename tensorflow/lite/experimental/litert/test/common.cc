@@ -49,28 +49,6 @@ Model LoadTestFileModel(absl::string_view filename) {
   return *Model::CreateFromFile(GetTestFilePath(filename));
 }
 
-bool ValidateTopology(const std::vector<Op>& ops) {
-  for (const auto& op : ops) {
-    const auto inputs = op.Inputs();
-    for (int i = 0; i < inputs.size(); ++i) {
-      if (!MatchUse(inputs.at(i), UseInfo{op.Code(), i})) {
-        return false;
-      }
-    }
-    const auto outputs = op.Outputs();
-    for (int i = 0; i < outputs.size(); ++i) {
-      const auto defining_op = outputs.at(i).DefiningOp();
-      if (!defining_op.has_value()) {
-        return false;
-      }
-      if (defining_op->op != op.Get() || defining_op->op_output_index != i) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 Expected<TflRuntime::Ptr> TflRuntime::CreateFromFlatBuffer(
     internal::FlatbufferWrapper::Ptr flatbuffer) {
   ::tflite::Interpreter::Ptr interp;

@@ -45,21 +45,19 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
   LITERT_EXPECT_OK(
       model.PushMetadata(kByteCodeMetadataKey, MakeByteCodePlaceholder()));
 
-  for (auto& subgraph : model.subgraphs) {
-    for (auto& op : subgraph.ops) {
-      if (op->op_code != kLiteRtOpCodeTflCustom) {
+  for (auto* subgraph : model.Subgraphs()) {
+    for (auto* op : subgraph->Ops()) {
+      if (op->OpCode() != kLiteRtOpCodeTflCustom) {
         continue;
       }
       auto exec_info =
-          MakeExecInfo(op->custom_options.StrView(), kByteCodeMetadataKey);
+          MakeExecInfo(op->CustomOptions().StrView(), kByteCodeMetadataKey);
       if (!exec_info) {
         return exec_info.Error();
       }
-      op->custom_options = std::move(*exec_info);
+      op->SetCustomOptions(std::move(*exec_info));
     }
   }
-
-  model.custom_op_code = kLiteRtDispatchOpCustomCode;
 
   auto serialized = SerializeModel(std::move(model));
   if (!serialized) {

@@ -15,7 +15,10 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_FLATBUFFER_TOOLS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_FLATBUFFER_TOOLS_H_
 
+#include <algorithm>
 #include <cstdint>
+#include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -43,16 +46,29 @@ using TflOpCodeEnum = ::tflite::BuiltinOperator;
 using TflOpCode = ::tflite::OperatorCodeT;
 using TflQuantization = ::tflite::QuantizationParametersT;
 using TflElementType = ::tflite::TensorType;
+using TflOptions = ::tflite::BuiltinOptionsUnion;
+using TflSignature = ::tflite::SignatureDefT;
+using TflMetadata = ::tflite::MetadataT;
 
 using TflBufferPtr = std::unique_ptr<TflBuffer>;
 using TflModelPtr = std::unique_ptr<TflModel>;
 using TflQuantizationPtr = std::unique_ptr<TflQuantization>;
 using TflOpCodePtr = std::unique_ptr<TflOpCode>;
+using TflSubgraphPtr = std::unique_ptr<TflSubgraph>;
+using TflTensorPtr = std::unique_ptr<TflTensor>;
+using TflOpPtr = std::unique_ptr<TflOp>;
+using TflSignaturePtr = std::unique_ptr<TflSignature>;
+using TflMetadataPtr = std::unique_ptr<TflMetadata>;
 
+// Code and verion.
+using TflOpCodeDetail = std::pair<TflOpCodeEnum, int32_t>;
+
+// Zero-point, scale.
 using TflPerTensorQParams = std::pair<int64_t, float>;
+
+// Quantized dim, num channels, zero-points, scales.
 using TflPerChannelQParams =
-    std::tuple<int32_t, uint64_t, const std::vector<int64_t>*,
-               const std::vector<float>*>;
+    std::tuple<int32_t, uint64_t, std::vector<int64_t>, std::vector<float>>;
 
 // Mirror of all the tensor type related fields in flatbuffer tensor definition.
 struct TflShapeInfo {
@@ -152,6 +168,22 @@ Expected<TflBufferPtr> TakeBuffer(TflModel& tfl_model, uint32_t buffer_ind);
 Expected<uint32_t> PushTflBuffer(TflModel& tfl_model,
                                  BufferRef<uint8_t> buffer);
 
+// Make a tflite buffer from data.
+template <class T>
+TflBufferPtr MakeTflBuffer(std::initializer_list<T> data) {
+  auto res = std::make_unique<TflBuffer>();
+  const auto byte_size = data.size() * sizeof(T);
+  res->data.resize(byte_size);
+  for (auto it = data.begin(); it != data.end(); ++it) {
+    auto* write_to =
+        reinterpret_cast<T*>(res->data.data()) + (it - data.begin());
+    *write_to = *it;
+  }
+  res->size = res->data.size();
+  res->offset = 0;
+  return res;
+}
+
 // Get the op code from the model at the given index if it exists.
 Expected<TflOpCodeEnum> GetTflOpCode(const TflModel& tfl_model,
                                      uint32_t op_code_ind);
@@ -240,6 +272,11 @@ class FlatbufferWrapper {
   ::tflite::Allocation::Ptr alloc_;
   OwningBufferRef<uint8_t> model_buf_;
 };
+
+// Re-serialize the unpacked model from flatbuffer wrapper.
+OwningBufferRef<uint8_t> SerializeFlatbuffer(
+    const FlatbufferWrapper& flatbuffer);
+OwningBufferRef<uint8_t> SerializeFlatbuffer(const TflModel& tfl_model);
 
 }  // namespace litert::internal
 

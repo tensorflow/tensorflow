@@ -17,6 +17,8 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
@@ -32,16 +34,16 @@ using SmallVec = absl::InlinedVector<T, kTensorVecSize>;
 
 // See "std::construct_at" from C++20.
 template <class T, class... Args>
-inline T* ConstructAt(T* p, Args&&... args) {
+T* ConstructAt(T* p, Args&&... args) {
   return ::new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
 }
 
 // Reduce all over zipped iters of same size.
 template <typename LeftVals, typename RightVals = LeftVals>
-inline bool AllZip(const LeftVals& lhs, const RightVals& rhs,
-                   std::function<bool(const typename LeftVals::value_type&,
-                                      const typename RightVals::value_type&)>
-                       bin_pred) {
+bool AllZip(const LeftVals& lhs, const RightVals& rhs,
+            std::function<bool(const typename LeftVals::value_type&,
+                               const typename RightVals::value_type&)>
+                bin_pred) {
   if (lhs.size() != rhs.size()) {
     return false;
   }
@@ -55,12 +57,31 @@ inline bool AllZip(const LeftVals& lhs, const RightVals& rhs,
 
 // Reduce any over zipped iters of same size.
 template <typename LeftVals, typename RightVals = LeftVals>
-inline bool AnyZip(const LeftVals& lhs, const RightVals& rhs,
-                   std::function<bool(const typename LeftVals::value_type&,
-                                      const typename RightVals::value_type&)>
-                       bin_pred) {
+bool AnyZip(const LeftVals& lhs, const RightVals& rhs,
+            std::function<bool(const typename LeftVals::value_type&,
+                               const typename RightVals::value_type&)>
+                bin_pred) {
   auto neg = [&](const auto& l, const auto& r) { return !bin_pred(l, r); };
   return !(AllZip(lhs, rhs, neg));
+}
+
+// Does element exist in range.
+template <class It, class T>
+bool Contains(It begin, It end, const T& val) {
+  return std::find(begin, end, val) != end;
+}
+
+// Does element exist in range satisfying pred.
+template <class It, class UPred>
+bool ContainsIf(It begin, It end, UPred u_pred) {
+  return std::find_if(begin, end, u_pred) != end;
+}
+
+// Get the ind of the given element if it is present.
+template <class T, class It>
+std::optional<size_t> FindInd(It begin, It end, T val) {
+  auto it = std::find(begin, end, val);
+  return (it == end) ? std::nullopt : std::make_optional(it - begin);
 }
 
 namespace internal {

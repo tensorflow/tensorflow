@@ -14,7 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/flatbuffer_to_litert.h"
 
-#include <cstdint>
 #include <utility>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -119,50 +118,31 @@ Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
     return Error(kLiteRtStatusErrorUnsupported);
   }
 
-  LiteRtTypeDetail detail;
+  TensorTypeDetail detail;
   detail.ranked_tensor_type.element_type = litert_element_type;
   detail.ranked_tensor_type.layout = BuildLayout(*ranked_shape);
 
   return std::make_pair(kLiteRtRankedTensorType, detail);
 }
 
-Expected<Quantization> MapQuantization(
-    const TflQuantization* tfl_quantization) {
+Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization,
+                                       BufferProvider buffer_provider) {
   if (!IsQuantized(tfl_quantization)) {
-    return std::make_pair(kLiteRtQuantizationNone,
-                          LiteRtQuantizationTypeDetail());
+    return MakeEmptyQuantization();
   }
 
-  LiteRtQuantizationTypeId quantization_type;
-  LiteRtQuantizationTypeDetail qparams;
-
-  if (IsPerTensorQuantized(tfl_quantization)) {
-    quantization_type = kLiteRtQuantizationPerTensor;
-    auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
-    if (!per_tensor_qparams) {
-      LITERT_LOG(LITERT_ERROR, "Per-tensor quantization parameters not found.");
-      return Error(kLiteRtStatusErrorNotFound);
-    }
-    auto [zero_point, scale] = *per_tensor_qparams;
-    qparams.per_tensor.scale = scale;
-    qparams.per_tensor.zero_point = zero_point;
-  }
-  if (IsPerChannelQuantized(tfl_quantization)) {
-    quantization_type = kLiteRtQuantizationPerChannel;
-    auto per_channel_qparams = AsPerChannelQparams(tfl_quantization);
-    if (!per_channel_qparams) {
-      LITERT_LOG(LITERT_ERROR,
-                 "Per-channel quantization parameters not found.");
-      return Error(kLiteRtStatusErrorNotFound);
-    }
-    auto [quantized_dimension, num_channels, zero_points, scales] =
-        *per_channel_qparams;
-    qparams.per_channel.scales = const_cast<float*>(scales->data());
-    qparams.per_channel.zero_points = const_cast<int64_t*>(zero_points->data());
-    qparams.per_channel.quantized_dimension = quantized_dimension;
-    qparams.per_channel.num_channels = num_channels;
+  if (auto tfl_qparams = AsPerTensorQparams(tfl_quantization)) {
+    return MakePerTensorQuantization(tfl_qparams->second, tfl_qparams->first);
   }
 
-  return std::make_pair(quantization_type, qparams);
+  if (auto tfl_qparams = AsPerChannelQparams(tfl_quantization)) {
+    [[maybe_unused]] const auto& [quantized_dimension, num_channels,
+                                  zero_points, scales] = *tfl_qparams;
+    return MakePerChannelQuantization(scales, zero_points, quantized_dimension,
+                                      buffer_provider);
+  }
+
+  LITERT_LOG(LITERT_ERROR, "Uknown tfl quantization type");
+  return Error(kLiteRtStatusErrorUnsupported);
 }
 }  // namespace litert::internal
