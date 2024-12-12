@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <stdexcept>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
