@@ -252,7 +252,7 @@ class IndexingMap {
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints);
 
   IndexingMap(const IndexingMap&) = default;
-  IndexingMap(IndexingMap&&) = default;
+  IndexingMap(IndexingMap&&) noexcept = default;
   IndexingMap& operator=(const IndexingMap&) = default;
   IndexingMap& operator=(IndexingMap&&) = default;
 
