@@ -568,7 +568,8 @@ inline Binding<ExecutionStage::kInstantiate> Ffi::BindInstantiate() {
 }
 
 //===----------------------------------------------------------------------===//
-// Template metaprogramming to automatially infer Binding from invocable object.
+// Template metaprogramming to automatically infer Binding from invocable
+// object.
 //===----------------------------------------------------------------------===//
 
 // A little bit of metaprogramming that automatically infers the binding schema

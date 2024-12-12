@@ -370,7 +370,7 @@ static absl::Status RegisterHandler(std::string_view name,
       api_version.minor_version != XLA_FFI_API_MINOR) {
     return InvalidArgument(
         "FFI handler registration for %s on platform %s (canonical %s) failed "
-        "because the hander's API version (%d.%d) is incompatible with the "
+        "because the handler's API version (%d.%d) is incompatible with the "
         "framework's API version (%d.%d)",
         name, platform, canonical_platform, api_version.major_version,
         api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);

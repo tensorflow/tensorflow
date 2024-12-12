@@ -264,7 +264,7 @@ BuildStrategyAndCost(
       // usually "follows" other instruction's sharding. If the instruction it
       // follows is an intermediate instruction, it may be able to choose
       // unevenly sharded strategiyes. Usually if we constraint input's sharding
-      // strategies, outputs would be constrained as welll, but if outputs are
+      // strategies, outputs would be constrained as well, but if outputs are
       // still unevely sharded in some cases, we need to fix the implementation
       // in auto sharding.
       only_allow_divisible = option.only_allow_divisible_input_output;
@@ -286,7 +286,7 @@ BuildStrategyAndCost(
           // We use this following relationship to ensure that the input tuple
           // of the while loop, and the parameter of the body of that while
           // loop. Therefore, this followinf relationship is necessary for
-          // correctness, and is not merely an optmization.
+          // correctness, and is not merely an optimization.
           is_follow_necessary_for_correctness = true;
           for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =

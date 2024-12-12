@@ -42,7 +42,7 @@ struct AutoShardingOption {
   enum class PreserveShardingsType {
     // AutoSharding constrains the search space using all user shardings.
     kKeepAllShardings,
-    // AutoSharding constains the search space using input and output shardings
+    // AutoSharding constrains the search space using input and output shardings
     // of HloModule's entry computations and remove shardings of all
     // intermediate tensors.
     kKeepInputOutputShardings,
