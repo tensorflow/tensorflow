@@ -967,9 +967,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   // Get backend config and buffer assignments.
   auto backend_config = custom_call->backend_config<BackendConfig>();
   if (!backend_config.ok()) {
-    LOG(WARNING) << "Unable to parse backend config for custom call: "
-                 << backend_config.status().message() << "\n"
-                 << "Fall back to parse the opaque str.";
+    VLOG(3) << "Unable to parse backend config for custom call: "
+            << backend_config.status().message() << "\n"
+            << "Fall back to parse the opaque str.";
   }
   auto& backend_config_str =
       !backend_config.ok()
