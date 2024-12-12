@@ -539,7 +539,7 @@ void AddMemoryTerms(
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
-  const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
+  const AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
   // SAT or SCIP
