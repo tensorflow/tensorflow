@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_IMPORT_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
 
