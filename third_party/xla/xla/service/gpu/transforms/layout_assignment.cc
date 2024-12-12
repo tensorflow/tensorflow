@@ -129,6 +129,15 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  // Despite the specialized logic below for Volta, we expect GPUs with Tensor
+  // Cores work best using NHWC layouts for cuDNN convolutions---as per
+  // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
+    if (cc->IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+      return kAllNHWC;
+    }
+  }
+
   const auto* rocm_compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (rocm_compute_capability && input_ty == F16) return kAllNHWC;
