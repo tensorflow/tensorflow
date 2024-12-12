@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
@@ -78,45 +77,6 @@ using hlo_query::IsBroadcastOfScalarConstant;
 bool HasDefaultLayout(const Shape& shape) {
   return shape.has_layout() &&
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
-}
-
-// Returns true if a trivially connected producer of 'consumer' with opcode
-// 'opcode' exists. If such an instruction is found, the value of 'producer' is
-// set to it. The definition of "trivial" operations is as given in
-// 'IsTriviallyFusible'.
-bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode, const se::GpuComputeCapability& gpu_version);
-
-bool BitcastIsTilingNoop(HloInstruction* bitcast,
-                         const se::GpuComputeCapability& gpu_version) {
-  CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
-
-  if (ShapeUtil::IsEffectiveScalar(bitcast->shape())) {
-    return true;
-  }
-
-  // In the Softmax rewriter for now, tiling is derived from a hero reduction
-  // operation, which should be reducing its input on the last axis. Therefore,
-  // a bitcast is always a no-op with regards to a tile if
-  //   (1) it does not change the size of the reduction dimension of its input
-  //       (the last one); if its input is already reduced, then (1) is true
-  //       by default
-  //   (2) the layout of its output is ordered in the same way as the layout of
-  //       its input. This is a fuzzy definition, but since we assume fusible
-  //       ops to always have a default layout, we can just check if both the
-  //       bitcast and its input have a default layout
-  auto last_dimension = [](const HloInstruction* instr) {
-    return instr->shape().dimensions().back();
-  };
-
-  HloInstruction* reduce = nullptr;
-  TrivialEdge(&reduce, bitcast->mutable_operand(0), HloOpcode::kReduce,
-              gpu_version);
-
-  return (HasDefaultLayout(bitcast->shape()) &&
-          HasDefaultLayout(bitcast->operand(0)->shape()) &&
-          (reduce != nullptr ||
-           last_dimension(bitcast->operand(0)) == last_dimension(bitcast)));
 }
 
 inline bool HasOneUse(const HloInstruction* instr) {
@@ -151,8 +111,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     return false;
   }
 
-  if (HloPredicateIsOp<HloOpcode::kBitcast>(instr) &&
-      BitcastIsTilingNoop(instr, gpu_version)) {
+  if (HloPredicateIsOp<HloOpcode::kBitcast>(instr)) {
     return true;
   }
 
@@ -187,6 +146,10 @@ bool IsTriviallyFusible(HloInstruction* instr,
   return false;
 }
 
+// Returns true if a trivially connected producer of 'consumer' with opcode
+// 'opcode' exists. If such an instruction is found, the value of 'producer' is
+// set to it. The definition of "trivial" operations is as given in
+// 'IsTriviallyFusible'.
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
                  HloOpcode opcode,
                  const se::GpuComputeCapability& gpu_version) {
