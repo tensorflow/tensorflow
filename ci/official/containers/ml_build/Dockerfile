@@ -1,5 +1,6 @@
 ################################################################################
-FROM ubuntu:22.04@sha256:58b87898e82351c6cf9cf5b9f3c20257bb9e2dcf33af051e12ce532d7f94e3fe AS devel
+ARG BASE_IMAGE=ubuntu:22.04@sha256:58b87898e82351c6cf9cf5b9f3c20257bb9e2dcf33af051e12ce532d7f94e3fe
+FROM $BASE_IMAGE AS devel
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -20,15 +21,15 @@ RUN /build_devtoolset.sh devtoolset-9 /dt9
 # Setup Python
 COPY setup.python.sh /setup.python.sh
 COPY builder.requirements.txt /builder.requirements.txt
-RUN /setup.python.sh python3.9 builder.requirements.txt
-RUN /setup.python.sh python3.10 builder.requirements.txt
-RUN /setup.python.sh python3.11 builder.requirements.txt
-RUN /setup.python.sh python3.13 builder.requirements.txt
+RUN /setup.python.sh python3.9 /builder.requirements.txt
+RUN /setup.python.sh python3.10 /builder.requirements.txt
+RUN /setup.python.sh python3.11 /builder.requirements.txt
+RUN /setup.python.sh python3.13 /builder.requirements.txt
 
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
 # TODO(b/376338367): switch to pyenv.
-RUN /setup.python.sh python3.12 builder.requirements.txt
+RUN /setup.python.sh python3.12 /builder.requirements.txt
 
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc.
@@ -40,6 +41,13 @@ RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
 
 # Make sure clang is on the path
 RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
+
+# Link the compat driver to the location where tensorflow is searching for it
+RUN if [[ "$BASE_IMAGE" == nvidia* ]]; then \
+        echo "NVIDIA base image detected, linking libcuda.so.1 from compat directory"; \
+        ln -s /usr/local/cuda/compat/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1; \
+    fi
+RUN
 
 # Install various tools.
 # - bats: bash unit testing framework
