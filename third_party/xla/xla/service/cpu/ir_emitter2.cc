@@ -179,10 +179,12 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
     : hlo_module_(hlo_module),
       module_(module),
       nested_ir_emitter_(nested_ir_emitter),
-      kernel_api_ir_builder_(module_->getContext(),
-                             hlo_module_.config()
-                                 .debug_options()
-                                 .xla_llvm_enable_invariant_load_metadata()) {}
+      kernel_api_ir_builder_(
+          module_->getContext(),
+          hlo_module_.config()
+              .debug_options()
+              .xla_llvm_enable_invariant_load_metadata(),
+          hlo_module_.config().debug_options().xla_cpu_prefer_vector_width()) {}
 
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
@@ -683,26 +685,9 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     result_slices.insert(result.slice);
   }
 
-  // Create a kernel function with HostKernel API. We use external linkage
-  // because we'll be resolving this function from the XLA runtime.
+  // Create a kernel function with HostKernel API.
   llvm::Function* function =
       kernel_api_ir_builder_.EmitKernelFunction(*module_, name);
-  function->setCallingConv(llvm::CallingConv::C);
-
-  // Generate unwind information so that GDB can crawl through the stack frames
-  // created by the JIT compiled code.
-  function->setUWTableKind(llvm::UWTableKind::Default);
-
-  // Set prefer-vector-width attribute to allow LLVM to use wider vector
-  // registers (by default LLVM uses at most 256-bit registers).
-  const DebugOptions& debug_options = hlo_module_.config().debug_options();
-  function->addFnAttr(
-      "prefer-vector-width",
-      absl::StrCat(debug_options.xla_cpu_prefer_vector_width()));
-
-  // Always keep a frame pointer for the host kernel so we can see them in all
-  // performance profiling tools.
-  function->addFnAttr("frame-pointer", "all");
 
   // Create an entry basic block and set insert point to the end of it.
   b.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
