@@ -17,14 +17,14 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Transforms/InliningUtils.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 
 // The order of these includes is important.
-#include "xla/service/gpu/fusions/ir/xla_gpu_enums.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_attrs.cc.inc"
 #define GET_TYPEDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_types.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_types.cc.inc"
 
 namespace xla {
 namespace gpu {
@@ -48,16 +48,16 @@ struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
 void XlaGpuDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.cc.inc"
       >();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_attrs.cc.inc"
       >();
   addInterfaces<XlaGpuOpAsmDialectInterface>();
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "xla/service/gpu/fusions/ir/xla_gpu_types.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_types.cc.inc"
       >();
 }
 

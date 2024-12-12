@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 
 namespace xla {
 namespace gpu {

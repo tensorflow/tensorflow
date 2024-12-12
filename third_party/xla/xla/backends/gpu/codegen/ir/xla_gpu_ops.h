@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_
-#define XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_IR_XLA_GPU_OPS_H_
+#define XLA_BACKENDS_GPU_CODEGEN_IR_XLA_GPU_OPS_H_
 
 #include <utility>
 
@@ -30,15 +30,15 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/ir/xla_gpu_dialect.h.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_enums.h.inc"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
-#include "xla/service/gpu/fusions/ir/xla_gpu_dialect.h.inc"
-#include "xla/service/gpu/fusions/ir/xla_gpu_enums.h.inc"
 #define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_attrs.h.inc"
 #define GET_TYPEDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_types.h.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_types.h.inc"
 #define GET_OP_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h.inc"
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_IR_XLA_GPU_OPS_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_IR_XLA_GPU_OPS_H_

@@ -21,8 +21,8 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 
 namespace xla {
 namespace gpu {

@@ -18,11 +18,11 @@ xla_cc_binary(
         "//xla/service/gpu/fusions:__subpackages__",
     ],
     deps = [
+        "//xla/backends/gpu/codegen/ir:xla_gpu",
         "//xla/backends/gpu/codegen/transforms:passes",
         "//xla/codegen/ir:xla",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

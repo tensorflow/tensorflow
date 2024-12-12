@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 
 #include <cstdint>
 #include <optional>
@@ -48,9 +48,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_dialect.cc.inc"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_dialect.cc.inc"
 
 namespace xla {
 namespace gpu {
@@ -376,4 +376,4 @@ void SyncThreadsOp::getAsmResultNames(
 }  // namespace xla
 
 #define GET_OP_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.cc.inc"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.cc.inc"
