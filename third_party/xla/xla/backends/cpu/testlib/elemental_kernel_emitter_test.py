@@ -23,10 +23,10 @@ import numpy as np
 
 from xla.backends.cpu.testlib import kernel_runner
 from xla.codegen.testlib import kernel_runner as kernel_runner_base
-from xla.python import xla_extension
 
 HloOpcode = kernel_runner_base.HloOpcode
 create_literal = kernel_runner_base.create_literal_from_np
+HloInstruction = kernel_runner_base.HloInstruction
 _inf = float("inf")
 
 
@@ -132,12 +132,16 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         np.ndarray(shape, dtype=expected_output.dtype)
     )
 
-    # TODO(willfroom): Add support to get the shape directly from the Literal.
-    input_shape = xla_extension.Shape.array_shape(dtype, shape)
-    output_shape = xla_extension.Shape.array_shape(expected_output.dtype, shape)
-    emitter = kernel_runner.ElementalKernelEmitter(
-        op.name, op, [input_shape] * num_inputs, output_shape
+    hlo_parameters = [
+        HloInstruction.create_parameter(idx, literal.shape(), f"input_{idx}")
+        for [idx, literal] in enumerate(input_literals)
+    ]
+
+    hlo_op = HloInstruction.create_variadic(
+        output_literal.shape(), op, hlo_parameters
     )
+
+    emitter = kernel_runner.ElementalKernelEmitter(hlo_op)
 
     runner = kernel_runner.KernelRunner.create(emitter.emit_kernel_spec())
 

@@ -17,12 +17,9 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_TESTLIB_ELEMENTAL_KERNEL_EMITTER_H_
 
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -31,9 +28,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/shape.h"
 
 namespace xla::cpu {
 
@@ -43,17 +39,12 @@ class ElementalKernelEmitter final : public KernelEmitter {
       absl::AnyInvocable<std::unique_ptr<ElementalIrEmitter>(
           llvm::Module*, llvm::IRBuilderBase*)>;
 
-  ElementalKernelEmitter(absl::string_view kernel_name, HloOpcode opcode,
-                         std::vector<Shape> input_shapes,
-                         const Shape& output_shape);
+  explicit ElementalKernelEmitter(std::unique_ptr<HloInstruction> op_hlo);
 
   absl::StatusOr<std::unique_ptr<KernelSpec>> EmitKernelSpec() override;
 
  private:
-  std::string kernel_name_;
-  HloOpcode opcode_;
-  std::vector<Shape> input_shapes_;
-  Shape output_shape_;
+  std::unique_ptr<HloInstruction> op_hlo_;
 
   llvm::orc::ThreadSafeContext context_;
 

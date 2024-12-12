@@ -48,6 +48,7 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/FMF.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -4053,6 +4054,82 @@ llvm::Value* IrEmitter::EmitScalarReturningThreadLocalCall(
       EmitThreadLocalCall(callee, parameters, name, /*is_reducer=*/false);
   CHECK_EQ(return_value.size(), 1);
   return return_value[0];
+}
+
+std::vector<llvm::Value*> EmitThreadLocalCall(
+    llvm::Function* function, llvm::IRBuilderBase& builder,
+    const Shape& return_shape, absl::Span<llvm::Value* const> parameters,
+    absl::string_view name, IrFunction* ir_function) {
+  bool is_scalar_return = ShapeUtil::IsScalar(return_shape);
+  bool is_tuple_of_scalars_return =
+      return_shape.IsTuple() &&
+      absl::c_all_of(return_shape.tuple_shapes(), [&](const Shape& shape) {
+        return ShapeUtil::IsScalar(shape);
+      });
+  CHECK(is_scalar_return || is_tuple_of_scalars_return);
+
+  std::vector<llvm::Value*> parameter_addrs;
+  for (llvm::Value* parameter : parameters) {
+    CHECK(!parameter->getType()->isPointerTy());
+    llvm::Value* parameter_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+        parameter->getType(), "arg_addr", &builder);
+    builder.CreateStore(parameter, parameter_addr);
+    parameter_addrs.push_back(parameter_addr);
+  }
+
+  llvm::Type* return_value_buffer_type =
+      llvm_ir::ShapeToIrType(return_shape, builder.getContext());
+  std::string retval_alloca_name = absl::StrCat(name, "_return_value_addr");
+  int retval_alignment =
+      is_scalar_return
+          ? MinimumAlignmentForPrimitiveType(return_shape.element_type())
+          : 0;
+  llvm::AllocaInst* return_value_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      return_value_buffer_type, retval_alloca_name, &builder, retval_alignment);
+
+  std::vector<llvm::Value*> allocas_for_returned_scalars;
+  if (is_scalar_return) {
+    allocas_for_returned_scalars.push_back(return_value_buffer);
+  } else {
+    constexpr int max_tuple_size = 1000;
+    CHECK_LT(return_shape.tuple_shapes_size(), max_tuple_size)
+        << "Multivalue function can not return more than 1000 elements to avoid"
+        << " stack smashing";
+    allocas_for_returned_scalars =
+        llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, &builder);
+    llvm_ir::IrArray tuple_array(return_value_buffer, return_value_buffer_type,
+                                 return_shape);
+
+    EmitTuple(tuple_array, allocas_for_returned_scalars, &builder);
+  }
+
+  llvm::Value* null_ptr = llvm::Constant::getNullValue(builder.getPtrTy());
+
+  builder.CreateCall(
+      function,
+      GetArrayFunctionCallArguments(
+          parameter_addrs, &builder, name,
+          /*return_value_buffer=*/return_value_buffer,
+          /*exec_run_options_arg=*/
+          ir_function ? ir_function->exec_run_options_arg() : null_ptr,
+          /*buffer_table_arg=*/null_ptr,
+          /*status_arg=*/ir_function ? ir_function->status_arg() : null_ptr,
+          /*profile_counters_arg=*/
+          ir_function ? ir_function->profile_counters_arg() : null_ptr));
+
+  // if (ComputationTransitivelyContainsCustomCall(&callee)) {
+  //   DCHECK(!in_compute_function) << "Custom call inside nested computations "
+  //                                   "are not supported by Thunks runtime";
+  //   EmitEarlyReturnIfErrorStatus();
+  // }
+
+  std::vector<llvm::Value*> returned_scalars;
+  returned_scalars.reserve(allocas_for_returned_scalars.size());
+  for (llvm::Value* addr : allocas_for_returned_scalars) {
+    returned_scalars.push_back(builder.CreateLoad(
+        llvm::cast<llvm::AllocaInst>(addr)->getAllocatedType(), addr));
+  }
+  return returned_scalars;
 }
 
 std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(

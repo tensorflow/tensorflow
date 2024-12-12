@@ -40,9 +40,11 @@ tsl_pybind_extension(
     deps = [
         ":kernel_runner",
         "//xla:literal",
+        "//xla:util",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/hlo/ir:hlo",
+        "//xla/python:nb_absl_span",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

@@ -45,7 +45,8 @@ class KernelApiIrBuilder {
   };
 
   KernelApiIrBuilder(llvm::LLVMContext& context_,
-                     bool enable_invariant_load_metadata);
+                     bool enable_invariant_load_metadata,
+                     int32_t prefer_vector_width);
 
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);
@@ -61,6 +62,7 @@ class KernelApiIrBuilder {
   llvm::LLVMContext& context_;
 
   bool enable_invariant_load_metadata_;
+  int32_t prefer_vector_width_;
 
   llvm::StructType* thread_dim_ty_;
   llvm::StructType* thread_ty_;
