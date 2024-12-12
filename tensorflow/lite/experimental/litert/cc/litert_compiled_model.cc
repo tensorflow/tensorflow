@@ -34,7 +34,7 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputBuffers(
   if (!signature) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
   }
-  auto subgraph = model_->Subgraph(signature->SubgraphIndex());
+  auto subgraph = model_->Subgraph(signature->Key());
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
@@ -70,7 +70,7 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
   if (!signature) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
   }
-  auto subgraph = model_->Subgraph(signature->SubgraphIndex());
+  auto subgraph = model_->Subgraph(signature->Key());
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }

@@ -35,7 +35,8 @@ LiteRtElementType MapElementType(TflElementType element_type);
 
 Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type);
 
-Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization);
+Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization,
+                                       BufferProvider buffer_provider);
 
 }  // namespace litert::internal
 

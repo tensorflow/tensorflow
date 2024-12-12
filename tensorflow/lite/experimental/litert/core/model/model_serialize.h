@@ -34,12 +34,9 @@ LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
 
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert::internal {
 
-Expected<OwningBufferRef<uint8_t>> SerializeModel(Model&& model);
 Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model);
 
 }  // namespace litert::internal

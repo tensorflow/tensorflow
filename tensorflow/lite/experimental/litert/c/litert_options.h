@@ -153,7 +153,8 @@ LiteRtStatus LiteRtGetSubFusedActivationOption(LiteRtOp op,
 //  - new_shape : int32_t[]
 //
 //==============================================================================
-LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op, int32_t** new_shape,
+LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op,
+                                            const int32_t** new_shape,
                                             int32_t* new_shape_size);
 
 //==============================================================================

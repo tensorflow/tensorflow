@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 
@@ -253,8 +254,7 @@ Expected<TflPerChannelQParams> AsPerChannelQparams(
   }
   return std::make_tuple(tfl_quantization->quantized_dimension,
                          tfl_quantization->zero_point.size(),
-                         &tfl_quantization->zero_point,
-                         &tfl_quantization->scale);
+                         tfl_quantization->zero_point, tfl_quantization->scale);
 }
 
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {
@@ -297,6 +297,24 @@ Expected<FlatbufferWrapper::Ptr> FlatbufferWrapper::CreateFromTflFile(
     return buf.Error();
   }
   return FlatbufferWrapper::CreateFromBuffer(std::move(*buf));
+}
+
+OwningBufferRef<uint8_t> SerializeFlatbuffer(const TflModel& tfl_model) {
+  flatbuffers::FlatBufferBuilder b;
+  auto model_offset = tflite::Model::Pack(b, &tfl_model);
+  tflite::FinishModelBuffer(b, model_offset);
+
+  OwningBufferRef<uint8_t> buffer;
+  auto [new_buf, new_size, new_offset] = buffer.GetWeak();
+  new_buf = b.ReleaseRaw(new_size, new_offset);
+
+  return buffer;
+}
+
+OwningBufferRef<uint8_t> SerializeFlatbuffer(
+    const FlatbufferWrapper& flatbuffer) {
+  auto tfl_model = flatbuffer.Unpack();
+  return SerializeFlatbuffer(*tfl_model);
 }
 
 }  // namespace litert::internal

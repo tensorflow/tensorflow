@@ -151,7 +151,7 @@ TEST(ApplyPluginTest, ApplyPlugin) {
   auto ops = model.MainSubgraph()->Ops();
   ASSERT_EQ(ops.size(), 1);
   EXPECT_EQ(ops.front().Code(), kLiteRtOpCodeTflCustom);
-  EXPECT_EQ(ops.front().Get()->custom_options.StrView(), "Partition_0");
+  EXPECT_EQ(ops.front().Get()->CustomOptions().StrView(), "Partition_0");
 }
 
 }  // namespace
