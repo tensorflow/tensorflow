@@ -66,12 +66,11 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForReference() {
 
 }  // namespace
 
-HloPjRtTestBase::HloPjRtTestBase(
-    bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
-    HloPredicate instruction_can_change_layout_func)
-    : HloRunnerAgnosticTestBase(
-          GetHloRunnerForTest(), GetHloRunnerForReference(),
-          verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-          instruction_can_change_layout_func) {}
+HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
+    : HloRunnerAgnosticTestBase(GetHloRunnerForTest(),
+                                GetHloRunnerForReference(),
+                                options.verifier_layout_sensitive,
+                                options.allow_mixed_precision_in_hlo_verifier,
+                                options.instruction_can_change_layout_func) {}
 
 }  // namespace xla
