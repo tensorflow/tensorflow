@@ -59,6 +59,7 @@ namespace ma = ::mlir::arith;
 namespace scf = ::mlir::scf;
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Location;
 using mlir::OpBuilder;
 using mlir::Value;
@@ -254,25 +255,24 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
              auto scatter_result = mlir_converter::EmitXlaLoopOp(
                  implicit_then_builder, thread_and_block_ids, result_tensors,
                  thread_id_to_update_map,
-                 [&](ValueRange symbol_values, ValueRange map_results,
+                 [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+                     ValueRange map_results,
                      ValueRange output_tensors) -> SmallVector<Value> {
                    // Extract update element.
                    auto update_elem = ProvideParameter(
                        root_computation, scatter, kScatterUpdateIndex,
-                       map_results, call_targets, entry_function,
-                       implicit_then_builder)[0];
+                       map_results, call_targets, entry_function, nested_b)[0];
 
                    auto output_indices = std::move(update_offsets);
                    for (int i = 0; i < output_indices.size(); ++i) {
-                     output_indices[i] =
-                         implicit_then_builder.create<ma::AddIOp>(
-                             map_results[i + 1], output_indices[i]);
+                     output_indices[i] = nested_b.create<ma::AddIOp>(
+                         map_results[i + 1], output_indices[i]);
                    }
                    Value output_tensor = output_tensors.front();
                    Value updated_output = EmitScatterComputation(
                        scatter, output_indices, update_elem, output_tensor,
                        root_computation, call_targets, entry_function,
-                       implicit_then_builder);
+                       nested_b);
                    return {updated_output};
                  });
              implicit_then_builder.create<scf::YieldOp>(scatter_result);

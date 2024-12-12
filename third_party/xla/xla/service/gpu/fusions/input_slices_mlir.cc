@@ -51,6 +51,7 @@ namespace xla {
 namespace gpu {
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -111,7 +112,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
 
   auto result_tensors = mlir_converter::EmitXlaLoopOp(
       builder, thread_and_block_ids, output_tensor_args, input_indexing,
-      [&](ValueRange symbol_values, ValueRange map_results,
+      [&](ImplicitLocOpBuilder nested_b, ValueRange symbol_values,
+          ValueRange map_results,
           ValueRange output_tensors) -> SmallVector<Value> {
         SmallVector<Value> input_operands(
             entry_function.getArguments().take_front(num_inputs));
@@ -124,7 +126,7 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
           const auto* arg = root.instruction().operand(0);
           if (auto& value = input_values[arg]; !value) {
             value =
-                builder.create<PureCallOp>(call_targets(arg), input_operands)
+                nested_b.create<PureCallOp>(call_targets(arg), input_operands)
                     .getResult(0);
           }
         }
@@ -133,8 +135,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
           auto output_indexing = ComputeThreadIdToOutputIndexing(
               output_index, entry_function.getContext());
           mlir::Value in_bounds = mlir_converter::CheckConstraints(
-              *output_indexing, thread_and_block_ids, symbol_values, builder);
-          auto if_op = builder.create<mlir::scf::IfOp>(
+              *output_indexing, thread_and_block_ids, symbol_values, nested_b);
+          auto if_op = nested_b.create<mlir::scf::IfOp>(
               in_bounds,
               [&, output_index = output_index, output = output](
                   mlir::OpBuilder b, mlir::Location loc) {

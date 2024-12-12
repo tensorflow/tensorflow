@@ -52,6 +52,7 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -103,7 +104,7 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     const mlir_converter::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
 
@@ -125,7 +126,8 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     }
   }
 
-  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+  auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
+                          ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
     auto root_fn = call_targets(
         fusion.fused_instructions_computation()->root_instruction());
@@ -135,7 +137,7 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
         entry_function.getArguments().take_front(num_inputs));
     absl::c_copy(map_results, std::back_inserter(operands));
     auto result_scalars =
-        builder.create<PureCallOp>(root_fn, operands).getResults();
+        nested_b.create<PureCallOp>(root_fn, operands).getResults();
 
     SmallVector<Value> result_tensors;
     result_tensors.reserve(output_tensor_args.size());
@@ -143,9 +145,9 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
          llvm::zip(result_shapes, output_tensors, result_scalars)) {
       llvm::SmallVector<Value> output_indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(*result_shapes.front(), *root_shape,
-                        builder.getContext()),
-          map_results, {}, builder);
-      result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
+                        nested_b.getContext()),
+          map_results, {}, nested_b);
+      result_tensors.push_back(nested_b.create<mlir::tensor::InsertOp>(
           value, tensor, output_indices));
     }
     return result_tensors;
