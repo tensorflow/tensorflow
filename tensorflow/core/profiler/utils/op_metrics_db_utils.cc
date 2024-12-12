@@ -127,6 +127,9 @@ void SetOpMetadataFromHloEventMetadata(
         case StatType::kFlops:
           op_metrics->set_flops(stat.IntOrUintValue());
           break;
+        case StatType::kModelFlops:
+          op_metrics->set_model_flops(stat.IntOrUintValue());
+          break;
         case StatType::kBytesAccessed:
           op_metrics->set_bytes_accessed(stat.IntOrUintValue());
           break;
@@ -197,6 +200,12 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
 
 void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
   op_metrics.set_flops(op_metrics.flops() * op_metrics.occurrences());
+  if (op_metrics.model_flops() > 0) {
+    op_metrics.set_model_flops(op_metrics.model_flops() *
+                               op_metrics.occurrences());
+  } else {
+    op_metrics.set_model_flops(op_metrics.flops());
+  }
   op_metrics.set_bytes_accessed(op_metrics.bytes_accessed() *
                                 op_metrics.occurrences());
   for (auto& memory_access : *op_metrics.mutable_memory_accessed_breakdown()) {
