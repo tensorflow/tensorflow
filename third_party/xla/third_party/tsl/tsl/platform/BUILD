@@ -229,6 +229,8 @@ cc_library(
         ":stringpiece",
         ":stringprintf",
         ":types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
     ],
 )
@@ -1720,6 +1722,8 @@ tsl_cc_test(
         ":numbers",
         ":test",
         ":test_main",
+        ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
