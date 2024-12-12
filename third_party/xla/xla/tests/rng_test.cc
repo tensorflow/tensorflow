@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
