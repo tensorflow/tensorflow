@@ -488,6 +488,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tpu_step_breakdown_utils",
+    hdrs = ["tpu_step_breakdown_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:steps_db_proto_cc"],
+)
+
+cc_library(
+    name = "tpu_step_details_utils",
+    hdrs = ["tpu_step_details_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:tpu_input_pipeline_proto_cc"],
+)
+
 tf_cc_test(
     name = "xprof_gpu_cost_analysis_test",
     srcs = ["xprof_gpu_cost_analysis_test.cc"],
