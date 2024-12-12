@@ -96,7 +96,7 @@ cc_library(
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
     ]) + if_rocm_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:llvm_gpu_backend",
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "@local_tsl//tsl/platform:rocm_rocdl_path",
         "@triton//third_party/amd:TritonAMDGPUToLLVM",
         "@triton//third_party/amd:TritonAMDGPUTransforms",
@@ -200,7 +200,7 @@ cc_library(
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
     ]) + if_rocm_is_configured([
         "@local_tsl//tsl/platform:rocm_rocdl_path",
-        "//xla/service/gpu/llvm_gpu_backend:llvm_gpu_backend",
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "@triton//third_party/amd:TritonAMDGPUToLLVM",
         "@triton//third_party/amd:TritonAMDGPUTransforms",
     ]),
