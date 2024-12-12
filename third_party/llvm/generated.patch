@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/Sema/aarch64-sve2-intrinsics/acle_sve2_fp8.c b/clang/test/Sema/aarch64-sve2-intrinsics/acle_sve2_fp8.c
---- a/clang/test/Sema/aarch64-sve2-intrinsics/acle_sve2_fp8.c
-+++ b/clang/test/Sema/aarch64-sve2-intrinsics/acle_sve2_fp8.c
-@@ -1,6 +1,6 @@
- // REQUIRES: aarch64-registered-target
- 
--// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -target-feature +sve -verify -emit-llvm %s
-+// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -target-feature +sve -verify -emit-llvm -o - %s
- 
- #include <arm_sve.h>
- 
