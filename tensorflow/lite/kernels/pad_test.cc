@@ -772,6 +772,53 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleConstFloat32ValuedTestInt8) {
 }
 
 template <typename padding_integer_type>
+void SimpleConstFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      Eigen::half{4.0f}, {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{1.5f}, Eigen::half{2.5f}, Eigen::half{3.5f},
+              Eigen::half{4.5}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::half{4}, Eigen::half{4}, Eigen::half{4}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{1.5}, Eigen::half{2.5}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{3.5}, Eigen::half{4.5}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{4}, Eigen::half{4}, Eigen::half{4}})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int64_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleConstBFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      Eigen::bfloat16{6.0f}, {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{1.0f}, Eigen::bfloat16{2.0f},
+              Eigen::bfloat16{3.0f}, Eigen::bfloat16{4.0}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 6, 6, 6, 6, 1, 2, 6, 6, 3, 4,
+                                               6, 6, 6, 6, 6}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int64_t>();
+}
+
+template <typename padding_integer_type>
 void Simple4DConstFloat32ValuedTest() {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
@@ -790,6 +837,49 @@ TEST_F(PadV2OpTest, Int32PaddingSimple4DConstFloat32ValuedTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimple4DConstFloat32ValuedTest) {
   Simple4DConstFloat32ValuedTest<int64_t>();
+}
+
+template <typename padding_integer_type>
+void Simple4DConstFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 1, 2, 1}}, {4, 2}, {0, 1, 0, 0, 0, 0, 0, 1},
+      Eigen::half{7.0}, {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{3.0f}, Eigen::half{6.0f}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 7, 6, 7, 7, 7, 7, 7}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int64_t>();
+}
+
+template <typename padding_integer_type>
+void Simple4DConstBFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 1, 2, 1}}, {4, 2}, {0, 1, 0, 0, 0, 0, 0, 1},
+      Eigen::bfloat16{5.0}, {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{3.2f}, Eigen::bfloat16{6.4f}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::bfloat16{3.2f}, Eigen::bfloat16{5.0f}, Eigen::bfloat16{6.4f},
+           Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f},
+           Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f}})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int64_t>();
 }
 
 template <typename padding_integer_type>
@@ -832,6 +922,50 @@ TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTest) {
   SimpleDynamicTestV2<int64_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleDynamicTestV2Float16() {
+  PadV2OpDynamicModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {4, 2}, Eigen::half{0.0},
+      {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{1.0f}, Eigen::half{2.0f}, Eigen::half{3.0f},
+              Eigen::half{4.0f}});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int64_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleDynamicTestV2BFloat16() {
+  PadV2OpDynamicModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {4, 2}, Eigen::bfloat16{2.0},
+      {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{5.0f}, Eigen::bfloat16{6.0f},
+              Eigen::bfloat16{7.0f}, Eigen::bfloat16{8.0f}});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 2, 2, 2, 2, 5, 6, 2, 2, 7, 8,
+                                               2, 2, 2, 2, 2}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int64_t>();
 }
 
 template <typename padding_integer_type>

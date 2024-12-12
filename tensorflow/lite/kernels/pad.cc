@@ -330,6 +330,44 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         }
       }
     } break;
+    case kTfLiteFloat16: {
+      Eigen::half pad_value =
+          op_context.constant_values == nullptr
+              ? static_cast<Eigen::half>(0.f)
+              : *GetTensorData<Eigen::half>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, Eigen::half, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, Eigen::half, pad_value);
+        }
+      } else if (kernel_type == kGenericOptimized) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, Eigen::half, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, Eigen::half, pad_value);
+        }
+      }
+    } break;
+    case kTfLiteBFloat16: {
+      Eigen::bfloat16 pad_value =
+          op_context.constant_values == nullptr
+              ? static_cast<Eigen::bfloat16>(0.f)
+              : *GetTensorData<Eigen::bfloat16>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, Eigen::bfloat16, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, Eigen::bfloat16, pad_value);
+        }
+      } else if (kernel_type == kGenericOptimized) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, Eigen::bfloat16, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, Eigen::bfloat16, pad_value);
+        }
+      }
+    } break;
     case kTfLiteUInt8: {
       EvalInt<uint8_t>(context, op_context, op_params);
     } break;
