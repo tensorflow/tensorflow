@@ -204,8 +204,10 @@ def TestFactory(xla_backend,
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
         for name, fn in custom_calls_testlib.registrations().items():
           xla_client.register_custom_call_target(
-              name, {"execute": fn}, platform="cpu", api_version=1
+              name, fn, platform="cpu", api_version=1
           )
+        for name, val in custom_calls_testlib.type_ids().items():
+          xla_client.register_custom_type_id(name, val, platform="cpu")
         _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
@@ -616,6 +618,21 @@ def TestFactory(xla_backend,
           api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
       )
       self._ExecuteAndCompareClose(c, expected=[-1.75])
+
+    def testStatefulCustomCall(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+      ops.CustomCallWithLayout(
+          c,
+          b"stateful",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.int32), (), ()),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_TYPED_FFI)
+      self._ExecuteAndCompareClose(c, expected=[42])
 
     def testCustomCallLookup(self):
       if self.backend.platform != "cpu":
