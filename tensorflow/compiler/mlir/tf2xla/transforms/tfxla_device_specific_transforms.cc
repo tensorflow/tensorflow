@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace mhlo {

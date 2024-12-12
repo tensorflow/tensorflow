@@ -17,6 +17,7 @@ limitations under the License.
 // ops (TF/XLA) to the HLO dialect.
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 

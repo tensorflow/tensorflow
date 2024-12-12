@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <map>
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
