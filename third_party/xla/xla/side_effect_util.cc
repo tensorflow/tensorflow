@@ -73,4 +73,6 @@ const char kXlaCollectiveMatmulNone[] = "none";
 
 const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
 
+const char kXlaSchedulingGroupIdAttr[] = "_scheduling_group_id";
+
 }  // namespace xla

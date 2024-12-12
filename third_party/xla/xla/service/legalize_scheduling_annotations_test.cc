@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/side_effect_util.h"
 #include "xla/test_helpers.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -224,8 +225,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MoveFusedOpAnnotationToCaller) {
 
   HloInstruction* fusion = hlo_module->entry_computation()->root_instruction();
   const auto& attrs = fusion->frontend_attributes().map();
-  EXPECT_TRUE(attrs.contains("_scheduling_group_id"));
-  EXPECT_EQ(attrs.at("_scheduling_group_id"), "1");
+  EXPECT_TRUE(attrs.contains(kXlaSchedulingGroupIdAttr));
+  EXPECT_EQ(attrs.at(kXlaSchedulingGroupIdAttr), "1");
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, FusedOpsWithDifferentAnnotationIds) {

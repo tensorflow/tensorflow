@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla.pb.h"
 
@@ -359,8 +360,8 @@ class AnnotationTracker {
   }
   std::optional<int64_t> GetAnnotation(const HloInstruction* instr) const {
     const auto& attrs = instr->frontend_attributes().map();
-    if (attrs.contains("_scheduling_group_id")) {
-      return std::stoi(attrs.at("_scheduling_group_id"));
+    if (attrs.contains(kXlaSchedulingGroupIdAttr)) {
+      return std::stoi(attrs.at(kXlaSchedulingGroupIdAttr));
     }
     return std::nullopt;
   }
