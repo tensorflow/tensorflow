@@ -1,4 +1,8 @@
 licenses(["restricted"])  # NVIDIA proprietary license
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 
 exports_files([
     "version.txt",
@@ -21,12 +25,14 @@ cc_library(
     name = "cublas",
     visibility = ["//visibility:public"],
     %{comment}deps = [":cublas_shared_library"],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cublas/lib"),
 )
 
 cc_library(
     name = "cublasLt",
     visibility = ["//visibility:public"],
     %{comment}deps = [":cublasLt_shared_library"],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cublas/lib"),
 )
 
 cc_library(
