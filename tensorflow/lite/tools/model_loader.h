@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 #define TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 
+#include <cstdint>
 #ifndef _WIN32
 #include <unistd.h>
 #endif  // !_WIN32
