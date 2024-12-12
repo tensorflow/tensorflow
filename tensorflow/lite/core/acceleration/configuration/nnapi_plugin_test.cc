@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 
