@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
+#include <cstdlib>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
