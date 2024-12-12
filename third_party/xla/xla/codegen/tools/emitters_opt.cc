@@ -34,11 +34,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 int main(int argc, char** argv) {

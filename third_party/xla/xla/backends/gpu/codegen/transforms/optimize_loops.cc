@@ -50,7 +50,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_OPTIMIZELOOPSPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 namespace {
 

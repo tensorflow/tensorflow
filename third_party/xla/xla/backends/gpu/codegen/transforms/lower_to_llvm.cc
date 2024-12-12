@@ -42,7 +42,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -51,7 +51,7 @@ namespace gpu {
 namespace {
 
 #define GEN_PASS_DEF_LOWERTOLLVMPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
  public:

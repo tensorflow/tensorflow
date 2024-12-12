@@ -612,7 +612,7 @@ lit_test_suite(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
 #     deps = [
-#         "//xla/service/gpu/fusions/transforms:passes",
+#         "//xla/backends/gpu/codegen/transforms:passes",
 #         "//xla/service/gpu/fusions/triton:xla_triton",
 #         "//xla/service/gpu/fusions/triton:xla_triton_passes",
 #         "@llvm-project//mlir:AllExtensions",

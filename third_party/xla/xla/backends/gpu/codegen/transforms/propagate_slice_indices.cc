@@ -19,13 +19,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 
 namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_PROPAGATESLICEINDICESPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 namespace {
 

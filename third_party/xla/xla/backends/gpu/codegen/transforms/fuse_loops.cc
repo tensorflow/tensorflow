@@ -44,7 +44,7 @@ using mlir::ValueRange;
 namespace mv = ::mlir::vector;
 
 #define GEN_PASS_DEF_FUSELOOPSPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 bool LoopsUseSameDimOps(LoopOp& loop1, LoopOp& loop2) {
   for (auto [dim1, dim2] : llvm::zip(loop1.getDims(), loop2.getDims())) {

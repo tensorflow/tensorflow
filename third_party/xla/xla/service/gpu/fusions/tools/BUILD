@@ -14,11 +14,11 @@ xla_cc_binary(
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
+        "//xla/backends/gpu/codegen/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
-        "//xla/service/gpu/fusions/transforms:passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",

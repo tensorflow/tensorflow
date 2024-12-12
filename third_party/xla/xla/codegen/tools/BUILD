@@ -13,16 +13,17 @@ xla_cc_binary(
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = [
+        "//xla/backends/gpu/codegen:__subpackages__",
         "//xla/codegen/ir/tests:__subpackages__",
         "//xla/service/gpu/fusions:__subpackages__",
     ],
     deps = [
+        "//xla/backends/gpu/codegen/transforms:passes",
         "//xla/codegen/ir:xla",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
-        "//xla/service/gpu/fusions/transforms:passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",

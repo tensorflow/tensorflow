@@ -24,7 +24,7 @@ namespace gpu {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTPURECALLOPSPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
   using OpRewritePattern::OpRewritePattern;

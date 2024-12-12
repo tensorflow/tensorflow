@@ -47,7 +47,7 @@ namespace gpu {
 namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 using mlir::Value;
 

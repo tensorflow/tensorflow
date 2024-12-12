@@ -59,8 +59,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -71,7 +71,7 @@ namespace gpu {
 namespace {
 
 #define GEN_PASS_DEF_LOWERTENSORSPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 using mlir::failure;
 using mlir::Location;

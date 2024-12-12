@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -39,7 +39,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_CONVERTFLOATNVIDIAPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 namespace {
 

@@ -41,10 +41,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
 
 namespace xla {
 namespace gpu {
@@ -70,7 +70,7 @@ using mlir::affine::AffineApplyOp;
 namespace arith = mlir::arith;
 
 #define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
-#include "xla/service/gpu/fusions/transforms/passes.h.inc"
+#include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
 int Distance(ImplicitLocOpBuilder& builder, Value a) {
   auto* block = builder.getInsertionBlock();
