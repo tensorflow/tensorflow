@@ -1711,6 +1711,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
@@ -2006,6 +2007,7 @@ cc_library(
         ":gpu_compiler",
         ":target_constants",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
