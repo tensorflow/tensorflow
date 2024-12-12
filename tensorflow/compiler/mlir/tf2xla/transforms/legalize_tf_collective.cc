@@ -16,10 +16,12 @@ limitations under the License.
 // This file implements logic for lowering TensorFlow dialect's collective
 // ops (TF/XLA) to the HLO dialect.
 
+#include <cstdint>
+#include <memory>
 #include <numeric>
-#include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project

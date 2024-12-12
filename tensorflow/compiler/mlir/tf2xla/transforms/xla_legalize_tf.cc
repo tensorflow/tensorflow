@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
