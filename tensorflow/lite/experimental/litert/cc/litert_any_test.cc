@@ -22,6 +22,8 @@
 TEST(Any, ConversionNone) {
   EXPECT_FALSE(
       litert::ToStdAny(LiteRtAny{/*.type=*/kLiteRtAnyTypeNone}).has_value());
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any())->type, kLiteRtAnyTypeNone);
 }
 
 TEST(Any, ConversionBool) {
@@ -31,6 +33,11 @@ TEST(Any, ConversionBool) {
   ASSERT_EQ(std::any_cast<bool>(litert::ToStdAny(LiteRtAny{
                 /*.type=*/kLiteRtAnyTypeBool, {/*.bool_value=*/false}})),
             false);
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(true))->type, kLiteRtAnyTypeBool);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(true))->bool_value, true);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(false))->type, kLiteRtAnyTypeBool);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(false))->bool_value, false);
 }
 
 TEST(Any, ConversionInt) {
@@ -38,6 +45,26 @@ TEST(Any, ConversionInt) {
   litert_any.type = kLiteRtAnyTypeInt;
   litert_any.int_value = 1234;
   ASSERT_EQ(std::any_cast<int64_t>(litert::ToStdAny(litert_any)), 1234);
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<int8_t>(12)))->type,
+            kLiteRtAnyTypeInt);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<int8_t>(12)))->int_value,
+            12);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<int16_t>(1234)))->type,
+            kLiteRtAnyTypeInt);
+  ASSERT_EQ(
+      litert::ToLiteRtAny(std::any(static_cast<int16_t>(1234)))->int_value,
+      1234);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<int32_t>(1234)))->type,
+            kLiteRtAnyTypeInt);
+  ASSERT_EQ(
+      litert::ToLiteRtAny(std::any(static_cast<int32_t>(1234)))->int_value,
+      1234);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<int64_t>(1234)))->type,
+            kLiteRtAnyTypeInt);
+  ASSERT_EQ(
+      litert::ToLiteRtAny(std::any(static_cast<int64_t>(1234)))->int_value,
+      1234);
 }
 
 TEST(Any, ConversionReal) {
@@ -45,6 +72,17 @@ TEST(Any, ConversionReal) {
   litert_any.type = kLiteRtAnyTypeReal;
   litert_any.real_value = 123.4;
   ASSERT_EQ(std::any_cast<double>(litert::ToStdAny(litert_any)), 123.4);
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<float>(1.2)))->type,
+            kLiteRtAnyTypeReal);
+  EXPECT_NEAR(
+      litert::ToLiteRtAny(std::any(static_cast<float>(1.2)))->real_value, 1.2,
+      1e-7);
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(static_cast<double>(1.2)))->type,
+            kLiteRtAnyTypeReal);
+  EXPECT_NEAR(
+      litert::ToLiteRtAny(std::any(static_cast<double>(1.2)))->real_value, 1.2,
+      1e-7);
 }
 
 TEST(Any, ConversionString) {
@@ -54,6 +92,9 @@ TEST(Any, ConversionString) {
   litert_any.str_value = kTestString;
   ASSERT_EQ(std::any_cast<const char*>(litert::ToStdAny(litert_any)),
             kTestString);
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any("test"))->type, kLiteRtAnyTypeString);
+  EXPECT_STREQ(litert::ToLiteRtAny(std::any("test"))->str_value, "test");
 }
 
 TEST(Any, ConversionPtr) {
@@ -62,4 +103,8 @@ TEST(Any, ConversionPtr) {
   litert_any.type = kLiteRtAnyTypeVoidPtr;
   litert_any.ptr_value = kTestPtr;
   ASSERT_EQ(std::any_cast<const void*>(litert::ToStdAny(litert_any)), kTestPtr);
+
+  ASSERT_EQ(litert::ToLiteRtAny(std::any(kTestPtr))->type,
+            kLiteRtAnyTypeVoidPtr);
+  EXPECT_EQ(litert::ToLiteRtAny(std::any(kTestPtr))->ptr_value, kTestPtr);
 }
