@@ -153,11 +153,6 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
-  // If true, XLA will annotate instructions in the dumps with emitter code
-  // location (source:line) annotations. This helps to identify the source of
-  // the code that emits a particular instruction.
-  bool xla_gpu_unsupported_annotate_with_emitter_loc = 501;
-
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 

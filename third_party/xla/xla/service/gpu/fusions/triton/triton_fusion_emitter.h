@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
@@ -97,7 +97,8 @@ namespace ir_emitter_triton_internal {
 
 // Computes the transformation from a 1-d program_id to a tile multi-index.
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder& b, absl::Span<const int64_t> num_output_tiles_per_dim);
+    mlir::ImplicitLocOpBuilder& b,
+    absl::Span<const int64_t> num_output_tiles_per_dim);
 
 // Used for creating Triton Load and Store ops.
 struct MakeTensorPtrOpAndBoundaryChecks {
@@ -109,16 +110,9 @@ struct MakeTensorPtrOpAndBoundaryChecks {
 };
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
-    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
 }  // namespace ir_emitter_triton_internal
-
-// Dumps the Triton IR to a string.
-//
-// If `dump_annotations` is true, then the function also dumps the loc
-// attributes of the instructions. Otherwise, it dumps the IR without
-// annotations.
-std::string DumpTritonIR(mlir::ModuleOp triton_module, bool dump_annotations);
 
 }  // namespace gpu
 }  // namespace xla

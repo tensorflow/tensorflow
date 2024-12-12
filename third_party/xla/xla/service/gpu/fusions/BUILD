@@ -1,43 +1,11 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "emitter_loc_op_builder",
-    srcs = ["emitter_loc_op_builder.cc"],
-    hdrs = ["emitter_loc_op_builder.h"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform",
-    ] + if_google(["@com_google_absl//absl/types:source_location"]),
-)
-
-xla_test(
-    name = "emitter_loc_op_builder_test",
-    srcs = ["emitter_loc_op_builder_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":emitter_loc_op_builder",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
-    ],
 )
 
 cc_library(

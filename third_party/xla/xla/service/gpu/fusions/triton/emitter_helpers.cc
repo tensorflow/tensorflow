@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,6 +54,7 @@ namespace xla::gpu::triton {
 
 using ::llvm::SmallVector;
 using ::mlir::ArrayRef;
+using ::mlir::ImplicitLocOpBuilder;
 using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
@@ -82,7 +83,7 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
-absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
+absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -113,7 +114,7 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   }
 }
 
-Type StorageType(EmitterLocOpBuilder& b, Type t) {
+Type StorageType(mlir::OpBuilder b, Type t) {
   if (t.isInteger(1)) {
     return b.getI8Type();
   }
@@ -125,7 +126,7 @@ bool IsFp8Type(Type t) {
          t.isFloat8E4M3FNUZ() || t.isFloat8E4M3B11FNUZ();
 }
 
-Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
+Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
@@ -242,7 +243,7 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
              << llvm_ir::DumpToString(dst_element_ty);
 }
 
-Value Subtract(EmitterLocOpBuilder& b, ValueRange values) {
+Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::SubIOp>(values[0], values[1]);
   } else {
@@ -250,7 +251,7 @@ Value Subtract(EmitterLocOpBuilder& b, ValueRange values) {
   }
 }
 
-Value Compare(EmitterLocOpBuilder& b, ValueRange values,
+Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
               mh::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::IntegerType>(type)) {
@@ -267,7 +268,7 @@ Value Compare(EmitterLocOpBuilder& b, ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
+Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MaximumFOp>(values);
@@ -288,7 +289,7 @@ Value Maximum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-Value Minimum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
+Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MinimumFOp>(values);
@@ -310,7 +311,7 @@ Value Minimum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
+ScalarOrTensor Splat(ImplicitLocOpBuilder& b, ScalarOrTensor value,
                      ArrayRef<int64_t> shape) {
   CHECK(!shape.empty());
   auto type = mlir::RankedTensorType::get(shape, value.Type());
@@ -329,7 +330,7 @@ bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
 }
 
 absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
-    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     ValueRange inputs) {
   auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
@@ -369,7 +370,7 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
   return res;
 }
 
-absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
                                       absl::string_view libdevice_path,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
@@ -456,7 +457,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
   }
 }
 
-absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
+absl::StatusOr<ScalarOrTensor> EmitConstant(ImplicitLocOpBuilder& b,
                                             const HloInstruction& constant) {
   TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),

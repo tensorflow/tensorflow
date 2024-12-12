@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
@@ -61,6 +61,7 @@ namespace xla::gpu::ir_emitter_triton_internal {
 namespace {
 
 using ::llvm::SmallVector;
+using ::mlir::ImplicitLocOpBuilder;
 using ::mlir::MLIRContext;
 using ::mlir::OpBuilder;
 using ::mlir::Type;
@@ -133,7 +134,7 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
 }
 
 mlir::triton::FuncOp CreateTritonFunction(
-    EmitterLocOpBuilder& b, const std::vector<int64_t> shape_sizes) {
+    ImplicitLocOpBuilder& b, const std::vector<int64_t> shape_sizes) {
   auto fn = b.create<::mlir::triton::FuncOp>(
       "func",
       b.getFunctionType({::mlir::triton::PointerType::get(
@@ -165,7 +166,7 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
       llvm_ir::CreateMlirModuleOp(loc);
   builder.setInsertionPointToEnd(triton_module->getBody());
 
-  EmitterLocOpBuilder b(loc, builder);
+  ImplicitLocOpBuilder b(loc, builder);
   auto fn = CreateTritonFunction(b, parent_shape);
 
   SmallVector<Value, 3> tile_multi_index = ComputeDelinearizedTileIndex(

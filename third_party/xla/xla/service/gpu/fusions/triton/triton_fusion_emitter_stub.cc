@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -86,13 +86,13 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 namespace ir_emitter_triton_internal {
 
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder& b,
+    mlir::ImplicitLocOpBuilder& b,
     absl::Span<const int64_t> num_output_tiles_per_dim) {
   return {};
 }
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
-    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
