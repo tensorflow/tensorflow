@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 namespace tensorflow {
@@ -80,10 +81,19 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                    memory_accessed_breakdown = {},
                int64_t model_flops = 0);
 
+  void EnterOpMetadata(OpMetrics* op_metrics,
+                       const HloInstructionWrapper* instr_wrapper);
+
   void EnterOpMetadata(uint64 program_id, absl::string_view program_name,
                        absl::string_view category, absl::string_view provenance,
                        absl::string_view deduplicated_name, bool is_eager,
                        absl::string_view long_name = "");
+
+  void EnterOpMetadataFromHloModuleMap(uint64 program_id,
+                                       absl::string_view op_name,
+                                       const HloModuleMap& hlo_module_map);
+  void AddFusionChildrenToOpMetricsFromHloInstruction(
+      OpMetrics* op_metrics, const HloInstructionWrapper* instr_wrapper);
 };
 
 }  // namespace profiler
