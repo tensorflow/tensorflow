@@ -40,6 +40,8 @@ using tsl::int8;
 
 using tsl::float8_e4m3fn;
 using tsl::float8_e5m2;
+using tsl::float8_e4m3fnuz;
+using tsl::float8_e5m2fnuz;
 
 static const uint8 kuint8max = tsl::kuint8max;
 static const uint16 kuint16max = tsl::kuint16max;

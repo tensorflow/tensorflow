@@ -109,6 +109,10 @@ TEST(TypesTest, DataTypeFromString) {
   EXPECT_EQ(DT_FLOAT8_E5M2, dt);
   ASSERT_TRUE(DataTypeFromString("float8_e4m3fn", &dt));
   EXPECT_EQ(DT_FLOAT8_E4M3FN, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e5m2fnuz", &dt));
+  EXPECT_EQ(DT_FLOAT8_E5M2FNUZ, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e4m3fnuz", &dt));
+  EXPECT_EQ(DT_FLOAT8_E4M3FNUZ, dt);
   ASSERT_TRUE(DataTypeFromString("int4", &dt));
   EXPECT_EQ(DT_INT4, dt);
   ASSERT_TRUE(DataTypeFromString("uint4", &dt));
@@ -144,6 +148,8 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E5M2));
   EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3FN));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E5M2FNUZ));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3FNUZ));
   EXPECT_FALSE(DataTypeIsQuantized(DT_UINT4));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT4));
 }
