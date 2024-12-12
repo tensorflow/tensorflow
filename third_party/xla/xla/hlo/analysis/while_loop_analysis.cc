@@ -504,7 +504,7 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
     return nullopt;
   }
 
-  // Check that `i` goes as `i += k` in the while body where k is a natural
+  // Check that `i` goes as `i += C` in the while body where C is a natural
   // number.
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
@@ -588,6 +588,35 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
                "not a constant scalar representable as an int64_t.";
     return nullopt;
   }
+
+  // If the while loop condition does not support equality, then we need to
+  // deduct one from the bound.
+  bool while_cond_bound_supports_equality;
+  if (Match(while_cond_root,
+            m::Op().WithComparisonDirection(ComparisonDirection::kLt)) ||
+      Match(while_cond_root,
+            m::Op().WithComparisonDirection(ComparisonDirection::kGt))) {
+    while_cond_bound_supports_equality = false;
+  } else if (Match(while_cond_root,
+                   m::Op().WithComparisonDirection(ComparisonDirection::kLe)) ||
+             Match(while_cond_root,
+                   m::Op().WithComparisonDirection(ComparisonDirection::kGe))) {
+    while_cond_bound_supports_equality = true;
+  } else {
+    VLOG(2) << "Pattern-match failed: while condition comparison is not "
+               "LT, GT, LE, or GE.";
+    return nullopt;
+  }
+  if (!while_cond_bound_supports_equality) {
+    while_cond_bound_val.value()--;
+  }
+
+  // We also need to round the bound down so that the difference between bound
+  // and init_value is a multiple of the step size.
+  while_cond_bound_val.value() =
+      (while_cond_bound_val.value() - indvar_init_val.value()) /
+          trip_count_step * trip_count_step +
+      indvar_init_val.value();
 
   const int64_t init_bitwidth =
       primitive_util::BitWidth(indvar_init.shape().element_type());
