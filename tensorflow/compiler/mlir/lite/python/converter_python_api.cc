@@ -136,7 +136,7 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
   }
 
   std::string output_file_contents_txt;
-  tensorflow::Status status;
+  absl::Status status;
 
   // Convert model.
   if (model_flags.use_hlo_import() && model_flags.has_saved_model_dir()) {
@@ -387,8 +387,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
 
     // Register extra opdefs to TensorFlow global op registry.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](
-            tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> absl::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return absl::OkStatus();
         });

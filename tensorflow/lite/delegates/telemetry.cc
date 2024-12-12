@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/telemetry.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"

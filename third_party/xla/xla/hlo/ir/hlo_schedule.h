@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_SCHEDULE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
