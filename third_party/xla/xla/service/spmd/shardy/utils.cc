@@ -62,14 +62,18 @@ DictionaryAttr getFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index) {
 
 namespace {
 
-mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder) {
+mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder,
+                                    bool escapeAttr) {
   std::string value;
   if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
+    if (!escapeAttr) {
+      return stringAttr;
+    }
     value = stringAttr.getValue().str();
   } else {
     value = mlir::sdy::attributeToString(attr);
   }
-  return builder.getStringAttr(absl::CEscape(value));
+  return builder.getStringAttr(escapeAttr ? absl::CEscape(value) : value);
 }
 
 SmallVector<NamedAttribute> getExistingFrontendAttributes(
@@ -87,9 +91,9 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
 }
 
 void setFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
-                          StringRef name, Attribute value) {
+                          StringRef name, Attribute value, bool escapeAttr) {
   mlir::OpBuilder builder(value.getContext());
-  StringAttr stringValue = getStringAttribute(value, builder);
+  StringAttr stringValue = getStringAttribute(value, builder, escapeAttr);
   for (auto* it = existingAttributes.begin(); it != existingAttributes.end();
        ++it) {
     if (it->getName() == name) {
@@ -130,19 +134,20 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
 
 }  // namespace
 
-void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
+void setFrontendAttribute(Operation* op, StringRef name, Attribute value,
+                          bool escapeAttr) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFrontendAttrs(op), "");
-  setFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value, escapeAttr);
   setFrontendAttrs(op, existingAttributes);
 }
 
 void setFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
-                          int64_t argNum) {
+                          int64_t argNum, bool escapeAttr) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFuncArgFrontendAttrs(funcOp, argNum),
                                     "");
-  setFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value, escapeAttr);
   setFuncArgFrontendAttrs(funcOp, argNum, existingAttributes);
 }
 
