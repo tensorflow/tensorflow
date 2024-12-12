@@ -285,7 +285,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       int64_t output_size;
       int64_t pad_low_int64;
       int64_t pad_high_int64;
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
+      absl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           mlir::cast<ShapedType>(conv_op.getLhs().getType())
               .getDimSize(input_spatial_dim[i]),
           mlir::cast<ShapedType>(conv_op.getRhs().getType())
