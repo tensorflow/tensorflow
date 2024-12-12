@@ -117,7 +117,8 @@ class HloPrintOptions {
         print_extra_attributes_(true),
         syntax_sugar_async_ops_(true),
         print_name_after_closing_brace_(false),
-        print_full_replica_group_list_(false) {}
+        print_full_replica_group_list_(false),
+        print_parameter_number_(true) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -399,6 +400,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, prints the parameter number of a parameter instruction.
+  HloPrintOptions& set_print_parameter_number(bool value) {
+    print_parameter_number_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -444,6 +451,7 @@ class HloPrintOptions {
   bool print_full_replica_group_list() const {
     return print_full_replica_group_list_;
   }
+  bool print_parameter_number() const { return print_parameter_number_; }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -475,6 +483,7 @@ class HloPrintOptions {
   bool syntax_sugar_async_ops_;
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
+  bool print_parameter_number_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
