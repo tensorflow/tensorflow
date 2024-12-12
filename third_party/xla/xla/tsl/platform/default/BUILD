@@ -1,5 +1,6 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_tools",
@@ -103,12 +104,16 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_rocm//rocm:rocm_headers",
         "@local_config_tensorrt//:tensorrt_headers",
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
-    ] + if_oss(["@local_config_nccl//:nccl_config"]),
+    ] + if_oss([
+        "@local_config_nccl//:nccl_config",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_config",
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
@@ -257,6 +262,7 @@ cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
     hdrs = ["@local_tsl//tsl/platform:load_library.h"],
+    linkstatic = True,
     tags = [
         "manual",
         "no_oss",
@@ -264,7 +270,9 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/status",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_rpath",
+    ]),
 )
 
 cc_library(
@@ -386,6 +394,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "@local_config_rocm//rocm:rocm_config",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
