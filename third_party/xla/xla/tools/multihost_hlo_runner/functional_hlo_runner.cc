@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/text_literal_writer.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -438,7 +439,7 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
 
 absl::Status FunctionalHloRunner::DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
-    absl::string_view dump_output_to, int task_id) {
+    absl::string_view dump_output_to, int task_id, OutputFormat output_format) {
   std::vector<std::string> output_path_vec =
       absl::StrSplit(dump_output_to, '.');
   std::string suffix = output_path_vec.back();
@@ -454,12 +455,31 @@ absl::Status FunctionalHloRunner::DumpOutput(
     for (int literal_id = 0; literal_id < literal_vec.size(); ++literal_id) {
       output_path_vec[literal_id_index] = absl::StrCat("literal_", literal_id);
       std::string literal_path = absl::StrJoin(output_path_vec, ".");
-      CHECK_EQ(suffix, std::string("txt"));
-      absl::Status write_status =
-          tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
-                                 literal_vec[literal_id].ToString());
-      if (!write_status.ok()) {
-        return write_status;
+      switch (output_format) {
+        case OutputFormat::kText: {
+          CHECK_EQ(suffix, std::string("txt"));
+          absl::Status write_status =
+              tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
+                                     literal_vec[literal_id].ToString());
+          if (!write_status.ok()) {
+            return write_status;
+          }
+        } break;
+        case OutputFormat::kSerializedProto: {
+          CHECK_EQ(suffix, std::string("pb"));
+          absl::StatusOr<std::string> literal_data =
+              literal_vec[literal_id].SerializeAsString();
+          if (!literal_data.ok()) {
+            LOG(WARNING) << "Failed to serialize literal: "
+                         << literal_data.status();
+            return literal_data.status();
+          }
+          absl::Status write_status = tsl::WriteStringToFile(
+              tsl::Env::Default(), literal_path, *literal_data);
+          if (!write_status.ok()) {
+            return write_status;
+          }
+        } break;
       }
     }
   }
@@ -541,7 +561,8 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
                                 const RunningOptions& running_options,
                                 absl::string_view hlo_text,
                                 InputFormat input_format,
-                                const PerDeviceLiteralVecType& arguments) {
+                                const PerDeviceLiteralVecType& arguments,
+                                std::minstd_rand0* engine) {
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
   // Currently there is no mechanism to map the loaded arguments to
@@ -573,7 +594,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
 
   return CompileAndRun(
       client, debug_options, preproc_options, compile_options, running_options,
-      hlo_module_and_arguments.hlo_module.get(), loaded_arguments);
+      hlo_module_and_arguments.hlo_module.get(), loaded_arguments, engine);
 }
 
 absl::Status FunctionalHloRunner::LoadAndCompile(
@@ -718,12 +739,13 @@ FunctionalHloRunner::CompileAndRun(PjRtClient& client,
                                    const CompileOptions& compile_options,
                                    const RunningOptions& running_options,
                                    HloModule* hlo_module,
-                                   const PerDeviceLiteralVecType& arguments) {
+                                   const PerDeviceLiteralVecType& arguments,
+                                   std::minstd_rand0* engine) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
 
-  return Run(client, executable.get(), arguments, running_options);
+  return Run(client, executable.get(), arguments, running_options, engine);
 }
 
 namespace {
