@@ -13,16 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <limits>
-#include <memory>
-#include <numeric>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/array2d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"

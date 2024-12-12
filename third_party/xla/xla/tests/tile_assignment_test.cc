@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/tile_assignment.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "xla/array3d.h"
 #include "xla/test.h"
 

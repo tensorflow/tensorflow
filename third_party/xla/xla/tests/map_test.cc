@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
