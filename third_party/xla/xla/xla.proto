@@ -681,7 +681,7 @@ message DebugOptions {
   bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_enable_analytical_latency_estimator = 255;
 
-  bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  reserved 204;  // Was xla_gpu_lhs_enable_gpu_async_tracker.
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
   int32 xla_gpu_memory_limit_slop_factor = 260;
 
