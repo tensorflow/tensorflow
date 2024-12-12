@@ -35,7 +35,7 @@ static constexpr size_t kTensorMaxRank = LITERT_TENSOR_MAX_RANK;
 template <class Begin, class End>
 inline constexpr LiteRtLayout BuildLayout(Begin begin, End end,
                                           const uint32_t* strides = nullptr) {
-  LiteRtLayout res(end - begin, {}, strides);
+  LiteRtLayout res{static_cast<uint32_t>(end - begin), {}, strides};
   auto i = 0;
 
   for (auto* it = begin; it < end && i < kTensorMaxRank; ++it) {
