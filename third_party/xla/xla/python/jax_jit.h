@@ -235,8 +235,7 @@ H AbslHashValue(H h, const CallSignature& s) {
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
-    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-    h = H::combine(std::move(h), ShardingHash(sharding.ptr()));
+    h = H::combine(std::move(h), ShardingHash(sharding));
   }
 
   h = H::combine(std::move(h), s.committed_args, s.device, s.jax_enable_x64);

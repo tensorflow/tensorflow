@@ -189,23 +189,10 @@ class PyClient {
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
-  // TODO(phawkins): pass operand_shapes and result_shapes as
-  // absl::Span<Shape const> when nanobind transition is complete.
   absl::StatusOr<std::pair<uint64_t, nanobind::object>>
   GetEmitPythonCallbackDescriptor(nanobind::callable callable,
-                                  nanobind::object operand_shapes,
-                                  nanobind::object result_shapes);
-  // Deprecated; please switch to emitting a `CustomCallOp` directly.
-  absl::StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
-      XlaBuilder& builder, uint64_t descriptor,
-      absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
-  // Deprecated; please switch to using `GetEmitPythonCallbackDescriptor`
-  // and then emitting a `CustomCall` op instead.
-  absl::StatusOr<std::pair<XlaOp, nanobind::object>> EmitPythonCallback(
-      nanobind::callable callable, XlaBuilder& builder,
-      absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
+                                  absl::Span<Shape const> operand_shapes,
+                                  absl::Span<Shape const> result_shapes);
 
   // `MakePythonCallbackUsingHostSendAndRecv` takes in an input Python callable
   // that takes in arguments of shapes `operand_shapes` and returns results of
