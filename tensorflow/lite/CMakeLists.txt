@@ -101,7 +101,7 @@ else()
   set(FLATC_TARGET "flatbuffers-flatc")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
@@ -746,7 +746,7 @@ target_link_libraries(tensorflow-lite
 )
 
 if (NOT BUILD_SHARED_LIBS)
-  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
+  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
 endif()
 
 target_compile_options(tensorflow-lite
