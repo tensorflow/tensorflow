@@ -123,6 +123,7 @@ ConvolutionThunk::Options MakeConvolutionOptions() {
   ConvolutionThunk::Options options;
   options.multi_threaded = false;
   options.use_acl = false;
+  options.max_workspace_size = 8LL << 30;  // 8 GiB
   return options;
 }
 

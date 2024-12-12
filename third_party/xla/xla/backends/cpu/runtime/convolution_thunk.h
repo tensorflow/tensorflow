@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,8 +37,9 @@ namespace xla::cpu {
 class ConvolutionThunk final : public Thunk {
  public:
   struct Options {
-    bool multi_threaded = false;
-    bool use_acl = false;
+    bool multi_threaded;
+    bool use_acl;
+    size_t max_workspace_size;
   };
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(
       Info info, Options options, BufferAllocation::Slice input_buffer,
