@@ -91,8 +91,6 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-const ErrorSpec HloRunnerAgnosticTestBase::kDefaultErrorSpec{0.0001};
-
 HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
     absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
     absl::Nonnull<std::unique_ptr<HloRunnerInterface>> reference_runner,
