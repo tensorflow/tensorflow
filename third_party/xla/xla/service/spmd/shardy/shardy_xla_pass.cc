@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,6 +30,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -76,6 +77,15 @@ namespace xla {
 namespace sdy {
 
 namespace {
+
+std::string uniqueModuleName(const HloModule& module) {
+  std::string result;
+  absl::StrAppendFormat(&result, "module_%04d", module.unique_id());
+  if (!module.name().empty()) {
+    absl::StrAppend(&result, ".", module.name());
+  }
+  return result;
+}
 
 // Creates a vector of HloComputation, which is used to replace the old
 // computations in the HloModule. It is adapted from CreateAndSanitizeFromProto
@@ -323,8 +333,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   if (!shardyDir.empty()) {
     shardyDir =
-        tsl::io::JoinPath(shardyDir, "shardy",
-                          std::string_view(mlirModule->getName().value_or("")));
+        tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
 
