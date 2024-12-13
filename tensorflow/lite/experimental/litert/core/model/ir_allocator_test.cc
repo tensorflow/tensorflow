@@ -16,12 +16,15 @@
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 static constexpr auto kCustomOpCode = kLiteRtOpCodeTflCustom;
 static constexpr auto kNonCustomOpCode = kLiteRtOpCodeTflSoftmax;
@@ -84,6 +87,21 @@ TEST(IrAllocatorTest, ResizeDown) {
 
   ASSERT_EQ(ops.Size(), 1);
   EXPECT_EQ(ops.Elements().at(0), op1);
+}
+
+TEST(IrAllocatorTest, Transfer) {
+  IrAllocator<LiteRtOpT> ops;
+  auto& op1 = ops.EmplaceBack();
+  auto& op2 = ops.EmplaceBack();
+
+  IrAllocator<LiteRtOpT> other_ops;
+  auto& other_op1 = other_ops.EmplaceBack();
+  auto& other_op2 = other_ops.EmplaceBack();
+
+  ops.Transfer(std::move(other_ops));
+
+  EXPECT_THAT(ops.Elements(),
+              ElementsAreArray({&op1, &op2, &other_op1, &other_op2}));
 }
 
 }  // namespace

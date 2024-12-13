@@ -80,6 +80,12 @@ class IrAllocator {
     refs_->resize(size);
   }
 
+  // Transfers the ownership of given allocator to this one.
+  void Transfer(IrAllocator&& other) {
+    storage_.splice(storage_.cend(), other.storage_);
+    refs_->insert(refs_->end(), other.refs_->cbegin(), other.refs_->cend());
+  }
+
   // Number of elements stored by this allocator.
   size_t Size() const { return storage_.size(); }
 
