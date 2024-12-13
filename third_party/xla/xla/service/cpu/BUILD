@@ -2005,6 +2005,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:stacktrace",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
