@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/infeed_token_propagation.h"
 
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -24,7 +23,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -40,6 +43,83 @@ limitations under the License.
 
 namespace xla {
 namespace {
+HloInstruction* InfeedToken(HloInstruction* infeed) {
+  CHECK_EQ(infeed->opcode(), HloOpcode::kInfeed);
+  for (HloInstruction* user : infeed->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == 1) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* InfeedChainBegin(HloInstruction* infeed) {
+  CHECK_EQ(infeed->opcode(), HloOpcode::kInfeed);
+  HloInstruction* begin = infeed;
+  while (begin->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+         begin->operand(0)->operand(0)->opcode() == HloOpcode::kInfeed) {
+    begin = begin->mutable_operand(0)->mutable_operand(0);
+  }
+  return begin;
+}
+
+HloInstruction* InfeedChainEnd(HloInstruction* infeed) {
+  CHECK_EQ(infeed->opcode(), HloOpcode::kInfeed);
+  HloInstruction* end = infeed;
+  HloInstruction* token = InfeedToken(end);
+  while (token != nullptr && token->user_count() == 1) {
+    if (token->users()[0]->opcode() == HloOpcode::kInfeed) {
+      end = token->users()[0];
+      token = InfeedToken(end);
+    } else {
+      break;
+    }
+  }
+  return end;
+}
+
+HloInstruction* OutfeedChainBegin(HloInstruction* outfeed) {
+  CHECK_EQ(outfeed->opcode(), HloOpcode::kOutfeed);
+  HloInstruction* begin = outfeed;
+  while (begin->operand(1)->opcode() == HloOpcode::kOutfeed) {
+    begin = begin->mutable_operand(1);
+  }
+  return begin;
+}
+
+HloInstruction* OutfeedChainEnd(HloInstruction* outfeed) {
+  CHECK_EQ(outfeed->opcode(), HloOpcode::kOutfeed);
+  HloInstruction* end = outfeed;
+  while (end->user_count() == 1 &&
+         end->users()[0]->opcode() == HloOpcode::kOutfeed) {
+    end = end->users()[0];
+  }
+  return end;
+}
+
+HloInstruction* ChainBegin(HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kInfeed) {
+    return InfeedChainBegin(instruction);
+  } else if (instruction->opcode() == HloOpcode::kOutfeed) {
+    return OutfeedChainBegin(instruction);
+  } else {
+    LOG(FATAL) << "Unexpected opcode";
+  }
+  return nullptr;
+}
+
+HloInstruction* ChainEnd(HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kInfeed) {
+    return InfeedChainEnd(instruction);
+  } else if (instruction->opcode() == HloOpcode::kOutfeed) {
+    return OutfeedChainEnd(instruction);
+  } else {
+    LOG(FATAL) << "Unexpected opcode";
+  }
+  return nullptr;
+}
+
 bool IsDanglingInfeed(HloInstruction* infeed) {
   CHECK(infeed->opcode() == HloOpcode::kInfeed);
   if (infeed->has_sharding()) {
@@ -48,14 +128,14 @@ bool IsDanglingInfeed(HloInstruction* infeed) {
   }
 
   // Check for dangling input token.
-  if (const HloInstruction* after_all = infeed->operand(0);
+  if (const HloInstruction* after_all = ChainBegin(infeed)->operand(0);
       after_all->opcode() != HloOpcode::kAfterAll ||
       after_all->operand_count() != 0) {
     return false;
   }
 
   // Check for dangling output token.
-  for (const HloInstruction* user : infeed->users()) {
+  for (const HloInstruction* user : ChainEnd(infeed)->users()) {
     if (user->opcode() == HloOpcode::kGetTupleElement &&
         user->tuple_index() == 1) {
       return false;
@@ -73,32 +153,18 @@ bool IsDanglingOutfeed(HloInstruction* outfeed) {
   }
 
   // Check for dangling input token.
-  if (const HloInstruction* after_all = outfeed->operand(1);
+  if (const HloInstruction* after_all = OutfeedChainBegin(outfeed)->operand(1);
       after_all->opcode() != HloOpcode::kAfterAll ||
       after_all->operand_count() != 0) {
     return false;
   }
 
   // Check for dangling output token.
-  if (outfeed->user_count() != 0) {
+  if (OutfeedChainEnd(outfeed)->user_count() != 0) {
     return false;
   }
 
   return true;
-}
-
-HloInstruction* ReconstructTuple(HloInstruction* tuple) {
-  CHECK(tuple->shape().IsTuple());
-  HloComputation* computation = tuple->parent();
-
-  std::vector<HloInstruction*> gtes;
-  gtes.resize(tuple->shape().tuple_shapes_size());
-  for (int64_t idx = 0; idx < gtes.size(); ++idx) {
-    gtes[idx] = computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(tuple, idx));
-  }
-
-  return computation->AddInstruction(HloInstruction::CreateTuple(gtes));
 }
 
 absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
@@ -109,7 +175,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   // Recreate the original tuple, we'll need to pass this to all the users.
   // Trying to use tuple->ReplaceAllUsesWith(original_tuple) cause a cycle.
   std::vector<HloInstruction*> original_users = tuple->users();
-  HloInstruction* original_tuple = ReconstructTuple(tuple);
+  HloInstruction* original_tuple = TupleUtil::Duplicate(tuple);
   for (HloInstruction* original_user : original_users) {
     for (int64_t idx : original_user->operand_indices(tuple)) {
       TF_RETURN_IF_ERROR(
@@ -159,7 +225,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // Explicitly disjoin computation parameters from branch inputs, so we can
     // insert tokens into the input tuple.
     if (branch_tuple->opcode() == HloOpcode::kParameter) {
-      branch_tuple = ReconstructTuple(branch_tuple);
+      branch_tuple = TupleUtil::Duplicate(branch_tuple);
       TF_RETURN_IF_ERROR(
           conditional->ReplaceOperandWith(branch_operand_idx, branch_tuple));
     }
@@ -167,7 +233,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // Explicitly make the root of the branch a tuple.
     HloInstruction* root = branch->root_instruction();
     if (root->opcode() != HloOpcode::kTuple) {
-      root = ReconstructTuple(root);
+      root = TupleUtil::Duplicate(root);
       branch->set_root_instruction(root);
     }
   }
@@ -179,7 +245,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
   // Explicitly disjoin the conditional from being a computation root, so that
   // we can insert tokens into, while preserving the original computation shape.
   if (conditional->IsRoot()) {
-    HloInstruction* new_root = ReconstructTuple(conditional);
+    HloInstruction* new_root = TupleUtil::Duplicate(conditional);
     conditional->parent()->set_root_instruction(new_root);
   }
 
@@ -239,20 +305,20 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   // Explicitly disjoin computation parameters from loop inputs, so we can
   // insert tokens into the input tuple.
   if (loop_tuple->opcode() == HloOpcode::kParameter) {
-    loop_tuple = ReconstructTuple(loop_tuple);
+    loop_tuple = TupleUtil::Duplicate(loop_tuple);
     TF_RETURN_IF_ERROR(loop->ReplaceOperandWith(0, loop_tuple));
   }
 
   // Explicitly make the root of the body a tuple.
   if (root->opcode() != HloOpcode::kTuple) {
-    root = ReconstructTuple(root);
+    root = TupleUtil::Duplicate(root);
     body->set_root_instruction(root);
   }
 
   // Explicitly disjoin the loop from being a computation root, so that
   // we can insert tokens into, while preserving the original computation shape.
   if (loop->IsRoot()) {
-    HloInstruction* new_root = ReconstructTuple(loop);
+    HloInstruction* new_root = TupleUtil::Duplicate(loop);
     loop->parent()->set_root_instruction(new_root);
   }
 
@@ -338,6 +404,9 @@ absl::Status InfeedTokenPropagation::PropagateTokenThroughWhileBody() {
   TF_ASSIGN_OR_RETURN(
       input_token_,
       InsertTokenIntoTuple(while_tuple, /*add_token_operand=*/true));
+  // Retrieve the actual token added to the tuple.
+  input_token_ = input_token_->mutable_operand(0)->mutable_operand(
+      input_token_->tuple_index());
   TF_RETURN_IF_ERROR(
       dangling_instruction_->ReplaceOperandWithDifferentShape(0, while_tuple));
 
@@ -349,8 +418,42 @@ absl::Status InfeedTokenPropagation::PropagateTokenThroughWhileBody() {
   return absl::OkStatus();
 }
 
-absl::Status InfeedTokenPropagation::PropagateToken() {
+absl::Status InfeedTokenPropagation::PropagateToken(
+    const HloOrdering& ordering) {
   HloComputation* comp = dangling_instruction_->parent();
+  if (dangling_instruction_->opcode() != HloOpcode::kInfeed &&
+      dangling_instruction_->opcode() != HloOpcode::kOutfeed) {
+    for (HloInstruction* instruction : comp->instructions()) {
+      if (instruction->opcode() == original_opcode_) {
+        HloInstruction* begin = ChainBegin(instruction);
+        HloInstruction* end = ChainEnd(instruction);
+        if (ordering.ExecutesBefore(end, dangling_instruction_)) {
+          // Parent infeed happens before child infeed. Stitch via parent result
+          // token.
+          CHECK_EQ(begin->opcode(), HloOpcode::kInfeed);
+          HloInstruction* parent_output_token = comp->AddInstruction(
+              HloInstruction::CreateGetTupleElement(end, 1));
+          TF_RETURN_IF_ERROR(
+              input_token_->ReplaceAllUsesWith(parent_output_token));
+          input_token_ = begin->mutable_operand(0);
+        } else if (ordering.ExecutesBefore(dangling_instruction_, begin)) {
+          // Parent outfeed happens after child infeed. Stitch via parent input
+          // token.
+          CHECK_EQ(begin->opcode(), HloOpcode::kOutfeed);
+          TF_RETURN_IF_ERROR(begin->ReplaceOperandWith(1, output_token_));
+          output_token_ = end;
+        } else {
+          LOG(WARNING) << absl::StrFormat(
+              "Execution order of %s, %s and %s is undefined. This may lead to "
+              "incorrect results",
+              begin->name(), end->name(), dangling_instruction_->name());
+        }
+        // We assume that a well defined HLO graph only contains a single
+        // infeed chain per computation.
+        break;
+      }
+    }
+  }
   if (comp->IsEntryComputation()) {
     return absl::OkStatus();
   }
@@ -378,12 +481,12 @@ absl::Status InfeedTokenPropagation::PropagateToken() {
     return absl::OkStatus();
   }
 
-  return PropagateToken();
+  return PropagateToken(ordering);
 }
 
 absl::StatusOr<bool> InfeedTokenPropagation::Run(
     HloModule* module,
-    const absl::flat_hash_set<std::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before InfeedTokenPropagation:";
   XLA_VLOG_LINES(5, module->ToString());
 
@@ -397,10 +500,15 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
             IsDanglingInfeed(instruction)) {
           VLOG(1) << "Found dangling infeed: " << instruction->ToString();
           dangling_infeeds.push_back(instruction);
-        } else if (instruction->opcode() == HloOpcode::kOutfeed &&
-                   IsDanglingOutfeed(instruction)) {
+          break;
+        }
+      }
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kOutfeed &&
+            IsDanglingOutfeed(instruction)) {
           VLOG(1) << "Found dangling outfeed: " << instruction->ToString();
           dangling_outfeeds.push_back(instruction);
+          break;
         }
       }
     }
@@ -408,28 +516,43 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
   bool changed = !dangling_infeeds.empty() || !dangling_outfeeds.empty();
 
   if (changed) {
-    call_graph_ = CallGraph::Build(module);
+    call_graph_ = CallGraph::Build(module, execution_threads);
     if (!call_graph_->IsFlattened()) {
       return FailedPrecondition(
           "Call graph must be flattened before infeed token propagation.");
     }
-  }
+    DependencyHloOrdering ordering = DependencyHloOrdering(module);
 
-  for (HloInstruction* dangling_infeed : dangling_infeeds) {
-    dangling_instruction_ = dangling_infeed;
-    input_token_ = dangling_infeed->mutable_operand(0);
-    output_token_ = dangling_infeed->AddInstruction(
-        HloInstruction::CreateGetTupleElement(dangling_infeed, 1));
-    TF_RETURN_IF_ERROR(PropagateToken());
-  }
-  for (HloInstruction* dangling_outfeed : dangling_outfeeds) {
-    dangling_instruction_ = dangling_outfeed;
-    input_token_ = dangling_outfeed->mutable_operand(1);
-    output_token_ = dangling_outfeed;
-    TF_RETURN_IF_ERROR(PropagateToken());
-  }
+    for (HloInstruction* dangling_infeed : dangling_infeeds) {
+      // In the process of token propagation, we might have stitched two
+      // previously dangling infeeds token, causing both to no longer be
+      // dangling.
+      if (!IsDanglingInfeed(dangling_infeed)) {
+        continue;
+      }
+      dangling_instruction_ = dangling_infeed;
+      original_opcode_ = HloOpcode::kInfeed;
+      input_token_ = ChainBegin(dangling_infeed)->mutable_operand(0);
+      output_token_ =
+          ChainEnd(dangling_infeed)
+              ->AddInstruction(
+                  HloInstruction::CreateGetTupleElement(dangling_infeed, 1));
+      TF_RETURN_IF_ERROR(PropagateToken(ordering));
+    }
+    for (HloInstruction* dangling_outfeed : dangling_outfeeds) {
+      // In the process of token propagation, we might have stitched two
+      // previously dangling outfeeds token, causing both to no longer be
+      // dangling.
+      if (!IsDanglingOutfeed(dangling_outfeed)) {
+        continue;
+      }
+      dangling_instruction_ = dangling_outfeed;
+      original_opcode_ = HloOpcode::kOutfeed;
+      input_token_ = ChainBegin(dangling_outfeed)->mutable_operand(1);
+      output_token_ = ChainEnd(dangling_outfeed);
+      TF_RETURN_IF_ERROR(PropagateToken(ordering));
+    }
 
-  if (changed) {
     TF_RETURN_IF_ERROR(
         TupleSimplifier().Run(module, execution_threads).status());
     TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());

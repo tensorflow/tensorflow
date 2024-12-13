@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string_view>
-#include <tuple>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 
@@ -45,12 +46,14 @@ class InfeedTokenPropagation : public HloModulePass {
       const absl::flat_hash_set<std::string_view>& execution_threads) override;
 
  private:
-  absl::Status PropagateToken();
+  absl::Status PropagateToken(const HloOrdering& ordering);
   absl::Status PropagateTokenThroughWhileBody();
   absl::Status PropagateTokenThroughConditionalBranch();
 
   std::unique_ptr<CallGraph> call_graph_;
+
   HloInstruction* dangling_instruction_ = nullptr;
+  HloOpcode original_opcode_;
   HloInstruction* input_token_ = nullptr;
   HloInstruction* output_token_ = nullptr;
 };
