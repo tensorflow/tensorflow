@@ -258,6 +258,24 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>
 // CHECK:         }
 
+func.func private @XlaCallModule_tfl.gelu.impl_0(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>)
+func.func @jax_gelu_approx(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %2 = mhlo.composite "tfl.gelu" %arg0 {composite_attributes = {approximate = true}, decomposition = @XlaCallModule_tfl.gelu.impl_0} : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+  return %2 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: jax_gelu_approx
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+
+func.func private @XlaCallModule_tfl.gelu.impl_1(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>)
+func.func @jax_gelu(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %2 = mhlo.composite "tfl.gelu" %arg0 {composite_attributes = {approximate = false}, decomposition = @XlaCallModule_tfl.gelu.impl_1} : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+  return %2 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: jax_gelu
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+
 func.func private @gelu_decomp_1(%arg0: tensor<5x10xf32>) -> tensor<5x10xf32>
 func.func @gelu_aten(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
   %0 = mhlo.composite "aten.gelu.default" %arg0 {composite_attributes = {approximate = "none"}, decomposition = @gelu_decomp_1} : (tensor<5x10xf32>) -> tensor<5x10xf32>

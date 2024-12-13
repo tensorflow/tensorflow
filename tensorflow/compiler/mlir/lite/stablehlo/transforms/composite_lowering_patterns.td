@@ -126,6 +126,13 @@ def LegalizeCompositeApproximateAtenGELU : Pat<
         (TFL_GeluOp $inputs, ConstBoolAttrTrue),
         [(IsStrCompositeAttribute<"approximate", "tanh"> $attrs)]>;
 
+def LegalizeCompositeGELU : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
 def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $indices, $table),
