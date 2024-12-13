@@ -1782,7 +1782,7 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
                             d0 in [0, 9]
                           )"));
 
-  constexpr std::string_view kInputToOutputIndexing = R"(
+  constexpr absl::string_view kInputToOutputIndexing = R"(
       (d0, d1) -> (d1),
       domain:
       d0 in [0, 255],
@@ -1800,7 +1800,7 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
       ElementsAre(ElementsAre(MatchIndexingMap(kInputToOutputIndexing)),
                   ElementsAre(MatchIndexingMap(kInputToOutputIndexing))));
 
-  constexpr std::string_view kInitToOutputIndexing = R"(
+  constexpr absl::string_view kInitToOutputIndexing = R"(
       ()[s0] -> (s0),
       domain:
       s0 in [0, 9]

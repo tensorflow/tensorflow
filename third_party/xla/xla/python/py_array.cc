@@ -27,7 +27,6 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -645,7 +644,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
 
   if (!nb::isinstance<nb::list>(obj)) {
     return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                           nb::cast<std::string_view>(nb::str(obj.type())));
+                           nb::cast<absl::string_view>(nb::str(obj.type())));
   }
 
   nb::list list(obj);
@@ -676,7 +675,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
       shapes.push_back(ifrt_arrays.back()->shape());
     } else {
       return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                             nb::cast<std::string_view>(nb::str(obj.type())));
+                             nb::cast<absl::string_view>(nb::str(obj.type())));
     }
   }
   const ifrt::MemoryKind first_memory_kind =
@@ -786,7 +785,7 @@ absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
-absl::StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
+absl::StatusOr<PyArray> PyArray::AssertUnsharded(absl::string_view api) {
   if (ifrt_array() == nullptr) {
     return InvalidArgument("%s( called on deleted or donated buffer", api);
   }
@@ -1119,11 +1118,11 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
 
     auto transfer_guard_formatter = [&py_array, &dst_sharding] {
       return absl::StrCat(
-          "aval=", nb::cast<std::string_view>(nb::repr(py_array.aval())),
+          "aval=", nb::cast<absl::string_view>(nb::repr(py_array.aval())),
           ", sharding=",
-          nb::cast<std::string_view>(nb::repr(py_array.sharding())),
+          nb::cast<absl::string_view>(nb::repr(py_array.sharding())),
           ", dst_sharding=",
-          nb::cast<std::string_view>(nb::repr(dst_sharding)));
+          nb::cast<absl::string_view>(nb::repr(dst_sharding)));
     };
     TF_RETURN_IF_ERROR(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
@@ -1187,8 +1186,8 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   }
   auto transfer_guard_formatter = [&aval, &sharding] {
     return absl::StrCat(
-        "aval=", nb::cast<std::string_view>(nb::repr(aval)),
-        ", dst_sharding=", nb::cast<std::string_view>(nb::repr(sharding)));
+        "aval=", nb::cast<absl::string_view>(nb::repr(aval)),
+        ", dst_sharding=", nb::cast<absl::string_view>(nb::repr(sharding)));
   };
 
   GlobalPyRefManager()->CollectGarbage();
@@ -1702,7 +1701,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
           throw nb::type_error(
               absl::StrCat(
                   "Unsupported type for elements in `arrays`: ",
-                  nb::cast<std::string_view>(nb::str(arrays[0].type())))
+                  nb::cast<absl::string_view>(nb::str(arrays[0].type())))
                   .c_str());
         }
       },

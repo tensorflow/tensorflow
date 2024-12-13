@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PJRT_DISTRIBUTED_IN_MEMORY_KEY_VALUE_STORE_H_
 
 #include <string>
-#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -29,10 +28,10 @@ namespace xla {
 
 class InMemoryKeyValueStore : public KeyValueStoreInterface {
  public:
-  absl::StatusOr<std::string> Get(std::string_view key,
+  absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override;
 
-  absl::Status Set(std::string_view key, std::string_view value) override;
+  absl::Status Set(absl::string_view key, absl::string_view value) override;
 
  private:
   absl::Mutex mu_;

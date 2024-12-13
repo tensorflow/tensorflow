@@ -26,7 +26,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <thread>  // NOLINT
 #include <unordered_map>
 #include <utility>
@@ -1069,8 +1068,8 @@ static PyGetSetDef PjitFunction_tp_getset[] = {
 PyObject* PjitFunction_tp_repr(PyObject* self) {
   try {
     const std::string& repr = absl::StrFormat(
-        "<PjitFunction of %s>",
-        nb::cast<std::string_view>(nb::repr(nb::getattr(self, "__wrapped__"))));
+        "<PjitFunction of %s>", nb::cast<absl::string_view>(nb::repr(
+                                    nb::getattr(self, "__wrapped__"))));
     return PyUnicode_FromString(repr.c_str());
   } catch (...) {
     // Ignore all errors when accessing a repr.

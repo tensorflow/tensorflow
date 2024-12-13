@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/while_loop_all_reduce_code_motion_setup.h"
 
-#include <string_view>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -35,7 +34,7 @@ class ReorderReduceTransposeTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(ReorderReduceTransposeTest, SimpleReduceScatterTransposeInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -82,7 +81,7 @@ ENTRY main {
 
 TEST_F(ReorderReduceTransposeTest,
        ReduceScatterConvertTransposeNotInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -105,7 +104,7 @@ ENTRY main {
 }
 
 TEST_F(ReorderReduceTransposeTest, ReduceScatterConvertTransposeInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -153,7 +152,7 @@ ENTRY main {
 
 TEST_F(ReorderReduceTransposeTest,
        ReduceScatterTransposeReshapeDynamicUpdateSliceInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -208,7 +207,7 @@ class ReorderConvertReduceAddTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(ReorderConvertReduceAddTest, SimpleConvertReduceScatterAddInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -255,7 +254,7 @@ ENTRY main {
 }
 
 TEST_F(ReorderConvertReduceAddTest, ConvertAllReduceAddNotInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -277,7 +276,7 @@ ENTRY main {
 }
 
 TEST_F(ReorderConvertReduceAddTest, ConvertReduceScatterAddInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -324,7 +323,7 @@ ENTRY main {
 }
 
 TEST_F(ReorderConvertReduceAddTest, DisableReduceScatter) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {
@@ -361,7 +360,7 @@ ENTRY main {
 }
 
 TEST_F(ReorderConvertReduceAddTest, ConvertAllReduceAddInWhileBody) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 %reduction {

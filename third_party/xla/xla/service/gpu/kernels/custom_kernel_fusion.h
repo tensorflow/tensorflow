@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -126,7 +125,7 @@ class CustomKernelFusionRegistry {
                         std::unique_ptr<CustomKernelFusion> fusion);
 
   // Looks up custom kernel fusion by name. Return nullptr if it's not found.
-  CustomKernelFusion* Lookup(std::string_view name) const;
+  CustomKernelFusion* Lookup(absl::string_view name) const;
 
  private:
   mutable absl::Mutex mutex_;

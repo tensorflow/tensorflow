@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_FFI_TYPE_ID_REGISTRY_H_
 
 #include <cstdint>
-#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -49,7 +48,7 @@ class TypeIdRegistry {
   static constexpr TypeId kUnknownTypeId = TypeId(0);
 
   // Registers external type with a given name in a static type registry.
-  static absl::StatusOr<TypeId> RegisterExternalTypeId(std::string_view name);
+  static absl::StatusOr<TypeId> RegisterExternalTypeId(absl::string_view name);
 
   // Returns a type id for a given type. For internal type ids only.
   template <typename T>

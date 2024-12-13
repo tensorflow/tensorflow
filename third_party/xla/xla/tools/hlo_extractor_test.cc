@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -481,7 +480,7 @@ TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
 }
 
 TEST_F(HloExtractorTest, TestInvalidModule) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 computation {

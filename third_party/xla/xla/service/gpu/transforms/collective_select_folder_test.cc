@@ -41,7 +41,7 @@ using ::testing::HasSubstr;
 
 class CollectiveSelectFolderTest : public HloTestBase {
  public:
-  absl::Status ExpectNoTranform(std::string_view hlo_template) {
+  absl::Status ExpectNoTranform(absl::string_view hlo_template) {
     return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(),
                                  /*expect_change=*/false)
         .status();
@@ -49,8 +49,8 @@ class CollectiveSelectFolderTest : public HloTestBase {
 };
 
 void VerifyDirectDataFeedSPMD(HloModule* module,
-                              std::string_view expected_fwd_operand,
-                              std::string_view expected_bwd_operand) {
+                              absl::string_view expected_fwd_operand,
+                              absl::string_view expected_bwd_operand) {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
   EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kCollectivePermute);

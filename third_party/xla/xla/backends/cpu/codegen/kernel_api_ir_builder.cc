@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +40,7 @@ namespace {
 // Following struct types correspond to HostKernel C API.
 // See: xla/backends/cpu/runtime/kernel_c_api.h
 
-llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx, std::string_view name) {
+llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx, absl::string_view name) {
   llvm::IntegerType* i64 = llvm::IntegerType::getInt64Ty(ctx);
   return llvm::StructType::create(name, i64, i64, i64);
 }

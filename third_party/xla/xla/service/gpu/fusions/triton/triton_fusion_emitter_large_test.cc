@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <string_view>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -88,7 +87,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeNonContractingProductWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -112,7 +111,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeBatchWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {

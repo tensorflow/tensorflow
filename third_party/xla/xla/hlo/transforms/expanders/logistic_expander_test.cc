@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 
 #include <memory>
-#include <string_view>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,7 +61,7 @@ TEST_F(LogisticExpanderTest, ExpandWith) {
 }
 
 TEST_F(LogisticExpanderTest, DynamicDimensions) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule DynamicDimensions
 
 ENTRY main {

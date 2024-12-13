@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
 
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -35,7 +34,7 @@ namespace xla::gpu::kernel {
 
 namespace se = ::stream_executor;
 
-constexpr std::string_view kAddI32KernelPtx = R"(
+constexpr absl::string_view kAddI32KernelPtx = R"(
 .version 4.0
 .target sm_50
 .address_size 64

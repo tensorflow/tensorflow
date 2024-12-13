@@ -18,7 +18,6 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
@@ -45,7 +44,7 @@ TypeIdRegistry::TypeId TypeIdRegistry::GetNextTypeId() {
 }
 
 absl::StatusOr<TypeIdRegistry::TypeId> TypeIdRegistry::RegisterExternalTypeId(
-    std::string_view name) {
+    absl::string_view name) {
   absl::MutexLock lock(&type_registry_mutex);
   auto& registry = StaticExternalTypeIdRegistry();
 

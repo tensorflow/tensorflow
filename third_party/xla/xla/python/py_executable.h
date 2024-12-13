@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -187,7 +186,7 @@ class PyLoadedExecutable {
 
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  absl::StatusOr<std::vector<std::vector<std::string_view>>>
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetParameterLayouts()

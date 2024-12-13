@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -220,7 +219,7 @@ TEST(FfiTest, BuiltinAttributes) {
   auto call_frame = builder.Build();
 
   auto fn = [&](bool pred, int8_t i8, int16_t i16, int32_t i32, int64_t i64,
-                float f32, double f64, std::string_view str) {
+                float f32, double f64, absl::string_view str) {
     EXPECT_EQ(pred, true);
     EXPECT_EQ(i8, 42);
     EXPECT_EQ(i16, 42);
@@ -240,7 +239,7 @@ TEST(FfiTest, BuiltinAttributes) {
                      .Attr<int64_t>("i64")
                      .Attr<float>("f32")
                      .Attr<double>("f64")
-                     .Attr<std::string_view>("str")
+                     .Attr<absl::string_view>("str")
                      .To(fn);
 
   auto status = Call(*handler, call_frame);
@@ -263,7 +262,7 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
   static constexpr char kStr[] = "str";
 
   auto fn = [&](Attr<int32_t, kI32> i32, Attr<float, kF32> f32,
-                Attr<std::string_view, kStr> str) {
+                Attr<absl::string_view, kStr> str) {
     EXPECT_EQ(*i32, 42);
     EXPECT_EQ(*f32, 42.0f);
     EXPECT_EQ(*str, "foo");
@@ -357,7 +356,7 @@ TEST(FfiTest, AttrsAsDictionary) {
 
     absl::StatusOr<int32_t> i32 = dict.get<int32_t>("i32");
     absl::StatusOr<float> f32 = dict.get<float>("f32");
-    absl::StatusOr<std::string_view> str = dict.get<std::string_view>("str");
+    absl::StatusOr<absl::string_view> str = dict.get<absl::string_view>("str");
 
     EXPECT_TRUE(i32.ok());
     EXPECT_TRUE(f32.ok());
@@ -435,7 +434,7 @@ TEST(FfiTest, StructAttr) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
+  auto fn = [&](absl::string_view str, PairOfI32AndF32 i32_and_f32) {
     EXPECT_EQ(str, "foo");
     EXPECT_EQ(i32_and_f32.i32, 42);
     EXPECT_EQ(i32_and_f32.f32, 42.0f);
@@ -443,7 +442,7 @@ TEST(FfiTest, StructAttr) {
   };
 
   auto handler = Ffi::Bind()
-                     .Attr<std::string_view>("str")
+                     .Attr<absl::string_view>("str")
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 
@@ -484,7 +483,7 @@ TEST(FfiTest, DecodingErrors) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [](int32_t, int64_t, float, std::string_view) {
+  auto fn = [](int32_t, int64_t, float, absl::string_view) {
     return absl::OkStatus();
   };
 
@@ -492,7 +491,7 @@ TEST(FfiTest, DecodingErrors) {
                      .Attr<int32_t>("not_i32_should_fail")
                      .Attr<int64_t>("not_i64_should_fail")
                      .Attr<float>("f32")
-                     .Attr<std::string_view>("not_str_should_fail")
+                     .Attr<absl::string_view>("not_str_should_fail")
                      .To(fn);
 
   auto status = Call(*handler, call_frame);

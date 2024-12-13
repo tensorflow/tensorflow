@@ -28,7 +28,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -435,7 +434,7 @@ class Dictionary : public internal::DictionaryBase {
   using internal::DictionaryBase::DictionaryBase;
 
   template <typename T>
-  absl::StatusOr<T> get(std::string_view name) const {
+  absl::StatusOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
     std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
     if (!value.has_value()) {

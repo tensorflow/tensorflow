@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/command_buffer_kernels.h"
 
-#include <string_view>
-
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor {
@@ -48,7 +47,7 @@ namespace {
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kSetIfConditionKernel = R"(
+inline constexpr absl::string_view kSetIfConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -130,7 +129,7 @@ $L__BB0_3:
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kSetIfElseConditionKernel = R"(
+inline constexpr absl::string_view kSetIfElseConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -277,7 +276,7 @@ $L__BB0_3:
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
 // May have to include these compiler options: -arch sm_50
-inline constexpr std::string_view kSetCaseConditionKernel = R"(
+inline constexpr absl::string_view kSetCaseConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -635,7 +634,7 @@ $L__BB0_24:
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kSetForConditionKernel = R"(
+inline constexpr absl::string_view kSetForConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -711,7 +710,7 @@ $L__BB0_3:
 })";
 
 // While condition kernel is the same as an `If` with a single branch.
-inline constexpr std::string_view kSetWhileConditionKernel = R"(
+inline constexpr absl::string_view kSetWhileConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -783,7 +782,7 @@ $L__BB0_3:
 //  __global__ void noop() {}
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kNoOpKernel = R"(
+inline constexpr absl::string_view kNoOpKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64

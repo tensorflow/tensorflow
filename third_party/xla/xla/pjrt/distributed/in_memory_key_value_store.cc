@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 
 #include <string>
-#include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -26,7 +25,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<std::string> InMemoryKeyValueStore::Get(std::string_view key,
+absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
                                                        absl::Duration timeout) {
   absl::MutexLock lock(&mu_);
   auto cond = [&]() {
@@ -41,8 +40,8 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(std::string_view key,
   return kv_store_.find(key)->second;
 }
 
-absl::Status InMemoryKeyValueStore::Set(std::string_view key,
-                                        std::string_view value) {
+absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
+                                        absl::string_view value) {
   absl::MutexLock lock(&mu_);
   kv_store_[key] = value;
   return absl::OkStatus();

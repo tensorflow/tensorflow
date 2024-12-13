@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -340,7 +339,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
-             std::string_view asm_text, absl::Span<const uint8_t> binary,
+             absl::string_view asm_text, absl::Span<const uint8_t> binary,
              const BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();

@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -41,7 +41,7 @@ namespace {
 class AddF32HostKernel : public FunctionLibrary {
  public:
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
-                                        std::string_view name) final {
+                                        absl::string_view name) final {
     auto kernel = +[](const XLA_CPU_KernelCallFrame* call_frame) {
       const XLA_CPU_KernelArg& in = call_frame->args[0];
       const XLA_CPU_KernelArg& out = call_frame->args[1];

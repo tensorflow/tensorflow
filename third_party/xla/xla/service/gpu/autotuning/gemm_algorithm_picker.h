@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <optional>
-#include <string_view>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"

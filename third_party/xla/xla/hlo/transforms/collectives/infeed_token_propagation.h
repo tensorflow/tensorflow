@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_INFEED_TOKEN_PROPAGATION_H_
 
 #include <memory>
-#include <string_view>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -39,11 +38,11 @@ namespace xla {
 // This pass assumes the HLO graph is flattened.
 class InfeedTokenPropagation : public HloModulePass {
  public:
-  std::string_view name() const override { return "infeed-token-propagation"; }
+  absl::string_view name() const override { return "infeed-token-propagation"; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
-      const absl::flat_hash_set<std::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   absl::Status PropagateToken(const HloOrdering& ordering);

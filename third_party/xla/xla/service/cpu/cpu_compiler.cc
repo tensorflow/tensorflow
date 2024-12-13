@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <stack>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -242,7 +241,7 @@ using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
 // A module identifier (prefix) for emitted LLVM modules.
-static constexpr std::string_view kXlaModuleIdentifier = "__compute_module";
+static constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
 
 // Returns a global (per-process) thread pool for XLA CPU compilation tasks.
 static tsl::thread::ThreadPool* GetCompilationThreadPool() {
@@ -943,7 +942,7 @@ std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
 
     // Include LLVM module identifier suffix in case `llvm_module` is just a
     // part of the original LLVM module constructed by the XLA.
-    std::string_view id = llvm_module.getModuleIdentifier();
+    absl::string_view id = llvm_module.getModuleIdentifier();
     size_t pos = std::min(id.size(), 1 + kXlaModuleIdentifier.size());
     llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized,
                              /*filename_suffix=*/id.substr(pos));
@@ -1984,7 +1983,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
  public:
   CpuExecutableAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      std::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<std::string> obj_files,
       CompilationResultProto::ObjFileKind obj_file_kind) {
     *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
     *proto_.mutable_hlo_module()->mutable_config() =

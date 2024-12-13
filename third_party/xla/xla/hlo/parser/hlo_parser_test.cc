@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -4720,7 +4719,7 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
 }
 
 TEST_F(HloParserTest, ParseInvalidDimLevel) {
-  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  constexpr absl::string_view shape_string = "f32[123]{0:D(D+~)}";
   absl::StatusOr<Shape> result = ParseShape(shape_string);
   ASSERT_THAT(
       result.status(),

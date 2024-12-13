@@ -499,6 +499,7 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

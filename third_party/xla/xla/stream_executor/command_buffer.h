@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -159,7 +158,7 @@ class CommandBuffer {
   //
   enum class Mode { kPrimary, kNested };
 
-  friend std::string_view ModeToString(Mode mode) {
+  friend absl::string_view ModeToString(Mode mode) {
     switch (mode) {
       case CommandBuffer::Mode::kPrimary:
         return "primary";

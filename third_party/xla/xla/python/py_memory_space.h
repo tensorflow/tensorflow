@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <Python.h>
 
-#include <string_view>
-
 #include "nanobind/nanobind.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_class_ptr.h"
@@ -42,11 +40,11 @@ class PyMemorySpace {
   ifrt::Memory* memory_space() const { return memory_; }
 
   int process_index() const;
-  std::string_view platform() const;
-  std::string_view kind() const;
+  absl::string_view platform() const;
+  absl::string_view kind() const;
 
-  std::string_view Str() const;
-  std::string_view Repr() const;
+  absl::string_view Str() const;
+  absl::string_view Repr() const;
 
   nanobind::list AddressableByDevices() const;
 

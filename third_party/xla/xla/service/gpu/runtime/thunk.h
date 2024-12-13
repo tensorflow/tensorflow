@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -182,7 +181,7 @@ class Thunk {
   // clear what else should become a part of "executable source", we likely
   // need to keep some information about available symbols and signatures.
   struct ExecutableSource {
-    std::string_view text;             // PTX for NVIDIA backend
+    absl::string_view text;            // PTX for NVIDIA backend
     absl::Span<const uint8_t> binary;  // CUBIN for NVIDIA backends
     BinaryMap dnn_compiled_graphs;
   };
@@ -444,7 +443,7 @@ class Thunk {
 
   virtual std::string ToString(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  std::string_view profile_annotation() const { return profile_annotation_; }
+  absl::string_view profile_annotation() const { return profile_annotation_; }
 
   // Prepares thunk for execution.
   //

@@ -78,6 +78,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Core",

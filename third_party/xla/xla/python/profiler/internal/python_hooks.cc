@@ -60,7 +60,7 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                       " ", function);
 }
 
-std::string GetEventName(std::string_view method_name, PyObject* module) {
+std::string GetEventName(absl::string_view method_name, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
   std::string filename;

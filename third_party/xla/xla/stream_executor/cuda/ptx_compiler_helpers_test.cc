@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 
-#include <string_view>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
@@ -29,7 +28,7 @@ using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
 // When the compilation succeeds, then the error log is empty.
-constexpr std::string_view kPtxasLogSuccessfulCompilation = R"(
+constexpr absl::string_view kPtxasLogSuccessfulCompilation = R"(
 ptxas info    : 0 bytes gmem
 ptxas info    : Compiling entry function 'input_concatenate_fusion' for 'sm_80'
 ptxas info    : Function properties for input_concatenate_fusion
@@ -37,21 +36,21 @@ ptxas info    : Function properties for input_concatenate_fusion
 ptxas info    : Used 10 registers, 368 bytes cmem[0]
 )";
 
-constexpr std::string_view kPtxasLogTooOldError = R"(
+constexpr absl::string_view kPtxasLogTooOldError = R"(
 // Something in the log before the error.
 ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
 ptxas fatal   : Ptx assembly aborted due to errors
 // Something in the log after the error.
 )";
 
-constexpr std::string_view kPtxasLogRegisterAllocationError = R"(
+constexpr absl::string_view kPtxasLogRegisterAllocationError = R"(
 // Something in the log before the error.
 ptxas fatal   : (C7600) Register allocation failed with register count of '64'. Compile the program with a higher register target
 ptxas fatal   : Ptx assembly aborted due to errors
 // Something in the log after the error.
 )";
 
-constexpr std::string_view kPtxasLogRegisterSpillWarning = R"(
+constexpr absl::string_view kPtxasLogRegisterSpillWarning = R"(
 // Something in the log before the warning.
 ptxas warning : Registers are spilled to local memory in function '__kernel', 8 bytes spill stores, 8 bytes spill loads
 // Something in the log after the warning.
@@ -62,7 +61,7 @@ TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationError) {
   EXPECT_FALSE(IsPtxRegisterAllocationError(kPtxasLogRegisterSpillWarning));
 }
 
-constexpr std::string_view kDefaultArchitecture = "sm_80";
+constexpr absl::string_view kDefaultArchitecture = "sm_80";
 
 TEST(PtxCompilerHelpersTest, CreateErrorFromPTXASLogNoError) {
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogSuccessfulCompilation,

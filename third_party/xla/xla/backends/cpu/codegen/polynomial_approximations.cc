@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <string_view>
 #include <vector>
 
 #include "llvm/ADT/APFloat.h"
@@ -84,7 +83,7 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
 // vector_width f32s, and that fn_body_generator generates a function body with
 // the same inputs/outputs as fn_name.
 void RewriteCalls(
-    llvm::Module* module, std::string_view fn_name,
+    llvm::Module* module, absl::string_view fn_name,
     std::function<llvm::Value*(llvm::IRBuilderBase* b, llvm::Value* input,
                                int32_t vector_width)>
         fn_body_generator,
@@ -399,15 +398,15 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
 }
 }  // namespace
 
-static constexpr std::string_view kTanhV4F32Sym = "__xla_cpu_TanhV4F32";
-static constexpr std::string_view kTanhV8F32Sym = "__xla_cpu_TanhV8F32";
-static constexpr std::string_view kTanhV16F32Sym = "__xla_cpu_TanhV16F32";
-static constexpr std::string_view kExpV4F32Sym = "__xla_cpu_ExpV4F32";
-static constexpr std::string_view kExpV8F32Sym = "__xla_cpu_ExpV8F32";
-static constexpr std::string_view kExpV16F32Sym = "__xla_cpu_ExpV16F32";
-static constexpr std::string_view kLogV4F32Sym = "__xla_cpu_LogV4F32AVX";
-static constexpr std::string_view kLogV8F32Sym = "__xla_cpu_LogV8F32AVX";
-static constexpr std::string_view kLogV16F32Sym = "__xla_cpu_LogV16F32AVX";
+static constexpr absl::string_view kTanhV4F32Sym = "__xla_cpu_TanhV4F32";
+static constexpr absl::string_view kTanhV8F32Sym = "__xla_cpu_TanhV8F32";
+static constexpr absl::string_view kTanhV16F32Sym = "__xla_cpu_TanhV16F32";
+static constexpr absl::string_view kExpV4F32Sym = "__xla_cpu_ExpV4F32";
+static constexpr absl::string_view kExpV8F32Sym = "__xla_cpu_ExpV8F32";
+static constexpr absl::string_view kExpV16F32Sym = "__xla_cpu_ExpV16F32";
+static constexpr absl::string_view kLogV4F32Sym = "__xla_cpu_LogV4F32AVX";
+static constexpr absl::string_view kLogV8F32Sym = "__xla_cpu_LogV8F32AVX";
+static constexpr absl::string_view kLogV16F32Sym = "__xla_cpu_LogV16F32AVX";
 
 std::vector<llvm::VecDesc> PolynomialApproximationsVectorization() {
   return std::vector<llvm::VecDesc>{

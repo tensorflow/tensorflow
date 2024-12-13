@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -261,8 +260,8 @@ class CommandBufferCmd {
   virtual se::CommandBuffer::ExecutionScopeId GetExecutionScope(
       const CommandBufferCmd::RecordParams& record_params) const;
 
-  std::string_view profile_annotation() const { return profile_annotation_; }
-  void set_profile_annotation(std::string_view profile_annotation) {
+  absl::string_view profile_annotation() const { return profile_annotation_; }
+  void set_profile_annotation(absl::string_view profile_annotation) {
     profile_annotation_ = profile_annotation;
   }
 

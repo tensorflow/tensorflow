@@ -19,7 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -67,7 +66,7 @@ using hlo_query::ContainsInstrWithOpcode;
 // Helper function to create a condition for a single iteration while loop in
 // the form of 'i <= init_value' where i is the induction variable.
 std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
-    HloInstruction* while_op, std::string_view name, int64_t induction_idx,
+    HloInstruction* while_op, absl::string_view name, int64_t induction_idx,
     int64_t init_value) {
   auto condition_builder = HloComputation::Builder(name);
 

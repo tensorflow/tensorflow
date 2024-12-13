@@ -48,7 +48,10 @@ cc_library(
     name = "api",
     hdrs = [":api_headers"],
     visibility = ["//visibility:private"],
-    deps = [":c_api"],
+    deps = [
+        ":c_api",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(

@@ -36,7 +36,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -925,7 +924,7 @@ class Dictionary : public internal::DictionaryBase {
   using internal::DictionaryBase::DictionaryBase;
 
   template <typename T>
-  ErrorOr<T> get(std::string_view name) const {
+  ErrorOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
     std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
     if (!value.has_value()) {

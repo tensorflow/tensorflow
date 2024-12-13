@@ -1022,6 +1022,7 @@ cc_test(
     deps = [
         ":rocm_status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:status_matchers",

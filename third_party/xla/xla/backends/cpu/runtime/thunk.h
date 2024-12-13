@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -133,7 +132,7 @@ class Thunk {
   Kind kind() const { return kind_; }
   const Info& info() const { return info_; }
 
-  static std::string_view KindToString(Kind kind);
+  static absl::string_view KindToString(Kind kind);
 
   // Returns the list of buffers used by a thunk. Thunk executor relies on this
   // information to execute thunks concurrently and to avoid data races.

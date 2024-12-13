@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -53,14 +52,14 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status Connect() override;
   absl::Status Shutdown() override;
   absl::StatusOr<std::string> BlockingKeyValueGet(
-      std::string_view key, absl::Duration timeout) override;
+      absl::string_view key, absl::Duration timeout) override;
   absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(std::string_view key) override;
-  absl::Status KeyValueSet(std::string_view key,
-                           std::string_view value) override;
-  absl::Status KeyValueSet(std::string_view key, std::string_view value,
+  KeyValueDirGet(absl::string_view key) override;
+  absl::Status KeyValueSet(absl::string_view key,
+                           absl::string_view value) override;
+  absl::Status KeyValueSet(absl::string_view key, absl::string_view value,
                            bool allow_overwrite) override;
-  absl::Status KeyValueDelete(std::string_view key) override;
+  absl::Status KeyValueDelete(absl::string_view key) override;
   absl::Status WaitAtBarrier(
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> process_ids) override;
@@ -141,13 +140,13 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
 
 absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
-    std::string_view key, absl::Duration timeout) {
+    absl::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
-    std::string_view key) {
+    absl::string_view key) {
   TF_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
@@ -162,17 +161,17 @@ DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
-    std::string_view key) {
+    absl::string_view key) {
   return coord_agent_->DeleteKeyValue(key);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string_view key, std::string_view value) {
+    absl::string_view key, absl::string_view value) {
   return KeyValueSet(key, value, /*allow_overwrite=*/false);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string_view key, std::string_view value, bool allow_overwrite) {
+    absl::string_view key, absl::string_view value, bool allow_overwrite) {
   return coord_agent_->InsertKeyValue(key, value, allow_overwrite);
 }
 
@@ -212,12 +211,12 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
                            std::string prefix)
       : client_(std::move(client)), prefix_(std::move(prefix)) {}
 
-  absl::StatusOr<std::string> Get(std::string_view key,
+  absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override {
     return client_->BlockingKeyValueGet(absl::StrCat(prefix_, key), timeout);
   }
 
-  absl::Status Set(std::string_view key, std::string_view value) override {
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
     return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
   }
 

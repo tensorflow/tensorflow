@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
@@ -38,12 +37,12 @@ class CollectivesRegistry {
   // the given platform. Higher priority wins.
   //
   // Returns an error if the implementation is already registered.
-  static absl::Status Register(std::string_view platform_name,
-                               std::string_view name, int32_t priority,
+  static absl::Status Register(absl::string_view platform_name,
+                               absl::string_view name, int32_t priority,
                                std::unique_ptr<Collectives> collectives);
 
   // Returns the default collectives implementation for the given platform.
-  static absl::StatusOr<Collectives*> Default(std::string_view platform_name);
+  static absl::StatusOr<Collectives*> Default(absl::string_view platform_name);
 };
 
 }  // namespace xla

@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -241,7 +240,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
         c_put_callback_(c_put_callback),
         put_user_arg_(put_user_arg) {}
 
-  absl::StatusOr<std::string> Get(std::string_view key,
+  absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
@@ -264,7 +263,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     return result;
   }
 
-  absl::Status Set(std::string_view key, std::string_view value) override {
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {

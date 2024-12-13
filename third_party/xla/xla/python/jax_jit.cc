@@ -33,7 +33,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -45,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -53,6 +53,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -147,7 +148,7 @@ bool FetchMemoriesFlag() {
 
 std::string ArgumentSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
-    out->append(nb::cast<std::string_view>(nb::str(o)));
+    out->append(nb::cast<absl::string_view>(nb::str(o)));
   };
   auto treedef_formatter = [](std::string* out, const xla::PyTreeDef& d) {
     out->append(d.ToString());
@@ -188,8 +189,8 @@ bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
               "static arguments should be comparable using __eq__."
               "The following error was raised when comparing two objects of "
               "types ",
-              nb::cast<std::string_view>(nb::str(a.type())), " and ",
-              nb::cast<std::string_view>(nb::str(b.type())),
+              nb::cast<absl::string_view>(nb::str(a.type())), " and ",
+              nb::cast<absl::string_view>(nb::str(b.type())),
               ". The error was:\n", e.what()));
         }
       });
@@ -197,7 +198,7 @@ bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
 
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
-    out->append(nb::cast<std::string_view>(nb::str(o)));
+    out->append(nb::cast<absl::string_view>(nb::str(o)));
   };
   auto signature_formatter = [](std::string* out,
                                 const xla::PyArgSignature& s) {

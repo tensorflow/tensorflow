@@ -108,6 +108,7 @@ cc_library(
     hdrs = ["stack_frame_index_builder.h"],
     deps = [
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
