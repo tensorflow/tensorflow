@@ -2452,6 +2452,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
+        "@ml_dtypes//:float8",
     ],
 )
 
