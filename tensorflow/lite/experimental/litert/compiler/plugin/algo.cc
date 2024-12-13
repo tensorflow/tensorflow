@@ -14,9 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 
-#include <algorithm>
-#include <memory>
-#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -24,12 +21,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "llvm/ADT/MapVector.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 namespace {
@@ -188,6 +183,7 @@ LiteRtOp GraphSlicer::SlicePartitionFromGraph(
   // Reuse the storage from the last op in partition to maintain
   // toplogical order.
   slicer.dispatch_op_ = partition.back();
+
   MakeDispatchOp(*slicer.dispatch_op_);
   slicer.RerouteTensorsThroughCustomOp(root);
 
@@ -200,14 +196,15 @@ void GraphSlicer::RerouteTensorsThroughCustomOp(const LiteRtSubgraphT& root) {
   for (auto& [old_tensor, new_tensor] : tensor_map_) {
     // Reroute tensors which need to be passed into the scope of the new
     // subgraph to inputs of the custom op.
-    if (new_tensor->DefiningOp() == nullptr) {
+    if (new_tensor->DefiningOp() == nullptr && !IsConstant(*new_tensor)) {
       AttachInput(old_tensor, *dispatch_op_);
       continue;
     }
 
     // Reroute custom op as the definer of tensors within the removed partition
     // and referenced later in the root graph.
-    if (!old_tensor->Users().empty() || FindOutput(root, *old_tensor)) {
+    if ((!old_tensor->Users().empty() && !IsConstant(*old_tensor)) ||
+        FindOutput(root, *old_tensor)) {
       AttachOutput(old_tensor, *dispatch_op_);
       slice_->Outputs().push_back(new_tensor);
     }
@@ -225,9 +222,12 @@ void GraphSlicer::CloneInto(const LiteRtOpT& old_op) {
       // counterpart in the new graph.
       new_input = tensor_map_[old_input];
     } else {
-      // Otherwise, it must be a new subgraph input.
+      // Otherwise, it must be a new subgraph input (or constant).
       new_input = &MakeClone(*slice_, *old_input);
-      slice_->Inputs().push_back(new_input);
+      if (!IsConstant(*new_input)) {
+        slice_->Inputs().push_back(new_input);
+      }
+
       tensor_map_.insert({old_input, new_input});
     }
 

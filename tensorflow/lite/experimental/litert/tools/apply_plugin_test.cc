@@ -168,7 +168,7 @@ TEST(TestApplyPluginTool, TestApply) {
   {
     const auto& custom_op = model->Get()->Subgraph(0).Op(0);
     ASSERT_EQ(custom_op.OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_EQ(custom_op.CustomOptions().StrView(), "Partition_0");
+    EXPECT_THAT(custom_op.CustomOptions().StrView(), HasSubstr("Partition_0"));
   }
 
   {

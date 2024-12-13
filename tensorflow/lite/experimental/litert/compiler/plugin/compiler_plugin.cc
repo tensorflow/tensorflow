@@ -16,13 +16,11 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -37,6 +35,7 @@
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
+#include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
@@ -50,29 +49,49 @@ namespace litert::internal {
 Expected<BufferRef<uint8_t>> CompiledResult::ByteCode() const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_byte_code(
+  LITERT_EXPECT_OK(parent_.get_compiled_result_byte_code(
       compiled_result_handle_, &data, &size));
   return BufferRef(data, size);
 }
 
 Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
   LiteRtParamIndex call_idx;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_num_calls(
+  LITERT_EXPECT_OK(parent_.get_compiled_result_num_calls(
       compiled_result_handle_, &call_idx));
   return call_idx;
 }
 
-Expected<std::string> CompiledResult::CallInfo(
+Expected<absl::string_view> CompiledResult::CallInfo(
     LiteRtParamIndex call_idx) const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_call_info(
+  LITERT_EXPECT_OK(parent_.get_compiled_result_call_info(
       compiled_result_handle_, call_idx, &data, &size));
-  return std::string(reinterpret_cast<const char*>(data), size);
+  return absl::string_view(reinterpret_cast<const char*>(data), size);
 }
 
 CompiledResult::~CompiledResult() {
-  allocating_plugin_api_.destroy_compiled_result(compiled_result_handle_);
+  if (compiled_result_handle_ != nullptr) {
+    parent_.destroy_compiled_result(compiled_result_handle_);
+  }
+}
+
+CompiledResult::CompiledResult(CompiledResult&& other)
+    : parent_(other.parent_),
+      compiled_result_handle_(other.compiled_result_handle_) {
+  other.parent_ = {};
+  other.compiled_result_handle_ = nullptr;
+}
+
+CompiledResult& CompiledResult::operator=(CompiledResult&& other) {
+  if (this != &other) {
+    parent_ = other.parent_;
+    other.parent_ = {};
+
+    compiled_result_handle_ = other.compiled_result_handle_;
+    other.compiled_result_handle_ = nullptr;
+  }
+  return *this;
 }
 
 //
@@ -135,6 +154,17 @@ Expected<SmallVec<std::string>> GetSocModels(
   }
 
   return soc_models;
+}
+
+std::string ResolveSocModel(const CompilerPlugin& plugin,
+                            absl::string_view soc_model = "") {
+  const auto& default_model = plugin.SocModels().front();
+  if (soc_model.empty()) {
+    LITERT_LOG(LITERT_INFO, "Using default soc_model: %s",
+               default_model.c_str());
+    return default_model;
+  }
+  return std::string(soc_model);
 }
 
 }  // namespace
@@ -276,134 +306,117 @@ Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
   return ops.Vec();
 }
 
-LiteRtStatus CompilerPlugin::Compile(
-    std::optional<absl::string_view> soc_model,
-    const std::vector<LiteRtSubgraph>& partitions, std::ostream& byte_code_out,
-    std::vector<std::string>& call_info_out) {
+Expected<CompiledResult> CompilerPlugin::Compile(
+    absl::Span<LiteRtSubgraph> partitions, absl::string_view soc_model) {
   CompiledResult result = MakeResult();
+  const auto soc_model_str = ResolveSocModel(*this, soc_model);
+  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_compile(
+      plugin_handle_, soc_model_str.c_str(), partitions.data(),
+      partitions.size(), &result.compiled_result_handle_));
+  return result;
+}
 
-  const char* soc_model_str = soc_model ? soc_model->data() : nullptr;
+namespace {
 
-  // Compile given partitions into result.
-  // TODO: Use const where appropriate in the C compiler plugin api.
-  LiteRtSubgraphArray partitions_arr =
-      const_cast<LiteRtSubgraphArray>(partitions.data());
-  if (auto stat = plugin_api_.compiler_plugin_compile(
-          plugin_handle_, soc_model_str, partitions_arr, partitions.size(),
-          &result.compiled_result_handle_);
-      stat != kLiteRtStatusOk) {
-    return stat;
+LiteRtStatus PartitionSubgraph(CompilerPlugin& compiler_plugin,
+                               LiteRtSubgraphT& subgraph,
+                               PartitionResult& result) {
+  // Get selected ops from plugin.
+  auto selected_ops = compiler_plugin.Partition(Subgraph(&subgraph));
+  if (!selected_ops) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
+    return selected_ops.Error().Status();
   }
 
-  // Parse call info from the result.
-  {
-    auto num_call = result.NumCalls();
-    if (!num_call) {
-      return num_call.Error().Status();
-    }
-    if (num_call.Value() != partitions.size()) {
-      LITERT_LOG(
-          LITERT_ERROR, "%s",
-          "Plugin didn't return call info for each partition compiled.\n");
-      return kLiteRtStatusErrorRuntimeFailure;
-    }
-    for (int i = 0; i < num_call.Value(); ++i) {
-      auto call_info = result.CallInfo(i);
-      if (!call_info) {
-        return call_info.Error().Status();
-      }
-      call_info_out.emplace_back() = *call_info;
-    }
+  // Group selected ops into connected islands.
+  auto islands = GroupPartitions(*selected_ops);
+  if (islands.empty()) {
+    LITERT_LOG(LITERT_ERROR, "Failed to group partitions");
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  // Parse byte code from result.
-  {
-    auto byte_code = result.ByteCode();
-    if (!byte_code) {
-      return byte_code.Error().Status();
-    }
-    LITERT_LOG(LITERT_INFO, "Compiled %d partitions in %lu bytes",
-               partitions.size(), byte_code->Size());
-    byte_code->WriteStr(byte_code_out);
+  // For each connected island, slice into new subgraph and replace use with
+  // single dispatch op.
+  for (auto& island : islands) {
+    auto& new_subgraph = result.second.EmplaceBack();
+    auto* dispatch_op = OutlinePartition(subgraph, &new_subgraph, island);
+    result.first.push_back(dispatch_op);
   }
 
   return kLiteRtStatusOk;
 }
 
-Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
-    CompilerPlugin& compiler_plugin, Model& model,
-    std::optional<absl::string_view> soc_model) {
-  if (model.NumSubgraphs() != 1) {
-    // TODO(@lukeboyer) Finish support for multi-subgraph.
-    LITERT_LOG(LITERT_ERROR, "Apply currently supported for 1 subgraph");
-    return Error(kLiteRtStatusErrorUnsupported);
+}  // namespace
+
+Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
+                                         LiteRtModelT& model) {
+  // Accumulate partition results for each subgraph in model.
+  PartitionResult result;
+  for (auto* subgraph : model.Subgraphs()) {
+    LITERT_EXPECT_OK(PartitionSubgraph(compiler_plugin, *subgraph, result));
+  }
+  ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
+  return result;
+}
+
+LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                   absl::string_view soc_model, Serialization serialization) {
+  // Collect partitions to pass to compilation.
+  auto partitions = PartitionModel(compiler_plugin, model);
+  if (!partitions) {
+    LITERT_LOG(LITERT_ERROR, "Failed to partition model");
+    return partitions.Error().Status();
   }
 
-  // Get selected ops from plugin.
-  auto partition = compiler_plugin.Partition(*model.Subgraph(0));
-  if (!partition) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
-    return Error(kLiteRtStatusErrorRuntimeFailure);
+  auto& dispatch_ops = partitions->first;
+  auto& subgraphs = partitions->second;
+
+  // Pass sliced subgraphs to plugin for compilation.
+  const auto soc_model_str = ResolveSocModel(compiler_plugin, soc_model);
+  auto compiled_result =
+      compiler_plugin.Compile(subgraphs.Elements(), soc_model_str);
+  if (!compiled_result) {
+    LITERT_LOG(LITERT_ERROR, "Failed to compile");
+    return compiled_result.Error().Status();
   }
 
-  // Group selected ops into partitions.
-  auto grouped_partitions = GroupPartitions(*partition);
-  if (grouped_partitions.empty()) {
-    LITERT_LOG(LITERT_ERROR, "Failed to group partitions");
-    return Error(kLiteRtStatusErrorRuntimeFailure);
+  // Attach per-partition call info to the respective op.
+  // This data may be adjusted during serialization. Just passthrough for now.
+  for (auto i = 0; i < dispatch_ops.size(); ++i) {
+    auto call_info = compiled_result->CallInfo(i);
+    if (!call_info) {
+      LITERT_LOG(LITERT_ERROR,
+                 "Failed to get call info from compilation result");
+      return call_info.Error().Status();
+    }
+    auto exec_info = MakeExecInfo(*call_info, kByteCodeMetadataKey);
+    if (!exec_info) {
+      LITERT_LOG(LITERT_ERROR, "Failed to serialize call info");
+      return exec_info.Error().Status();
+    }
+    dispatch_ops.at(i)->SetCustomOptions(std::move(*exec_info));
   }
 
-  if (grouped_partitions.size() > 1) {
-    LITERT_LOG(LITERT_ERROR, "Apply on multiple partitions not supported yet.");
-    return Error(kLiteRtStatusErrorUnsupported);
+  // Store the byte code in a metadata buffer. This data may be adjusted during
+  // serialization. Just passthrough for now.
+  auto byte_code = compiled_result->ByteCode();
+  if (!byte_code) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get bytecode from compiled result");
+    return byte_code.Error().Status();
   }
+  model.PushMetadata(kByteCodeMetadataKey, byte_code->StrView());
 
-  // Outline the partitions into new subgraphs.
-  std::vector<LiteRtOp> custom_ops;
-  for (auto& partition : grouped_partitions) {
-    auto custom_op =
-        OutlinePartition(*model.Get()->Subgraphs().front(),
-                         &model.Get()->EmplaceSubgraph(), partition);
-    custom_ops.push_back(custom_op);
+  // Tag the model with make/model from the plugin.
+  auto build_stamp = MakeBuildStamp(compiler_plugin.SocManufacturer(),
+                                    soc_model_str, serialization);
+  if (!build_stamp) {
+    LITERT_LOG(LITERT_ERROR, "Failed to stamp model");
+    return build_stamp.Error().Status();
   }
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      model.PushMetadata(kLiteRtBuildStampKey, std::move(*build_stamp)));
 
-  // Pass new subgraphs to the plugin for compilation.
-  std::vector<LiteRtSubgraph> compilation_input;
-  auto begin = model.Get()->Subgraphs().begin();
-  auto end = model.Get()->Subgraphs().end();
-  for (auto it = begin + 1; it < end; ++it) {
-    compilation_input.push_back(*it);
-  }
-
-  // Compile partitions with plugin.
-  std::stringstream byte_code;
-  std::vector<std::string> exec_info;
-  if (auto status = compiler_plugin.Compile(soc_model, compilation_input,
-                                            byte_code, exec_info);
-      status != kLiteRtStatusOk) {
-    LITERT_LOG(LITERT_ERROR, "Failed to compile partitions.");
-    return Error(status);
-  }
-
-  if (exec_info.size() != custom_ops.size()) {
-    LITERT_LOG(LITERT_ERROR,
-               "Compilation did not return exec_info for every partition");
-    return Error(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  // Attach entry point info to the custom ops.
-  auto custom_op_it = custom_ops.begin();
-  auto exec_info_it = exec_info.begin();
-  for (; custom_op_it < custom_ops.end(); custom_op_it++, exec_info_it++) {
-    LiteRtOp custom_op = *custom_op_it;
-    const auto& exec_info = *exec_info_it;
-    custom_op->SetCustomOptions(exec_info.data());
-  }
-
-  const auto byte_code_str = byte_code.str();
-  return OwningBufferRef<uint8_t>(
-      reinterpret_cast<const uint8_t*>(byte_code_str.data()),
-      byte_code_str.size());
+  return kLiteRtStatusOk;
 }
 
 }  // namespace litert::internal

@@ -15,8 +15,6 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 
-#include <optional>
-#include <ostream>
 #include <string>
 #include <vector>
 
@@ -28,41 +26,50 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
+// C++ wrappers and high-level functions for managing compiler plugins
+// and applying them to models.
+
 namespace litert::internal {
 
+// Wraps vendor compiled result. Must be outlived by the CompilerPlugin
+// the generated it.
 class CompiledResult {
+ public:
   friend class CompilerPlugin;
+
   // Get the single module of compiled byte code. This contains the
   // compilation result for all entry points.
   Expected<BufferRef<uint8_t>> ByteCode() const;
 
   // Get information regarding the "ith" entry points in the compiled module.
   // There will be oe entry point for each subgraph compiled for.
-  Expected<std::string> CallInfo(LiteRtParamIndex call_idx) const;
+  Expected<absl::string_view> CallInfo(LiteRtParamIndex call_idx) const;
 
   // Get the number of entry points in the compiled module. This will be equal
   // to the number of subgraphs passed to the compilation step.
   Expected<LiteRtParamIndex> NumCalls() const;
 
-  explicit CompiledResult(const LiteRtCompilerPluginApi& allocating_plugin_api)
-      : allocating_plugin_api_(allocating_plugin_api) {}
+  explicit CompiledResult(const LiteRtCompilerPluginApi& parent)
+      : parent_(parent) {}
 
-  CompiledResult(CompiledResult&& other) = default;
-  CompiledResult& operator=(CompiledResult&& other) = default;
+  CompiledResult(CompiledResult&& other);
+  CompiledResult& operator=(CompiledResult&& other);
   CompiledResult(const CompiledResult& other) = delete;
   CompiledResult& operator=(const CompiledResult& other) = delete;
 
   ~CompiledResult();
 
-  LiteRtCompilerPluginApi allocating_plugin_api_;
+ private:
+  LiteRtCompilerPluginApi parent_;
   LiteRtCompiledResult compiled_result_handle_ = nullptr;
 };
 
-// Syntatic sugar around dynamically loaded LiteRtCompilerPlugin libraries.
-// TODO turn this into a general C++ wraper for the whole compiler plugin api.
+// Wraps vendor compiler plugin.
 class CompilerPlugin {
  public:
   // Get the compiler plugin's API version.
@@ -81,16 +88,10 @@ class CompilerPlugin {
   // Selects ops for the plugin to compile.
   Expected<std::vector<LiteRtOp>> Partition(const Subgraph& subgraph);
 
-  // Compile given LiteRtSubgraphs. Write compiled byte code to the given
-  // stream. For each given subgraph, write opaque data about the corresponding
-  // entry point to the given "call_info_out". Parameter "soc_model" is optional
-  // and can be set to specify the target SoC; for on-device compilation it
-  // should be left unspecified so as to let the underlying logic pick the
-  // architecture that matches the SoC on the user device.
-  LiteRtStatus Compile(std::optional<absl::string_view> soc_model,
-                       const std::vector<LiteRtSubgraph>& partitions,
-                       std::ostream& byte_code_out,
-                       std::vector<std::string>& call_info_out);
+  // Compile given LiteRtSubgraphs. Result object must be outlived by
+  // this CompilerPlugin.
+  Expected<CompiledResult> Compile(absl::Span<LiteRtSubgraph> partitions,
+                                   absl::string_view soc_model = "");
 
   // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
   // the directories passed through "lib_search_paths". Populates
@@ -130,15 +131,26 @@ class CompilerPlugin {
   CompiledResult MakeResult() const { return CompiledResult(plugin_api_); }
 };
 
-// Applies the plugin's "partition" and "compile" steps to the given model.
-// Returns the serialized model with NPU code appended to the back.  Parameter
-// "soc_model" is optional and can be set to specify the target SoC; for
-// on-device compilation it should be left unspecified so as to let the
-// underlying logic pick the architecture that matches the SoC on the user
-// device
-Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
-    CompilerPlugin& compiler_plugin, Model& model,
-    std::optional<absl::string_view> soc_model = std::nullopt);
+// Higher level functions for applying plugin to graph.
+//===---------------------------------------------------------------------------
+
+// Dispatch op references and their subgraph to be compiled.
+using PartitionResult =
+    std::pair<std::vector<LiteRtOp>, typename LiteRtSubgraphT::Alloc>;
+
+// Applies just the partition phase of the plugin on the model. Returns
+// references newly allocated subgraphs removed from input and their
+// corresponding dispatch ops in the input.
+Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
+                                         LiteRtModelT& model);
+
+// Applies both the partition and compile steps to the model. Generated
+// byte_code will be internalized within the model for later serialization.
+// The serialization parameter refers to the strategy used to pack the byte code
+// during future serialization.
+LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                   absl::string_view soc_model = "",
+                   Serialization serialization = Serialization::kAppend);
 
 }  // namespace litert::internal
 

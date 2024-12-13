@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -25,6 +27,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -38,6 +41,56 @@ namespace litert::internal {
 namespace {
 
 using TensorMap = absl::flat_hash_map<LiteRtTensor, int32_t>;
+
+// Pop npu related stuff from model if it exists and requires a post process
+// step (i.e. appending byte code to tflite).
+std::optional<OwningBufferRef<uint8_t>> PopByteCodeIfNeedsPostProcess(
+    LiteRtModelT& model) {
+  auto build_stamp_buf = model.FindMetadata(kLiteRtBuildStampKey);
+  if (!build_stamp_buf) {
+    return std::nullopt;
+  }
+
+  auto build_stamp = ParseBuildStamp(*build_stamp_buf);
+  if (!build_stamp) {
+    LITERT_LOG(LITERT_WARNING,
+               "Model has a build stamp but it couldn't be parsed");
+    return std::nullopt;
+  }
+
+  // Only appending needs separate strategy.
+  if (std::get<2>(*build_stamp) != kAppend) {
+    return std::nullopt;
+  }
+
+  // Pop the actual byte and and replace it with a placeholder value
+  // which will be
+  auto byte_code = model.PopMetadata(kByteCodeMetadataKey);
+  if (!byte_code) {
+    LITERT_LOG(LITERT_WARNING, "Model has npu build stamp but no byte code");
+    return std::nullopt;
+  }
+  model.PushMetadata(kByteCodeMetadataKey, MakeByteCodePlaceholder());
+
+  return *byte_code;
+}
+
+Expected<OwningBufferRef<uint8_t>> AppendByteCode(
+    OwningBufferRef<uint8_t> flatbuffer,
+    OwningBufferRef<uint8_t> npu_byte_code) {
+  LITERT_EXPECT_OK(
+      FinishByteCodePlaceholders(flatbuffer, npu_byte_code.Size()));
+
+  const auto res_size = flatbuffer.Size() + npu_byte_code.Size();
+  OwningBufferRef<uint8_t> res(res_size);
+
+  uint8_t* it = res.Data();
+  std::memcpy(it, flatbuffer.Data(), flatbuffer.Size());
+  it += flatbuffer.Size();
+  std::memcpy(it, npu_byte_code.Data(), npu_byte_code.Size());
+
+  return res;
+}
 
 // This is expected to be used to serialize the dispatch op custom code.
 TflOpCodePtr MakeCustomOpCode(std::string custom_code_name) {
@@ -233,26 +286,32 @@ Expected<TflModelPtr> PackAsTflite(LiteRtModelT& litert_model) {
     builder.PushMetadata(it->first, it->second);
   }
 
+  builder.Model().version = 3;
+
   return std::move(builder).Release();
 }
 
 }  // namespace
 
 Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
+  // Check if the model has fresh npu stuff. It it does, pop it off
+  // for post processing after packing to tflite model.
+  auto maybe_byte_code = PopByteCodeIfNeedsPostProcess(model);
+
   auto tfl_model = PackAsTflite(model);
   if (!tfl_model) {
     return tfl_model.Error();
   }
-
-  // TODO(@lukeboyer) Figure out what to do with fb versions.
-  tfl_model->get()->version = 3;
 
   auto serialized_tfl = SerializeFlatbuffer(**tfl_model);
   if (!VerifyFlatbuffer(serialized_tfl.Span())) {
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  return serialized_tfl;
+  if (!maybe_byte_code) {
+    return serialized_tfl;
+  }
+  return AppendByteCode(serialized_tfl, *maybe_byte_code);
 }
 
 }  // namespace litert::internal
