@@ -2098,34 +2098,30 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
   return canonical_start_op;
 }
 
-absl::Status IrEmitterUnnested::EmitNcclGroupThunk(const HloInstruction* instr,
-                                                   Thunk::Kind kind) {
+absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+    const HloInstruction* instr) {
   emit_group_thunks_ = true;
-  for (const HloInstruction* instr :
+  AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
+  bool need_to_set_stream_kind = true;
+  for (const HloInstruction* nested_instruction :
        instr->async_wrapped_computation()->instructions()) {
-    if (kind == Thunk::Kind::kNcclGroupStart) {
-      TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
-    } else {
-      // For kNcclGroupDone, we only need to emit the corresponding async done
-      // instructions. For now, only send/recv is supported.
-      switch (instr->opcode()) {
-        case HloOpcode::kSend:
-          TF_RETURN_IF_ERROR(
-              EmitNcclAsyncDone(Thunk::Kind::kNcclSendDone, instr));
-          break;
-        case HloOpcode::kRecv:
-          TF_RETURN_IF_ERROR(
-              EmitNcclAsyncDone(Thunk::Kind::kNcclRecvDone, instr));
-          break;
-        default:
-          break;
-      }
+    TF_RETURN_IF_ERROR(EmitHloInstruction(nested_instruction));
+    if ((nested_instruction->opcode() == HloOpcode::kSend ||
+         nested_instruction->opcode() == HloOpcode::kRecv) &&
+        need_to_set_stream_kind) {
+      // We only need to modify the stream kind once, since all send/recv
+      // instructions in a group should have the same stream kind.
+      stream_kind = GetStreamKindForSendRecv(
+          Cast<HloSendRecvInstruction>(nested_instruction));
+      need_to_set_stream_kind = false;
     }
   }
   auto thunk = std::make_unique<NcclGroupThunk>(
-      instr, kind, std::move(scoped_thunk_sequence_));
-  // TODO (rosiezou): use absl cleanup to automatically reset this boolean.
+      instr, Thunk::Kind::kNcclGroupStart, std::move(scoped_thunk_sequence_),
+      stream_kind);
   emit_group_thunks_ = false;
+
+  GetCollectivesAsyncEvents().insert({instr, thunk->async_events()});
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -2403,8 +2399,6 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
       } else {
         collectives_async_events.try_emplace(instr, thunk->async_events());
       }
-    } else {
-      collectives_async_events.try_emplace(instr, thunk->async_events());
     }
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2478,8 +2472,6 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
       } else {
         collectives_async_events.try_emplace(instr, thunk->async_events());
       }
-    } else {
-      collectives_async_events.try_emplace(instr, thunk->async_events());
     }
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2539,7 +2531,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kAsyncDone: {
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupThunk(instr, Thunk::kNcclGroupDone);
+        return EmitNcclAsyncDone(Thunk::kNcclGroupDone, instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
@@ -2574,7 +2566,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       // Multi-op async start will emit a NCCL group thunk.
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupThunk(instr, Thunk::kNcclGroupStart);
+        return EmitNcclGroupStartThunk(instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
