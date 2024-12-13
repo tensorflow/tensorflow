@@ -36,6 +36,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "parallel_loop_runner",
+    srcs = ["parallel_loop_runner.cc"],
+    hdrs = ["parallel_loop_runner.h"],
+    deps = [
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/lib/math:math_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "parallel_loop_runner_test",
+    srcs = ["parallel_loop_runner_test.cc"],
+    deps = [
+        ":parallel_loop_runner",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "xnn_interop",
     hdrs = ["xnn_interop.h"],
     deps = [
