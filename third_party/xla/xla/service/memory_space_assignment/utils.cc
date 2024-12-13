@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "re2/re2.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
