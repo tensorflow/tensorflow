@@ -50,18 +50,18 @@ std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
 
 // Checks the following conditions:
-//  - `i`, the induction varaiable, is initialized to a scalar constant K
+//  - `i`, the induction variable, is initialized to a scalar constant K
 //    (namely, `indvar_init`),
-//  - the while condition does `i < N` or `i <= N` (where N is a know constant)
-//  - the while body does `i++`.
-// If so, it's trivial to compute the loop bound as `N - k` or `N - k + 1`,
-// respectively.
+//  - the while condition does `i < N` or `i <= N` (where N is a known constant)
+//  - the while body does `i += C` (where C is a positive constant)
+// If so, it's trivial to compute the loop bound as `(N - K) div C` or
+// `(N - K + 1) div C`, respectively.
 std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
                                                  int64_t indvar_tuple_idx,
                                                  const Literal &indvar_init);
 
 // Same as above, but returns the loop range, i.e., start (inclusive), end
-// (exclusive) and step instead of the trip count.
+// (inclusive) and step instead of the trip count.
 std::optional<Range> MatchTrivialLoopRange(const HloInstruction *while_op);
 }  // namespace xla
 

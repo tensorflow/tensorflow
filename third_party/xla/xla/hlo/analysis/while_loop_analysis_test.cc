@@ -312,16 +312,16 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
   // LT cases
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLt).value(), 0,
-      42, 1));
+      41, 1));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLt).value(), 0,
-      42, 2));
+      40, 2));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLt).value(), 0,
-      42, 5));
+      40, 5));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLt).value(), 0,
-      40, 5));
+      35, 5));
 
   // LE cases
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
@@ -332,7 +332,7 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
       42, 2));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLe).value(), 0,
-      42, 5));
+      40, 5));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLe).value(), 0,
       40, 5));
