@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/compiler.h"
@@ -52,6 +54,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -83,6 +87,7 @@ class IfrtCompileAtomProgramPass
   void getDependentDialects(::mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::mhlo::MhloDialect>();
     registry.insert<mlir::stablehlo::StablehloDialect>();
+    registry.insert<mlir::sdy::SdyDialect>();
   }
 
   void runOnOperation() override;
@@ -108,6 +113,14 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   // Map from the hash of the CallOp to the compile future.
   llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
   mlir::ModuleOp module_op = getOperation();
+
+  mlir::Attribute meshes_round_trip_attr;
+  // TODO: icgog - This attribute will be deleted in the IFRT -> VIFRT
+  // legalization. Fix in order to be able to use Sdy with VIFRT.
+  if (auto front_end_attr = xla::sdy::getFrontendAttrs(module_op)) {
+    meshes_round_trip_attr = front_end_attr.get(xla::sdy::kMeshesRoundTripAttr);
+  }
+
   // Walk and dispatch the compilations in parallel.
   auto compile_result =
       module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
@@ -125,6 +138,21 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
                    << callee.getSymName() << ". Actual callee parent: "
                    << callee->getParentOp()->getName();
           }
+
+          if (call_op->hasAttr(kIsSdyPartitioned)) {
+            // Add the meshes roundtrip attribute to the callee module if the
+            // atom program was partitioned with sdy.
+            if (!meshes_round_trip_attr) {
+              return call_op.emitOpError()
+                     << "requires meshes roundtrip attribute to be set on the "
+                        "program module if the atom program was partitioned "
+                        "with sdy.";
+            }
+            xla::sdy::setFrontendAttribute(
+                callee_module, xla::sdy::kMeshesRoundTripAttr,
+                meshes_round_trip_attr, /*escapeAttr=*/false);
+          }
+
           absl::StatusOr<CompileFuture> compile_future =
               atom_program_compiler_.CompileModule(call_op, callee_module);
           if (!compile_future.ok()) {
