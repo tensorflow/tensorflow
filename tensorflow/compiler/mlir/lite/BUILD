@@ -93,6 +93,7 @@ td_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_optimize_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
 
