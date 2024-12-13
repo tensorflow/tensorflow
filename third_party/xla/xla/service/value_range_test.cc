@@ -59,7 +59,7 @@ TEST_F(ValueRangeTest, AddedValue) {
   EXPECT_FALSE(range.IsSingleValue());
   EXPECT_TRUE(range.IsLinear());
   EXPECT_EQ(range.min().GetSignedValue(), 124);
-  EXPECT_EQ(range.max().GetSignedValue(), 129);
+  EXPECT_EQ(range.max().GetSignedValue(), 124 + 5);
   EXPECT_EQ(range.step().GetSignedValue(), 1);
 }
 
@@ -78,18 +78,19 @@ TEST_F(ValueRangeTest, MultiplyValue) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* p0 = root->operand(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
-  fs.insert(
-      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
-                               ConstantValue::GetSigned(5, 32),
-                               ConstantValue::GetOne(32, /*is_signed=*/false),
-                               /*is_linear=*/true}));
+  // p0 has range min = 0, max = 32, step = 2.
+  fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(0, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(32, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetUnsigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
   auto range = RecursivelyIdentifyRange(root, fs);
   EXPECT_FALSE(range.IsEmpty());
   EXPECT_FALSE(range.IsSingleValue());
   EXPECT_TRUE(range.IsLinear());
   EXPECT_EQ(range.min().GetSignedValue(), 0);
-  EXPECT_EQ(range.max().GetSignedValue(), 5120);
-  EXPECT_EQ(range.step().GetSignedValue(), 1024);
+  EXPECT_EQ(range.max().GetSignedValue(), 32 * 1024);
+  EXPECT_EQ(range.step().GetSignedValue(), 2 * 1024);
 }
 
 TEST_F(ValueRangeTest, ConstantValuePred) {
@@ -151,27 +152,28 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
-  fs.insert(
-      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
-                               ConstantValue::GetSigned(5, 32),
-                               ConstantValue::GetOne(32, /*is_signed=*/false),
-                               /*is_linear=*/true}));
+  // p0 has range min = 0, max = 32, step = 2.
+  fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(0, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(32, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetUnsigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
 
   auto add_range = RecursivelyIdentifyRange(add, fs, alias_analysis.get());
   EXPECT_FALSE(add_range.IsEmpty());
   EXPECT_FALSE(add_range.IsSingleValue());
   EXPECT_TRUE(add_range.IsLinear());
   EXPECT_EQ(add_range.min().GetSignedValue(), 1024);
-  EXPECT_EQ(add_range.max().GetSignedValue(), 1029);
-  EXPECT_EQ(add_range.step().GetSignedValue(), 1);
+  EXPECT_EQ(add_range.max().GetSignedValue(), 1024 + 32);
+  EXPECT_EQ(add_range.step().GetSignedValue(), 2);
 
   auto mult_range = RecursivelyIdentifyRange(mult, fs, alias_analysis.get());
   EXPECT_FALSE(mult_range.IsEmpty());
   EXPECT_FALSE(mult_range.IsSingleValue());
   EXPECT_TRUE(mult_range.IsLinear());
   EXPECT_EQ(mult_range.min().GetSignedValue(), 0);
-  EXPECT_EQ(mult_range.max().GetSignedValue(), 5120);
-  EXPECT_EQ(mult_range.step().GetSignedValue(), 1024);
+  EXPECT_EQ(mult_range.max().GetSignedValue(), 32 * 1024);
+  EXPECT_EQ(mult_range.step().GetSignedValue(), 2 * 1024);
 }
 
 TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
@@ -216,11 +218,12 @@ TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
-  fs.insert(
-      std::make_pair(p0, Range{ConstantValue::GetZero(32, /*is_signed=*/true),
-                               ConstantValue::GetSigned(5, 32),
-                               ConstantValue::GetOne(32, /*is_signed=*/false),
-                               /*is_linear=*/true}));
+  // p0 has range min = 0, max = 32, step = 2.
+  fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(0, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(32, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetUnsigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
 
   auto select1_range =
       RecursivelyIdentifyRange(select1, fs, alias_analysis.get());

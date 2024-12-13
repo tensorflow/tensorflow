@@ -215,11 +215,16 @@ Range RecursivelyIdentifyRange(
         return Range{};
       }
       ConstantValue single_value = lhs.IsSingleValue() ? lhs.min() : rhs.min();
-      ConstantValue min = lhs.IsSingleValue() ? rhs.min().mul(single_value)
-                                              : lhs.min().mul(single_value);
-      ConstantValue max = lhs.IsSingleValue() ? rhs.max().mul(single_value)
-                                              : lhs.max().mul(single_value);
-      return Range{min, max, single_value, lhs.IsLinear() && rhs.IsLinear()};
+      Range operand_range = lhs.IsSingleValue() ? rhs : lhs;
+      // When multiplying with a constant, min, max, and step are all
+      // multiplied by the single value.
+      ConstantValue min = operand_range.min().mul(single_value);
+      ConstantValue max = operand_range.max().mul(single_value);
+      if (!operand_range.IsStepKnown()) {
+        return Range{min, max, operand_range.IsLinear()};
+      }
+      ConstantValue step = operand_range.step().mul(single_value);
+      return Range{min, max, step, operand_range.IsLinear()};
     }
     case HloOpcode::kSelect: {
       VLOG(5) << "Handling Select: " << instr->ToString();
