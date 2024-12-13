@@ -101,7 +101,7 @@ struct type_caster<xla::OpMetadata> {
   NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::OpMetadata,
                                   const_name("xla::OpMetadata"));
 
-  bool from_python(handle h, uint8_t, cleanup_list*) {
+  bool from_python(handle h, uint8_t, cleanup_list*) noexcept {
     handle op_type = getattr(h, "op_type");
     if (!op_type.is_none()) {
       value.set_op_type(cast<std::string>(op_type));
