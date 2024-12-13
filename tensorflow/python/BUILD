@@ -876,6 +876,7 @@ pywrap_tensorflow_macro(
         # be brought in via other dependencies.
         "@local_xla//xla/tsl/cuda:cudnn",
         "@local_xla//xla/tsl/cuda:cufft",
+        "@local_xla//xla/tsl/cuda:cupti",
         "@local_xla//xla/tsl/cuda:nccl_rpath",
     ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
