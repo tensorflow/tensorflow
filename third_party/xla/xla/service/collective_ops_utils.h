@@ -28,6 +28,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_device_list.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_memory.h"
-#include "tsl/platform/blocking_counter.h"
 
 namespace xla {
 
@@ -133,7 +135,7 @@ const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
     const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
-// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
+// derived from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
 // HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -334,21 +336,42 @@ struct RendezvousKey {
   int64_t op_id;
 };
 
-template <typename DescFn>
-void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
-  VLOG(3) << "Begin: " << desc_fn();
-  const std::chrono::milliseconds timeout(5000);
-  bool ok = counter->WaitFor(timeout);
-  if (ok) {
-    VLOG(3) << "Finished: " << desc_fn();
-    return;
+class TimeoutLoggingBarrier {
+ public:
+  explicit TimeoutLoggingBarrier(int num_threads) : counter_(num_threads) {}
+
+  template <typename DescFn>
+  void BlockAndWarnAfterTimeout(const DescFn& desc_fn, absl::Duration timeout) {
+    VLOG(3) << "Begin: " << desc_fn();
+    bool is_last = counter_.DecrementCount();
+    if (is_last) {
+      finished_.Notify();
+      // This call to `Wait()` is not expected to block. Calling `Wait()` here
+      // allows us to satisfy `BlockingCounter`'s requirement: "When `Wait()`
+      // returns, it is legal to destroy the `BlockingCounter`.".
+      counter_.Wait();
+    }
+    if (finished_.WaitForNotificationWithTimeout(timeout)) {
+      VLOG(3) << "Finished: " << desc_fn();
+      return;
+    }
+    LOG(ERROR) << "This thread has been waiting for " << timeout
+               << "ms for and may be stuck: " << desc_fn();
+    finished_.WaitForNotification();
+    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
+                  "Perhaps the timeout is too short: "
+               << desc_fn();
   }
-  LOG(ERROR) << "This thread has been waiting for " << timeout.count()
-             << "ms for and may be stuck: " << desc_fn();
-  counter->Wait();
-  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                "Perhaps the timeout is too short: "
-             << desc_fn();
+
+ private:
+  absl::BlockingCounter counter_;
+  absl::Notification finished_;
+};
+
+template <typename DescFn>
+void WaitAndLogIfStuck(TimeoutLoggingBarrier* barrier, const DescFn& desc_fn) {
+  constexpr absl::Duration kTimeout = absl::Milliseconds(5000);
+  return barrier->BlockAndWarnAfterTimeout(desc_fn, kTimeout);
 }
 
 // Participant data for each rendezvous.
@@ -399,16 +422,17 @@ class Rendezvous {
     // An alternative way of accomplishing this goal would be to implement
     // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
     // erase() is deceptively complex to implement correctly.
-    std::shared_ptr<tsl::BlockingCounter> blocking_counter = p.second;
+    std::shared_ptr<TimeoutLoggingBarrier> barrier = std::get<1>(p);
+    uintptr_t rendezvous_address =
+        reinterpret_cast<uintptr_t>(rendezvous.get());
     rendezvous.reset();
-    blocking_counter->DecrementCount();
-    xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
+    xla::WaitAndLogIfStuck(barrier.get(), [&] {
       return absl::StrFormat(
           "participant waiting for all threads to drop their reference to the "
-          "rendezvous: %p",
-          rendezvous.get());
+          "rendezvous: %#x",
+          rendezvous_address);
     });
-    return std::move(p.first);
+    return std::move(std::get<0>(p));
   }
 
  protected:
@@ -430,7 +454,7 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  absl::StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
+  absl::StatusOr<std::pair<O, std::shared_ptr<TimeoutLoggingBarrier>>>
   SubmitParticipant(const I& participant) {
     {
       absl::MutexLock lock(&mu_);
@@ -439,8 +463,7 @@ class Rendezvous {
     }
 
     // Wait for all participants to arrive.
-    all_participants_present_.DecrementCount();
-    WaitAndLogIfStuck(&all_participants_present_, [&] {
+    WaitAndLogIfStuck(&arrival_barrier_, [&] {
       return absl::StrFormat(
           "participant %s waiting for all participants to arrive at rendezvous "
           "%s",
@@ -448,16 +471,16 @@ class Rendezvous {
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));
-    return std::make_pair(std::move(output), returned_blocking_counter_);
+    return std::make_pair(std::move(output), returned_barrier_);
   }
 
   const RendezvousKey key_;
 
-  tsl::BlockingCounter all_participants_present_{key_.num_local_participants};
+  TimeoutLoggingBarrier arrival_barrier_{key_.num_local_participants};
 
-  // tsl::BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
+  // TimeoutLoggingBarrier returned by SubmitParticipant.
+  std::shared_ptr<TimeoutLoggingBarrier> returned_barrier_ =
+      std::make_shared<TimeoutLoggingBarrier>(key_.num_local_participants);
 };
 
 // We only pipeline Send-Recv chains with channel_id > 0, where each chain
