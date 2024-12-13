@@ -27,12 +27,12 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/status_macros.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
     return absl::InvalidArgumentError(
         "Node id is expected to be in range [0, num_nodes)");
   }
-  return GetStreamExecutorGpuClient(options);
+  return xla::GetXlaPjrtGpuClient(options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateMockGpuClient(int num_nodes) {
