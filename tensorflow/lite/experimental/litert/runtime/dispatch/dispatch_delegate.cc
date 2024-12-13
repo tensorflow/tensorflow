@@ -136,6 +136,9 @@ void LiteRtDestroyDispatchDelegateOptions(
 
 TfLiteDelegate* LiteRtCreateDispatchDelegate(
     LiteRtDispatchDelegateOptions* options) {
+  if (!options) {
+    options = LiteRtCreateDefaultDispatchDelegateOptions();
+  }
   return DispatchDelegate::Create(options);
 }
 

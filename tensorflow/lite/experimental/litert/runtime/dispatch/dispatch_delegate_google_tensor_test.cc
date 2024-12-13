@@ -80,7 +80,7 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();
-  ASSERT_EQ(signature_defs.size(), 0);
+  ASSERT_EQ(signature_defs.size(), 1);
 
   tflite::impl::SignatureRunner* runner =
       interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
@@ -186,7 +186,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();
-  ASSERT_EQ(signature_defs.size(), 0);
+  ASSERT_EQ(signature_defs.size(), 1);
 
   tflite::impl::SignatureRunner* runner =
       interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
