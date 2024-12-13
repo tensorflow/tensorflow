@@ -115,6 +115,11 @@ class PyTreeRegistry {
   // Flattens a pytree one level, returning either a tuple of the leaves and
   // the node data, or None, if the entry is a leaf.
   nanobind::object FlattenOneLevel(nanobind::handle x) const;
+  // Similar to above but returns a key-leaf pair for each leaf.
+  nanobind::object FlattenOneLevelWithKeys(nanobind::handle x) const;
+  // Underlying implementation of FlattenOneLevel and FlattenOneLevelWithKeys.
+  nanobind::object FlattenOneLevelImpl(nanobind::handle x,
+                                       bool with_keys) const;
 
   static PyType_Slot slots_[];
 
