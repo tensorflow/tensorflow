@@ -194,23 +194,32 @@ class TensorBuffer
 
 class TensorBufferScopedLock {
  public:
-  ~TensorBufferScopedLock() { (void)tensor_buffer_.Unlock(); }
+  ~TensorBufferScopedLock() { (void)LiteRtUnlockTensorBuffer(tensor_buffer_); }
 
   template <typename T = void>
   static Expected<std::pair<TensorBufferScopedLock, T*>> Create(
       TensorBuffer& tensor_buffer, LiteRtEvent event = nullptr) {
-    auto addr = tensor_buffer.Lock(event);
-    if (!addr) {
-      return addr.Error();
+    return Create<T>(tensor_buffer.Get(), event);
+  }
+
+  template <typename T = void>
+  static Expected<std::pair<TensorBufferScopedLock, T*>> Create(
+      LiteRtTensorBuffer tensor_buffer, LiteRtEvent event = nullptr) {
+    void* host_mem_addr;
+    if (auto status =
+            LiteRtLockTensorBuffer(tensor_buffer, &host_mem_addr, event);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to lock the tensor buffer");
     }
     return std::make_pair(TensorBufferScopedLock(tensor_buffer),
-                          static_cast<T*>(*addr));
+                          static_cast<T*>(host_mem_addr));
   }
 
  private:
-  explicit TensorBufferScopedLock(TensorBuffer& tensor_buffer)
+  explicit TensorBufferScopedLock(LiteRtTensorBuffer& tensor_buffer)
       : tensor_buffer_(tensor_buffer) {}
-  TensorBuffer& tensor_buffer_;
+
+  LiteRtTensorBuffer tensor_buffer_;
 };
 
 }  // namespace litert
