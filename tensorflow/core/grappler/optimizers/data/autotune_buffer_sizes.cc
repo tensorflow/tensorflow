@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/autotune_buffer_sizes.h"
 
+#include <array>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"

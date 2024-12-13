@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
