@@ -1,4 +1,8 @@
 licenses(["restricted"])  # NVIDIA proprietary license
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 
 exports_files([
     "version.txt",
@@ -58,6 +62,7 @@ cc_library(
       %{comment}"@cuda_nvrtc//:nvrtc",
       %{comment}":cudnn_main",
     %{comment}],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cudnn/lib"),
     visibility = ["//visibility:public"],
 )
 
