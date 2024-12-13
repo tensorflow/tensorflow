@@ -628,7 +628,6 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ int64_t ShapeUtil::TupleElementCount(const Shape& shape) {
-  CHECK(shape.IsTuple()) << HumanString(shape);
   return shape.tuple_shapes_size();
 }
 
@@ -796,8 +795,6 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,
                                             const Shape& rhs) {
-  CHECK(lhs.IsArray());
-  CHECK(rhs.IsArray());
   if (!SameRank(lhs, rhs)) return false;
   for (int i = 0; i < lhs.rank(); ++i) {
     if (!lhs.is_unbounded_dynamic_dimension(i) &&
@@ -811,8 +808,6 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
-  CHECK(lhs.IsArray());
-  CHECK(rhs.IsArray());
   return lhs.rank() == rhs.rank();
 }
 

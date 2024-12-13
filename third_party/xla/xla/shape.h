@@ -75,7 +75,6 @@ class Shape {
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
   int64_t rank() const {
-    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
 
@@ -152,18 +151,10 @@ class Shape {
     return absl::MakeSpan(dynamic_dimensions_);
   }
 
-  // Add dimension_upper_bound().
-
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
   void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message ShapeProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
 
   // Methods for accessing the primitive type.
   PrimitiveType element_type() const { return element_type_; }
