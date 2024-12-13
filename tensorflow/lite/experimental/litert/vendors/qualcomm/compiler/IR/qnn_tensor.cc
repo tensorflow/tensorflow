@@ -128,12 +128,40 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor) {
   return id;
 }
 
+void SetPertensorQuantization(
+    Qnn_Tensor_t& tensor,
+    const LiteRtQuantizationPerTensor& lite_rt_quantization_per_tensor) {
+  tensor.v2.quantizeParams.quantizationEncoding =
+      QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+  tensor.v2.quantizeParams.scaleOffsetEncoding.scale =
+      lite_rt_quantization_per_tensor.scale;
+  tensor.v2.quantizeParams.scaleOffsetEncoding.offset =
+      lite_rt_quantization_per_tensor.zero_point;
+}
+
+LiteRtStatus LegalizeQuntizationParameter(const litert::Tensor& src,
+                                          Qnn_Tensor_t& dest) {
+  LiteRtQuantizationTypeId lite_rt_quantization_type_id = src.QTypeId();
+  switch (lite_rt_quantization_type_id) {
+    case kLiteRtQuantizationPerTensor:
+      SetPertensorQuantization(dest, src.PerTensorQuantization());
+      return kLiteRtStatusOk;
+    default:
+      LITERT_LOG(LITERT_ERROR, "Unsupported quantization type.");
+      return kLiteRtStatusErrorInvalidArgument;
+  }
+}
+
 LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
   if (src.TypeId() != kLiteRtRankedTensorType) {
     return kLiteRtStatusErrorInvalidArgument;
   }
 
   ResetTensor(dest);
+
+  if (src.HasQuantization()) {
+    LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeQuntizationParameter(src, dest));
+  }
 
   Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
   LITERT_RETURN_STATUS_IF_NOT_OK(

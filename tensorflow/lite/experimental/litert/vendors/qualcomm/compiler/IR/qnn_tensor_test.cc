@@ -18,10 +18,13 @@
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_models.h"
 
 namespace {
+
+constexpr float kSimpleMulQuantModelOutputScale = 0.00028621565f;
+constexpr float kSimpleMulQuantModelOutputOffset = 0;
 
 TEST(TestInitQnnTensor, BuildDefaultTensor) {
   Qnn_Tensor_t tensor = litert::qnn::BuildDefaultTensor();
@@ -127,6 +130,32 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   EXPECT_THAT(absl::MakeConstSpan(qnn_tensor.v2.dimensions, 2),
               ::testing::ElementsAreArray({2, 2}));
 
+  litert::qnn::ResetTensor(qnn_tensor);
+}
+
+TEST(TestLegalizeTensor, SimpleQuantizedTensor) {
+  auto model = litert::testing::LoadTestFileModel(kQSimpleMul16x16Model);
+
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+  auto ops = subgraph->Ops();
+  auto op_outs = ops.at(0).Outputs();
+
+  auto qnn_tensor = litert::qnn::BuildDefaultTensor();
+  const auto& op_out = op_outs.front();
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
+
+  ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
+  EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_INT_16);
+  EXPECT_EQ(qnn_tensor.v2.type, QNN_TENSOR_TYPE_APP_READ);
+
+  ASSERT_EQ(qnn_tensor.v2.quantizeParams.quantizationEncoding,
+            QNN_QUANTIZATION_ENCODING_SCALE_OFFSET);
+  ASSERT_FLOAT_EQ(qnn_tensor.v2.quantizeParams.scaleOffsetEncoding.scale,
+                  kSimpleMulQuantModelOutputScale);
+
+  ASSERT_FLOAT_EQ(qnn_tensor.v2.quantizeParams.scaleOffsetEncoding.offset,
+                  kSimpleMulQuantModelOutputOffset);
   litert::qnn::ResetTensor(qnn_tensor);
 }
 
