@@ -57,6 +57,20 @@ TEST(ModelTest, MetadataDNE) {
   ASSERT_FALSE(res.HasValue());
 }
 
+TEST(ModelTest, PopMetadata) {
+  static constexpr absl::string_view kMetadata = "VALUE";
+  static constexpr absl::string_view kKey = "KEY";
+
+  LiteRtModelT model;
+  LITERT_ASSERT_STATUS_OK(model.PushMetadata(kKey, kMetadata));
+
+  auto popped_metadata = model.PopMetadata(kKey);
+  ASSERT_TRUE(popped_metadata);
+  EXPECT_EQ(popped_metadata->StrView(), kMetadata);
+
+  EXPECT_FALSE(model.FindMetadata(kKey));
+}
+
 TEST(ModelTest, EmplaceSubgraph) {
   LiteRtModelT model;
   model.EmplaceSubgraph();
