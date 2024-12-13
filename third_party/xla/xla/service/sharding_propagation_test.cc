@@ -2201,6 +2201,29 @@ ENTRY %slice {
   }
 }
 
+TEST_F(ShardingPropagationTest, SliceForwardPropagation) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %slice {
+  %param = f32[4,4,4,4] parameter(0), sharding={devices=[2,2,2,2]<=[16]}
+  %slice = f32[1,2,4,1] slice(%param), slice={[0:1], [0:2], [0:4], [0:1]}
+  ROOT %copy = f32[1,2,4,1] copy(%slice)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  auto* instruction = FindInstruction(module.get(), "slice");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding(
+          "{devices=[1,2,2,1,4]<=[2,4,2]T(1,0,2) last_tile_dim_replicate}"));
+}
+
 TEST_P(ParameterizedMetadataTest, ReduceWindowBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module

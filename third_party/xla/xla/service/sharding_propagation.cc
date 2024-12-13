@@ -2494,6 +2494,25 @@ bool ShardingPropagation::InferShardingFromOperands(
           instruction, may_combine_partial_sharding);
       return changed;
     }
+    case HloOpcode::kSlice: {
+      if (!hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(0))) {
+        return false;
+      }
+      std::vector<int64_t> dims_of_size_1;
+      for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
+        if (instruction->shape().dimensions(i) == 1) {
+          dims_of_size_1.push_back(i);
+        }
+      }
+      HloSharding inferred_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              instruction->operand(0)->sharding(), dims_of_size_1);
+      return MaybeImproveInstructionSharding(
+          std::move(inferred_sharding), instruction,
+          may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
+              1);
+    }
     case HloOpcode::kGather: {
       bool changed = false;
 
