@@ -76,6 +76,7 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
 
   // Check if src_axes are weights tensors.
   if (!src_axes.HasWeights()) {
+    LITERT_LOG(LITERT_ERROR, "Sum op axes are not weights tensors");
     return kLiteRtStatusErrorInvalidLegalization;
   }
   int32_t dest_axes_size = src_axes.RankedTensorType().Layout().Dimensions()[0];

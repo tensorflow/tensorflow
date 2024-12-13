@@ -40,6 +40,8 @@ void CloneTo(const LiteRtTensorT& src, LiteRtTensorT& dest) {
   dest.SetName({src.Name().cbegin(), src.Name().cend()});
   dest.SetQarams(src.Qparams());
   dest.SetType(src.Type());
+  // TODO: b/383906683 Avoid copying for better performance.
+  dest.Weights().SetFromBuf(src.Weights().Buf());
 }
 
 void CloneTo(const LiteRtOpT& src, LiteRtOpT& dest) {
