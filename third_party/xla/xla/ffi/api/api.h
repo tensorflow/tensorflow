@@ -224,19 +224,28 @@ class Ffi {
 
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
-  static inline XLA_FFI_Error* RegisterStaticHandler(
+  static XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
       XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits = 0);
 
   // Registers FFI execute handler with an XLA runtime under the given name on a
   // given platform.
-  static inline XLA_FFI_Error* RegisterStaticHandler(
+  static XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
       XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
         api, name, platform,
         XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
   }
+
+  // Registers a custom type so that it can be used with State and UserData
+  // arguments to external FFI handlers. The `name` argument must be a unique
+  // identifier for the type, and duplicate registrations with the same name
+  // are not allowed. When successful, a unique ID will be returned by updating
+  // `type_id`.
+  static XLA_FFI_Error* RegisterTypeId(const XLA_FFI_Api* api,
+                                       std::string_view name,
+                                       XLA_FFI_TypeId* type_id);
 
  protected:
   template <typename... Args>
@@ -260,11 +269,9 @@ class Ffi {
                                                    size_t actual);
 };
 
-XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
-                                          std::string_view name,
-                                          std::string_view platform,
-                                          XLA_FFI_Handler_Bundle bundle,
-                                          XLA_FFI_Handler_Traits traits) {
+inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
+    const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+    XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -273,6 +280,17 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
   args.bundle = bundle;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
+}
+
+inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
+                                          std::string_view name,
+                                          XLA_FFI_TypeId* type_id) {
+  XLA_FFI_TypeId_Register_Args args;
+  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
+  args.type_id = type_id;
+  return api->XLA_FFI_TypeId_Register(&args);
 }
 
 template <typename... Args>

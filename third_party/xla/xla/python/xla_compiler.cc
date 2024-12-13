@@ -376,6 +376,20 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
       api_version));
 }
 
+absl::Status PyRegisterCustomTypeId(std::string_view type_name,
+                                    nb::object type_id) {
+  nb::capsule capsule;
+  if (!nb::try_cast<nb::capsule>(type_id, capsule)) {
+    return absl::InvalidArgumentError(
+        "The type_id argument to register_custom_call_type_id must be a "
+        "PyCapsule object holding a pointer to a XLA_FFI_TypeId.");
+  }
+  XLA_FFI_TypeId* type_id_ptr =
+      reinterpret_cast<XLA_FFI_TypeId*>(static_cast<void*>(capsule.data()));
+  return ffi::TakeStatus(ffi::Ffi::RegisterTypeId(xla::ffi::GetXlaFfiApi(),
+                                                  type_name, type_id_ptr));
+}
+
 template <typename T, typename Container>
 void DefRepeatedProperty(nb::class_<T>& cls, const char* name,
                          Container* (T::*getter)()) {
@@ -1161,6 +1175,13 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .value("UNSPECIFIED", DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED)
       .value("UPDATE", DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE)
       .value("READ", DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
+  m.def(
+      "register_custom_type_id",
+      [](std::string_view type_name, nb::object type_id) {
+        xla::ThrowIfError(PyRegisterCustomTypeId(type_name, type_id));
+      },
+      nb::arg("type_name"), nb::arg("type_id"));
 
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
