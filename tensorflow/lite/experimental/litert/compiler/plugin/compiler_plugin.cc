@@ -87,32 +87,33 @@ namespace {
 
 LiteRtStatus ResolvePluginApi(void* lib_handle,
                               LiteRtCompilerPluginApi& result) {
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginVersion",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginVersion,
                    result.get_compiler_plugin_version);
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSocManufacturer",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSocManufacturer,
                    result.get_compiler_plugin_soc_manufacturer);
-  RESOLVE_API_FUNC("LiteRtGetNumCompilerPluginSupportedSocModels",
+  RESOLVE_API_FUNC(kLiteRtGetNumCompilerPluginSupportedSocModels,
                    result.get_num_compiler_plugin_supported_models);
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSupportedSocModel",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSupportedSocModel,
                    result.get_compiler_plugin_supported_soc_model);
 
-  RESOLVE_API_FUNC("LiteRtCreateCompilerPlugin", result.create_compiler_plugin);
-  RESOLVE_API_FUNC("LiteRtDestroyCompilerPlugin",
+  RESOLVE_API_FUNC(kLiteRtCreateCompilerPlugin, result.create_compiler_plugin);
+  RESOLVE_API_FUNC(kLiteRtDestroyCompilerPlugin,
                    result.destroy_compiler_plugin);
 
-  RESOLVE_API_FUNC("LiteRtCompilerPluginPartitionModel",
-                   result.compiler_plugin_partition_model);
-  RESOLVE_API_FUNC("LiteRtCompilerPluginCompile",
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginPartition,
+                   result.compiler_plugin_partition);
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginCompile,
                    result.compiler_plugin_compile);
 
-  RESOLVE_API_FUNC("LiteRtDestroyCompiledResult",
+  RESOLVE_API_FUNC(kLiteRtDestroyCompiledResult,
                    result.destroy_compiled_result);
-  RESOLVE_API_FUNC("LiteRtGetCompiledResultByteCode",
+  RESOLVE_API_FUNC(kLiteRtGetCompiledResultByteCode,
                    result.get_compiled_result_byte_code);
-  RESOLVE_API_FUNC("LiteRtGetCompiledResultCallInfo",
+  RESOLVE_API_FUNC(kLiteRtGetCompiledResultCallInfo,
                    result.get_compiled_result_call_info);
-  RESOLVE_API_FUNC("LiteRtGetNumCompiledResultCalls",
+  RESOLVE_API_FUNC(kLiteRtGetNumCompiledResultCalls,
                    result.get_compiled_result_num_calls);
+
   return kLiteRtStatusOk;
 }
 
@@ -267,12 +268,11 @@ Expected<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
   return api_version;
 }
 
-Expected<std::vector<LiteRtOp>> CompilerPlugin::PartitionModel(
-    const Model& model) {
+Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
+    const Subgraph& subgraph) {
   LiteRtOpListT ops;
-  LiteRtModel model_handle = model.Get();
-  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_partition_model(
-      plugin_handle_, model_handle, &ops));
+  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_partition(plugin_handle_,
+                                                         subgraph.Get(), &ops));
   return ops.Vec();
 }
 
@@ -333,8 +333,14 @@ LiteRtStatus CompilerPlugin::Compile(
 Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
     CompilerPlugin& compiler_plugin, Model& model,
     std::optional<absl::string_view> soc_model) {
+  if (model.NumSubgraphs() != 1) {
+    // TODO(@lukeboyer) Finish support for multi-subgraph.
+    LITERT_LOG(LITERT_ERROR, "Apply currently supported for 1 subgraph");
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+
   // Get selected ops from plugin.
-  auto partition = compiler_plugin.PartitionModel(model);
+  auto partition = compiler_plugin.Partition(*model.Subgraph(0));
   if (!partition) {
     LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
     return Error(kLiteRtStatusErrorRuntimeFailure);

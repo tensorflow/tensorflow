@@ -47,8 +47,8 @@ typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedSocModelT)(
     LiteRtCompilerPlugin, LiteRtParamIndex soc_model_idx,
     const char** soc_moel_idx);
 
-typedef LiteRtStatus (*LiteRtCompilerPluginPartitionModelT)(
-    LiteRtCompilerPlugin, LiteRtModel model, LiteRtOpList selected_ops);
+typedef LiteRtStatus (*LiteRtCompilerPluginPartitionT)(
+    LiteRtCompilerPlugin, LiteRtSubgraph subgraph, LiteRtOpList selected_ops);
 
 typedef LiteRtStatus (*LiteRtCompilerPluginCompileT)(
     LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraphArray partitions,
@@ -82,7 +82,7 @@ struct LiteRtCompilerPluginApi {
   LiteRtGetCompilerPluginSupportedSocModelT
       get_compiler_plugin_supported_soc_model;
 
-  LiteRtCompilerPluginPartitionModelT compiler_plugin_partition_model;
+  LiteRtCompilerPluginPartitionT compiler_plugin_partition;
   LiteRtCompilerPluginCompileT compiler_plugin_compile;
 
   LiteRtDestroyCompiledResultT destroy_compiled_result;
@@ -93,6 +93,38 @@ struct LiteRtCompilerPluginApi {
 
 #ifdef __cplusplus
 }
+
+#include "absl/strings/string_view.h"
+
+static constexpr absl::string_view kLiteRtGetCompilerPluginVersion =
+    "LiteRtGetCompilerPluginVersion";
+static constexpr absl::string_view kLiteRtGetCompilerPluginSocManufacturer =
+    "LiteRtGetCompilerPluginSocManufacturer";
+static constexpr absl::string_view
+    kLiteRtGetNumCompilerPluginSupportedSocModels =
+        "LiteRtGetNumCompilerPluginSupportedSocModels";
+static constexpr absl::string_view kLiteRtGetCompilerPluginSupportedSocModel =
+    "LiteRtGetCompilerPluginSupportedSocModel";
+
+static constexpr absl::string_view kLiteRtCreateCompilerPlugin =
+    "LiteRtCreateCompilerPlugin";
+static constexpr absl::string_view kLiteRtDestroyCompilerPlugin =
+    "LiteRtDestroyCompilerPlugin";
+
+static constexpr absl::string_view kLiteRtCompilerPluginPartition =
+    "LiteRtCompilerPluginPartition";
+static constexpr absl::string_view kLiteRtCompilerPluginCompile =
+    "LiteRtCompilerPluginCompile";
+
+static constexpr absl::string_view kLiteRtDestroyCompiledResult =
+    "LiteRtDestroyCompiledResult";
+static constexpr absl::string_view kLiteRtGetCompiledResultByteCode =
+    "LiteRtGetCompiledResultByteCode";
+static constexpr absl::string_view kLiteRtGetCompiledResultCallInfo =
+    "LiteRtGetCompiledResultCallInfo";
+static constexpr absl::string_view kLiteRtGetNumCompiledResultCalls =
+    "LiteRtGetNumCompiledResultCalls";
+
 #endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_API_H_

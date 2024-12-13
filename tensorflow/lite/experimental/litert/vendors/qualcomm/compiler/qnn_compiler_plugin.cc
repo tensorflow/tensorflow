@@ -208,16 +208,11 @@ bool IsOpSupported(const litert::Op& op) {
 
 }  // namespace
 
-LiteRtStatus LiteRtCompilerPluginPartitionModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
-    LiteRtOpList selected_ops) {
-  auto m = litert::Model::CreateFromNonOwnedHandle(model);
-  auto subgraph = m.MainSubgraph();
-  if (!subgraph) {
-    return subgraph.Error().Status();
-  }
-
-  for (const auto& op : subgraph->Ops()) {
+LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           LiteRtSubgraph subgraph,
+                                           LiteRtOpList selected_ops) {
+  ::litert::Subgraph graph(subgraph);
+  for (const auto& op : graph.Ops()) {
     if (!IsOpSupported(op)) {
       continue;
     }

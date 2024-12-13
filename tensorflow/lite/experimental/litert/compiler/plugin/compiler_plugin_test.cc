@@ -98,15 +98,17 @@ TEST(CompilerPluginTest, SocModels) {
               ::testing::ElementsAreArray({kTestModels}));
 }
 
-TEST(CompilerPluginTest, PartitionModel) {
+TEST(CompilerPluginTest, Partition) {
   auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
   ASSERT_EQ(plugins->size(), 1);
   EXPECT_EQ(plugins->front().SocManufacturer(), kTestManufacturer);
 
   auto model = testing::LoadTestFileModel("mul_simple.tflite");
   auto subgraph = model.MainSubgraph();
+  auto ops = plugins->front().Partition(*subgraph);
+  ASSERT_TRUE(ops);
 
-  EXPECT_EQ(subgraph->Ops().size(), 2);
+  EXPECT_EQ(ops->size(), 2);
 }
 
 TEST(CompilerPluginTest, CompileModel) {

@@ -33,6 +33,7 @@ cc_library(
         ":litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

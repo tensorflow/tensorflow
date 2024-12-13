@@ -79,7 +79,7 @@ class CompilerPlugin {
   const SmallVec<std::string>& SocModels() const { return soc_models_; }
 
   // Selects ops for the plugin to compile.
-  Expected<std::vector<LiteRtOp>> PartitionModel(const Model& model);
+  Expected<std::vector<LiteRtOp>> Partition(const Subgraph& subgraph);
 
   // Compile given LiteRtSubgraphs. Write compiled byte code to the given
   // stream. For each given subgraph, write opaque data about the corresponding

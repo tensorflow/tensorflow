@@ -218,7 +218,12 @@ std::vector<LiteRtOp> ApplyPartition(Context& ctx, const Model& model,
     Dump(**it, ctx.Dump().Display());
   }
 
-  auto partition = plugin.PartitionModel(model);
+  if (model.NumSubgraphs() != 1) {
+    ctx.Dump().Fail();
+    // TODO(@lukeboyer) Finish multi-subgraph support.
+    return {};
+  }
+  auto partition = plugin.Partition(Subgraph(&model.Get()->Subgraph(0)));
   if (!partition.HasValue()) {
     return {};
   }

@@ -54,12 +54,11 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
     const char** soc_model_name);
 
-// Select desired ops for compilation. This will be called only once
-// during the plugin application flow, all ops should be selected during this
-// call.
-LiteRtStatus LiteRtCompilerPluginPartitionModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
-    LiteRtOpList selected_ops);
+// Select desired ops for compilation. This will only be called once
+// per subgraph, plugins should select all supportable ops.
+LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           LiteRtSubgraph subgraph,
+                                           LiteRtOpList selected_ops);
 
 // Prepare result to pass to the runtime for given partition and, optionally,
 // for a given SoC model (parameter `soc_model` can be NULL to specify a default
