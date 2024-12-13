@@ -77,7 +77,6 @@ TEST(ModelTest, EmplaceSubgraph) {
   EXPECT_EQ(model.Subgraphs().size(), 1);
 }
 
-// TODO fix this
 TEST(ModelTest, Signature) {
   static constexpr absl::string_view kSignatureName = "MY_SIGNATURE";
 

@@ -48,6 +48,7 @@ namespace {
 
 using ::litert::testing::GetTestFilePath;
 using ::testing::Each;
+using ::testing::ElementsAreArray;
 using ::testing::FloatEq;
 using ::testing::Values;
 
@@ -186,7 +187,30 @@ TEST(ModelLoadTest, WithSignature) {
 }
 
 TEST(ModelSerializeTest, WithSignature) {
-  // TODO
+  auto model = litert::testing::LoadTestFileModel(kAddSimple);
+  auto& litert_model = *model.Get();
+
+  static constexpr char kInput[] = "foo";
+  static constexpr char kOutput[] = "bar";
+  static constexpr char kKey[] = "newKey";
+
+  LiteRtSignatureT signature(litert_model.MainSubgraph(), {kInput}, {kOutput},
+                             kKey);
+  litert_model.EmplaceSignature(std::move(signature));
+
+  auto serialized = SerializeModel(std::move(*model.Get()));
+  EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
+
+  auto re_loaded = LoadModelFromBuffer(*serialized);
+  auto re_loaded_signature = re_loaded->get()->FindSignature(kKey);
+  ASSERT_TRUE(re_loaded_signature);
+  const auto& sig = re_loaded_signature->get();
+
+  const auto& inputs = sig.InputNames();
+  const auto& outputs = sig.OutputNames();
+  EXPECT_THAT(inputs, ElementsAreArray({kInput}));
+  EXPECT_THAT(outputs, ElementsAreArray({kOutput}));
+  EXPECT_EQ(&sig.GetSubgraph(), re_loaded->get()->MainSubgraph());
 }
 
 // Tests that explicitly check litert graph structure.
