@@ -376,6 +376,8 @@ tsl_cc_test(
         ":now_seconds_env",
         ":ram_file_block_cache",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:env_impl",

@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/now_seconds_env.h"
 #include "tsl/platform/blocking_counter.h"
@@ -483,11 +486,15 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
   // concurrently (at which point it will respond with success to all callers),
   // or 10 seconds have elapsed (at which point it will respond with an error).
   const int callers = 4;
-  BlockingCounter counter(callers);
-  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
-                            char* buffer, size_t* bytes_transferred) {
-    counter.DecrementCount();
-    if (!counter.WaitFor(std::chrono::seconds(10))) {
+  absl::BlockingCounter counter(callers);
+  absl::Notification notification;
+  auto fetcher = [&counter, &notification](
+                     const string& filename, size_t offset, size_t n,
+                     char* buffer, size_t* bytes_transferred) {
+    if (counter.DecrementCount()) {
+      notification.Notify();
+    }
+    if (!notification.WaitForNotificationWithTimeout(absl::Seconds(10))) {
       // This avoids having the test time out, which is harder to debug.
       return errors::FailedPrecondition("desired concurrency not reached");
     }

@@ -28,6 +28,18 @@ cc_library(
 )
 
 cc_library(
+    name = "litert_environment",
+    srcs = ["litert_environment.cc"],
+    hdrs = ["litert_environment.h"],
+    deps = [
+        ":litert_any",
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:environment",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "litert_logging",
     srcs = [
         "litert_logging.cc",
@@ -211,6 +223,9 @@ cc_library(
     hdrs = [
         "litert_compiled_model_options.h",
     ],
+    deps = [
+        ":litert_common",
+    ],
 )
 
 cc_library(
@@ -273,8 +288,12 @@ cc_test(
     copts = ["--std=c11"],
     linkopts = ["-ldl"],
     deps = [
+        ":litert_any",
         ":litert_common",
         ":litert_compiled_model",
+        ":litert_compiled_model_options",
+        ":litert_dispatch_delegate",
+        ":litert_layout",
         ":litert_logging",
         ":litert_model",
         ":litert_op_code",

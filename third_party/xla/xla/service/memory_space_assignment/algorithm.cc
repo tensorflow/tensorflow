@@ -244,9 +244,6 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
-         (!value.shape().has_layout() ||
-          value.shape().layout().memory_space() !=
-              options.alternate_memory_space) &&
          value.index().size() <= 1 && value.shape().IsArray() &&
          !uses.empty() && options.size_fn(value) <= options.max_size_in_bytes &&
          absl::c_all_of(uses, [&](const HloUse& use) {
@@ -3239,6 +3236,22 @@ void MsaAlgorithm::CreateOrAddToAliasedOffset(const Allocation& allocation,
   return nullptr;
 }
 
+namespace {
+
+void SetDefaultMemorySpace(const HloValue* value, const Options& options) {
+  for (auto& position : value->positions()) {
+    Shape* shape = ShapeUtil::GetMutableSubshape(
+        position.instruction->mutable_shape(), position.index);
+    if (!shape->has_layout() ||
+        shape->layout().memory_space() != options.alternate_memory_space) {
+      continue;
+    }
+    shape->mutable_layout()->set_memory_space(options.default_memory_space);
+  }
+}
+
+}  // namespace
+
 void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
     HloModule* module, const MsaBufferInterval& prefetch_candidate) {
   Chunk chunk_candidate = FindChunkCandidate(prefetch_candidate);
@@ -3250,6 +3263,7 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
   const HloValue* buffer = prefetch_candidate.buffer;
   int64_t parameter = buffer->instruction()->parameter_number();
   int cross_program_prefetch_index = module->CrossProgramPrefetches().size();
+  SetDefaultMemorySpace(buffer, options_);
   module->AddCrossProgramPrefetch(parameter, buffer->index());
 
   AllocationSequence allocations;

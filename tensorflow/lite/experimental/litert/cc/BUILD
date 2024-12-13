@@ -18,6 +18,18 @@ package(
 )
 
 cc_library(
+    name = "litert_environment",
+    hdrs = ["litert_environment.h"],
+    deps = [
+        ":litert_any",
+        ":litert_expected",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_environment",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "litert_any",
     hdrs = ["litert_any.h"],
     deps = [

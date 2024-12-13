@@ -3584,7 +3584,11 @@ LogicalResult ConvertToHloModule::LowerReturn(
     if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
 
     if (ret_tuple_sharding) {
-      builder->SetSharding(*ret_tuple_sharding);
+      // TODO(b/384075481): remove this check once the bug is fixed.
+      if (ret_tuple_sharding->tuple_shardings_size() ==
+          xla::ShapeUtil::GetLeafCount(xla::TypeToShape(ret.getType()))) {
+        builder->SetSharding(*ret_tuple_sharding);
+      }
       auto tuple = Tuple(builder, {operand});
       builder->SetSharding(*ret_shardings[0]);
       *return_value = GetTupleElement(tuple, 0);
