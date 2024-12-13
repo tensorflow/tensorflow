@@ -255,7 +255,10 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.
   while (!output->IsRoot()) {
-    TF_RET_CHECK(output->user_count() == 1);
+    if (output->user_count() != 1) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected one user for ", output->ToString()));
+    }
     const HloInstruction* input = output;
     // Tuple with a custom call can be added at root to allocate a workspace
     // buffer. These do not need to participate in propagation of dimensions.
@@ -271,14 +274,21 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
       return FailedPrecondition("Failed to propagate tiling with error: %s",
                                 decision.Explain());
     }
-    TF_RET_CHECK(
-        context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
+    if (!context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
+      return absl::InternalError(
+          "Failed to combine dim orders and requirements.");
+    }
   }
-  TF_RET_CHECK(
+
+  bool spec_was_inserted =
       iter_specs_[Scope::OUTPUT]
           .insert(
               {output, context.dim_orders().at(output).ToTensorIterationSpec()})
-          .second);
+          .second;
+  if (!spec_was_inserted) {
+    return absl::InternalError(
+        "Failed to insert output spec for the output fusion.");
+  }
   parameters_[Scope::OUTPUT] = {};
   if (output != &dot) {
     // Propagate back to parameters of the output fusion.
