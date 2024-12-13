@@ -193,9 +193,11 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
 
-  // The sharding of the jax.Array arguments. This is only used by pjit with
-  // jax.Array enabled.
+  // The sharding of the jax.Array arguments.
   std::vector<nanobind::object> dynamic_arg_shardings;
+
+  // The layout of the jax.Array arguments.
+  std::vector<std::shared_ptr<xla::PjRtLayout>> dynamic_arg_layouts;
 
   absl::InlinedVector<bool, 2> committed_args;
 
@@ -231,11 +233,20 @@ H AbslHashValue(H h, const CallSignature& s) {
   DCHECK(s.dynamic_arg_shardings.empty() ||
          s.dynamic_arg_shardings.size() == s.dynamic_arg_signatures.size());
 
+  DCHECK(s.dynamic_arg_layouts.empty() ||
+         s.dynamic_arg_layouts.size() == s.dynamic_arg_signatures.size());
+
   // TODO(chky): For now, we are only hashing the pointer of shardings to avoid
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
     h = H::combine(std::move(h), ShardingHash(sharding));
+  }
+
+  for (const auto& layout : s.dynamic_arg_layouts) {
+    if (layout != nullptr) {
+      h = H::combine(std::move(h), *layout);
+    }
   }
 
   h = H::combine(std::move(h), s.committed_args, s.device, s.jax_enable_x64);

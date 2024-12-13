@@ -811,6 +811,8 @@ absl::Status PjitFunction::ComputeCallSignature(
   dynamic_arg_signatures.reserve(flat_dynamic_args.size());
   auto& dynamic_arg_shardings = signature.dynamic_arg_shardings;
   dynamic_arg_shardings.reserve(flat_dynamic_args.size());
+  auto& dynamic_arg_layouts = signature.dynamic_arg_layouts;
+  dynamic_arg_layouts.reserve(flat_dynamic_args.size());
 
   for (nb::handle arg : flat_dynamic_args) {
     TF_ASSIGN_OR_RETURN(auto arg_signature,
@@ -822,9 +824,16 @@ absl::Status PjitFunction::ComputeCallSignature(
     if (arg.type().ptr() == xla::PyArray::type().ptr()) {
       auto py_array = nb::borrow<xla::PyArray>(arg);
       signature.dynamic_arg_shardings.push_back(py_array.sharding());
+      auto layout = py_array.layout();
+      if (absl::IsUnimplemented(layout.status())) {
+        signature.dynamic_arg_layouts.push_back(nullptr);
+      } else {
+        signature.dynamic_arg_layouts.push_back(*std::move(layout));
+      }
       signature.committed_args.push_back(py_array.committed());
     } else {
       signature.dynamic_arg_shardings.push_back(nb::none());
+      signature.dynamic_arg_layouts.push_back(nullptr);
       signature.committed_args.push_back(false);
     }
   }

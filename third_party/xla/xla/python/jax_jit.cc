@@ -29,6 +29,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -202,6 +203,14 @@ std::string CallSignature::DebugString() const {
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
   };
+  auto layout_formatter = [](std::string* out,
+                             const std::shared_ptr<xla::PjRtLayout>& l) {
+    if (l != nullptr) {
+      out->append(l->ToString());
+    } else {
+      out->append("None");
+    }
+  };
   auto bool_formatter = [](std::string* out, bool o) {
     out->append(o ? "true" : "false");
   };
@@ -209,6 +218,7 @@ std::string CallSignature::DebugString() const {
       "arg signature: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
       "dynamic arg shardings: %s\n"
+      "dynamic arg layouts: %s\n"
       "committed args: %s\n"
       "device: %s\n"
       "default_device: %s\n"
@@ -220,6 +230,7 @@ std::string CallSignature::DebugString() const {
       arg_signature.DebugString(),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
+      absl::StrJoin(dynamic_arg_layouts, ", ", layout_formatter),
       absl::StrJoin(committed_args, ",", bool_formatter),
       device != nullptr ? device->DebugString() : "nullptr",
       OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
@@ -251,6 +262,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
       // `==` on py:objects is the Python `is`. We need equal.
       absl::c_equal(dynamic_arg_shardings, other.dynamic_arg_shardings,
                     ShardingEqual) &&
+      absl::c_equal(dynamic_arg_layouts, other.dynamic_arg_layouts,
+                    [](const std::shared_ptr<xla::PjRtLayout>& a,
+                       const std::shared_ptr<xla::PjRtLayout>& b) {
+                      return (a && b) ? *a == *b : a == b;
+                    }) &&
       (global_extra_jit_context.has_value() ==
        other.global_extra_jit_context.has_value()) &&
       (!global_extra_jit_context.has_value() ||
