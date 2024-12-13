@@ -31,8 +31,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
+#include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model_builder.h"
 
@@ -111,6 +113,16 @@ class LiteRtCompiledModelT {
   // Returns the SignatureRunner for the given signature key.
   // If the signature key is not found, returns nullptr.
   tflite::SignatureRunner* GetSignatureRunner(absl::string_view signature_key);
+
+  // Registers the TensorBuffer for the given tensor with the SignatureRunner.
+  // If the TensorBuffer can be directly consumed as CPU Tensors, they'll be
+  // locked and use it with CustomAllocation. The buffer is locked by
+  // LiteRtTensorBufferScopedLock and kept in the `scoped_locks`. It will be
+  // unlocked automatically when the `scoped_locks` are destroyed.
+  litert::Expected<void> BufferRegister(
+      tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
+      const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
+      std::vector<litert::TensorBufferScopedLock>& scoped_locks);
 
   // Map from signature key to SignatureRunner. This is used to lazy calling
   // GetSignatureRunner() which is expensive.

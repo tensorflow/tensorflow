@@ -194,6 +194,8 @@ class TensorBuffer
 
 class TensorBufferScopedLock {
  public:
+  TensorBufferScopedLock(const TensorBufferScopedLock& arg) = delete;
+  TensorBufferScopedLock(TensorBufferScopedLock&& arg) = default;
   ~TensorBufferScopedLock() { (void)LiteRtUnlockTensorBuffer(tensor_buffer_); }
 
   template <typename T = void>
