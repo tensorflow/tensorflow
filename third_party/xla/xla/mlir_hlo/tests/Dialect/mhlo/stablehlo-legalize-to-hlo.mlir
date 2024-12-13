@@ -1355,6 +1355,13 @@ func.func @op_reshape(%arg0: tensor<16xf32>) -> tensor<4x4xf32> {
   func.return %0 : tensor<4x4xf32>
 }
 
+// CHECK-LABEL: "op_reshape_dynamic"
+func.func @op_reshape_dynamic(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<7xi64> {
+  // CHECK: "mhlo.reshape"({{.*}}) : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<7xi64>
+  %0 = "stablehlo.reshape"(%arg0) : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<7xi64>
+  return %0 : tensor<7xi64>
+}
+
 // CHECK-LABEL: "op_return"
 func.func @op_return(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
   //      CHECK: "mhlo.case"([[ARG0:%arg[0-9]+]]) ({
