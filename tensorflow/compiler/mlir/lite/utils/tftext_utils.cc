@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 
-#include <optional>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
