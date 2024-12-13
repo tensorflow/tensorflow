@@ -47,6 +47,8 @@ namespace litert::internal {
 namespace {
 
 using ::litert::testing::GetTestFilePath;
+using ::testing::Each;
+using ::testing::FloatEq;
 using ::testing::Values;
 
 using ModelFactory = std::function<Expected<Model>()>;
@@ -57,6 +59,8 @@ static constexpr absl::string_view kDynamicShapeModel =
     "dynamic_shape_tensor.tflite";
 static constexpr absl::string_view kSimpleMultiOp = "simple_multi_op.tflite";
 static constexpr absl::string_view kOneMul = "one_mul.tflite";
+static constexpr absl::string_view kSimpleMultiSubgraph =
+    "multi_subgraph.tflite";
 
 // Load a model, then serialize and re-load. Used to test serialization.
 Expected<Model> LoadModelThroughRoundTrip(absl::string_view filename) {
@@ -338,6 +342,69 @@ INSTANTIATE_TEST_SUITE_P(ModelLoadTests, SimpleMultiOpTest,
 
 INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, SimpleMultiOpTest,
                          Values(MakeRoundTripFactory(kSimpleMultiOp)));
+
+using SimpleMultiSubgraphTest = TestWithModelFactory;
+
+TEST_P(SimpleMultiSubgraphTest, CheckGraph) {
+  auto model_wrap = LoadModel();
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap->Get();
+
+  ASSERT_EQ(model.NumSubgraphs(), 3);
+
+  {
+    auto& main = *model.MainSubgraph();
+    EXPECT_EQ(main.NumInputs(), 1);
+    EXPECT_EQ(main.NumOutputs(), 1);
+    EXPECT_EQ(main.Ops().size(), 1);
+    EXPECT_EQ(main.Tensors().size(), 3);
+    auto& op = main.Op(0);
+    auto* cst = op.Inputs().back();
+    auto data = Tensor(cst).WeightsData<float>();
+    ASSERT_TRUE(data);
+    EXPECT_THAT(*data, Each(FloatEq(-1.0)));
+    EXPECT_TRUE(ValidateLocalTopology(main.Ops().cbegin(), main.Ops().cend()));
+    EXPECT_TRUE(ValidateSubgraphIO(main));
+  }
+
+  {
+    auto& func1 = model.Subgraph(1);
+    EXPECT_EQ(func1.NumInputs(), 1);
+    EXPECT_EQ(func1.NumOutputs(), 1);
+    EXPECT_EQ(func1.Ops().size(), 1);
+    EXPECT_EQ(func1.Tensors().size(), 3);
+    auto& op = func1.Op(0);
+    auto* cst = op.Inputs().back();
+    auto data = Tensor(cst).WeightsData<float>();
+    ASSERT_TRUE(data);
+    EXPECT_THAT(*data, Each(FloatEq(1.0)));
+    EXPECT_TRUE(
+        ValidateLocalTopology(func1.Ops().cbegin(), func1.Ops().cend()));
+    EXPECT_TRUE(ValidateSubgraphIO(func1));
+  }
+
+  {
+    auto& func2 = model.Subgraph(2);
+    EXPECT_EQ(func2.NumInputs(), 1);
+    EXPECT_EQ(func2.NumOutputs(), 1);
+    EXPECT_EQ(func2.Ops().size(), 1);
+    EXPECT_EQ(func2.Tensors().size(), 3);
+    auto& op = func2.Op(0);
+    auto* cst = op.Inputs().back();
+    auto data = Tensor(cst).WeightsData<float>();
+    ASSERT_TRUE(data);
+    EXPECT_THAT(*data, Each(FloatEq(2.0)));
+    EXPECT_TRUE(
+        ValidateLocalTopology(func2.Ops().cbegin(), func2.Ops().cend()));
+    EXPECT_TRUE(ValidateSubgraphIO(func2));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ModelLoadTests, SimpleMultiSubgraphTest,
+                         Values(MakeLoadFactory(kSimpleMultiSubgraph)));
+
+INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, SimpleMultiSubgraphTest,
+                         Values(MakeRoundTripFactory(kSimpleMultiSubgraph)));
 
 // Tests that programatically check litert against tflite models.
 //===---------------------------------------------------------------------------
