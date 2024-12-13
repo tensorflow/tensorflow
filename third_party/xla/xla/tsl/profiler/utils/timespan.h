@@ -100,6 +100,12 @@ class Timespan {
     return begin_ps_ == other.begin_ps_ && duration_ps_ == other.duration_ps_;
   }
 
+  // The compiler can't synthesize <= from < and == until C++ 20's <=>, but we
+  // can't yet assume C++20 support.
+  bool operator<=(const Timespan& other) const {
+    return *this < other || *this == other;
+  }
+
   // Returns a string that shows the begin and end times.
   std::string DebugString() const {
     return absl::StrCat("[", begin_ps(), ", ", end_ps(), "]");
