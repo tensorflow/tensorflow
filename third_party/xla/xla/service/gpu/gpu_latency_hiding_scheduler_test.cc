@@ -84,7 +84,6 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
-    debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
     debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
         enable_experimental_pipeline_parallelism_opt);
     config.set_debug_options(debug_options);

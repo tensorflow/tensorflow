@@ -514,12 +514,7 @@ absl::Status RunLatencyHidingSchedulerPasses(
     return GetSizeOfShape(shape, pointer_size);
   };
 
-  const DebugOptions& options = module->config().debug_options();
-  auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
-    return options.xla_gpu_lhs_enable_gpu_async_tracker()
-               ? std::make_unique<GpuAsyncTracker>(config)
-               : std::make_unique<GpuAsyncTrackerBase>(config);
-  }();
+  auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
 
   HloPassPipeline pipeline("latency-hiding-scheduler");
   std::unique_ptr<LatencyEstimator> latency_estimator = GetLatencyEstimator(
