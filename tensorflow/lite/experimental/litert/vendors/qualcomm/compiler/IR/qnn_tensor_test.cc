@@ -18,7 +18,10 @@
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 
 namespace {
@@ -156,6 +159,44 @@ TEST(TestLegalizeTensor, SimpleQuantizedTensor) {
 
   ASSERT_FLOAT_EQ(qnn_tensor.v2.quantizeParams.scaleOffsetEncoding.offset,
                   kSimpleMulQuantModelOutputOffset);
+  litert::qnn::ResetTensor(qnn_tensor);
+}
+
+TEST(TestLegalizeTensor, PerChannelQuantizedTensor) {
+  auto model = litert::testing::LoadTestFileModel(kQKeyEinsum16x8Model);
+
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+  auto ops = subgraph->Ops();
+  auto op_ins = ops.at(1).Inputs();
+
+  auto qnn_tensor = litert::qnn::BuildDefaultTensor();
+  const auto& per_channel_quant_tensor = op_ins[1];
+  LITERT_ASSERT_STATUS_OK(
+      litert::qnn::LegalizeTensor(per_channel_quant_tensor, qnn_tensor));
+
+  EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_INT_8);
+
+  LiteRtQuantizationPerChannel per_channel_quant_params =
+      per_channel_quant_tensor.PerChannelQuantization();
+
+  ASSERT_EQ(qnn_tensor.v2.quantizeParams.quantizationEncoding,
+            QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET);
+  EXPECT_EQ(qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.axis,
+            per_channel_quant_params.quantized_dimension);
+  EXPECT_EQ(
+      qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets,
+      per_channel_quant_params.num_channels);
+  for (int i = 0; i < per_channel_quant_params.num_channels; ++i) {
+    ASSERT_FLOAT_EQ(
+        qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset[i]
+            .scale,
+        per_channel_quant_params.scales[i]);
+    ASSERT_EQ(
+        qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset[i]
+            .offset,
+        per_channel_quant_params.zero_points[i]);
+  }
   litert::qnn::ResetTensor(qnn_tensor);
 }
 

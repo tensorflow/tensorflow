@@ -56,7 +56,10 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_macros",
         "//tensorflow/lite/experimental/litert/test:test_models",
     ],
 )
