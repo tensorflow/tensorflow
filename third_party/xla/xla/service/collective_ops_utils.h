@@ -25,10 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,7 +44,8 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
-constexpr std::string_view ReductionKindToString(ReductionKind reduction_kind) {
+constexpr absl::string_view ReductionKindToString(
+    ReductionKind reduction_kind) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return "sum";
@@ -120,6 +123,15 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
 
+absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(const HloInstruction* hlo);
+
+std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo);
+
+const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
+
+const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
+    const HloInstruction* hlo);
+
 // Returns the group formation mode of instr, assuming that instr is, or is
 // dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
@@ -158,6 +170,10 @@ absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
+
+// Same as above, except taking an HloInstruction instead.
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction* collective);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.

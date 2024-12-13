@@ -165,6 +165,35 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   return Internal("Unexpected instruction type.");
 }
 
+absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(
+    const HloInstruction* hlo) {
+  const bool is_all_reduce = (hlo->opcode() == HloOpcode::kAllReduce ||
+                              hlo->opcode() == HloOpcode::kAllReduceStart ||
+                              hlo->opcode() == HloOpcode::kReduceScatter);
+  const bool is_all_gather = (hlo->opcode() == HloOpcode::kAllGather ||
+                              hlo->opcode() == HloOpcode::kAllGatherStart);
+  if (!is_all_reduce && !is_all_gather) {
+    return absl::InvalidArgumentError(
+        "GetReplicaGroupCountAndSize only supports AllReduce and AllGather.");
+  }
+  return is_all_reduce
+             ? Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids()
+             : Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
+}
+
+std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo) {
+  return Cast<HloCollectiveInstruction>(hlo)->channel_id();
+}
+
+const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo) {
+  return Cast<HloCollectiveInstruction>(hlo)->device_list();
+}
+
+const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
+    const HloInstruction* hlo) {
+  return Cast<HloCollectiveInstruction>(hlo)->replica_groups();
+}
+
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -310,6 +339,21 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
   }
 }
 
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction* collective) {
+  CHECK(collective->GetModule()->config().has_static_device_assignment());
+  const DeviceAssignment& device_assignment =
+      collective->GetModule()->config().static_device_assignment();
+  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
+                      GetCollectiveUseGlobalDeviceIds(collective));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode mode,
+      GetCollectiveOpGroupMode(GetCollectiveChannelId(collective).has_value(),
+                               use_global_device_ids));
+  return GetParticipatingDevicesGroups(
+      device_assignment, GetCollectiveReplicaGroups(collective), mode);
+}
+
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
@@ -410,59 +454,31 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
-  if (hlo->opcode() != HloOpcode::kAllGather &&
-      hlo->opcode() != HloOpcode::kAllGatherStart &&
-      hlo->opcode() != HloOpcode::kAllReduce &&
-      hlo->opcode() != HloOpcode::kAllReduceStart &&
-      hlo->opcode() != HloOpcode::kReduceScatter) {
-    return absl::InvalidArgumentError(
-        "GetParticipatingFlattenedIdGroups only supports AllGather and "
-        "AllReduce.");
-  }
-  bool use_global_device_ids =
-      (hlo->opcode() == HloOpcode::kAllGather ||
-       hlo->opcode() == HloOpcode::kAllGatherStart)
-          ? Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids()
-          : Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids();
-  const HloCollectiveInstruction* hlo_collective =
-      Cast<HloCollectiveInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
+                      GetCollectiveUseGlobalDeviceIds(hlo));
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(hlo_collective->channel_id().has_value(),
+      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
                                use_global_device_ids));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
-      GetParticipatingFlattenedIdGroups(
-          device_assignment, hlo_collective->replica_groups(), mode));
+      GetParticipatingFlattenedIdGroups(device_assignment,
+                                        GetCollectiveReplicaGroups(hlo), mode));
   return replica_groups;
 }
 
 // Same as above, used for cases where static_device_assignment is not present.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count) {
-  if (hlo->opcode() != HloOpcode::kAllGather &&
-      hlo->opcode() != HloOpcode::kAllGatherStart &&
-      hlo->opcode() != HloOpcode::kAllReduce &&
-      hlo->opcode() != HloOpcode::kAllReduceStart &&
-      hlo->opcode() != HloOpcode::kReduceScatter) {
-    return absl::InvalidArgumentError(
-        "GetParticipatingFlattenedIdGroups only supports AllGather and "
-        "AllReduce.");
-  }
-  bool use_global_device_ids =
-      (hlo->opcode() == HloOpcode::kAllGather ||
-       hlo->opcode() == HloOpcode::kAllGatherStart)
-          ? Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids()
-          : Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids();
-  const HloCollectiveInstruction* hlo_collective =
-      Cast<HloCollectiveInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
+                      GetCollectiveUseGlobalDeviceIds(hlo));
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(hlo_collective->channel_id().has_value(),
+      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
                                use_global_device_ids));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
-      GetParticipatingFlattenedIdGroups(hlo_collective->replica_groups(), mode,
+      GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
                                         replica_count, partition_count));
   return replica_groups;
 }
@@ -637,22 +653,7 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const bool is_all_reduce = (hlo->opcode() == HloOpcode::kAllReduce ||
-                              hlo->opcode() == HloOpcode::kAllReduceStart ||
-                              hlo->opcode() == HloOpcode::kReduceScatter);
-  const bool is_all_gather = (hlo->opcode() == HloOpcode::kAllGather ||
-                              hlo->opcode() == HloOpcode::kAllGatherStart);
-  if (!is_all_reduce && !is_all_gather) {
-    return absl::InvalidArgumentError(
-        "GetReplicaGroupCountAndSize only supports AllReduce and AllGather.");
-  }
-  const CollectiveDeviceList& device_list =
-      Cast<HloCollectiveInstruction>(hlo)->device_list();
-  const std::optional<int64_t> channel_id = hlo->channel_id();
-  const bool use_global_ids =
-      is_all_reduce
-          ? Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids()
-          : Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
+  const CollectiveDeviceList& device_list = GetCollectiveDeviceList(hlo);
   auto config = hlo->GetModule()->config();
 
   if (device_list.iota_replica_group_list().has_value()) {
@@ -660,9 +661,12 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
         device_list.iota_replica_group_list()->num_replica_groups(),
         device_list.iota_replica_group_list()->num_devices_per_group());
   }
+  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
+                      GetCollectiveUseGlobalDeviceIds(hlo));
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(channel_id.has_value(), use_global_ids));
+      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
+                               use_global_device_ids));
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                       GetPariticipantCountsForReplicaGroups(
                           config.replica_count(), config.num_partitions(),
