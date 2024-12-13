@@ -2113,7 +2113,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:buffer_value",
         "//xla/service:collective_ops_utils",
-        "//xla/service:collective_utils",
         "//xla/service:latency_hiding_scheduler",
         "//xla/service:p2p_schedule_preparation",
         "//xla/service:profile_guided_latency_estimator",
