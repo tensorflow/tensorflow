@@ -68,7 +68,7 @@ using TflPerTensorQParams = std::pair<int64_t, float>;
 
 // Quantized dim, num channels, zero-points, scales.
 using TflPerChannelQParams =
-    std::tuple<int32_t, uint64_t, std::vector<int64_t>, std::vector<float>>;
+    std::tuple<int32_t, size_t, std::vector<int64_t>, std::vector<float>>;
 
 // Mirror of all the tensor type related fields in flatbuffer tensor definition.
 struct TflShapeInfo {

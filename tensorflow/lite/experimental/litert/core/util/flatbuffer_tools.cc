@@ -252,9 +252,10 @@ Expected<TflPerChannelQParams> AsPerChannelQparams(
   if (!IsPerChannelQuantized(tfl_quantization)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
-  return std::make_tuple(tfl_quantization->quantized_dimension,
-                         tfl_quantization->zero_point.size(),
-                         tfl_quantization->zero_point, tfl_quantization->scale);
+  return TflPerChannelQParams(tfl_quantization->quantized_dimension,
+                              tfl_quantization->zero_point.size(),
+                              tfl_quantization->zero_point,
+                              tfl_quantization->scale);
 }
 
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {
