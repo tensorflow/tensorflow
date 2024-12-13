@@ -378,8 +378,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
             HandlePythonScalar<complex128, complex64>;
 
-        const auto numpy = nb::module_::import_("numpy");
-        (*p)[numpy.attr("ndarray").ptr()] = HandleNumpyArray;
+        (*p)[reinterpret_cast<PyObject*>(&PyArray_Type)] = HandleNumpyArray;
 
         // Numpy scalar types. For some of them, we share the handler with
         // Python types (np_int64, np_float64, np_complex128).
@@ -553,8 +552,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
                   numpy_array.ndim()),
               /*weak_type=*/false);
         };
-        const auto numpy = nb::module_::import_("numpy");
-        (*p)[numpy.attr("ndarray").ptr()] = numpy_handler;
+        (*p)[reinterpret_cast<PyObject*>(&PyArray_Type)] = numpy_handler;
 
         ToPyArgSignatureHandler np_uint64_handler =
             [](nb::handle h,
