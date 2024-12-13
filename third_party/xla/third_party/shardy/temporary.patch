@@ -1,15 +1,55 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..42c4138 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,35 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
++--- a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
+++++ b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
++@@ -63,6 +63,12 @@
++         "outgoing name should be "
++         "<regalloc-evict-interactive-channel-base>.out"));
++ 
+++static cl::opt<unsigned>
+++    MaxCascade("mlregalloc-max-cascade", cl::Hidden,
+++               cl::desc("The maximum number of times a live range can be "
+++                        "evicted before preventing it from being evicted"),
+++               cl::init(20));
+++
++ // Options that only make sense in development mode
++ #ifdef LLVM_HAVE_TFLITE
++ #include "RegAllocScore.h"
++@@ -643,8 +649,16 @@
++            RegClassInfo.getNumAllocatableRegs(MRI->getRegClass(VirtReg.reg())) <
++                RegClassInfo.getNumAllocatableRegs(
++                    MRI->getRegClass(Intf->reg())));
++-      // Only evict older cascades or live ranges without a cascade.
+++
++       unsigned IntfCascade = RA.getExtraInfo().getCascade(Intf->reg());
+++      // There is a potential that the model could be adversarial and
+++      // continually evict live ranges over and over again, leading to a
+++      // large amount of compile time being spent in regalloc. If we hit the
+++      // threshold, prevent the range from being evicted.
+++      if (IntfCascade >= MaxCascade)
+++        return false;
+++
+++      // Only evict older cascades or live ranges without a cascade.
++       if (Cascade <= IntfCascade) {
++         if (!Urgent)
++           return false;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c469253..bf592d9 100644
+index bf592d9..094e568 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "19bc282320ba4d2e961e287f110b9110297ae3ee"
--    LLVM_SHA256 = "bb765866b09b92743feb5cb42354def323a972f540b606106bee401250781b23"
-+    LLVM_COMMIT = "0876c11ceeb093904decc4d89bef213d483a5656"
-+    LLVM_SHA256 = "8379577a71645bbba89dea08beba32b3e56b833da7340ba5be7efa3986c8f8ed"
+-    LLVM_COMMIT = "0876c11ceeb093904decc4d89bef213d483a5656"
+-    LLVM_SHA256 = "8379577a71645bbba89dea08beba32b3e56b833da7340ba5be7efa3986c8f8ed"
++    LLVM_COMMIT = "5e53a8dadb0019ee87936c1278fa222781257005"
++    LLVM_SHA256 = "eb8e26186a8f7e15e59d37729353525d2367272c9f053d2ef1a2c1e292b8b688"
  
      tf_http_archive(
          name = name,
