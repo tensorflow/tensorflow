@@ -93,3 +93,15 @@ func.func @QuantizeConvWithBiasAndReluSRQ(%arg0: tensor<1x4x4x3xf32>) -> (tensor
 // CHECK: return %4 : tensor<1x4x4x1xf32>
 }
 
+// -----
+
+// CHECK-LABEL: DQQToRequantize
+func.func @DQQToRequantize(%arg0: tensor<1x128x128x320x!quant.uniform<i8:f32, 0.17072822153568268:6>>) -> (tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>) {
+    %0 = "tfl.dequantize"(%arg0) : (tensor<1x128x128x320x!quant.uniform<i8:f32, 0.17072822153568268:6>>) -> tensor<1x128x128x320xf32>
+    %1 = "tfl.quantize"(%0) <{qtype = tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>}> : (tensor<1x128x128x320xf32>) -> tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>
+    return %1 : tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>
+
+// CHECK:    %0 = "tfl.quantize"(%arg0) <{qtype = tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>}> : (tensor<1x128x128x320x!quant.uniform<i8:f32, 0.17072822153568268:6>>) -> tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>
+// CHECK:    return %0 : tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>
+}
+
