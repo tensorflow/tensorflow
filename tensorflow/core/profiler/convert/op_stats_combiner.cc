@@ -118,6 +118,11 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
   }
+  if (src.hardware_type() != dst->hardware_type()) {
+    // Select the highest hardware type as TPU/GPU should override CPU_ONLY
+    // (e.g. coordinator).
+    dst->set_hardware_type(std::max(src.hardware_type(), dst->hardware_type()));
+  }
   dst->set_task_count(src.task_count() + dst->task_count());
   // Only overwrite the dst if profile_duration_ms in dst is not defined or
   // is zero and profile_duration_ms in src is greater than zero.

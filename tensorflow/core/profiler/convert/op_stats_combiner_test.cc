@@ -107,6 +107,18 @@ TEST(CombineAllOpStatsTest, CombinePerfEnvOrderZero) {
   EXPECT_EQ(100, dst_op_stats2.perf_env().peak_tera_flops_per_second());
 }
 
+TEST(CombineAllOpStatsTest, CombineRunEnvironmentWithMismatchHardwareType) {
+  OpStats coordinator_op_stats, device_op_stats, dst_op_stats;
+  coordinator_op_stats.mutable_run_environment()->set_hardware_type(
+      HardwareType::CPU_ONLY);
+  device_op_stats.mutable_run_environment()->set_hardware_type(
+      HardwareType::TPU);
+  CombineAllOpStats({OpStatsInfo(&coordinator_op_stats, CPU_ONLY, 0),
+                     OpStatsInfo(&device_op_stats, TPU, 1)},
+                    StepIntersection(1, {}), &dst_op_stats);
+  EXPECT_EQ(dst_op_stats.run_environment().hardware_type(), HardwareType::TPU);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow
