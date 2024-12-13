@@ -196,13 +196,15 @@ class TensorBufferScopedLock {
  public:
   ~TensorBufferScopedLock() { (void)tensor_buffer_.Unlock(); }
 
-  static Expected<std::pair<TensorBufferScopedLock, void*>> Create(
+  template <typename T = void>
+  static Expected<std::pair<TensorBufferScopedLock, T*>> Create(
       TensorBuffer& tensor_buffer, LiteRtEvent event = nullptr) {
     auto addr = tensor_buffer.Lock(event);
     if (!addr) {
       return addr.Error();
     }
-    return std::make_pair(TensorBufferScopedLock(tensor_buffer), *addr);
+    return std::make_pair(TensorBufferScopedLock(tensor_buffer),
+                          static_cast<T*>(*addr));
   }
 
  private:

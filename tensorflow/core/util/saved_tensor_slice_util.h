@@ -18,7 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>  // for string
+
+#include "absl/status/status.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"

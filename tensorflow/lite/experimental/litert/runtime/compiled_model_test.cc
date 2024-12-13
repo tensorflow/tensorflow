@@ -33,6 +33,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 
 namespace litert {
 namespace {
@@ -110,27 +112,15 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateOutputBuffers(
   return std::move(output_buffers);
 }
 
-constexpr const float kTestInput0Tensor[] = {1, 2};
-constexpr const size_t kTestInput0Size =
-    sizeof(kTestInput0Tensor) / sizeof(kTestInput0Tensor[0]);
-constexpr const float kTestInput1Tensor[] = {10, 20};
-constexpr const size_t kTestInput1Size =
-    sizeof(kTestInput1Tensor) / sizeof(kTestInput1Tensor[0]);
-constexpr const float kTestOutputTensor[] = {11, 22};
-constexpr const size_t kTestOutputSize =
-    sizeof(kTestOutputTensor) / sizeof(kTestOutputTensor[0]);
-
-static constexpr absl::string_view kTfliteFile =
-    "third_party/tensorflow/lite/experimental/litert/test/testdata/"
-    "simple_model.tflite";
-
 TEST(CompiledModelTest, Basic) {
+  auto path = testing::GetTestFilePath(kModelFileName);
+
   LiteRtModel model;
-  auto status = LiteRtCreateModelFromFile(kTfliteFile.data(), &model);
-  ASSERT_EQ(status, kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
   auto res_compiled_model = LiteRtCompiledModelT::Create(model, kHwAccelCpu);
-  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
+  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel: "
+                                  << res_compiled_model.Error().Message();
   auto& compiled_model = **res_compiled_model;
 
   auto signatures = model->Signatures();
@@ -173,18 +163,18 @@ TEST(CompiledModelTest, Basic) {
   auto output_names = signatures[0]->OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
-  auto& output_buffer = output_buffers[0];
   {
-    TensorBuffer cpu_buffer(output_buffer, /*owned=*/false);
-    float output_buffer_data[kTestOutputSize];
-    auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
-    auto read_success = cpu_buffer.Read<float>(output_span);
-
+    void* host_mem_addr;
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr,
+                                     /*event=*/nullptr),
+              kLiteRtStatusOk);
+    auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
+                                 kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
-      ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
-                     << kTestOutputTensor[i];
+      ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
     }
-    EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+    EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+    ASSERT_EQ(LiteRtUnlockTensorBuffer(output_buffers[0]), kLiteRtStatusOk);
   }
 
   // Since Buffers in LiteRtTensorBuffer, we need to destroy them explicitly.
