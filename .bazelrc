@@ -533,9 +533,9 @@ build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
 build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
 build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
-build:rbe_linux_cpu --extra_execution_platforms="@sigbuild-r2.17-clang_config_platform//:platform"
-build:rbe_linux_cpu --host_platform="@sigbuild-r2.17-clang_config_platform//:platform"
-build:rbe_linux_cpu --platforms="@sigbuild-r2.17-clang_config_platform//:platform"
+build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
+build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
+build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
 # This is needed for all Clang17 builds but must not be present in GCC builds.
 build:rbe_linux_cpu --copt=-Wno-error=unused-command-line-argument
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
