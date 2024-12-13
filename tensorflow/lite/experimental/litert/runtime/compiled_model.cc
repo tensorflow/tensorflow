@@ -14,6 +14,10 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
+#if defined(__ANDROID__)
+#include <android/hardware_buffer.h>
+#endif
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -48,6 +52,7 @@
 using litert::Expected;
 using litert::SmallVec;
 using litert::TensorBuffer;
+using litert::TensorBufferScopedLock;
 using litert::Unexpected;
 using litert::internal::ExternalLiteRtBufferContext;
 
@@ -209,6 +214,81 @@ tflite::SignatureRunner* LiteRtCompiledModelT::GetSignatureRunner(
   return runner;
 }
 
+Expected<void> LiteRtCompiledModelT::BufferRegister(
+    tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
+    const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
+    std::vector<TensorBufferScopedLock>& scoped_locks) {
+  bool backend_requires_cpu_buffer = false;
+
+  auto requirements = buffer_context_->GetBufferRequirement(tensor);
+  if (requirements) {
+    for (auto& type : *(*requirements)->SupportedTypes()) {
+      if (type == buffer->buffer_type()) {
+        // Register tensor buffer if it can be used by the backend.
+        buffer->Duplicate();
+        TensorBuffer duplicated_buffer(buffer);
+        if (auto status = buffer_context_->RegisterTensorBuffer(
+                tensor, std::move(duplicated_buffer));
+            status != kLiteRtStatusOk) {
+          return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                            "Failed to register tensor buffer");
+        }
+        return {};
+      }
+      if (type == kLiteRtTensorBufferTypeHostMemory) {
+        backend_requires_cpu_buffer = true;
+      }
+    }
+  } else {
+    // If the BufferRequirement is not registered, assumes the backend requires
+    // CPU buffer.
+    backend_requires_cpu_buffer = true;
+  }
+
+  if (backend_requires_cpu_buffer) {
+    // When backend requires CPU buffer.
+    bool bufer_is_cpu_compatible =
+        buffer->buffer_type() == kLiteRtTensorBufferTypeHostMemory;
+#if defined(__ANDROID__)
+    if (buffer->buffer_type() == kLiteRtTensorBufferTypeAhwb) {
+      if (__builtin_available(android 26, *)) {
+        auto ahwb = buffer->GetAhwbBuffer();
+        if (ahwb) {
+          // TODO: b/382330322 - Update logic to check if the AHWB (stride) is
+          // CPU compatible.
+          AHardwareBuffer_Desc desc;
+          AHardwareBuffer_describe(*ahwb, &desc);
+          bufer_is_cpu_compatible = true;
+        }
+      }
+    }
+#endif
+    if (bufer_is_cpu_compatible) {
+      auto lock_and_addr = TensorBufferScopedLock::Create(buffer);
+      if (!lock_and_addr) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          "Failed to lock input tensor buffer");
+      }
+      scoped_locks.push_back(std::move(lock_and_addr->first));
+      TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
+                                               tensor->bytes};
+      if (is_input) {
+        runner->SetCustomAllocationForInputTensor(tensor_name,
+                                                  custom_allocation,
+                                                  /*flags=*/0);
+      } else {
+        runner->SetCustomAllocationForOutputTensor(tensor_name,
+                                                   custom_allocation,
+                                                   /*flags=*/0);
+      }
+      return {};
+    }
+  }
+  // TODO: b/382330322 - Add buffer conversion logic instead of returning error.
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "The given buffer type is not supported.");
+}
+
 Expected<void> LiteRtCompiledModelT::Run(
     absl::string_view signature_key,
     std::vector<LiteRtTensorBuffer>& input_buffers,
@@ -218,59 +298,40 @@ Expected<void> LiteRtCompiledModelT::Run(
     return Unexpected(kLiteRtStatusErrorNotFound,
                       "Failed to get signature runner");
   }
-  if (input_buffers.size() != runner->input_names().size()) {
+  size_t num_inputs = input_buffers.size();
+  if (num_inputs != runner->input_names().size()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Input buffer size mismatch");
   }
-  if (output_buffers.size() != runner->output_names().size()) {
+  size_t num_outputs = output_buffers.size();
+  if (num_outputs != runner->output_names().size()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Output buffer size mismatch");
   }
 
-  for (int i = 0; i < runner->input_names().size(); ++i) {
+  std::vector<TensorBufferScopedLock> scoped_locks;
+  scoped_locks.reserve(num_inputs + num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
     const auto& input_name = runner->input_names()[i];
     auto* input_tensor = runner->input_tensor(input_name);
-    if (input_buffers[i]->buffer_type() == kLiteRtTensorBufferTypeHostMemory) {
-      // Assign CPU buffer via CustomAllocation.
-      TensorBuffer cpu_buffer(input_buffers[i], /*owned=*/false);
-      auto lock_and_addr = litert::TensorBufferScopedLock::Create(cpu_buffer);
-      TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
-                                               input_tensor->bytes};
-      runner->SetCustomAllocationForInputTensor(input_name, custom_allocation,
-                                                /*flags=*/0);
-    } else {
-      // Register tensor buffer for non CPU buffers.
-      input_buffers[i]->Duplicate();
-      TensorBuffer duplicated_buffer(input_buffers[i]);
-      if (auto status = buffer_context_->RegisterTensorBuffer(
-              input_tensor, std::move(duplicated_buffer));
-          status != kLiteRtStatusOk) {
-        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          "Failed to register input tensor buffer");
-      }
+    auto res =
+        BufferRegister(runner, input_tensor, input_name, input_buffers[i],
+                       /*is_input=*/true, scoped_locks);
+    if (!res) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to register input tensor buffer");
     }
   }
 
   for (int i = 0; i < runner->output_names().size(); ++i) {
     const auto& output_name = runner->output_names()[i];
     auto* output_tensor = runner->output_tensor(output_name);
-    if (output_buffers[i]->buffer_type() == kLiteRtTensorBufferTypeHostMemory) {
-      // Assign CPU buffer via CustomAllocation.
-      TensorBuffer cpu_buffer(output_buffers[i], /*owned=*/false);
-      auto lock_and_addr = litert::TensorBufferScopedLock::Create(cpu_buffer);
-      TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
-                                               output_tensor->bytes};
-      runner->SetCustomAllocationForOutputTensor(output_name, custom_allocation,
-                                                 /*flags=*/0);
-    } else {
-      output_buffers[i]->Duplicate();
-      TensorBuffer duplicated_buffer(output_buffers[i]);
-      if (auto status = buffer_context_->RegisterTensorBuffer(
-              output_tensor, std::move(duplicated_buffer));
-          status != kLiteRtStatusOk) {
-        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          "Failed to register output tensor buffer");
-      }
+    auto res =
+        BufferRegister(runner, output_tensor, output_name, output_buffers[i],
+                       /*is_input=*/false, scoped_locks);
+    if (!res) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to register output tensor buffer");
     }
   }
 
