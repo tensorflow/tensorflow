@@ -1,0 +1,93 @@
+# Copyright 2024 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Benchmarks
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: '0 */6 * * *'  # Run every 6 hours (at minute 0 of hours 0, 6, 12, 18)
+  push:
+    branches:
+      - main
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout OpenXLA
+        uses: actions/checkout@v3
+        with:
+          repository: 'openxla/xla'
+          path: openxla
+
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Build run_hlo_module
+        working-directory: openxla
+        run: bazelisk build -c opt --dynamic_mode=off xla/tools:run_hlo_module
+
+      - name: Run HLO Module Benchmarks
+        working-directory: openxla
+        continue-on-error: true
+        run: |
+          for file in xla/tests/fuzz/*.hlo; do
+            filename=$(basename "$file")
+            # Skip expected failed hlo files.
+            if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
+              echo "Skipping benchmark on $file"
+              continue
+            fi
+            echo "Running benchmark on $file"
+            ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
+          done
+
+      - name: Create results directory
+        working-directory: openxla
+        run: mkdir results
+
+      - name: Build CPU Benchmarks
+        working-directory: openxla
+        run: bazelisk build -c opt --dynamic_mode=off //xla/service/cpu/benchmarks:*
+
+      - name: Run CPU benchmarks
+        working-directory: openxla
+        continue-on-error: true
+        run: |
+          find ./bazel-bin/xla/service/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
+            benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
+            echo "Running benchmark: $benchmark_name"
+
+            # Run the benchmark with default parameters.
+            $benchmark --benchmark_filter=".*"
+            $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
+
+            # Check the exit code of the benchmark
+            if [ $? -ne 0 ]; then
+              echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
+            else
+              echo "Benchmark '$benchmark_name' completed successfully."
+            fi
+          done
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-xla-benchmarks
+          path: openxla/results
