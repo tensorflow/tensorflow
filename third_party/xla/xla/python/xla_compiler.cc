@@ -729,7 +729,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                                  nb::cast(obj));
           },
           nb::arg("dtype").none() = nb::none(),
-          nb::arg("copy").none() = nb::none());
+          nb::arg("copy").none() = nb::none())
+      .def("shape", &Literal::shape);
 
   nb::class_<XlaComputation>(m, "XlaComputation")
       .def("__init__",
