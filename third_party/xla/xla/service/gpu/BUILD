@@ -3210,7 +3210,7 @@ cc_library(
     srcs = ["ptx_compile_options_from_debug_options.cc"],
     hdrs = ["ptx_compile_options_from_debug_options.h"],
     deps = [
-        "//xla:xla_proto_cc_impl",
+        "//xla:xla_proto_cc",
         "//xla/stream_executor/cuda:compilation_options",
     ],
 )
