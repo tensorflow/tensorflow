@@ -299,18 +299,6 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   return autotune_cache.empty();
 }
 
-/* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
-    se::RedzoneAllocator& allocator, const Shape& shape,
-    const AutotuneConfig& config, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
-  if (config.should_init_buffers()) {
-    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
-                     buffer);
-  }
-  return buffer;
-}
-
 namespace {
 std::string ToCanonicalString(const HloInstruction* instr) {
   auto options = HloPrintOptions::Canonical();

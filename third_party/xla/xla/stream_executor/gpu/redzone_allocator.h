@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -102,6 +103,12 @@ class RedzoneAllocator : public ScratchAllocator {
   absl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
   Stream* stream() const { return stream_; }
+
+  // Create a buffer for a given operation using redzone checker, initialize
+  // based on a given rng state.
+  absl::StatusOr<DeviceMemoryBase> CreateBuffer(const xla::Shape& shape,
+                                                bool initialize_buffers,
+                                                int64_t& rng_state);
 
  private:
   const int device_ordinal_;

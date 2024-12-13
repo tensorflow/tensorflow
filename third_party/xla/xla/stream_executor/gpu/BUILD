@@ -409,6 +409,8 @@ gpu_only_cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
+        "//xla:shape_util",
+        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:device_memory_handle",

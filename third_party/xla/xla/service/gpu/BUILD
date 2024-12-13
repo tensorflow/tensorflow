@@ -2311,6 +2311,7 @@ cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tsl_copts(),
     deps = [
         ":cublas_cudnn",
