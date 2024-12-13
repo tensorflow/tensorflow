@@ -157,7 +157,6 @@ class JitCompiler {
     TaskRunner task_runner_;
 
     absl::Mutex mu_;
-    absl::CondVar cv_;
     size_t num_dispatched_tasks_ ABSL_GUARDED_BY(mu_) = 0;
   };
 

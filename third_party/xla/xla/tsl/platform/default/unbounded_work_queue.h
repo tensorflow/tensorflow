@@ -15,13 +15,17 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_UNBOUNDED_WORK_QUEUE_H_
 #define XLA_TSL_PLATFORM_DEFAULT_UNBOUNDED_WORK_QUEUE_H_
 
+#include <cstddef>
 #include <deque>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/notification.h"
 
 namespace tsl {
 
@@ -36,7 +40,7 @@ namespace tsl {
 // fragmentation that can result from excessive thread creation.
 class UnboundedWorkQueue {
  public:
-  UnboundedWorkQueue(Env* env, const string& thread_name,
+  UnboundedWorkQueue(Env* env, absl::string_view thread_name,
                      const ThreadOptions& thread_options = {});
   ~UnboundedWorkQueue();
 
@@ -50,17 +54,20 @@ class UnboundedWorkQueue {
  private:
   void PooledThreadFunc();
 
+  bool HasWorkOrIsCancelled() const ABSL_SHARED_LOCKS_REQUIRED(work_queue_mu_) {
+    return !work_queue_.empty() || cancelled_;
+  }
+
   Env* const env_;  // Not owned.
-  const string thread_name_;
+  const std::string thread_name_;
   const ThreadOptions thread_options_;
-  mutex work_queue_mu_;
-  condition_variable work_queue_cv_ TF_GUARDED_BY(work_queue_mu_);
-  size_t num_idle_threads_ TF_GUARDED_BY(work_queue_mu_) = 0;
-  bool cancelled_ TF_GUARDED_BY(work_queue_mu_) = false;
-  std::deque<WorkFunction> work_queue_ TF_GUARDED_BY(work_queue_mu_);
-  mutex thread_pool_mu_;
+  absl::Mutex work_queue_mu_;
+  size_t num_idle_threads_ ABSL_GUARDED_BY(work_queue_mu_) = 0;
+  bool cancelled_ ABSL_GUARDED_BY(work_queue_mu_) = false;
+  std::deque<WorkFunction> work_queue_ ABSL_GUARDED_BY(work_queue_mu_);
+  absl::Mutex thread_pool_mu_;
   std::vector<std::unique_ptr<Thread>> thread_pool_
-      TF_GUARDED_BY(thread_pool_mu_);
+      ABSL_GUARDED_BY(thread_pool_mu_);
 };
 
 }  // namespace tsl

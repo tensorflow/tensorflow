@@ -86,10 +86,6 @@ class XfeedQueueManager {
 
   absl::Mutex mu_;
 
-  // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  absl::CondVar cv_;
-
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.
   std::deque<XfeedBuffer*> enqueued_buffers_;

@@ -482,10 +482,10 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
