@@ -339,7 +339,21 @@ genrule(
 )
 
 py_test(
-    name = "prebuilt_wheel_import_api_packages_test",
+    name = "prebuilt_wheel_import_api_packages_test_cpu",
+    srcs = if_wheel_dependency(
+        ["import_api_packages_test.py"],
+        [":empty_test"],
+    ),
+    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    tags = [
+        "cpu",
+        "windows_excluded",
+    ],
+    deps = if_wheel_dependency(tf_wheel_dep()),
+)
+
+py_test(
+    name = "prebuilt_wheel_import_api_packages_test_gpu",
     srcs = if_wheel_dependency(
         ["import_api_packages_test.py"],
         [":empty_test"],
@@ -350,7 +364,6 @@ py_test(
     ),
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
-        "cpu",
         "gpu",
         "windows_excluded",
     ],
@@ -358,7 +371,20 @@ py_test(
 )
 
 py_test(
-    name = "import_api_packages_test",
+    name = "import_api_packages_test_cpu",
+    srcs = ["import_api_packages_test.py"],
+    main = "import_api_packages_test.py",
+    tags = [
+        "cpu",
+        "windows_excluded",
+    ],
+    deps = [
+        ":tf_py_import",
+    ],
+)
+
+py_test(
+    name = "import_api_packages_test_gpu",
     srcs = ["import_api_packages_test.py"],
     exec_properties = if_cuda(
         tf_exec_properties({"tags": tf_cuda_tests_tags()}),
@@ -366,7 +392,6 @@ py_test(
     ),
     main = "import_api_packages_test.py",
     tags = [
-        "cpu",
         "gpu",
         "windows_excluded",
     ],

@@ -316,7 +316,7 @@ EOF
 # See b/279852433 (internal).
 # TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query "deps(//tensorflow/... -//tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test)" > /dev/null
+    bazel query "deps(//tensorflow/... -//tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu)" > /dev/null
 }
 
 teardown_file() {
