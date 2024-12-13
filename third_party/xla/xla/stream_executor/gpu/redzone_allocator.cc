@@ -30,6 +30,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
@@ -248,6 +251,17 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   }
 
   return RedzoneCheckStatus::OK();
+}
+
+absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
+    const xla::Shape& shape, bool initialize_buffers, int64_t& rng_state) {
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceMemoryBase buffer,
+                      AllocateBytes(xla::ShapeUtil::ByteSizeOf(shape)));
+  if (initialize_buffers) {
+    xla::gpu::InitializeBuffer(stream(), shape.element_type(), &rng_state,
+                               buffer);
+  }
+  return buffer;
 }
 
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {

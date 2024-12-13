@@ -203,12 +203,6 @@ class AutotuneConfig {
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
 
 struct AutotunerUtil {
-  // Create a buffer for a given operation using redzone checker, initialize
-  // based on a given rng state.
-  static absl::StatusOr<se::DeviceMemoryBase> CreateBuffer(
-      se::RedzoneAllocator& allocator, const Shape& shape,
-      const AutotuneConfig& config, int64_t& rng_state);
-
   static absl::StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
