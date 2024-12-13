@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -67,7 +68,8 @@ uint16_t GetRestoreDlaExtensionOperandType(
 bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
                          NeuronModel*& model, NeuronCompilation*& compilation,
                          const void* bytecode_addr, size_t bytecode_size,
-                         int num_inputs, int num_outputs) {
+                         int num_inputs, int num_outputs,
+                         const std::string& options) {
   LITERT_LOG(LITERT_INFO, "Creating model...");
   if (neuron_adapter.api().model_create(&model) != NEURON_NO_ERROR) {
     LITERT_LOG(LITERT_ERROR, "Failed to create model");
@@ -168,8 +170,8 @@ bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
     return false;
   }
 
-  if (neuron_adapter.api().compilation_create(model, &compilation) !=
-      NEURON_NO_ERROR) {
+  if (neuron_adapter.api().compilation_create_with_options(
+          model, &compilation, options.c_str()) != NEURON_NO_ERROR) {
     LITERT_LOG(LITERT_ERROR, "Failed to create compilation");
     return false;
   }
@@ -186,6 +188,14 @@ bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
     return false;
   }
 
+  if (!options.empty()) {
+    if (neuron_adapter.api().compilation_set_optimization_string(
+            compilation, options.c_str()) != NEURON_NO_ERROR) {
+      LITERT_LOG(LITERT_ERROR, "Failed to set optimization string");
+      return false;
+    }
+  }
+
   if (neuron_adapter.api().compilation_finish(compilation) != NEURON_NO_ERROR) {
     LITERT_LOG(LITERT_ERROR, "Failed to finish compilation");
     return false;
@@ -198,8 +208,12 @@ bool LoadModelAndCompilation(
     const litert::mediatek::NeuronAdapter& neuron_adapter, NeuronModel*& model,
     NeuronCompilation*& compilation, const void* bytecode_addr,
     size_t bytecode_size, int num_inputs, int num_outputs) {
+  // Option `import_forever` has been recommended by MediaTek to reduce memory
+  // footprint when using the same I/O buffers across multiple invocations.
+  constexpr const char* kOptions =
+      "--apusys-config \"{ \\\"import_forever\\\": true }\"";
   if (!LoadFromDlaBytecode(neuron_adapter, model, compilation, bytecode_addr,
-                           bytecode_size, num_inputs, num_outputs)) {
+                           bytecode_size, num_inputs, num_outputs, kOptions)) {
     return LoadFromCachedNetwork(neuron_adapter, model, compilation,
                                  bytecode_addr, bytecode_size);
   }

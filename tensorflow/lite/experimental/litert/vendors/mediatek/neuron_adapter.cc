@@ -79,6 +79,8 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
   // Binds all supported symbols from the shared library to the function
   // pointers.
   LOAD_SYMB(NeuronCompilation_create, api_->compilation_create);
+  LOAD_SYMB(NeuronCompilation_createWithOptions,
+            api_->compilation_create_with_options);
   LOAD_SYMB(NeuronCompilation_finish, api_->compilation_finish);
   LOAD_SYMB(NeuronCompilation_free, api_->compilation_free);
   LOAD_SYMB(NeuronCompilation_getInputPaddedDimensions,

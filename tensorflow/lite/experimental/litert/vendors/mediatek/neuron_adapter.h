@@ -70,6 +70,9 @@ static constexpr int NEURON_PREFER_SUSTAINED_SPEED = 2;
 
 int NeuronCompilation_create(NeuronModel* model,
                              NeuronCompilation** compilation);
+int NeuronCompilation_createWithOptions(NeuronModel* model,
+                                        NeuronCompilation** compilation,
+                                        const char* options);
 int NeuronCompilation_finish(NeuronCompilation* compilation);
 int NeuronCompilation_getInputPaddedDimensions(NeuronCompilation* compilation,
                                                int32_t index,
@@ -166,6 +169,8 @@ class NeuronAdapter {
 // device during runtime.
 struct NeuronAdapter::Api {
   decltype(&NeuronCompilation_create) compilation_create = nullptr;
+  decltype(&NeuronCompilation_createWithOptions)
+      compilation_create_with_options = nullptr;
   decltype(&NeuronCompilation_finish) compilation_finish = nullptr;
   decltype(&NeuronCompilation_free) compilation_free = nullptr;
   decltype(&NeuronCompilation_getInputPaddedDimensions)
