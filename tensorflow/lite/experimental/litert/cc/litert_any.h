@@ -16,8 +16,11 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_ANY_H_
 
 #include <any>
+#include <cstdint>
 
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 
@@ -43,6 +46,62 @@ inline std::any ToStdAny(LiteRtAny litert_any) {
       break;
   }
   return res;
+}
+
+inline Expected<LiteRtAny> ToLiteRtAny(const std::any& any) {
+  LiteRtAny result;
+  if (!any.has_value()) {
+    result.type = kLiteRtAnyTypeNone;
+    return result;
+
+  } else if (any.type() == typeid(LiteRtAny::bool_value)) {
+    result.type = kLiteRtAnyTypeBool;
+    result.bool_value = std::any_cast<decltype(LiteRtAny::bool_value)>(any);
+    return result;
+
+  } else if (any.type() == typeid(int8_t)) {
+    result.type = kLiteRtAnyTypeInt;
+    result.int_value = std::any_cast<int8_t>(any);
+    return result;
+
+  } else if (any.type() == typeid(int16_t)) {
+    result.type = kLiteRtAnyTypeInt;
+    result.int_value = std::any_cast<int16_t>(any);
+    return result;
+
+  } else if (any.type() == typeid(int32_t)) {
+    result.type = kLiteRtAnyTypeInt;
+    result.int_value = std::any_cast<int32_t>(any);
+    return result;
+
+  } else if (any.type() == typeid(int64_t)) {
+    result.type = kLiteRtAnyTypeInt;
+    result.int_value = std::any_cast<int64_t>(any);
+    return result;
+
+  } else if (any.type() == typeid(float)) {
+    result.type = kLiteRtAnyTypeReal;
+    result.real_value = std::any_cast<float>(any);
+    return result;
+
+  } else if (any.type() == typeid(double)) {
+    result.type = kLiteRtAnyTypeReal;
+    result.real_value = std::any_cast<double>(any);
+    return result;
+
+  } else if (any.type() == typeid(LiteRtAny::str_value)) {
+    result.type = kLiteRtAnyTypeString;
+    result.str_value = std::any_cast<decltype(LiteRtAny::str_value)>(any);
+    return result;
+
+  } else if (any.type() == typeid(LiteRtAny::ptr_value)) {
+    result.type = kLiteRtAnyTypeVoidPtr;
+    result.ptr_value = std::any_cast<decltype(LiteRtAny::ptr_value)>(any);
+    return result;
+
+  } else {
+    return Error(kLiteRtStatusErrorInvalidArgument);
+  }
 }
 
 }  // namespace litert

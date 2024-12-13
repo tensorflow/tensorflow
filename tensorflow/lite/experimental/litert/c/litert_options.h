@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
 
+#include <stdbool.h>  // NOLINT: To use bool type in C
 #include <stdint.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"

@@ -20,7 +20,11 @@ package(
 cc_library(
     name = "litert_any",
     hdrs = ["litert_any.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_common"],
+    deps = [
+        ":litert_expected",
+        "//tensorflow/lite/experimental/litert/c:litert_any",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+    ],
 )
 
 cc_test(

@@ -23,6 +23,11 @@ cc_library(
 )
 
 cc_library(
+    name = "litert_any",
+    hdrs = ["litert_any.h"],
+)
+
+cc_library(
     name = "litert_logging",
     srcs = [
         "litert_logging.cc",

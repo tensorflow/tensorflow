@@ -43,6 +43,7 @@ cc_library(
         "litert_dispatch_api.h",
     ],
     deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",

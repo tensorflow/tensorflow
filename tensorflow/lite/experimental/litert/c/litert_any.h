@@ -12,34 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_EVENT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_EVENT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ANY_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ANY_H_
 
 #include <stdbool.h>  // NOLINT: To use bool type in C
 #include <stdint.h>
-
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-LITERT_DEFINE_HANDLE(LiteRtEvent);
+typedef enum {
+  kLiteRtAnyTypeNone = 0,
+  kLiteRtAnyTypeBool = 1,
+  kLiteRtAnyTypeInt = 2,
+  kLiteRtAnyTypeReal = 3,
+  kLiteRtAnyTypeString = 8,
+  kLiteRtAnyTypeVoidPtr = 9,
+} LiteRtAnyType;
 
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
-LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
-                                              LiteRtEvent* event);
-
-LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd);
-#endif  // LITERT_HAS_SYNC_FENCE_SUPPORT
-
-// Pass -1 for timeout_in_ms for indefinite wait.
-LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms);
-
-void LiteRtDestroyEvent(LiteRtEvent event);
+typedef struct {
+  LiteRtAnyType type;
+  union {
+    bool bool_value;
+    int64_t int_value;
+    double real_value;
+    const char* str_value;
+    const void* ptr_value;
+  };
+} LiteRtAny;
 
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_EVENT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ANY_H_
