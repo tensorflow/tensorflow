@@ -120,13 +120,12 @@ def _tf_wheel_impl(ctx):
         outputs = [output_file],
         executable = executable,
     )
-    auditwheel_show_log = None
-    if ctx.attr.platform_name == "linux":
+
+    if ctx.attr.platform_name == "linux" and verify_manylinux:
         auditwheel_show_log = ctx.actions.declare_file("auditwheel_show.log")
         args = ctx.actions.args()
-        args.add("--wheel_path", output_file.path)
-        if verify_manylinux:
-            args.add("--compliance-tag", ctx.attr.manylinux_compliance_tag)
+        args.add("--wheel-path", output_file.path)
+        args.add("--compliance-tag", ctx.attr.manylinux_compliance_tag)
         args.add("--auditwheel-show-log-path", auditwheel_show_log.path)
         ctx.actions.run(
             arguments = [args],
@@ -135,8 +134,7 @@ def _tf_wheel_impl(ctx):
             executable = ctx.executable.verify_manylinux_compliance_binary,
         )
 
-    auditwheel_show_output = [auditwheel_show_log] if auditwheel_show_log else []
-    return [DefaultInfo(files = depset(direct = [output_file] + auditwheel_show_output))]
+    return [DefaultInfo(files = depset(direct = [output_file]))]
 
 tf_wheel = rule(
     attrs = {
