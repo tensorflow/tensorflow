@@ -50,7 +50,7 @@ class LiteRtCompiledModelT {
   // The model is loaded into memory and the caller takes ownership of the
   // returned object.
   static litert::Expected<Ptr> Create(
-      LiteRtModel model, LiteRtComplicationOptions complication_options);
+      LiteRtModel model, LiteRtCompilationOptions compilation_options);
 
   // Returns the buffer requirements for the n-th input tensor. The returned
   // LiteRtTensorBufferRequirements is used to create the input tensor

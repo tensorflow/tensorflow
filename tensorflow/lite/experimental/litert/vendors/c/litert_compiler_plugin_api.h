@@ -40,6 +40,9 @@ typedef LiteRtStatus (*LiteRtCreateCompilerPluginT)(LiteRtCompilerPlugin*);
 
 typedef void (*LiteRtDestroyCompilerPluginT)(LiteRtCompilerPlugin);
 
+typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedHardwareT)(
+    LiteRtCompilerPlugin, LiteRtHwAccelerators*);
+
 typedef LiteRtStatus (*LiteRtGetNumCompilerPluginSupportedSocModelsT)(
     LiteRtCompilerPlugin, LiteRtParamIndex*);
 
@@ -77,6 +80,8 @@ struct LiteRtCompilerPluginApi {
   LiteRtCreateCompilerPluginT create_compiler_plugin;
   LiteRtDestroyCompilerPluginT destroy_compiler_plugin;
 
+  LiteRtGetCompilerPluginSupportedHardwareT
+      get_compiler_plugin_supported_hardware;
   LiteRtGetNumCompilerPluginSupportedSocModelsT
       get_num_compiler_plugin_supported_models;
   LiteRtGetCompilerPluginSupportedSocModelT
@@ -98,6 +103,10 @@ struct LiteRtCompilerPluginApi {
 
 static constexpr absl::string_view kLiteRtGetCompilerPluginVersion =
     "LiteRtGetCompilerPluginVersion";
+
+static constexpr absl::string_view kLiteRtGetCompilerPluginSupportedHardware =
+    "LiteRtGetCompilerPluginSupportedHardware";
+
 static constexpr absl::string_view kLiteRtGetCompilerPluginSocManufacturer =
     "LiteRtGetCompilerPluginSocManufacturer";
 static constexpr absl::string_view

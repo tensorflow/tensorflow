@@ -90,6 +90,12 @@ typedef enum {
   kLiteRtStatusErrorInvalidLegalization = 2001,
 } LiteRtStatus;
 
+typedef enum : int {
+  kLiteRtHwAccelatorCpu = 1 << 0,
+  kLiteRtHwAccelatorGpu = 1 << 1,
+  kLiteRtHwAccelatorNpu = 1 << 2,
+} LiteRtHwAccelerators;
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

@@ -75,6 +75,9 @@ class CompilerPlugin {
   // Get the compiler plugin's API version.
   Expected<LiteRtApiVersion> ApiVersion() const;
 
+  // Get the supported HW accelerators (e.g., GPU, NPU).
+  Expected<LiteRtHwAccelerators> SupportedHardware() const;
+
   // Get the manufacturer associated with this plugin. NOTE: SocManufacturer
   // string returned by the underlying plugin are expected to have static
   // lifetime.

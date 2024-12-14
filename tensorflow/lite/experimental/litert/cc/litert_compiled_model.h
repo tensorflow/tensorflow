@@ -68,10 +68,10 @@ class CompiledModel
   // returned object.
   static Expected<CompiledModel> Create(
       litert::Model& model,
-      LiteRtComplicationOptions complication_options = kHwAccelDefault) {
+      LiteRtCompilationOptions compilation_options = kLiteRtHwAccelatorCpu) {
     LiteRtCompiledModel compiled_model;
     if (auto status = LiteRtCreateCompiledModel(
-            model.Get(), complication_options, &compiled_model);
+            model.Get(), compilation_options, &compiled_model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to create compiled model");
     }

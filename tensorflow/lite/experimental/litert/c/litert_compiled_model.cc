@@ -25,14 +25,14 @@
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
 LiteRtStatus LiteRtCreateCompiledModel(
-    LiteRtModel model, LiteRtComplicationOptions complication_options,
+    LiteRtModel model, LiteRtCompilationOptions compilation_options,
     LiteRtCompiledModel* compiled_model) {
   if (!model || !compiled_model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
 
   auto created_compiled_model =
-      LiteRtCompiledModelT::Create(model, complication_options);
+      LiteRtCompiledModelT::Create(model, compilation_options);
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_compiled_model.Error().Message().data());

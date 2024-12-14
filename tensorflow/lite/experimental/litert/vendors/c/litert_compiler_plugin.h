@@ -43,6 +43,11 @@ LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin);
 
 void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin);
 
+// Return the HW supported by this plugin (e.g., GPU, NPU)
+LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
+    LiteRtCompilerPlugin compiler_plugin,
+    LiteRtHwAccelerators* supported_hardware);
+
 // Number of SoC models supported by this plugin.
 LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
     LiteRtCompilerPlugin compiler_plugin,

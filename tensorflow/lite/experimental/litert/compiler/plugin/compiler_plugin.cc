@@ -108,6 +108,8 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
                               LiteRtCompilerPluginApi& result) {
   RESOLVE_API_FUNC(kLiteRtGetCompilerPluginVersion,
                    result.get_compiler_plugin_version);
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSupportedHardware,
+                   result.get_compiler_plugin_supported_hardware);
   RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSocManufacturer,
                    result.get_compiler_plugin_soc_manufacturer);
   RESOLVE_API_FUNC(kLiteRtGetNumCompilerPluginSupportedSocModels,
@@ -296,6 +298,13 @@ Expected<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
   LiteRtApiVersion api_version;
   LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_version(&api_version));
   return api_version;
+}
+
+Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
+  LiteRtHwAccelerators supported_hardware;
+  LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_supported_hardware(
+      plugin_handle_, &supported_hardware));
+  return supported_hardware;
 }
 
 Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(

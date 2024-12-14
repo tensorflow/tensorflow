@@ -51,6 +51,16 @@ const char* LiteRtGetCompilerPluginSocManufacturer() {
   return kPluginManufacturer;
 }
 
+LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
+    LiteRtCompilerPlugin compiler_plugin,
+    LiteRtHwAccelerators* supported_hardware) {
+  if (!compiler_plugin || !supported_hardware) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *supported_hardware = kLiteRtHwAccelatorCpu;
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
     LiteRtCompilerPlugin compiler_plugin,
     LiteRtParamIndex* num_supported_soc_models) {

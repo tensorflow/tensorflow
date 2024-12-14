@@ -49,7 +49,7 @@ LITERT_DEFINE_HANDLE(LiteRtCompiledModel);
 // The model is loaded into memory and the caller takes ownership of the
 // returned object.
 LiteRtStatus LiteRtCreateCompiledModel(
-    LiteRtModel model, LiteRtComplicationOptions complication_options,
+    LiteRtModel model, LiteRtCompilationOptions compilation_options,
     LiteRtCompiledModel* compiled_model);
 
 // Returns the buffer requirements for the given n-th input tensor. The returned
