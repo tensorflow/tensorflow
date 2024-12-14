@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <variant>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
@@ -121,7 +121,7 @@ void DumpComputationInput(
 }
 
 absl::Status DumpHloCompilationResult(
-    std::string_view name, XlaCompilationResult* compilation_result) {
+    absl::string_view name, XlaCompilationResult* compilation_result) {
   if (!VLOG_IS_ON(2) &&
       !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
     return absl::OkStatus();

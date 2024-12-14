@@ -715,6 +715,7 @@ cc_library(
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

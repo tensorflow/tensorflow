@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

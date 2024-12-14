@@ -18,10 +18,10 @@ limitations under the License.
 #include <cassert>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -50,8 +50,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-static constexpr std::string_view kStablehloModuleDefaultEntryFuncName = "main";
-static constexpr std::string_view kStablehloFuncNamePrefix = "XlaCallModule";
+static constexpr absl::string_view kStablehloModuleDefaultEntryFuncName =
+    "main";
+static constexpr absl::string_view kStablehloFuncNamePrefix = "XlaCallModule";
 static constexpr char kShardingAttr[] = "mhlo.sharding";
 static constexpr char kShardingName[] = "Sharding";
 

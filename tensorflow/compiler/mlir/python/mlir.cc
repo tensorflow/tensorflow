@@ -454,7 +454,7 @@ void ExperimentalTFLiteToTosaBytecode(
     }
 
     auto buffer_view =
-        std::string_view(buffer->getBufferStart(), buffer->getBufferSize());
+        absl::string_view(buffer->getBufferStart(), buffer->getBufferSize());
     module = tflite::FlatBufferToMlir(
         buffer_view, &context, loc, use_external_constant, ordered_input_arrays,
         ordered_output_arrays);
