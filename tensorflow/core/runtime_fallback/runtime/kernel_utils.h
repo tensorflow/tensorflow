@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 
+#include <cassert>
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>

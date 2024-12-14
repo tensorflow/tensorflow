@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -20,7 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"

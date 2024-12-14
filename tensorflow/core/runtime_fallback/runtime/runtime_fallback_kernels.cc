@@ -19,12 +19,20 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -40,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"

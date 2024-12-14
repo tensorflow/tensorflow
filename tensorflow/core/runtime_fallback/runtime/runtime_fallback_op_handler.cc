@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 
+#include <cassert>
 #include <memory>
 #include <string>
 #include <utility>

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>

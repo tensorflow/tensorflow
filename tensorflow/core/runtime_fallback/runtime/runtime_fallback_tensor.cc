@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 

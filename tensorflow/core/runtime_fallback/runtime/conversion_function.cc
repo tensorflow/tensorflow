@@ -18,9 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/conversion_function.h"
 
+#include <cassert>
+#include <cstddef>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
