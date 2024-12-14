@@ -53,8 +53,10 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map)
-    : cliques_map_(std::move(cliques_map)) {}
+Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
+                                            int32_t num_transient_cliques)
+    : cliques_map_(std::move(cliques_map)),
+      num_transient_cliques_(num_transient_cliques) {}
 
 absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
     const GpuCliqueKey& clique_key, RankId rank) const {

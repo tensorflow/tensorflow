@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -185,6 +186,17 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 
 namespace {
 
+// A container for per-process persistent cliques.
+struct PersistentCliquesMap {
+  absl::Mutex mutex;
+  AcquiredCliquesMap cliques_map ABSL_GUARDED_BY(mutex);
+};
+
+static PersistentCliquesMap& GetPersistentCliquesMap() {
+  static auto* persistent_cliques = new PersistentCliquesMap();
+  return *persistent_cliques;
+}
+
 // Shared resources required for thunk initialization and execution.
 class ResourceRequests : public Thunk::ResourceRequests {
  public:
@@ -220,7 +232,8 @@ class ResourceRequests : public Thunk::ResourceRequests {
   }
 
   absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
-      const Thunk::CollectiveExecuteParams& params) {
+      const Thunk::CollectiveExecuteParams& params,
+      bool use_persistent_cliques) {
     if (cliques_.empty()) return Thunk::CollectiveCliques();
 
     VLOG(2) << "Acquire " << cliques_.size()
@@ -229,7 +242,8 @@ class ResourceRequests : public Thunk::ResourceRequests {
             << "; run_id=" << params.run_id.ToInt()
             << "; max number of channels for collectives "
             << params.collective_max_nchannels
-            << "; max number of channels for p2p " << params.p2p_max_nchannels;
+            << "; max number of channels for p2p " << params.p2p_max_nchannels
+            << "; use_persistent_cliques=" << use_persistent_cliques;
 
     std::vector<CliqueRequest> ordered_cliques = GetOrderedCliqueRequests();
     for (size_t i = 0; i < ordered_cliques.size(); ++i) {
@@ -241,13 +255,16 @@ class ResourceRequests : public Thunk::ResourceRequests {
     }
 
     tsl::profiler::TraceMe trace([&] {
-      return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
-                                          {{"num_cliques", cliques_.size()}});
+      return tsl::profiler::TraceMeEncode(
+          "AcquireCollectiveCliques",
+          {{"num_cliques", cliques_.size()},
+           {"use_persistent_cliques", use_persistent_cliques}});
     });
 
     auto start_micros = tsl::Env::Default()->NowMicros();
 
     AcquiredCliquesMap cliques_map;
+    int32_t num_transient_cliques = 0;
 
     for (const CliqueRequest& r : ordered_cliques) {
       std::optional<RankId> rank = r.key.rank(params.global_device_id);
@@ -266,12 +283,43 @@ class ResourceRequests : public Thunk::ResourceRequests {
       int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                  ? params.collective_max_nchannels
                                  : params.p2p_max_nchannels;
+
+      // Check if we have a persistent clique for this key.
+      if (use_persistent_cliques) {
+        auto& pc = GetPersistentCliquesMap();
+        absl::MutexLock lock(&pc.mutex);
+
+        if (auto it = pc.cliques_map.find(r.key); it != pc.cliques_map.end()) {
+          VLOG(2) << "Found persistent clique for key " << r.key.ToString();
+          cliques_map[r.key] = it->second;
+          continue;
+        }
+      }
+
+      // If we don't have a persistent clique we have to acquire a transient
+      // one.
       TF_ASSIGN_OR_RETURN(
           std::shared_ptr<LockableGpuClique::Lock> clique,
           AcquireGpuClique(params.collectives, params.executor, params.run_id,
                            r.key, *clique_id_callback, *rank,
                            r.num_local_participants, cliques_map,
                            max_channels));
+      ++num_transient_cliques;
+
+      // Take a copy of the clique lock, so that we can reuse it. This is
+      // potentially unsafe in the case when we have multiple racing executions
+      // of XLA, as we might observe partial state and some of the replicas will
+      // use persistent clique, and others will try to acquire a new one.
+      //
+      // However given that persistent cliques is an unsafe escape hatch, any
+      // racing execution together with persistent cliques will lead to
+      // deadlocks anyway, so we don't bother to fix this. If anyone is doing
+      // it, it's 100% their fault and they will suffer.
+      if (use_persistent_cliques) {
+        auto& pc = GetPersistentCliquesMap();
+        absl::MutexLock lock(&pc.mutex);
+        pc.cliques_map[r.key] = clique;
+      }
 
       cliques_map[r.key] = std::move(clique);
     }
@@ -281,9 +329,11 @@ class ResourceRequests : public Thunk::ResourceRequests {
             << " collective cliques for global device id "
             << params.global_device_id.value() << " in "
             << (end_micros - start_micros) << " μs"
-            << "; run_id=" << params.run_id.ToInt();
+            << "; run_id=" << params.run_id.ToInt()
+            << "; num_transient_cliques=" << num_transient_cliques;
 
-    return Thunk::CollectiveCliques(std::move(cliques_map));
+    return Thunk::CollectiveCliques(std::move(cliques_map),
+                                    num_transient_cliques);
   }
 
  private:
@@ -449,7 +499,11 @@ absl::Status ExecuteThunks(
   if (!mock_collectives) {
     TF_ASSIGN_OR_RETURN(
         collective_cliques,
-        resource_requests.AcquireCollectiveCliques(collective_params));
+        resource_requests.AcquireCollectiveCliques(
+            collective_params,
+            debug_options
+                ? debug_options->xla_gpu_collectives_use_persistent_cliques()
+                : false));
   }
 
   {  // Initialize thunks using prepared resources before execution.
@@ -470,9 +524,11 @@ absl::Status ExecuteThunks(
   }
 
   // Maybe join a round of rendezvous after thunk initialization. We do this
-  // only in presence of collective cliques which means that we have collective
-  // operations in the XLA operations that tend to cause deadlocks.
-  if (!collective_cliques.empty()) {
+  // only in presence of newly acquired collective cliques which means that we
+  // have collective operations and clique initialization is famous for
+  // introducing deadlocks if we try to execute it concurrently with other
+  // potentially memory-allocating operations.
+  if (collective_cliques.num_transient_cliques() > 0) {
     TF_RETURN_IF_ERROR(
         RendezvousAfterInitialization(run_options, debug_options));
   }

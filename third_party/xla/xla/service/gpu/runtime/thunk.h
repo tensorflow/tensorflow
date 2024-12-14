@@ -219,7 +219,8 @@ class Thunk {
   class CollectiveCliques {
    public:
     CollectiveCliques() = default;
-    explicit CollectiveCliques(AcquiredCliquesMap cliques_map);
+    CollectiveCliques(AcquiredCliquesMap cliques_map,
+                      int32_t num_transient_cliques);
 
     absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
                                           RankId rank) const;
@@ -234,8 +235,16 @@ class Thunk {
 
     bool empty() const { return cliques_map_.empty(); }
 
+    bool num_transient_cliques() const { return num_transient_cliques_; }
+
    private:
     AcquiredCliquesMap cliques_map_;
+
+    // The number of acquired non-persistent clique. We need to keep track of
+    // newly created communicators to insert rendezvous after first
+    // initialization, because otherwise we observe deadlocks with NCCL
+    // collectives backends.
+    int32_t num_transient_cliques_ = 0;
   };
 
   //===--------------------------------------------------------------------===//

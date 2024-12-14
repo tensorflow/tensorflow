@@ -128,6 +128,13 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // Do not lock collective cliques for each XLA:GPU execution, and instead
+  // use per-process cliques that are never unlocked. This disables deadlock
+  // prevention mechanism in XLA:GPU and should be used at you own risk. If
+  // collective operations from concurrent executions are not correcctly ordered
+  // it may lead to deadlocks, crashes or will produce garbage.
+  bool xla_gpu_collectives_use_persistent_cliques = 354;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
