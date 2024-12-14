@@ -159,6 +159,14 @@ Expected<BufferRef<uint8_t>> GetTflBuffer(const TflModel& tfl_model,
   return *buffer;
 }
 
+Expected<const TflBuffer*> GetBuffer(const TflModel& tfl_model,
+                                     uint32_t buffer_ind) {
+  if (buffer_ind >= tfl_model.buffers.size()) {
+    return Error(kLiteRtStatusErrorIndexOOB);
+  }
+  return tfl_model.buffers.at(buffer_ind).get();
+}
+
 Expected<TflBufferPtr> TakeBuffer(TflModel& tfl_model, uint32_t buffer_ind) {
   if (buffer_ind >= tfl_model.buffers.size()) {
     return Error(kLiteRtStatusErrorIndexOOB);

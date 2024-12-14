@@ -50,7 +50,13 @@ class FlatbufferContext {
 
   // Take ownership of the tfl buffer under the given index if it exists.
   Expected<TflBufferPtr> TakeTflBuffer(uint32_t ind) {
-    return TakeBuffer(tfl_model_, ind);
+    // TODO: Return (and store in litert model) these as shared pointers
+    // and remove copy.
+    auto tfl_buf = GetBuffer(tfl_model_, ind);
+    if (!tfl_buf) {
+      return tfl_buf.Error();
+    }
+    return std::make_unique<TflBuffer>(**tfl_buf);
   }
 
  private:

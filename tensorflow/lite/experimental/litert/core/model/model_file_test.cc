@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <array>
 #include <cstdint>
 #include <filesystem>  // NOLINT
 #include <fstream>
@@ -63,6 +64,8 @@ static constexpr absl::string_view kSimpleMultiOp = "simple_multi_op.tflite";
 static constexpr absl::string_view kOneMul = "one_mul.tflite";
 static constexpr absl::string_view kSimpleMultiSubgraph =
     "multi_subgraph.tflite";
+static constexpr absl::string_view kCstMultiSubgraph =
+    "cst_multi_subgraph.tflite";
 
 // Load a model, then serialize and re-load. Used to test serialization.
 Expected<Model> LoadModelThroughRoundTrip(absl::string_view filename) {
@@ -507,6 +510,42 @@ INSTANTIATE_TEST_SUITE_P(ModelLoadTests, SimpleMultiSubgraphTest,
 
 INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, SimpleMultiSubgraphTest,
                          Values(MakeRoundTripFactory(kSimpleMultiSubgraph)));
+
+// Test when flatbuffer export has optimized multiple tensors to share the
+// same buffer.
+using MultiSubgraphDupeConstTest = TestWithModelFactory;
+
+TEST_P(MultiSubgraphDupeConstTest, CheckGraph) {
+  static constexpr std::array kWeights = {1.0, 2.0, 3.0, 4.0};
+
+  auto model_wrap = LoadModel();
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap->Get();
+
+  ASSERT_EQ(model.NumSubgraphs(), 2);
+
+  {
+    ASSERT_EQ(model.Subgraph(0).Ops().size(), 1);
+    ASSERT_EQ(model.Subgraph(0).Tensors().size(), 3);
+    auto& cst = model.Subgraph(0).Op(0).Input(1);
+    Tensor t(&cst);
+    EXPECT_THAT(*t.WeightsData<float>(), ElementsAreArray(kWeights));
+  }
+
+  {
+    ASSERT_EQ(model.Subgraph(1).Ops().size(), 1);
+    ASSERT_EQ(model.Subgraph(1).Tensors().size(), 3);
+    auto& cst = model.Subgraph(1).Op(0).Input(1);
+    Tensor t(&cst);
+    EXPECT_THAT(*t.WeightsData<float>(), ElementsAreArray(kWeights));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ModelLoadTests, MultiSubgraphDupeConstTest,
+                         Values(MakeLoadFactory(kCstMultiSubgraph)));
+
+INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, MultiSubgraphDupeConstTest,
+                         Values(MakeRoundTripFactory(kCstMultiSubgraph)));
 
 // Tests that programatically check litert against tflite models.
 //===---------------------------------------------------------------------------

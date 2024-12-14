@@ -161,6 +161,10 @@ Expected<BufferRef<uint8_t>> GetTflBuffer(const TflModel& tfl_model,
 Expected<MutableBufferRef<uint8_t>> GetMutableTflBuffer(TflModel& tfl_model,
                                                         uint32_t buffer_ind);
 
+// Get a non-owning view of tfl buffer if it exists.
+Expected<const TflBuffer*> GetBuffer(const TflModel& tfl_model,
+                                     uint32_t buffer_ind);
+
 // Move and take ownership of the buffer object at given index if it exists.
 Expected<TflBufferPtr> TakeBuffer(TflModel& tfl_model, uint32_t buffer_ind);
 
