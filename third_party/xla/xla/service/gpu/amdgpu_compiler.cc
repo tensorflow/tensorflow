@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
