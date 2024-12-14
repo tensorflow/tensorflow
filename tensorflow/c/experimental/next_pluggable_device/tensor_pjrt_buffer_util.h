@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_TENSOR_PJRT_BUFFER_UTIL_H_
 #define TENSORFLOW_C_EXPERIMENTAL_NEXT_PLUGGABLE_DEVICE_TENSOR_PJRT_BUFFER_UTIL_H_
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/core/framework/tensor.h"
