@@ -64,6 +64,7 @@ class HloInstructionInterface {
   virtual std::string source_info() const = 0;
   virtual bool isRoot() const = 0;
   virtual bool IsFusion() const = 0;
+  virtual const std::string& Expression() const = 0;
 
   virtual void ProcessXlaCostAnalysis(
       const xla::HloCostAnalysis* cost_analysis) = 0;
@@ -77,7 +78,7 @@ class HloInstructionWrapper : public HloInstructionInterface {
       const xla::HloInstruction* instr,
       const xla::HloCostAnalysis* cost_analysis = nullptr);
 
-  // Non copiable
+  // Non copyable
   HloInstructionWrapper(const HloInstructionWrapper&) = delete;
   HloInstructionWrapper& operator=(const HloInstructionWrapper&) = delete;
   // Movable.
@@ -114,6 +115,8 @@ class HloInstructionWrapper : public HloInstructionInterface {
     bytes_accessed_ = cost_analysis->bytes_accessed(*instr_);
   }
 
+  const std::string& Expression() const override { return expression_; }
+
   void AddFusedChild(const HloInstructionWrapper* child) {
     fused_children_.push_back(child);
   };
@@ -129,6 +132,7 @@ class HloInstructionWrapper : public HloInstructionInterface {
   size_t flops_ = 0;
   size_t bytes_accessed_ = 0;
   std::string category_;
+  std::string expression_;
 };
 
 // Helper class for accessing HloModule.

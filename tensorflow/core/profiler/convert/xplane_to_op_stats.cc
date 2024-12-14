@@ -42,8 +42,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -217,6 +219,13 @@ void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
   }
 }
 
+void UpdateOpMetricsDbFromHloModuleMap(OpMetricsDb& op_metrics_db,
+                                       const HloModuleMap& hlo_module_map) {
+  for (OpMetrics& op_metrics : *op_metrics_db.mutable_metrics_db()) {
+    EnterOpMetadataFromHloModuleMap(&op_metrics, hlo_module_map);
+  }
+}
+
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
   OpStats op_stats;
@@ -245,6 +254,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
+      HloModuleMap hlo_module_map;
+      ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
       if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
@@ -254,6 +265,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
             ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db, hlo_module_map);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }

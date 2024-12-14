@@ -218,7 +218,7 @@ void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
 
 OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db) : db_(db) {
   DCHECK_NE(db_, nullptr);
-  DCHECK_EQ(db_->metrics_db_size(), 0);
+  DCHECK_EQ(db_->metrics_db_size(), db->metrics_db_size());
 }
 
 OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(

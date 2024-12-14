@@ -20,11 +20,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,6 +42,51 @@ double GetCappedPerf(double perf, uint64 time, double rate_limit) {
 }
 
 }  // namespace
+
+// Annotate the op_metrics with the metadata from the instr_wrapper.
+void EnterOpMetadata(OpMetrics* op_metrics,
+                     const HloInstructionWrapper* instr_wrapper) {
+  if (op_metrics->name().empty() && op_metrics->category().empty() &&
+      op_metrics->provenance().empty()) {
+    op_metrics->set_name(std::string(instr_wrapper->Name()));
+    op_metrics->set_category(std::string(instr_wrapper->Category()));
+    op_metrics->set_deduplicated_name(
+        instr_wrapper->Metadata().deduplicated_name());
+    op_metrics->set_provenance(std::string(instr_wrapper->op_full_name()));
+    op_metrics->set_num_cores(1);
+    op_metrics->set_occurrences(op_metrics->occurrences() + 1);
+    op_metrics->set_flops(op_metrics->flops() + instr_wrapper->flops());
+    op_metrics->set_bytes_accessed(op_metrics->bytes_accessed() +
+                                   instr_wrapper->bytes_accessed());
+    op_metrics->set_long_name(instr_wrapper->Expression());
+  }
+}
+
+void AddFusionChildrenToOpMetricsFromHloInstruction(
+    OpMetrics* op_metrics, const HloInstructionWrapper* instr_wrapper) {
+  if (instr_wrapper->FusedChildren().empty()) return;
+  for (const HloInstructionWrapper* child : instr_wrapper->FusedChildren()) {
+    if (child->HloOpcode() == xla::HloOpcode::kParameter ||
+        child->HloOpcode() == xla::HloOpcode::kTuple)
+      continue;
+    OpMetrics* child_op_metrics =
+        op_metrics->mutable_children()->add_metrics_db();
+    // DeviceOpMetricsDbBuilder children_db_builder(
+    //     op_metrics->mutable_children());
+    EnterOpMetadata(child_op_metrics, child);
+    // children_db_builder.EnterOpMetadata(child_op_metrics, child);
+    AddFusionChildrenToOpMetricsFromHloInstruction(child_op_metrics, child);
+  }
+}
+
+void EnterOpMetadataFromHloModuleMap(OpMetrics* op_metrics,
+                                     const HloModuleMap& hlo_module_map) {
+  const HloInstructionWrapper* instr_wrapper = GetHloInstruction(
+      hlo_module_map, op_metrics->hlo_module_id(), op_metrics->name());
+  if (instr_wrapper != nullptr) {
+    AddFusionChildrenToOpMetricsFromHloInstruction(op_metrics, instr_wrapper);
+  }
+}
 
 void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
                                      absl::string_view category, bool is_eager,
@@ -73,6 +120,15 @@ void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
          last_host_infeed_enqueue_.begin_ps()));
   }
   last_host_infeed_enqueue_ = host_infeed_enqueue;
+}
+
+void DeviceOpMetricsDbBuilder::EnterOpMetadataFromHloModuleMap(
+    uint64 program_id, absl::string_view op_name,
+    const HloModuleMap& hlo_module_map) {
+  OpMetrics* op_metrics =
+      LookupOrInsertNewOpMetrics(program_id, op_name, /*fingerprint=*/0);
+  tensorflow::profiler::EnterOpMetadataFromHloModuleMap(op_metrics,
+                                                        hlo_module_map);
 }
 
 void DeviceOpMetricsDbBuilder::EnterOpMetadata(
