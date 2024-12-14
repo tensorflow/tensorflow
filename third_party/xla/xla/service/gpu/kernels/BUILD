@@ -65,6 +65,7 @@ cc_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

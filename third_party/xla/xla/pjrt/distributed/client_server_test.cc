@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/log/log.h"

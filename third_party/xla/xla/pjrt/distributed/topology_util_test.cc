@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/time/time.h"
