@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -72,7 +72,7 @@ class BackendFuncCallPattern : public OpConversionPattern<CallOp> {
 
     FuncOp func = symbolTable.lookup<FuncOp>(adaptor.getCallee());
     CHECK(func) << "Failed to lookup function: "
-                << std::string_view(adaptor.getCallee());
+                << absl::string_view(adaptor.getCallee());
     mlir::SmallVector<mlir::NamedAttribute> namedCompAttrs;
     llvm::copy_if(callOp->getDiscardableAttrs(),
                   std::back_inserter(namedCompAttrs),
