@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Slice Op.
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

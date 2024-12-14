@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
-#include <cmath>
+#include <functional>
+#include <tuple>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

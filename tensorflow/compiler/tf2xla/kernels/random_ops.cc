@@ -17,6 +17,7 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/log.h"

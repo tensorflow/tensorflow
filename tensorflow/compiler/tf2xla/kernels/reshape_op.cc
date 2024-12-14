@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific reshape Op.
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/log.h"

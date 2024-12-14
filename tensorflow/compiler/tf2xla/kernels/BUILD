@@ -1215,6 +1215,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/builder:xla_builder",
     ],

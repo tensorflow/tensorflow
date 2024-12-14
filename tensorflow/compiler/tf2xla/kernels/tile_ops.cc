@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Tile Op.
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <numeric>
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"

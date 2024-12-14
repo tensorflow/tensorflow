@@ -15,7 +15,7 @@ limitations under the License.
 
 // XLA TensorList operators.
 
-#include <limits>
+#include <cstdint>
 #include <utility>
 #include <vector>
 

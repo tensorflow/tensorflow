@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"

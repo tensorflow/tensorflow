@@ -15,6 +15,8 @@ limitations under the License.
 
 // Native XLA implementations of simple unary Ops
 
+#include <cmath>
+
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

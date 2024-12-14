@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific Ops for softmax.
 
+#include <cmath>
+#include <cstdint>
 #include <tuple>
 #include <utility>
 

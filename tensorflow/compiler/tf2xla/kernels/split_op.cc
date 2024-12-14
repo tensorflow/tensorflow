@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Ops for split.
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

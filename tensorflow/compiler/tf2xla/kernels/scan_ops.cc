@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cmath>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
