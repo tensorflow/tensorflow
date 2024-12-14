@@ -11,7 +11,6 @@ load(
     "xla_internal",
     "xla_py_proto_library",
 )
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -677,7 +676,6 @@ tsl_gpu_library(
     name = "xla_compile_lib",
     srcs = ["xla_compile_lib.cc"],
     hdrs = ["xla_compile_lib.h"],
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":hlo_module_loader",
@@ -694,11 +692,15 @@ tsl_gpu_library(
         "//xla/service:export_hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/gpu:gpu_symbol_repository",
+        "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "@com_google_absl//absl/cleanup",
@@ -721,16 +723,8 @@ tsl_gpu_library(
         "@stablehlo//:register",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:nvptx_compiler",
-        "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm_is_configured([
         "//xla/service/gpu:amdgpu_compiler",
-        "//xla/service/gpu:amdgpu_compiler_impl",
-    ]) + if_gpu_is_configured([
-        "//xla/service/gpu:executable_proto_cc",
-        "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu/autotuning:autotuner_util",
-        "//xla/stream_executor/gpu:gpu_init",
-        "//xla/service/gpu:gpu_symbol_repository",
     ]) + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
