@@ -88,7 +88,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
       continue;
     }
     StringPiece name_string = line_parts[min_max_index - 1];
-    if (!str_util::EndsWith(name_string, print_suffix)) {
+    if (!absl::EndsWith(name_string, print_suffix)) {
       continue;
     }
     string name(
