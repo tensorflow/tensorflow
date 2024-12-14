@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -99,7 +100,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -989,7 +989,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
               << " fusions on " << thread_pool_->NumThreads() << " threads.";
     }
 
-    tsl::BlockingCounter counter(config_count);
+    absl::BlockingCounter counter(config_count);
     for (const auto& key_value : task) {
       const HloFusionInstruction* fusion = key_value.first;
       const std::vector<BackendConfig>& gemm_config_set = key_value.second;

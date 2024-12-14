@@ -28,8 +28,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "dnnl_threadpool.hpp"
+#include "absl/synchronization/blocking_counter.h"
 #include "dnnl.hpp"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/threadpool.h"
 
@@ -124,7 +124,7 @@ class OneDnnThreadPool : public threadpool_iface {
       }
       run_jobs(balance, njobs_to_schedule, n, njobs, fn);
     } else {
-      tsl::BlockingCounter counter(njobs);
+      absl::BlockingCounter counter(njobs);
       std::function<void(int, int)> handle_range = [=, &handle_range, &counter](
                                                        int first, int last) {
         while (last - first > 1) {

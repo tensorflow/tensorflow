@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -226,7 +226,7 @@ class PriorityFusionQueue {
         fn();
       }
     };
-    tsl::BlockingCounter counter(instructions.size());
+    absl::BlockingCounter counter(instructions.size());
     std::vector<Priority> priorities(instructions.size());
 
     for (size_t i = 0; i < instructions.size(); ++i) {
