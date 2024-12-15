@@ -15,10 +15,23 @@ limitations under the License.
 
 #include "tensorflow/python/grappler/cost_analyzer.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <iomanip>
+#include <ios>
+#include <map>
+#include <ostream>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
