@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
