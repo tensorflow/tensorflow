@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"

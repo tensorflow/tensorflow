@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace stream_executor::cuda {

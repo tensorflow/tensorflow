@@ -692,6 +692,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -777,6 +778,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -1843,6 +1845,7 @@ xla_cc_test(
         ":cuda_platform",
         ":nvjitlink_support",
         ":ptx_compiler_support",
+        "//xla:xla_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
