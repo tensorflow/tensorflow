@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -116,7 +118,15 @@ class DummyAddKernelRunner final : public KernelRunner {
 NB_MODULE(_extention, kernel_runner_module) {
   namespace nb = nanobind;
 
-  nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec");
+  nb::class_<KernelSource>(kernel_runner_module, "KernelSource");
+
+  nb::class_<LlvmIrKernelSource, KernelSource>(kernel_runner_module,
+                                               "LlvmIrKernelSource")
+      .def("__str__", &LlvmIrKernelSource::ToString);
+
+  nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec")
+      .def("kernel_source", &KernelSpec::kernel_source,
+           nb::rv_policy::reference_internal);
 
   nb::class_<KernelEmitter>(kernel_runner_module, "KernelEmitter")
       .def("emit_kernel_spec", [](KernelEmitter* self) {

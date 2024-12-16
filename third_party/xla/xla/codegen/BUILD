@@ -35,9 +35,11 @@ cc_library(
 
 cc_library(
     name = "llvm_ir_kernel_source",
+    srcs = ["llvm_ir_kernel_source.cc"],
     hdrs = ["llvm_ir_kernel_source.h"],
     deps = [
         ":kernel_spec",
+        "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:JITLink",
     ],

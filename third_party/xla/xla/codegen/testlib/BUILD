@@ -46,6 +46,7 @@ tsl_pybind_extension(
         "//xla:util",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/python:nb_absl_span",
         "@com_google_absl//absl/log:check",
