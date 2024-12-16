@@ -6629,7 +6629,7 @@ bool HloParserImpl::ParseListShardingType(
       if (!ParseOpShardingType(&type)) {
         return false;
       }
-      types->emplace_back(type);
+      types->push_back(type);
     } while (EatIfPresent(TokKind::kComma));
   }
 
