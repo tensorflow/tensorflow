@@ -529,6 +529,29 @@ INSTANTIATE_TEST_SUITE_P(
                 .device_ids = {0, 1, 2, 3},
                 .sharding = Tile({2, 1, 2}),
             },
+            {
+                .in_tensor = test::AsTensor<int32_t>(
+                    {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                     13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                    TensorShape({4, 1, 6})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 7, 8},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({3, 4, 9, 10},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({5, 6, 11, 12},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({13, 14, 19, 20},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({15, 16, 21, 22},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({17, 18, 23, 24},
+                                                TensorShape({2, 1, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3, 4, 5},
+                .sharding = Tile({2, 1, 3}),
+            },
             // Partial replication
             {
                 .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},

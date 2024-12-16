@@ -256,7 +256,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromDisassembledTensors(
 }
 
 absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
-    absl::Span<xla::ifrt::IndexDomain> index_domains,
+    absl::Span<const xla::ifrt::IndexDomain> index_domains,
     const tensorflow::TensorShape& tensor_shape) {
   if (index_domains.size() <= 1) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -312,35 +312,9 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
     }
     unique_index_domains.push_back(index_domain);
   }
-
-  // Verify that distances of between origins of neighbouring `IndexDomain`
-  // bounded by shape. Note that unique_indexx_domains are already in sorted
-  // order.
-  auto prev_iter = unique_index_domains.begin();
-  auto next_iter = unique_index_domains.begin() + 1;
-  const auto& bounded_box = first_index_domain->shape();
-  while (prev_iter != unique_index_domains.end() &&
-         next_iter != unique_index_domains.end()) {
-    xla::ifrt::Index offset = next_iter->origin() - prev_iter->origin();
-    for (int dim = 0; dim < bounded_box.dims().size(); ++dim) {
-      if (std::abs(offset.elements()[dim]) != bounded_box.dims()[dim] &&
-          offset.elements()[dim] != 0) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "IndexDomains should not have gap or overlap, but got ",
-            prev_iter->DebugString(), " and ", next_iter->DebugString(),
-            " that have offset of ", offset.DebugString()));
-      }
-    }
-    prev_iter = next_iter;
-    next_iter++;
-  }
-
   // Verify the last `IndexDomain`'s upper end of the bound matches with the
-  // tensor shape. Together with the above check, this provides an approximation
-  // to the following two assumptions:
-  // 1. the union of all IndexDomain covers the entire global shape array with
-  // no gaps.
-  // 2. no two index_domain have any overlap.
+  // tensor shape. This provides an approximation to the assumptions that the
+  // union of all IndexDomain covers the entire global shape array with no gaps.
   std::vector<int64_t> bounded_shape;
   const auto& last_index_domain = unique_index_domains.back();
   bounded_shape.reserve(last_index_domain.shape().dims().size());
