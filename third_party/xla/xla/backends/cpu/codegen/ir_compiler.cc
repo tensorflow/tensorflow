@@ -185,7 +185,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
       llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
           llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
       if (obj_file) {
-        hooks_.post_codegen(*obj_file.get());
+        hooks_.post_codegen(module, *obj_file.get());
       } else {
         LOG(WARNING) << "Could not convert memory buffer to object file";
       }
