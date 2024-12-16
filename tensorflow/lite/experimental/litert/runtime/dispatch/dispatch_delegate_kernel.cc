@@ -576,7 +576,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
 TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
                                           TfLiteOpaqueNode* node) {
   if (auto status = RegisterLiteRtTensorBuffers(context, node);
-      status != kLiteRtStatusOk) {
+      status != kTfLiteOk) {
     LITERT_LOG(LITERT_ERROR, "Failed to register tensor buffers: %d", status);
     return kTfLiteError;
   }
