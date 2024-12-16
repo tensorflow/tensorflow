@@ -56,7 +56,8 @@ ElementalKernelEmitter::ElementalKernelEmitter(absl::string_view kernel_name,
       input_shapes_(std::move(input_shapes)),
       output_shape_(output_shape),
       context_(std::make_unique<llvm::LLVMContext>()),
-      kernel_api_ir_builder_(*context_.getContext(), true) {}
+      kernel_api_ir_builder_(*context_.getContext(),
+                             KernelApiIrBuilder::Options{true, 256}) {}
 
 absl::StatusOr<std::unique_ptr<KernelSpec>>
 ElementalKernelEmitter::EmitKernelSpec() {

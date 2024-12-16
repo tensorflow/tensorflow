@@ -18,16 +18,20 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/CodeGen.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -76,9 +80,8 @@ llvm::FunctionType* KernelFunctionTy(llvm::LLVMContext& ctx) {
 }  // namespace
 
 KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
-                                       bool enable_invariant_load_metadata)
-    : context_(context),
-      enable_invariant_load_metadata_(enable_invariant_load_metadata) {
+                                       Options options)
+    : context_(context), options_(std::move(options)) {
   thread_dim_ty_ = KernelThreadDimTy(context_);
   thread_ty_ = KernelThreadTy(context_);
   arg_ty_ = KernelArgTy(context_);
@@ -148,7 +151,7 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
   // All buffers pointers passed to host kernels are expected to be invariant
   // over the whole program. Note the metadata is attached only to loading
   // buffer pointers, not to loading actual buffers.
-  if (enable_invariant_load_metadata_) {
+  if (options_.enable_invariant_load_metadata) {
     data->setMetadata(llvm::LLVMContext::MD_invariant_load,
                       llvm::MDNode::get(data->getContext(), /*MDs=*/{}));
   }
@@ -158,8 +161,27 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
 
 llvm::Function* KernelApiIrBuilder::EmitKernelFunction(llvm::Module& module,
                                                        absl::string_view name) {
-  return llvm::Function::Create(
+  llvm::Function* function = llvm::Function::Create(
       kernel_function_ty_, llvm::GlobalValue::ExternalLinkage, name, module);
+
+  // We use external linkage because we'll be resolving this function from the
+  // XLA runtime.
+  function->setCallingConv(llvm::CallingConv::C);
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setUWTableKind(llvm::UWTableKind::Default);
+
+  // Set prefer-vector-width attribute to allow LLVM to use wider vector
+  // registers (by default LLVM uses at most 256-bit registers).
+  function->addFnAttr("prefer-vector-width",
+                      absl::StrCat(options_.prefer_vector_width));
+
+  // Always keep a frame pointer for the host kernel so we can see them in all
+  // performance profiling tools.
+  function->addFnAttr("frame-pointer", "all");
+
+  return function;
 }
 
 }  // namespace xla::cpu
