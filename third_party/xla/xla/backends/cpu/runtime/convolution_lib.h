@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
@@ -85,6 +86,12 @@ struct ConvolutionCanonicalDims {
 
   int64_t feature_group_count;
 };
+
+// Get convolution dimensions in canonical form inferred from the operands
+// shapes and convolution parameters.
+absl::StatusOr<ConvolutionCanonicalDims> GetConvolutionCanonicalDims(
+    const ConvolutionSlices& slices, const ConvolutionDimensionNumbers& dnums,
+    const Window& window, int64_t feature_group_count);
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const ConvolutionCanonicalDims::Dims& d) {

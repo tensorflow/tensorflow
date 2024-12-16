@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/source_target_pairs.h"
@@ -49,7 +51,7 @@ namespace {
 // operations without any cycle in their (source, target) relationship,
 // with only one input and without any context data.
 bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
-                     int64_t threshold_in_bytes) {
+                     int64_t threshold_in_bytes, const CallGraph& call_graph) {
   const Shape& result_shape = collective_permute.shape();
 
   // Skip the transformation if result is not an array, such as containing
@@ -58,11 +60,23 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
     return false;
   }
 
+  // Respect threshold to limit this pass.
   if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
-  return !SourceTargetPairs(collective_permute.source_target_pairs())
-              .HasCycles();
+
+  // Do not decompose cycles as this leads to deadlocks in NCCL.
+  if (SourceTargetPairs(collective_permute.source_target_pairs()).HasCycles()) {
+    return false;
+  }
+
+  // Only decompose in loop body to allow for pipelining.
+  auto callers = call_graph.GetComputationCallers(collective_permute.parent());
+  if (callers.size() != 1 || callers.front()->opcode() != HloOpcode::kWhile) {
+    return false;
+  }
+
+  return true;
 }
 
 // Returns true for a pipelineable collective-permute. As a simple heuristic,
@@ -204,6 +218,8 @@ absl::Status EnforceOrderOfSendRecvChains(
 absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+
   bool changed = false;
   std::vector<HloComputation*> all_computations =
       module->MakeComputationPostOrder(execution_threads);
@@ -242,7 +258,7 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
 
       HloCollectivePermuteInstruction* cp =
           Cast<HloCollectivePermuteInstruction>(instr);
-      if (!ShouldDecompose(*cp, threshold_in_bytes_)) {
+      if (!ShouldDecompose(*cp, threshold_in_bytes_, *call_graph)) {
         continue;
       }
       // Record collective-permute to be decomposed.

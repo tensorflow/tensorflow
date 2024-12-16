@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -53,6 +54,8 @@ struct Decomposed {
 
 class DecomposerTest : public HloHardwareIndependentTestBase {
  protected:
+  // TODO(b/393126411): Eliminate these heper functions effectively wrapping the
+  // entire test.
   void AssertNoTranform(absl::string_view hlo, int64_t threshold = 0) {
     TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(threshold), false));
   };
@@ -82,48 +85,120 @@ class DecomposerTest : public HloHardwareIndependentTestBase {
   }
 };
 
+const char* kSimpleHloWhileLoopTemplate = R"(
+  HloModule module
+  cond {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  $hlo_while_body
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c42 = f32[] constant(42.0)
+    init = f32[64] broadcast(c42), dimensions={}
+    while_init = (u32[], f32[64]) tuple(c0, init)
+    while_result = (u32[], f32[64]) while(while_init), body=body, condition=cond
+    ROOT result = f32[64] get-tuple-element(while_result), index=1
+  }
+)";
+
+static std::string GetSimpleHloWhileLoopStr(absl::string_view hlo_while_body) {
+  return absl::StrReplaceAll(kSimpleHloWhileLoopTemplate,
+                             {
+                                 {"$hlo_while_body", hlo_while_body},
+                             });
+}
+
 TEST_F(DecomposerTest, WithCycleNotTransformed) {
-  AssertNoTranform(R"(HloModule test
-    ENTRY test_computation {
-      data = u32[] parameter(0)
-      ROOT cp = u32[] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,0}}
-    })");
+  AssertNoTranform(GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,0}}
+    ROOT result = tuple(i, cp)
+  }
+  )"));
 }
 
 TEST_F(DecomposerTest, ThresholdNotTransformed) {
-  AssertNoTranform(R"(HloModule test
-    ENTRY test_computation {
-      p = u32[] replica-id()
-      ROOT cp = u32[] collective-permute(p), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
-    })",
-                   8);
+  const int64_t kThreshold = 64 * 8;
+  AssertNoTranform(GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data), source_target_pairs={{0,1}, {1,2}, {2,3}}
+    ROOT result = tuple(i, cp)
+  }
+  )"),
+                   kThreshold);
 }
 
 TEST_F(DecomposerTest, Basic) {
-  AssertTransform(R"(HloModule test
+  AssertTransform(GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,2}}
+    ROOT result = tuple(i, cp)
+  }
+  )"));
+}
+
+TEST_F(DecomposerTest, NoChannelId) {
+  AssertTransform(GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data), source_target_pairs={{0,1}, {1,2}}
+    ROOT result = tuple(i, cp)
+  }
+  )"));
+}
+
+TEST_F(DecomposerTest, OutsideOfWhileLoop) {
+  AssertNoTranform(R"(HloModule test
     ENTRY test_computation {
       data = u32[] parameter(0)
       ROOT cp = u32[] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,2}}
     })");
 }
 
-TEST_F(DecomposerTest, NoChannelId) {
-  AssertTransform(R"(HloModule test
-    ENTRY test_computation {
-      data = u32[] parameter(0)
-      ROOT cp = u32[] collective-permute(data), source_target_pairs={{0,1}, {1,2}}
-    })");
-}
-
 TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
-  absl::string_view hlo = R"(HloModule test
+  absl::string_view hlo = R"(
+    HloModule test
+
+    cond {
+      param = (u32[], f32[64], f32[64], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      n = u32[] constant(2)
+      ROOT result = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      param = (u32[], f32[64], f32[64], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data1 = f32[64] get-tuple-element(param), index=1
+      data2 = f32[64] get-tuple-element(param), index=2
+      cp3 = f32[64] collective-permute(data2), source_target_pairs={{6,7}}
+      cp1 = f32[64] collective-permute(data1), source_target_pairs={{3,0}}
+      cp2 = f32[64] collective-permute(data2), source_target_pairs={{0,1},{1,2},{2,3}}
+      ROOT out = (u32[], f32[64], f32[64], f32[64]) tuple(i, cp2, cp3, cp1)
+    }
+
     ENTRY test_computation {
-      data1 = u32[] parameter(0)
-      data2 = u32[] parameter(1)
-      cp3 = u32[] collective-permute(data2), source_target_pairs={{6,7}}
-      cp1 = u32[] collective-permute(data1), source_target_pairs={{3,0}}
-      cp2 = u32[] collective-permute(data2), source_target_pairs={{0,1},{1,2},{2,3}}
-      ROOT out = (u32[],u32[],u32[]) tuple(cp2, cp3, cp1)
+      c0 = u32[] constant(0)
+      c42 = f32[] constant(42.0)
+      init = f32[64] broadcast(c42), dimensions={}
+      while_init = (u32[], f32[64], f32[64], f32[64]) tuple(c0, init, init, init)
+      ROOT while_result = (u32[], f32[64], f32[64], f32[64]) while(while_init), body=body, condition=cond
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
   Decomposed cp1 = FindComponents(module.get(), "cp1");
@@ -138,13 +213,17 @@ TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
 // Negative test to assure that the decomposer does not create cyclic
 // instructions when there is dependency from one cp to another.
 TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
-  absl::string_view hlo = R"(HloModule test
-    ENTRY test_computation {
-      p0 = f32[] parameter(0)
-      cp-a = f32[] collective-permute(p0), source_target_pairs={{0,1}, {1,2}, {2,3}}
-      ROOT cp-b = f32[] collective-permute(cp-a), source_target_pairs={{3,0}}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  const std::string kHlo = GetSimpleHloWhileLoopStr(R"(
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = get-tuple-element(param), index=0
+      data = get-tuple-element(param), index=1
+      cp-a = f32[64] collective-permute(data), source_target_pairs={{0,1}, {1,2}, {2,3}}
+      cp-b = f32[64] collective-permute(cp-a), source_target_pairs={{3,0}}
+      ROOT result = (u32[], f32[64]) tuple(i, cp-b)
+    }
+  )");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
   Decomposed cp_a = FindComponents(module.get(), "cp-a");
   Decomposed cp_b = FindComponents(module.get(), "cp-b");
   EXPECT_THAT(cp_b.recv->control_predecessors(), ElementsAre(cp_a.send))
@@ -152,17 +231,19 @@ TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
 }
 
 TEST_F(DecomposerTest, ControlDependency_MoreDependencies) {
-  absl::string_view hlo = R"(HloModule test
-    ENTRY test_computation {
-      data1 = u32[] parameter(0)
-      data2 = u32[] parameter(1)
+  std::string kHlo = GetSimpleHloWhileLoopStr(R"(
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[64] get-tuple-element(param), index=1
+
       // misordered names to assure that dependencies are honored
-      cp1 = u32[] collective-permute(data1), source_target_pairs={{3,0}}
-      cp2 = u32[] collective-permute(cp1), source_target_pairs={{0,1},{1,2},{2,3}}
-      cp3 = u32[] collective-permute(cp2), source_target_pairs={{6,7}}
-      ROOT out = u32[8] broadcast(cp3), dimensions={}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+      cp1 = f32[64] collective-permute(data), source_target_pairs={{3,0}}
+      cp2 = f32[64] collective-permute(cp1), source_target_pairs={{0,1},{1,2},{2,3}}
+      cp3 = f32[64] collective-permute(cp2), source_target_pairs={{6,7}}
+      ROOT out = (u32[], f32[64]) tuple(i, cp3)
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
   Decomposed cp1 = FindComponents(module.get(), "cp1");
   Decomposed cp2 = FindComponents(module.get(), "cp2");
   Decomposed cp3 = FindComponents(module.get(), "cp3");
@@ -217,64 +298,63 @@ void EnsureControlDependency(Decomposed cp) {
 }
 
 TEST_F(DecomposerTest, StructureAndMetadata) {
-  absl::string_view hlo = R"(
-    HloModule test
-    ENTRY test_computation {
-      p = u32[] replica-id()
-      ROOT cp = u32[] collective-permute(p), channel_id=1,
+  std::string kHlo = GetSimpleHloWhileLoopStr(R"(
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[64] get-tuple-element(param), index=1
+      cp = f32[64] collective-permute(data), channel_id=1,
         source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
-        metadata={op_name="op1/op2/add"
-        source_file="foo/bar/mysource.py" source_line=35}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+        metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py"
+        source_line=35}
+      ROOT result = (u32[], f32[64]) tuple(i, cp)
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
   Decomposed cp = FindComponents(module.get(), "cp");
   EnsurePreservedInfo(cp.send);
   EnsurePreservedInfo(cp.recv);
-  EnsurePipelineAttr(cp, "");
   EnsureControlDependency(cp);
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::GetTupleElement(cp.recv_done, 0));
 }
 
 TEST_F(DecomposerTest, Pipeline1) {
   absl::string_view hlo = R"(
-  HloModule module
-  cond {
-    param = (u32[], u32[2]) parameter(0)
-    count = get-tuple-element(param), index=0
-    ub = u32[] constant(2)
-    ROOT result = pred[] compare(count, ub), direction=LT
-  }
+    HloModule module
 
-  body {
-    param = (u32[], u32[2]) parameter(0)
-    count = get-tuple-element(param), index=0
-    send-data = get-tuple-element(param), index=1
+    cond {
+      param = (u32[], u32[2]) parameter(0)
+      count = get-tuple-element(param), index=0
+      ub = u32[] constant(2)
+      ROOT result = pred[] compare(count, ub), direction=LT
+    }
 
-    cp = u32[2] collective-permute(send-data), channel_id=1,
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
-      frontend_attributes={_xla_other_attribute="xyz"}
+    body {
+      param = (u32[], u32[2]) parameter(0)
+      count = get-tuple-element(param), index=0
+      send-data = get-tuple-element(param), index=1
 
-    c1 = u32[] constant(1)
-    new_count = u32[] add(count, c1)
+      cp = u32[2] collective-permute(send-data), channel_id=1,
+        source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
+        frontend_attributes={_xla_other_attribute="xyz"}
 
-    r = u32[2] broadcast(c1), dimensions={}
-    s = u32[2] add(r, cp)
+      c1 = u32[] constant(1)
+      new_count = u32[] add(count, c1)
 
-    ROOT result = (u32[], u32[2]) tuple(new_count, s)
-  }
+      r = u32[2] broadcast(c1), dimensions={}
+      s = u32[2] add(r, cp)
 
-  ENTRY test_computation {
-    c0 = u32[] constant(0)
-    c1 = u32[] constant(1)
-    r = u32[] replica-id()
-    a = u32[] add(c1, r)
-    init = u32[2] broadcast(a), dimensions={}
-    while_init = (u32[], u32[2]) tuple(c0, init)
-    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
-    ROOT result = u32[2] get-tuple-element(while_result), index=1
-  })";
+      ROOT result = (u32[], u32[2]) tuple(new_count, s)
+    }
+
+    ENTRY test_computation {
+      c0 = u32[] constant(0)
+      c1 = u32[] constant(1)
+      r = u32[] replica-id()
+      a = u32[] add(c1, r)
+      init = u32[2] broadcast(a), dimensions={}
+      while_init = (u32[], u32[2]) tuple(c0, init)
+      while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
+      ROOT result = u32[2] get-tuple-element(while_result), index=1
+    })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
   Decomposed cp = FindComponents(module.get(), "cp");
@@ -332,6 +412,7 @@ TEST_F(DecomposerTest, ForwardPipeline2) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+
   Decomposed cp_back = FindComponents(module.get(), "cp_back");
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
 
