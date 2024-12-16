@@ -1046,6 +1046,35 @@ TEST_F(ClientServerTest,
   }
 }
 
+TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
+  const int num_nodes = 2;
+  StartService(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    auto client = GetClient(node_id);
+    TF_RETURN_IF_ERROR(client->Connect());
+    absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> alive_tasks =
+        client->GetAliveTasks({GetTask(0), GetTask(1)});
+    if (!alive_tasks.ok()) {
+      return alive_tasks.status();
+    }
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return absl::OkStatus();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
 TEST_F(ClientServerTest, GetKeyValueDir) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);

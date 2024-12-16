@@ -305,6 +305,29 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
                                request->source_task()));
 }
 
+void CoordinationServiceRpcHandler::GetAliveTasksAsync(
+    const tensorflow::GetAliveTasksRequest* request,
+    tensorflow::GetAliveTasksResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+
+  std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
+                                        request->tasks().end()};
+  service_->GetAliveTasksAsync(
+      request->requesting_task(), tasks,
+      [done = std::move(done), response](
+          const absl::Status& status,
+          const std::vector<tensorflow::CoordinatedTask>& alive_tasks) {
+        *response->mutable_alive_tasks() = {alive_tasks.begin(),
+                                            alive_tasks.end()};
+        done(status);
+      });
+}
+
 void CoordinationServiceRpcHandler::PollForErrorAsync(
     const tensorflow::PollForErrorRequest* request,
     tensorflow::PollForErrorResponse* response, StatusCallback done) {

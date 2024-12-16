@@ -138,6 +138,10 @@ class TestCoordinationClient : public CoordinationClient {
               (const CancelBarrierRequest*, CancelBarrierResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, GetAliveTasksAsync,
+              (const GetAliveTasksRequest*, GetAliveTasksResponse*,
+               StatusCallback),
+              (override));
   MOCK_METHOD(void, GetTaskStateAsync,
               (const GetTaskStateRequest*, GetTaskStateResponse*,
                StatusCallback),

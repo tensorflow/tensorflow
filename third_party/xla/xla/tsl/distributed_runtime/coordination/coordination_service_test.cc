@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -53,6 +54,7 @@ using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedPointwise;
 using ::testing::status::StatusIs;
 
 using tensorflow::CoordinatedJob;
@@ -111,7 +113,8 @@ class TestCoordinationClient : public CoordinationClient {
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
                      method##Response* response, StatusCallback done) \
-      override{done(absl::UnimplementedError(#method "Async"));       \
+      override {                                                      \
+    done(absl::UnimplementedError(#method "Async"));                  \
   }
 
   UNIMPLEMENTED(WaitForAllTasks);
@@ -123,6 +126,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);
+  UNIMPLEMENTED(GetAliveTasks);
 #undef UNIMPLEMENTED
 
 #define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
@@ -203,6 +207,7 @@ class CoordinationBarrierTest : public ::testing::Test {
     return coord_service_.get();
   }
   CoordinatedTask GetTask(int i) { return tasks_[i]; }
+  const std::vector<CoordinatedTask>& GetTasks() { return tasks_; }
 
   // TODO(b/286141652) Refactor this method into a util file.
   std::string GetTaskName(const CoordinatedTask& task) {
@@ -2407,4 +2412,129 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_Timeout) {
   EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kDeadlineExceeded));
 }
+
+using GetAliveTasksTest = CoordinationBarrierTest;
+
+TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
+  // This test has three tasks successfully call GetAliveTasks.
+  absl::BlockingCounter finished(3);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), GetTasks(), done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Task 2 is failed. Then, tasks
+  // 0 and 1 call GetAliveTasks on tasks [0, 1, 2], which should return [0, 1].
+  absl::BlockingCounter finished(2);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks,
+                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    finished.DecrementCount();
+  };
+  ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(2), absl::InternalError("failed")));
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Tasks 0 and 1 call
+  // GetAliveTasks on tasks [0, 1, 2]. Then, task 2 is failed, which should
+  // cause GetAliveTasks to return [0, 1].
+  absl::BlockingCounter finished(2);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks,
+                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(2), absl::InternalError("failed")));
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Tasks 0 and 1 call
+  // GetAliveTasks on tasks [0, 1], and concurrently tasks 1 and 2 call
+  // GetAliveTasks on tasks [1, 2].
+
+  // GetAliveTasks on tasks 0 and 1.
+  std::vector tasks_01{GetTask(0), GetTask(1)};
+  absl::BlockingCounter finished_01(2);
+  auto done_01 = [&](const absl::Status& status,
+                     const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_01));
+    finished_01.DecrementCount();
+  };
+
+  // GetAliveTasks on tasks 1 and 2.
+  std::vector tasks_12{GetTask(1), GetTask(2)};
+  absl::BlockingCounter finished_12(2);
+  auto done_12 = [&](const absl::Status& status,
+                     const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_12));
+    finished_12.DecrementCount();
+  };
+
+  // Run both GetAliveTasks concurrently.
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), tasks_01, done_01);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), tasks_12, done_12);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), tasks_01, done_01);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), tasks_12, done_12);
+  finished_01.Wait();
+  finished_12.Wait();
+}
+
+TEST_F(GetAliveTasksTest, CallingGetAliveTasksWithoutBeingAMember) {
+  // This test includes calls to GetAliveTasks where the requesting task is not
+  // included in the specified set of tasks. This should return an error.
+  absl::BlockingCounter finished(3);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>&) {
+    EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+    finished.DecrementCount();
+  };
+
+  CoordinationServiceInterface* s = GetCoordinationService();
+  s->GetAliveTasksAsync(GetTask(0), {GetTask(1), GetTask(2)}, done);
+  s->GetAliveTasksAsync(GetTask(1), {GetTask(0), GetTask(2)}, done);
+  s->GetAliveTasksAsync(GetTask(2), {GetTask(0), GetTask(1)}, done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, RedundantGetAliveTasks) {
+  // This test has three tasks call GetAliveTasks, with the twist that some
+  // tasks call GetAliveTasks multiple times.
+  absl::BlockingCounter finished(6);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), GetTasks(), done);
+  finished.Wait();
+}
+
 }  // namespace tsl

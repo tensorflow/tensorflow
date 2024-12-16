@@ -30,6 +30,8 @@ using tensorflow::CancelBarrierRequest;
 using tensorflow::CancelBarrierResponse;
 using tensorflow::DeleteKeyValueRequest;
 using tensorflow::DeleteKeyValueResponse;
+using tensorflow::GetAliveTasksRequest;
+using tensorflow::GetAliveTasksResponse;
 using tensorflow::GetKeyValueDirRequest;
 using tensorflow::GetKeyValueDirResponse;
 using tensorflow::GetKeyValueRequest;
@@ -127,6 +129,11 @@ class CoordinationClient {
   virtual void CancelBarrierAsync(const CancelBarrierRequest* request,
                                   CancelBarrierResponse* response,
                                   StatusCallback done) = 0;
+
+  virtual void GetAliveTasksAsync(const GetAliveTasksRequest* request,
+                                  GetAliveTasksResponse* response,
+                                  StatusCallback done) = 0;
+
   virtual void PollForErrorAsync(CallOptions* call_opts,
                                  const PollForErrorRequest* request,
                                  PollForErrorResponse* response,
