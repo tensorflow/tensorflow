@@ -21,8 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -44,6 +48,18 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 
 namespace xla::cpu {
+
+class TemporraryCpuElementalIrEmitter : public CpuElementalIrEmitter {
+ public:
+  using CpuElementalIrEmitter::CpuElementalIrEmitter;
+
+ private:
+  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer) override {
+    return absl::UnimplementedError("");
+  }
+};
 
 ElementalKernelEmitter::ElementalKernelEmitter(
     std::unique_ptr<HloInstruction> op_hlo)
@@ -60,8 +76,9 @@ ElementalKernelEmitter::EmitKernelSpec() {
 
   llvm::IRBuilder<> ir_builder(ctx);
 
+  std::string function_name = absl::StrCat(op_hlo_->name(), "_kernel");
   llvm::Function* function =
-      kernel_api_ir_builder_.EmitKernelFunction(*module, op_hlo_->name());
+      kernel_api_ir_builder_.EmitKernelFunction(*module, function_name);
 
   ir_builder.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
 
@@ -89,7 +106,8 @@ ElementalKernelEmitter::EmitKernelSpec() {
   }
 
   // TODO(willfroom): use real IR emitter here.
-  ElementalIrEmitterForTests elemental_ir_emitter(module.get(), &ir_builder);
+  TemporraryCpuElementalIrEmitter elemental_ir_emitter(module.get(),
+                                                       &ir_builder, true, true);
 
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(op_hlo_.get(),
@@ -109,7 +127,7 @@ ElementalKernelEmitter::EmitKernelSpec() {
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(ctx)));
 
   auto source = std::make_unique<LlvmIrKernelSource>(
-      context_, std::move(module), std::string(op_hlo_->name()));
+      context_, std::move(module), function_name);
 
   // TODO(willfroom): fill in buffer allocations and buffer uses when we support
   // creation from a real HLO instruction.

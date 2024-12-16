@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
@@ -96,35 +97,17 @@ KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
 // ElementalIrEmitter
 //===----------------------------------------------------------------------===//
 
-class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
+class IrEmitter2::ElementalIrEmitter : public CpuElementalIrEmitter {
  public:
   ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
                      const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
                      bool fast_min_max)
-      : xla::ElementalIrEmitter(
-            module, b,
-            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
+      : CpuElementalIrEmitter(module, b, true, fast_min_max),
         hlo_module_(hlo_module),
         nested_ir_emitter_(nested_ir_emitter),
         fast_min_max_(fast_min_max) {}
 
  protected:
-  absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs,
-                                         absl::string_view) override {
-    return xla::cpu::EmitAtan2(module(), *b(), prim_type, lhs, rhs);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                        llvm::Value* value) override {
-    return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
-                                       llvm::Value* value) override {
-    return xla::cpu::EmitErf(module(), *b(), prim_type, value);
-  }
-
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {

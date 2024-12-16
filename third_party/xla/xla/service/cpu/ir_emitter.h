@@ -79,7 +79,7 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string);
 // classes are part of the new runtime and will eventually replace IrEmitter.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
-  class CpuElementalIrEmitter;
+  class ElementalIrEmitter;
 
  public:
   using GeneratorForOperandIrArrays =

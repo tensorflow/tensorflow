@@ -16,6 +16,7 @@
 from collections.abc import Callable, Sequence
 import dataclasses
 import itertools
+import math
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -47,6 +48,10 @@ def create_input(
     np.random.shuffle(result)
 
   return result
+
+
+def np_erf(x):
+  return np.vectorize(math.erf, otypes=[x.dtype])(x)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,14 +96,12 @@ class ElementalHloOpcodeDef:
         ElementalHloOpcodeDef(HloOpcode.is_finite, np.isfinite, (-_inf, _inf)),
         ElementalHloOpcodeDef(HloOpcode.ceil, np.ceil, (-10.0, 10.0)),
         ElementalHloOpcodeDef(HloOpcode.floor, np.floor, (-5.0, 5.0)),
+        ElementalHloOpcodeDef(HloOpcode.tanh, np.tanh),
+        ElementalHloOpcodeDef(HloOpcode.atan2, np.arctan2),
+        ElementalHloOpcodeDef(HloOpcode.erf, np_erf),
+        ElementalHloOpcodeDef(HloOpcode.exponential_minus_one, np.expm1),
         # TODO(willfroom): Update to use better inputs for the following.
         ElementalHloOpcodeDef(HloOpcode.clamp, np.clip),
-        # TODO(willfroom): Enable the following once real ir emitter is
-        # implemented.
-        # ElementalHloOpcodeDef(HloOpcode.tanh, np.tanh),
-        # ElementalHloOpcodeDef(HloOpcode.atan2, np.arctan2),
-        # ElementalHloOpcodeDef(HloOpcode.erf, np.erf),
-        # ElementalHloOpcodeDef(HloOpcode.exponential_minus_one, np.expm1),
         # TODO(willfroom): Add complex ops.
         # ElementalHloOpcodeDef(HloOpcode.complex, np.complex),
         # ElementalHloOpcodeDef(HloOpcode.real, np.real),
@@ -122,15 +125,14 @@ class ElementalKernelRunnerTest(absltest.TestCase):
       dtype: np.dtype,
   ):
 
-    if (op_def.op == HloOpcode.log) and (dtype == np.float64):
-      self.skipTest("TODO(willfroom): Look into why this fails.")
-
     [op, np_op, input_ranges, decimal_precision] = op_def
 
     num_inputs = testlib_utilities.opcode_arity(op)
     self.assertIsNotNone(num_inputs)
 
-    np_inputs = [create_input(input_ranges, shape, dtype)] * num_inputs
+    np_inputs = [
+        create_input(input_ranges, shape, dtype) for _ in range(num_inputs)
+    ]
     input_literals = [create_literal(input_array) for input_array in np_inputs]
 
     expected_output = np_op(*np_inputs)
@@ -148,14 +150,21 @@ class ElementalKernelRunnerTest(absltest.TestCase):
     )
 
     emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
+    kernel_spec = emitter.emit_kernel_spec()
+    self.assertIsNotNone(kernel_spec)
 
-    runner = testlib_cpu.KernelRunner.create(emitter.emit_kernel_spec())
+    # kernel_spec is consumed by the runner, so we need to save the IR string
+    # before passing it to the runner.
+    ir_string = str(kernel_spec.kernel_source())
+
+    runner = testlib_cpu.KernelRunner.create(kernel_spec)
 
     runner.call(list(itertools.chain(input_literals, [output_literal])))
     np.testing.assert_array_almost_equal(
         np.asarray(output_literal),
         expected_output,
         decimal=decimal_precision,
+        err_msg=ir_string,
     )
 
 

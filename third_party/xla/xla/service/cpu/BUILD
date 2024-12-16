@@ -626,17 +626,12 @@ cc_library(
     srcs = ["elemental_math_emitter.cc"],
     hdrs = ["elemental_math_emitter.h"],
     deps = [
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -647,6 +642,7 @@ cc_library(
     deps = [
         ":backend_config_proto_cc",
         ":dot_op_emitter",
+        ":elemental_ir_emitter",
         ":elemental_math_emitter",
         ":ir_emitter",
         ":parallel_loop_emitter",
@@ -769,6 +765,7 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
+        ":elemental_ir_emitter",
         ":elemental_math_emitter",
         ":ir_emission_utils",
         ":ir_function",
@@ -2027,6 +2024,19 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "elemental_ir_emitter",
+    srcs = ["elemental_ir_emitter.cc"],
+    hdrs = ["elemental_ir_emitter.h"],
+    deps = [
+        ":elemental_math_emitter",
+        "//xla/service:elemental_ir_emitter",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 
