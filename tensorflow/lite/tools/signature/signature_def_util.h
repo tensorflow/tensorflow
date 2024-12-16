@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
 #define TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
 
+#include <map>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
