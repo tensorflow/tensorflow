@@ -114,7 +114,7 @@ TEST(PjRtCApiClientTest, PlatformId) {
   EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
 
-TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
+TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
@@ -130,8 +130,9 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
 
   PjRtCApiClient* c_client = dynamic_cast<PjRtCApiClient*>(client.get());
   ASSERT_NE(c_client, nullptr);
-  if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 35) {
-    // Empty executable should return an error status.
+  if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 58) {
+    EXPECT_TRUE(executable->FingerprintExecutable().ok());
+  } else if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 35) {
     EXPECT_FALSE(executable->FingerprintExecutable().ok());
   } else {
     // TODO(yeounoh): To be removed after 01/20/2024.

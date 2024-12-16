@@ -626,12 +626,14 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsReturnedFutureSupported() const override { return true; }
 
-  absl::StatusOr<std::optional<std::string>> Fingerprint() const;
-
   std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
+  absl::StatusOr<std::optional<std::string>> Fingerprint() const {
+    return fingerprint_;
+  }
+
   absl::StatusOr<std::string> FingerprintExecutable() const override {
-    return Unimplemented("Fingerprinting executable is not supported.");
+    return fingerprint_;
   }
 
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
@@ -697,6 +699,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.
   bool cheap_computation_;
+
+  std::string fingerprint_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

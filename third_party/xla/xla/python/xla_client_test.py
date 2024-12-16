@@ -325,7 +325,9 @@ def TestFactory(xla_backend,
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
       if (
-          self.backend.platform == "tpu" or self.backend.platform == "gpu"
+          self.backend.platform == "tpu"
+          or self.backend.platform == "gpu"
+          or self.backend.platform == "cpu"
       ) and not (cloud_tpu or pathways or pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
