@@ -1666,6 +1666,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "explicit_stream_annotation_async_wrapper",
+    srcs = ["explicit_stream_annotation_async_wrapper.cc"],
+    hdrs = ["explicit_stream_annotation_async_wrapper.h"],
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/runtime:thunk",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "explicit_stream_annotation_async_wrapper_test",
+    srcs = ["explicit_stream_annotation_async_wrapper_test.cc"],
+    deps = [
+        ":explicit_stream_annotation_async_wrapper",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "fusion_wrapper",
     srcs = ["fusion_wrapper.cc"],
     hdrs = ["fusion_wrapper.h"],

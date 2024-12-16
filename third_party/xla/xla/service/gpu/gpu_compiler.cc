@@ -201,6 +201,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/explicit_stream_annotation_async_wrapper.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
@@ -1228,7 +1229,11 @@ absl::Status RunPostFusionSimplificationPasses(
         gpu_target_config.device_description);
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
   }
-
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_stream_annotation()) {
+    pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
+  }
   return pipeline.Run(hlo_module).status();
 }
 

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <list>
@@ -25,13 +24,14 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -511,11 +511,19 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
   // concurrently (at which point it will respond with success to all callers),
   // or 10 seconds have elapsed (at which point it will respond with an error).
   const int callers = 4;
-  BlockingCounter counter(callers);
-  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
-                            char* buffer, TF_Status* status) -> int64_t {
-    counter.DecrementCount();
-    if (!counter.WaitFor(std::chrono::seconds(10))) {
+  absl::BlockingCounter counter(callers);
+  absl::Notification notification;
+  auto fetcher = [&counter, &notification](
+                     const string& filename, size_t offset, size_t n,
+                     char* buffer, TF_Status* status) -> int64_t {
+    if (counter.DecrementCount()) {
+      notification.Notify();
+      // This call to `Wait()` is not expected to block. Calling `Wait()` here
+      // allows us to satisfy `BlockingCounter`'s requirement: "When `Wait()`
+      // returns, it is legal to destroy the `BlockingCounter`.".
+      counter.Wait();
+    }
+    if (!notification.WaitForNotificationWithTimeout(absl::Seconds(10))) {
       // This avoids having the test time out, which is harder to debug.
       TF_SetStatus(status, TF_FAILED_PRECONDITION,
                    "desired concurrency not reached");
@@ -549,7 +557,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
   // Concurrent reads to the same file blocks should be de-duplicated.
   const size_t block_size = 16;
   int num_requests = 0;
-  Notification notification;
+  absl::Notification notification;
   auto fetcher = [&num_requests, &notification, block_size](
                      const string& filename, size_t offset, size_t n,
                      char* buffer, TF_Status* status) -> int64_t {
