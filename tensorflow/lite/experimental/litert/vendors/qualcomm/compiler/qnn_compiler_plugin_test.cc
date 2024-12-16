@@ -62,6 +62,7 @@ const auto kSupportedOps =
                     "simple_logical_and_op.tflite",
                     "simple_less_op.tflite",
                     "simple_greater_op.tflite",
+                    "simple_gelu_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,
