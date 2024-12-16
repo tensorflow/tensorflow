@@ -96,7 +96,7 @@ namespace xla {
 // and away from HloTestBase.
 class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
  public:
-  static const ErrorSpec kDefaultErrorSpec;
+  static constexpr ErrorSpec kDefaultErrorSpec{0.0001};
 
  protected:
   explicit HloRunnerAgnosticTestBase(
