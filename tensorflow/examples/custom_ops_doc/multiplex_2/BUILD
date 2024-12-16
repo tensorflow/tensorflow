@@ -41,6 +41,7 @@ cuda_py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         ":multiplex_2_op",

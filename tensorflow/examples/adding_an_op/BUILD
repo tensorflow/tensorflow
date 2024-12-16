@@ -136,6 +136,7 @@ py_strict_test(
     srcs_version = "PY3",
     tags = tf_cuda_tests_tags() + [
         "notap",
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         ":cuda_op",
