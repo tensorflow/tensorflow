@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project

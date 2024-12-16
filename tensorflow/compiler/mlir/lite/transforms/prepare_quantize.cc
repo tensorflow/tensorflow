@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/STLExtras.h"

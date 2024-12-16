@@ -24,6 +24,7 @@ limitations under the License.
 // dense operations. Decomposition allows TFLite to be compiled to these
 // dialects, such as TOSA.
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
