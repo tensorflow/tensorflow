@@ -38,7 +38,7 @@ namespace {
 namespace m = xla::testing::opcode_matchers;
 
 // Note: The pass only processes modules that are already scheduled. If the test
-// does not work as epxected, make sure to check if "is_scheduled=true" is added
+// does not work as expected, make sure to check if "is_scheduled=true" is added
 // to the HLO module string.
 class ConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {

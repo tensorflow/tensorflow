@@ -2005,7 +2005,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
-          // specified explicitily.
+          // specified explicitly.
           if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
             TokenError(
                 StrFormat("Expect async wrapped opcode to be %s, but got %s",
@@ -5136,7 +5136,7 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kOriginalValue: {
-        // By the time this attribute is added, the instruciton shape should
+        // By the time this attribute is added, the instruction shape should
         // have been inferred.
         if (!shape) {
           return TokenError("expects instruction shape");
