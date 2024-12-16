@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <numeric>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -61,7 +60,7 @@ class LessThanComparator : public FunctionLibrary {
   }
 
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
-                                        std::string_view name) final {
+                                        absl::string_view name) final {
     DCHECK_EQ(name, "less_than");
     return reinterpret_cast<void*>(LessThanWrapper);
   }

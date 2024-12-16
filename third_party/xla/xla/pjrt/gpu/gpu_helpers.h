@@ -65,7 +65,7 @@ struct TopologySizes {
   // "<num_slices> x <num_hosts_per_slice> x <num_devices_per_host>"
   // and returns the parsed components on success.
   static absl::StatusOr<TopologySizes> FromString(
-      std::string_view topology_string);
+      absl::string_view topology_string);
 };
 
 }  // namespace xla

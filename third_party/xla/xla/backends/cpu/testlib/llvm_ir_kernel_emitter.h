@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -45,7 +44,7 @@ class LlvmIrKernelEmitter : public KernelEmitter {
     BufferUse::MemoryAccess memory_access;
   };
 
-  LlvmIrKernelEmitter(std::string_view llvm_ir, std::string_view kernel_name,
+  LlvmIrKernelEmitter(absl::string_view llvm_ir, absl::string_view kernel_name,
                       se::ThreadDim thread_dim,
                       absl::Span<const KernelArg> args);
 

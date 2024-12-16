@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
 #include <memory>
-#include <string_view>
 
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
@@ -29,7 +28,7 @@ limitations under the License.
 namespace xla::cpu {
 
 TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
-  static constexpr std::string_view kLlvmIr = R"(
+  static constexpr absl::string_view kLlvmIr = R"(
     define ptr @noop(ptr noundef %0) {
       ret ptr null
     }
