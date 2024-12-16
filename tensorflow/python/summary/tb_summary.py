@@ -372,3 +372,52 @@ def text(name, data, step=None, description=None):
   except ImportError as exc:
     raise TBNotInstalledError("tf.summary.text") from exc
   return text_v2(name=name, data=data, step=step, description=description)
+
+
+@tf_export("summary.mesh", v1=[])
+def mesh(
+    name,
+    vertices,
+    faces=None,
+    colors=None,
+    config_dict=None,
+    step=None,
+    description=None,
+):
+  """Write a mesh summary.
+
+  Arguments:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    vertices: A `Tensor` of shape `[k, 3]` representing the vertices of the
+      mesh.
+    faces: A `Tensor` of shape `[f, 3]` representing the faces of the mesh.
+    colors: A `Tensor` of shape `[k, 3]` representing the colors of the mesh.
+    config_dict: A `dict` of configuration options for the mesh.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
+    description: Optional long-form description for this summary, as a constant
+      `str`. Markdown is supported. Defaults to empty.
+
+  Returns:
+    True on success, or false if no summary was emitted because no default
+    summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
+  """
+  try:
+    from google3.third_party.tensorboard.summary.v2 import mesh as mesh_v2  # pylint: disable=g-import-not-at-top, g-importing-member
+  except ImportError as exc:
+    raise TBNotInstalledError("tf.summary.mesh") from exc
+  return mesh_v2(
+      name=name,
+      vertices=vertices,
+      faces=faces,
+      colors=colors,
+      config_dict=config_dict,
+      step=step,
+      description=description,
+  )
