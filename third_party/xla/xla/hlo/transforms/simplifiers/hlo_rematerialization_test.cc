@@ -83,7 +83,7 @@ class AsyncRematerializationTest : public RematerializationTestBase {
 };
 
 TEST_F(AsyncRematerializationTest, AsyncComputation) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule async, is_scheduled=true
 
 %offload_computation {
