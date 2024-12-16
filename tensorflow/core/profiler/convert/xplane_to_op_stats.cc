@@ -80,6 +80,22 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   return result;
 }
 
+PerfEnv MakePerfEnvForTpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws, bool has_merged_vmem,
+                          bool has_megacore) {
+  PerfEnv result = MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+  result.set_has_cmem(peak_bws[MemBwType::MEM_BW_TYPE_CMEM_RD] > 0 ||
+                      peak_bws[MemBwType::MEM_BW_TYPE_CMEM_WR] > 0);
+  result.set_has_merged_vmem(has_merged_vmem);
+  result.set_has_megacore(has_megacore);
+  return result;
+}
+
+PerfEnv MakePerfEnvForGpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws) {
+  return MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+}
+
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
@@ -93,10 +109,10 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         tsl::profiler::UniToGiga(GetSharedMemoryBandwidthPerSM(cap));
     // Note that treat SRAM_RD and SRAM_WR as the same. So in future, we could
     // only use one for shared memory / L1 cache, one for another like L2.
-    return MakePerfEnv(peak_tera_flops_per_second,
-                       {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
-                        /*SRAM_RD=*/shm_giga_bytes_per_second,
-                        /*SRAM_WR=*/shm_giga_bytes_per_second});
+    return MakePerfEnvForGpu(peak_tera_flops_per_second,
+                             {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
+                              /*SRAM_RD=*/shm_giga_bytes_per_second,
+                              /*SRAM_WR=*/shm_giga_bytes_per_second});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     std::optional<XStatVisitor> peak_tera_flops_per_second =
@@ -147,14 +163,24 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         vmem_wr_bw_giga_bytes_per_second.has_value()
             ? vmem_wr_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    return MakePerfEnv(peak_tera_flops_per_second_val,
-                       {/*HBM_RW=*/peak_hbm_bw_giga_bytes_per_second_val,
-                        /*SRAM_RD=*/peak_sram_rd_bw_giga_bytes_per_second_val,
-                        /*SRAM_WR=*/peak_sram_wr_bw_giga_bytes_per_second_val,
-                        /**CMEM_RD=*/cmem_rd_bw_giga_bytes_per_second_val,
-                        /**CMEM_WR=*/cmem_wr_bw_giga_bytes_per_second_val,
-                        /**VMEM_RD=*/vmem_rd_bw_giga_bytes_per_second_val,
-                        /**VMEM_WR=*/vmem_wr_bw_giga_bytes_per_second_val});
+    std::optional<XStatVisitor> has_megacore =
+        visitor.GetStat(StatType::kDevHasMegacore);
+    bool has_megacore_val =
+        has_megacore.has_value() ? has_megacore->BoolValue() : false;
+    std::optional<XStatVisitor> has_merged_vmem =
+        visitor.GetStat(StatType::kDevHasMergedVmem);
+    bool has_merged_vmem_val =
+        has_merged_vmem.has_value() ? has_merged_vmem->BoolValue() : false;
+    return MakePerfEnvForTpu(
+        peak_tera_flops_per_second_val,
+        {/*HBM_RW=*/peak_hbm_bw_giga_bytes_per_second_val,
+         /*SRAM_RD=*/peak_sram_rd_bw_giga_bytes_per_second_val,
+         /*SRAM_WR=*/peak_sram_wr_bw_giga_bytes_per_second_val,
+         /**CMEM_RD=*/cmem_rd_bw_giga_bytes_per_second_val,
+         /**CMEM_WR=*/cmem_wr_bw_giga_bytes_per_second_val,
+         /**VMEM_RD=*/vmem_rd_bw_giga_bytes_per_second_val,
+         /**VMEM_WR=*/vmem_wr_bw_giga_bytes_per_second_val},
+        has_merged_vmem_val, has_megacore_val);
   }
 }
 
