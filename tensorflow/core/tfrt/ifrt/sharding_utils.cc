@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 #include "tsl/platform/errors.h"
@@ -66,6 +65,15 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+
+struct IndexDomainLexicographicalComparator {
+  bool operator()(const xla::ifrt::IndexDomain& a,
+                  const xla::ifrt::IndexDomain& b) const {
+    return std::lexicographical_compare(
+        a.origin().elements().begin(), a.origin().elements().end(),
+        b.origin().elements().begin(), b.origin().elements().end());
+  }
+};
 
 // Shard the given `input_tensor` into equal shapes of slices.
 //
@@ -286,14 +294,7 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
   // Verify that each `IndexDomain` appear the same `num_replica` times. Since
   // shapes are the same for all `IndexDomain`, this also implies each `origin`
   // appear `num_replica` times.
-  struct IndexDomainLexicographicalComparator {
-    bool operator()(const xla::ifrt::IndexDomain& a,
-                    const xla::ifrt::IndexDomain& b) const {
-      return std::lexicographical_compare(
-          a.origin().elements().begin(), a.origin().elements().end(),
-          b.origin().elements().begin(), b.origin().elements().end());
-    }
-  };
+
   absl::btree_map<xla::ifrt::IndexDomain, int,
                   IndexDomainLexicographicalComparator>
       index_domain_counts;
@@ -543,17 +544,9 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   TF_ASSIGN_OR_RETURN(auto index_domains,
                       ifrt_sharding->IndexDomains(ToIfrtShape(tensor_shape)));
 
-  TF_ASSIGN_OR_RETURN(int index_domain_replicas,
-                      VerifyIndexDomainsAndGetReplicas(
-                          absl::MakeSpan(index_domains), tensor_shape));
-
-  if (index_domain_replicas != 1) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Subgroup replication is not supported at output. Number "
-        "of unique index main ",
-        index_domain_replicas, " is not equal to number of index domains",
-        index_domains.size()));
-  }
+  TF_RETURN_IF_ERROR(VerifyIndexDomainsAndGetReplicas(
+                         absl::MakeSpan(index_domains), tensor_shape)
+                         .status());
 
   TF_ASSIGN_OR_RETURN(
       std::vector<tsl::RCReference<xla::ifrt::Array>> disassembled_array,
@@ -586,11 +579,6 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     num_slices *= dim_num_concats;
     num_concats.push_back(dim_num_concats);
   }
-  if (num_slices != index_domains.size()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Expect number of slices is ", index_domains.size(),
-                     " but got ", num_slices));
-  }
 
   VLOG(2) << "Index domains: ";
   for (const auto& index_domain : index_domains) {
@@ -602,22 +590,16 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     xla::ifrt::IndexDomain index_domain;
     tsl::RCReference<xla::ifrt::Array> array;
   };
-  std::vector<IndexDomainDeviceArray> index_domain_device_arrays;
-  index_domain_device_arrays.reserve(index_domains.size());
+  // `index_domains` could have duplicate index when `replicate_on_last_tile_dim
+  // is enabled. So, we use the btreemap to remove duplicates and sort the index
+  // domains lexicographically.
+  absl::btree_map<xla::ifrt::IndexDomain, tsl::RCReference<xla::ifrt::Array>,
+                  IndexDomainLexicographicalComparator>
+      index_domain_device_arrays;
   for (int i = 0; i < index_domains.size(); ++i) {
-    index_domain_device_arrays.push_back(
+    index_domain_device_arrays.insert(
         {index_domains[i], disassembled_array[i]});
   }
-
-  std::sort(
-      index_domain_device_arrays.begin(), index_domain_device_arrays.end(),
-      [](const IndexDomainDeviceArray& a, const IndexDomainDeviceArray& b) {
-        return std::lexicographical_compare(
-            a.index_domain.origin().elements().begin(),
-            a.index_domain.origin().elements().end(),
-            b.index_domain.origin().elements().begin(),
-            b.index_domain.origin().elements().end());
-      });
 
   std::vector<xla::ifrt::Future<>> arrays_copy_status;
   std::vector<tensorflow::Tensor> input_tensors;
