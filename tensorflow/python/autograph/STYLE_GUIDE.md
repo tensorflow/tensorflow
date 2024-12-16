@@ -17,8 +17,8 @@ Naming conventions:
 
 ## AutoGraph Style
 
-Below are AutoGraph-specific conventions. In the event of conflict,
-it supercedes all previous conventions.
+Below are AutoGraph-specific conventions. In the event of conflict, it
+supersedes all previous conventions.
 
 1. __Types in docstrings.__ Use [PEP 484][https://www.python.org/dev/peps/pep-0484/]
     notation to describe the type for args, return values and attributes.
