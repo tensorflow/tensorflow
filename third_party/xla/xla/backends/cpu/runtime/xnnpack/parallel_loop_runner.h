@@ -51,13 +51,37 @@ class ParallelLoopRunner {
   static tsl::AsyncValueRef<tsl::Chain> TakeDoneEvent(
       ParallelLoopRunner&& runner);
 
-  using Task1D = std::function<void(size_t offset, size_t extent)>;
+  using Task1DTile1D = std::function<void(size_t offset, size_t extent)>;
+
+  using Task2DTile1D =
+      std::function<void(size_t offset_i, size_t offset_j, size_t extent_j)>;
+
+  using Task3DTile2D =
+      std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
+                         size_t extent_j, size_t extent_k)>;
 
   // This function implements a parallel version of a following loop:
   //
   //   for (size_t i = 0; i < range; i += tile)
   //     task(i, std::min(range - i, tile));
-  void Parallelize(size_t range, size_t tile, Task1D task);
+  void Parallelize(size_t range, size_t tile, Task1DTile1D task);
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range_i; i++)
+  //     for (size_t j = 0; j < range_j; j += tile_j)
+  //       task(i, j, min(range_j - j, tile_j));
+  void Parallelize(size_t range_i, size_t range_j, size_t tile_j,
+                   Task2DTile1D task);
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range_i; i++)
+  //     for (size_t j = 0; j < range_j; j += tile_j)
+  //       for (size_t k = 0; k < range_k; k += tile_k)
+  //         task(i, j, k, min(range_j - j, tile_j), min(range_k - k, tile_k));
+  void Parallelize(size_t range_i, size_t range_j, size_t range_k,
+                   size_t tile_j, size_t tile_k, Task3DTile2D task);
 
   tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
   Eigen::ThreadPoolDevice* device() const { return device_; }
@@ -65,6 +89,26 @@ class ParallelLoopRunner {
   size_t num_threads() const;
 
  private:
+  using ParallelTask = std::function<void(size_t task_index)>;
+
+  // Schedules tasks in the [start_index, end_index) range into the Eigen thread
+  // pool using recursive work splitting. Executes the `start_index` task in the
+  // caller thread.
+  void Parallelize(tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
+                   size_t start_index, size_t end_index,
+                   ParallelTask parallel_task);
+
+  // Schedules `task` as the AndThen callback of the `done_event_`. Updates
+  // `done_event_` to the new completion event.
+  template <typename Task>
+  void ScheduleOne(Task&& task);
+
+  // Schedules `num_tasks` invocation of the `parallel_task` into the Eigen
+  // thread pool when the `done_event_` becomes available. Updates `done_event_`
+  // to the new completion event.
+  template <typename ParallelTask>
+  void ScheduleAll(size_t num_tasks, ParallelTask&& parallel_task);
+
   // Async value that signals completion of the last scheduled parallel loop.
   tsl::AsyncValueRef<tsl::Chain> done_event_;
 
