@@ -79,10 +79,14 @@ using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
+using mlir::OpResult;
+using mlir::OpRewritePattern;
+using mlir::SmallVector;
 using mlir::success;
 using mlir::Type;
 using mlir::TypedValue;
 using mlir::TypeRange;
+using mlir::UnrealizedConversionCastOp;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -97,7 +101,7 @@ bool IsAMD(const se::DeviceDescription& device_description) {
 
 Value GetDestinationBuffer(Value dest) {
   while (dest.getDefiningOp()) {
-    int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
+    int result_number = mlir::cast<OpResult>(dest).getResultNumber();
     if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
       dest = insert.getDest();
     } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
@@ -106,7 +110,7 @@ Value GetDestinationBuffer(Value dest) {
           result_number);
     } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
       dest = scf_for.getInitArgs()[result_number];
-    } else if (dest.getDefiningOp<mlir::UnrealizedConversionCastOp>() ||
+    } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
                dest.getDefiningOp<AllocateSharedOp>()) {
       break;
     } else if (auto transfer_write =
@@ -127,7 +131,7 @@ bool IsSupportedTransfer(Op op) {
          op.getPermutationMap().isMinorIdentity();
 }
 
-struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
+struct RewriteFunctionSignatures : OpRewritePattern<mlir::func::FuncOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -157,11 +161,11 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
       rewriter.replaceOpWithNewOp<mlir::func::ReturnOp>(terminator);
     }
 
-    llvm::SmallVector<Type> new_operands(op.getFunctionType().getInputs());
+    SmallVector<Type> new_operands(op.getFunctionType().getInputs());
     for (auto&& [index, operand] : llvm::enumerate(new_operands)) {
       if (is_tensor(operand)) {
         rewriter.setInsertionPointToStart(&op.getBody().front());
-        auto cast = rewriter.create<mlir::UnrealizedConversionCastOp>(
+        auto cast = rewriter.create<UnrealizedConversionCastOp>(
             op.getLoc(), operand, op.getArgument(index));
         op.getArgument(index).replaceAllUsesExcept(cast.getResult(0), cast);
         operand = mlir::LLVM::LLVMPointerType::get(op.getContext());
@@ -175,6 +179,98 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
     }
 
     return success();
+  }
+};
+
+Value GetPtr(Value value) {
+  if (!mlir::isa<mlir::RankedTensorType>(value.getType())) {
+    return nullptr;
+  }
+  if (auto cast = value.getDefiningOp<UnrealizedConversionCastOp>()) {
+    if (cast.getNumOperands() == 1 && cast.getNumResults() == 1 &&
+        mlir::isa<mlir::LLVM::LLVMPointerType>(cast.getOperand(0).getType())) {
+      return cast.getOperand(0);
+    }
+  }
+  return nullptr;
+}
+
+struct RewriteFor : public OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      scf::ForOp op, mlir::PatternRewriter& rewriter) const override {
+    llvm::SmallBitVector inits_to_remove(op.getNumRegionIterArgs(), false);
+    SmallVector<Value> new_inits;
+    new_inits.reserve(op.getNumResults());
+    SmallVector<Value> ptrs;
+    ptrs.reserve(op.getNumRegionIterArgs());
+    for (auto [index, init] : llvm::enumerate(op.getInitArgs())) {
+      Value ptr = GetPtr(init);
+      if (ptr) {
+        ptrs.push_back(ptr);
+        inits_to_remove.set(index);
+        continue;
+      }
+      new_inits.push_back(init);
+    }
+    if (inits_to_remove.none()) {
+      return rewriter.notifyMatchFailure(op, "no args to remove");
+    }
+    // Create new ForOp with updated init args. The empty body builder is needed
+    // to avoid implicit construction of scf.yield in the body block.
+    Location loc = op.getLoc();
+    auto new_for_op = rewriter.create<scf::ForOp>(
+        loc, op.getLowerBound(), op.getUpperBound(), op.getStep(), new_inits,
+        [](OpBuilder&, Location, Value, ValueRange) {});
+    new_for_op->setAttrs(op->getAttrs());
+
+    // Collect a mapping for block arguments and results. If the init is
+    // removed, we can use the init of the original scf.for for replacement,
+    // since it was provided by the `builtin.unrealized_conversion_cast` cast to
+    // the correct type.
+    mlir::Block* new_body = new_for_op.getBody();
+    mlir::Block* old_body = op.getBody();
+    rewriter.setInsertionPoint(new_body, new_body->begin());
+
+    SmallVector<Value, 4> bb_args_mapping;
+    bb_args_mapping.reserve(old_body->getNumArguments());
+    bb_args_mapping.push_back(new_for_op.getInductionVar());
+    SmallVector<Value, 4> results_replacement;
+    results_replacement.reserve(old_body->getNumArguments());
+    int num_removed_args = 0;
+    for (auto [index, arg] : llvm::enumerate(op.getRegionIterArgs())) {
+      if (!inits_to_remove.test(index)) {
+        bb_args_mapping.push_back(
+            new_for_op.getRegionIterArg(index - num_removed_args));
+        results_replacement.push_back(
+            new_for_op.getResult(index - num_removed_args));
+        continue;
+      }
+      bb_args_mapping.push_back(op.getInitArgs()[index]);
+      results_replacement.push_back(op.getInitArgs()[index]);
+      ++num_removed_args;
+    }
+
+    // Move the body of the old ForOp to the new one.
+    rewriter.mergeBlocks(old_body, new_body, bb_args_mapping);
+
+    // Update the terminator.
+    auto new_terminator = mlir::cast<scf::YieldOp>(new_body->getTerminator());
+    SmallVector<Value> new_yielded_values;
+    new_yielded_values.reserve(new_terminator->getNumOperands());
+    rewriter.setInsertionPoint(new_terminator);
+    for (auto [index, yielded_value] :
+         llvm::enumerate(new_terminator.getResults())) {
+      if (inits_to_remove.test(index)) continue;
+      new_yielded_values.push_back(yielded_value);
+    }
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(new_terminator,
+                                              new_yielded_values);
+
+    // Replace the op.
+    rewriter.replaceOp(op, results_replacement);
+    return mlir::success();
   }
 };
 
@@ -206,7 +302,7 @@ mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
   }
   auto ptr = mlir::LLVM::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
-      b.create<mlir::UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
+      b.create<UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
   auto gep = b.create<mlir::LLVM::GEPOp>(ptr, llvm_element_type, tensor_ptr,
@@ -220,7 +316,7 @@ mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
   return CreateGep(tensor, GetLinearIndex(indices, b), b);
 }
 
-struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
+struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -249,8 +345,8 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
           b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
     }
 
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getType(), load);
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
+                                                            load);
     return success();
   }
 };
@@ -271,8 +367,7 @@ Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
   return result;
 }
 
-struct RewriteTransferRead
-    : mlir::OpRewritePattern<mlir::vector::TransferReadOp> {
+struct RewriteTransferRead : OpRewritePattern<mlir::vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -312,13 +407,13 @@ struct RewriteTransferRead
       loaded = PermutePairsInVector(loaded, b);
     }
 
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getType(), loaded);
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
+                                                            loaded);
     return success();
   }
 };
 
-struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
+struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -351,7 +446,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       Type ty = b.getI8Type();
       Type tensor_ty = tensor_dest.getType().clone(ty);
       auto tensor_dest_i8 =
-          b.create<mlir::UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
+          b.create<UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
               .getResult(0);
       scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
 
@@ -377,8 +472,8 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
               body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
       Value new_value = body_builder.create<mlir::arith::SelectOp>(
           is_low_nibble, low_updated, high_updated);
-      body_builder.create<mlir::scf::YieldOp>(new_value);
-      Value casted_result = b.create<mlir::UnrealizedConversionCastOp>(
+      body_builder.create<scf::YieldOp>(new_value);
+      Value casted_result = b.create<UnrealizedConversionCastOp>(
                                  tensor_dest.getType(), atomic_rmw.getResult())
                                 .getResult(0);
       op.replaceAllUsesWith(casted_result);
@@ -387,7 +482,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       mlir::LLVMTypeConverter converter(getContext());
       auto llvm_type = converter.convertType(scalar_value.getType());
       scalar_value =
-          b.create<mlir::UnrealizedConversionCastOp>(llvm_type, scalar_value)
+          b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
               .getResult(0);
       b.create<mlir::LLVM::StoreOp>(scalar_value, gep);
       op.replaceAllUsesWith(op.getDest());
@@ -398,8 +493,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
   }
 };
 
-struct RewriteTransferWrite
-    : mlir::OpRewritePattern<mlir::vector::TransferWriteOp> {
+struct RewriteTransferWrite : OpRewritePattern<mlir::vector::TransferWriteOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -430,9 +524,8 @@ struct RewriteTransferWrite
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
-    vector_value =
-        b.create<mlir::UnrealizedConversionCastOp>(llvm_type, vector_value)
-            .getResult(0);
+    vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
+                       .getResult(0);
     b.create<mlir::LLVM::StoreOp>(vector_value, gep);
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
@@ -440,7 +533,7 @@ struct RewriteTransferWrite
   }
 };
 
-struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
+struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -456,7 +549,7 @@ struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
         op.setOperand(
             index,
             rewriter
-                .create<mlir::UnrealizedConversionCastOp>(
+                .create<UnrealizedConversionCastOp>(
                     op.getLoc(),
                     mlir::LLVM::LLVMPointerType::get(op.getContext()), arg)
                 .getResult(0));
@@ -515,7 +608,7 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
       addr_space);
 }
 
-struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
+struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -531,7 +624,7 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
 
     rewriter.setInsertionPoint(op);
     auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
         rewriter
             .create<mlir::LLVM::AddrSpaceCastOp>(
@@ -542,8 +635,7 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
   }
 };
 
-struct RewriteNonScalarConstants
-    : mlir::OpRewritePattern<mlir::arith::ConstantOp> {
+struct RewriteNonScalarConstants : OpRewritePattern<mlir::arith::ConstantOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
@@ -568,7 +660,7 @@ struct RewriteNonScalarConstants
 
     rewriter.setInsertionPoint(op);
     auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
         rewriter
             .create<mlir::LLVM::AddrSpaceCastOp>(
@@ -579,7 +671,7 @@ struct RewriteNonScalarConstants
   }
 };
 
-struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
+struct RewriteSyncThreads : OpRewritePattern<SyncThreadsOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -592,8 +684,7 @@ struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
 
 // TODO(jreiffers): Generalize this to support index switches with some used
 // results and upstream it as a canonicalization pattern.
-struct RemoveUnusedIndexSwitchResults
-    : mlir::OpRewritePattern<scf::IndexSwitchOp> {
+struct RemoveUnusedIndexSwitchResults : OpRewritePattern<scf::IndexSwitchOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
@@ -639,20 +730,19 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
   Type ptr_ty = mlir::LLVM::LLVMPointerType::get(b.getContext());
 
   Value llvm_value =
-      b.create<mlir::UnrealizedConversionCastOp>(llvm_input_ty, value)
-          .getResult(0);
+      b.create<UnrealizedConversionCastOp>(llvm_input_ty, value).getResult(0);
   Value alloca = b.create<ml::AllocaOp>(
       ptr_ty, llvm_input_ty, b.create<ml::ConstantOp>(b.getI32Type(), 1));
   b.create<ml::StoreOp>(llvm_value, alloca);
   auto result = b.create<ml::LoadOp>(llvm_result_ty, alloca).getResult();
-  return b.create<mlir::UnrealizedConversionCastOp>(ty, result).getResult(0);
+  return b.create<UnrealizedConversionCastOp>(ty, result).getResult(0);
 };
 
-class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
+class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
  public:
   RewriteAtomicRMW(mlir::MLIRContext* context,
                    const se::DeviceDescription* device_description)
-      : mlir::OpRewritePattern<AtomicRMWOp>(context),
+      : OpRewritePattern<AtomicRMWOp>(context),
         device_description_(device_description) {}
 
   LogicalResult matchAndRewrite(
@@ -1081,7 +1171,8 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
     mlir::RewritePatternSet function_patterns(mlir_context);
     function_patterns.add<RewriteFunctionSignatures, RewriteCall,
-                          RemoveUnusedIndexSwitchResults>(mlir_context);
+                          RemoveUnusedIndexSwitchResults, RewriteFor>(
+        mlir_context);
     scf::ForOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     scf::IfOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
@@ -1095,8 +1186,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
         addr = gep.getBase();
       }
-      while (auto cast =
-                 addr.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+      while (auto cast = addr.getDefiningOp<UnrealizedConversionCastOp>()) {
         addr = cast.getOperand(0);
       }
       if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||

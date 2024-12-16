@@ -495,7 +495,7 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
                    .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
-    return mlir::failure();
+    return mlir::success();
   }
 };
 

@@ -732,3 +732,35 @@ func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
 // CHECK: llvm.mlir.global private constant
 // CHECK-SAME: dense<[18, 48]>
 // CHECK-LABEL: @int4_constant
+
+// -----
+
+func.func @for_op(%arg0: tensor<500xf32>) -> f32 {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+
+  %cst = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : vector<4xf32>
+  %for:2 = scf.for %i = %c0 to %c2 step %c1
+      iter_args(%cst_ = %cst, %arg_ = %arg0)
+        -> (vector<4xf32>, tensor<500xf32>) {
+    %nested_for:2 = scf.for %j = %c0 to %c2 step %c1
+        iter_args(%cst__ = %cst_, %arg__ = %arg_)
+          -> (vector<4xf32>, tensor<500xf32>) {
+      %index = arith.addi %i, %j : index
+      %tensor_elem = tensor.extract %arg__[%index] : tensor<500xf32>
+      %vector_elem = vector.extract %cst__[%index] : f32 from vector<4xf32>
+      %sum = arith.addf %tensor_elem, %vector_elem : f32
+      %v_update = vector.insert %sum, %cst__[%index] : f32 into vector<4xf32>
+      %t_update = tensor.insert %sum into %arg__[%index] : tensor<500xf32>
+      scf.yield %v_update, %t_update : vector<4xf32>, tensor<500xf32>
+    }
+    scf.yield %nested_for#0, %nested_for#1 : vector<4xf32>, tensor<500xf32>
+  }
+  %result = tensor.extract %for#1[%c0] : tensor<500xf32>
+  func.return %result : f32
+}
+
+// CHECK-LABEL: @for_op
+// CHECK:  scf.for {{.*}} -> (vector<4xf32>) {
+// CHECK-NEXT:  scf.for {{.*}} -> (vector<4xf32>) {
