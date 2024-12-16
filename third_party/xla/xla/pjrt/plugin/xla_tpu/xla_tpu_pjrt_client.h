@@ -17,14 +17,20 @@ limitations under the License.
 #define XLA_PJRT_PLUGIN_XLA_TPU_XLA_TPU_PJRT_CLIENT_H_
 
 #include <memory>
+#include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 
 namespace xla {
 
-// Public entry point to get an XLA:TPU PjRtClient
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtTpuClient();
+// Public entry point to get an XLA:TPU PjRtClient with default options
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtTpuClient(
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 
 }  // namespace xla
 
