@@ -1416,9 +1416,8 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
       TF_RETURN_IF_ERROR(AutotunerUtil::AddResult(key, res, config_).status());
     }
   } else if (!config_.IsDeviceless()) {
-    TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
+    TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                         AutotunerCompileUtil::Create(config_, debug_options));
-    TF_RET_CHECK(opt_compile_util.has_value());
     std::string correctness_check_str = config_.should_check_correctness()
                                             ? "(with correctness check)"
                                             : "(without correctness check)";
@@ -1450,7 +1449,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
         gemm_config_sets.size(), total_fusion_count, module->name(),
         correctness_check_str);
     TF_ASSIGN_OR_RETURN(const AutotuneCacheKeySet added_keys,
-                        autotuner.Autotune(*opt_compile_util, gemm_config_sets,
+                        autotuner.Autotune(compile_util, gemm_config_sets,
                                            std::move(fusion_count_map)));
     VLOG(1) << "Done autotuning.";
 

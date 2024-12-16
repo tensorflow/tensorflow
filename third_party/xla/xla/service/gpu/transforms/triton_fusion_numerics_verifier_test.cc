@@ -82,11 +82,10 @@ class TritonFusionNumericsVerifierTest
   }
 
   AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
-    auto opt_compile_util_or =
+    auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
-    TF_EXPECT_OK(opt_compile_util_or);
-    EXPECT_TRUE(opt_compile_util_or->has_value());
-    return std::move(opt_compile_util_or->value());
+    TF_EXPECT_OK(compile_util_or);
+    return std::move(compile_util_or).value();
   }
 };
 
