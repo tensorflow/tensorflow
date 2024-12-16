@@ -254,12 +254,12 @@ class HloComputation {
                                    std::unique_ptr<HloInstruction> instruction);
 
   // Remove the param_no'th parameter from the computation.
-  // Note this is only applicatable to the computation for the fusion
+  // Note this is only applicable to the computation for the fusion
   // instruction.
   absl::Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
-  // Note this is only applicatable to the computation for the fusion
+  // Note this is only applicable to the computation for the fusion
   // instruction.
   absl::Status RemoveUnusedParametersFromFusedComputation();
 
@@ -444,29 +444,32 @@ class HloComputation {
   tsl::gtl::iterator_range<xla::HloInstructionUnwrappingConstIterator>
   instructions() const {
     const int end = instructions_.size();
-    return {HloInstructionUnwrappingConstIterator(
-                HloInstructionConstIterator(&instructions_, 0, end)),
-            HloInstructionUnwrappingConstIterator(
-                HloInstructionConstIterator(&instructions_, end, end))};
+    return {HloInstructionUnwrappingConstIterator(HloInstructionConstIterator(
+                &instructions_, 0, end, LiveSequenceNumber())),
+            HloInstructionUnwrappingConstIterator(HloInstructionConstIterator(
+                &instructions_, end, end, LiveSequenceNumber()))};
   }
   tsl::gtl::iterator_range<xla::HloInstructionUnwrappingIterator>
   instructions() {
     const int end = instructions_.size();
-    return {HloInstructionUnwrappingIterator(
-                HloInstructionIterator(&instructions_, 0, end)),
-            HloInstructionUnwrappingIterator(
-                HloInstructionIterator(&instructions_, end, end))};
+    return {HloInstructionUnwrappingIterator(HloInstructionIterator(
+                &instructions_, 0, end, LiveSequenceNumber())),
+            HloInstructionUnwrappingIterator(HloInstructionIterator(
+                &instructions_, end, end, LiveSequenceNumber()))};
   }
   tsl::gtl::iterator_range<HloInstructionIterator> instructions_with_info() {
     const int end = instructions_.size();
-    return {HloInstructionIterator(&instructions_, 0, end),
-            HloInstructionIterator(&instructions_, end, end)};
+    return {
+        HloInstructionIterator(&instructions_, 0, end, LiveSequenceNumber()),
+        HloInstructionIterator(&instructions_, end, end, LiveSequenceNumber())};
   }
   tsl::gtl::iterator_range<HloInstructionConstIterator> instructions_with_info()
       const {
     const int end = instructions_.size();
-    return {HloInstructionConstIterator(&instructions_, 0, end),
-            HloInstructionConstIterator(&instructions_, end, end)};
+    return {HloInstructionConstIterator(&instructions_, 0, end,
+                                        LiveSequenceNumber()),
+            HloInstructionConstIterator(&instructions_, end, end,
+                                        LiveSequenceNumber())};
   }
 
   using ChannelDependencies =
@@ -997,6 +1000,19 @@ class HloComputation {
 
   void SetInstruction(HloInstruction* instruction, InstructionType type);
 
+  void IncrementIteratorSequenceNumber() {
+#ifndef NDEBUG
+    iterator_sequence_number_++;
+#endif
+  }
+  const int64_t* LiveSequenceNumber() const {
+#ifndef NDEBUG
+    return &iterator_sequence_number_;
+#else
+    return nullptr;
+#endif
+  }
+
   int64_t unique_id_;
   HloInstruction* root_instruction_;
 
@@ -1034,6 +1050,10 @@ class HloComputation {
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   std::string name_;
+
+#ifndef NDEBUG
+  int64_t iterator_sequence_number_ = 0;
+#endif
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;

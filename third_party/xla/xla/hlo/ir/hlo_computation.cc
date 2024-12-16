@@ -186,6 +186,7 @@ HloComputation::~HloComputation() {
   for (const auto& i : instructions_) {
     delete i.inst();
   }
+  IncrementIteratorSequenceNumber();
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -258,6 +259,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
   instruction_count_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
+  IncrementIteratorSequenceNumber();
   return pinst;
 }
 
@@ -574,6 +576,7 @@ void HloComputation::Cleanup() {
   }
   to_be_deleted_.clear();
   instructions_.resize(instruction_count());
+  IncrementIteratorSequenceNumber();
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,

@@ -251,17 +251,35 @@ class HloModule {
   //
   //   for (HloComputation* c : module->computations()) { ... }
   //
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
-  computations() const {
-    return {MakeUnwrappingIterator(computations_.begin()),
-            MakeUnwrappingIterator(computations_.end())};
+  auto computations() const {
+#ifndef NDEBUG
+    std::function<bool(const HloComputation*)> pred =
+        [current_sequence_number = iterator_sequence_number_,
+         this](const HloComputation* computation) {
+          CHECK_EQ(iterator_sequence_number_, current_sequence_number);
+          return true;
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
+#else
+    return tsl::gtl::make_range(MakeUnwrappingIterator(computations_.begin()),
+                                MakeUnwrappingIterator(computations_.end()));
+#endif
   }
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::vector<std::unique_ptr<HloComputation>>::iterator>>
-  computations() {
-    return {MakeUnwrappingIterator(computations_.begin()),
-            MakeUnwrappingIterator(computations_.end())};
+  auto computations() {
+#ifndef NDEBUG
+    std::function<bool(const HloComputation*)> pred =
+        [current_sequence_number = iterator_sequence_number_,
+         this](const HloComputation* computation) {
+          CHECK_EQ(iterator_sequence_number_, current_sequence_number);
+          return true;
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
+#else
+    return tsl::gtl::make_range(MakeUnwrappingIterator(computations_.begin()),
+                                MakeUnwrappingIterator(computations_.end()));
+#endif
   }
 
   // Similar as above, but return a filtered view of computations for specified
@@ -275,7 +293,14 @@ class HloModule {
     // Pass execution_threads by value to the predicate to ensure it lives
     // beyond this function.
     std::function<bool(const HloComputation*)> pred =
-        [execution_threads](const HloComputation* computation) {
+        [
+#ifndef NDEBUG
+            current_sequence_number = iterator_sequence_number_, this,
+#endif
+            execution_threads](const HloComputation* computation) {
+#ifndef NDEBUG
+          CHECK_EQ(iterator_sequence_number_, current_sequence_number);
+#endif
           if (execution_threads.empty()) {
             return true;
           }
@@ -696,6 +721,12 @@ class HloModule {
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
+  void IncrementIteratorSequenceNumber() {
+#ifndef NDEBUG
+    iterator_sequence_number_++;
+#endif
+  }
+
   std::string name_;
 
   // Sharabled copy-on-write instance.
@@ -787,6 +818,11 @@ class HloModule {
 
   // Stack frame indexes flat representation.
   std::optional<StackFrameIndexProto> stack_frame_index_;
+
+#ifndef NDEBUG
+  // The sequence number a valid iterator should have.
+  int64_t iterator_sequence_number_ = 0;
+#endif
 };
 
 }  // namespace xla
