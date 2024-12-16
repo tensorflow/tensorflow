@@ -31,6 +31,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -363,11 +364,22 @@ Array::RemapArrays(xla::ifrt::Client* client,
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointRemapArrays",
                                         {{"n_arrays", n_arrays}});
   });
+
+  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
+  const int num_inputs = plan.input_specs.size();
+  const int num_actual_inputs = arrays.size();
+  if (num_inputs != num_actual_inputs) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("RemapArrays expects %d input arrays, but got %d",
+                        num_inputs, num_actual_inputs));
+  }
+
   auto req = std::make_unique<RemapArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
   TF_ASSIGN_OR_RETURN(*req->mutable_plan(), plan.ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
-  for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
+  for (int i = 0; i < num_inputs; ++i) {
+    const tsl::RCReference<xla::ifrt::Array>& rcref = arrays[i];
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
@@ -375,6 +387,34 @@ Array::RemapArrays(xla::ifrt::Client* client,
                            "not a xla::ifrt::proxy::Array.",
                            rcref.get()));
     }
+
+    if (plan.input_specs[i].dtype != arrays[i]->dtype()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "RemapArrays expects input #%d to have dtype %v, but got %v", i,
+          plan.input_specs[i].dtype, arrays[i]->dtype()));
+    }
+    if (plan.input_specs[i].shape != arrays[i]->shape()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "RemapArrays expects input #%d to have shape %v, but got %v", i,
+          plan.input_specs[i].shape, arrays[i]->shape().DebugString()));
+    }
+    // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
+    // is currently called with input arrays with implicit sharding
+    // reinterpretation. Such patterns should be fixed before enabling stricter
+    // checking to avoid false positives.
+    if (*plan.input_specs[i].sharding->devices() !=
+            *arrays[i]->sharding().devices() ||
+        plan.input_specs[i].sharding->memory_kind() !=
+            arrays[i]->sharding().memory_kind()) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("RemapArrays expects input #%d to be on %v with "
+                          "%v, but is on %v with %v",
+                          i, *plan.input_specs[i].sharding->devices(),
+                          plan.input_specs[i].sharding->memory_kind(),
+                          *arrays[i]->sharding().devices(),
+                          arrays[i]->sharding().memory_kind()));
+    }
+
     req->add_array_handles(array->handle_.handle);
   }
 
