@@ -69,6 +69,10 @@ static void ScheduleRange(tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
 ParallelLoopRunner::ParallelLoopRunner(Eigen::ThreadPoolDevice* device)
     : done_event_(OkDoneEventSingleton()), device_(device) {}
 
+size_t ParallelLoopRunner::num_threads() const {
+  return device_->numThreadsInPool();
+}
+
 tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
     ParallelLoopRunner&& runner) {
   return std::move(runner.done_event_);

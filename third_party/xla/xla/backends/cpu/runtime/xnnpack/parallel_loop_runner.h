@@ -62,6 +62,8 @@ class ParallelLoopRunner {
   tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
   Eigen::ThreadPoolDevice* device() const { return device_; }
 
+  size_t num_threads() const;
+
  private:
   // Async value that signals completion of the last scheduled parallel loop.
   tsl::AsyncValueRef<tsl::Chain> done_event_;
