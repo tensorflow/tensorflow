@@ -553,6 +553,7 @@ lit_test_suite(
             "calling_convention.hlo",
             "dot_bf16.hlo",
             "kernel_reuse.hlo",
+            "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "rng_get_and_update_state.hlo",
             "single_instruction.hlo",
