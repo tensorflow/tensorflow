@@ -15,9 +15,11 @@
 
 from absl.testing import absltest
 import numpy as np
-from xla.codegen.testlib import kernel_runner
+from xla.codegen.testlib import _extention
+from xla.codegen.testlib import utilities as testlib_utilities
 
-create_literal = kernel_runner.create_literal_from_np
+
+create_literal = testlib_utilities.create_literal_from_np
 
 
 class LiteralFromNpTest(absltest.TestCase):
@@ -31,7 +33,7 @@ class LiteralFromNpTest(absltest.TestCase):
 class DummyKernelRunnerTest(absltest.TestCase):
 
   def test_dummy_kernel(self):
-    runner = kernel_runner.DummyAddKernelRunner()
+    runner = _extention.DummyAddKernelRunner()
     in_arg1 = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
     in_arg2 = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))
     out_arg = create_literal(np.array([0, 0, 0, 0], dtype=np.int32))

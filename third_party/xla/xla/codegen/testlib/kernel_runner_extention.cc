@@ -113,7 +113,7 @@ class DummyAddKernelRunner final : public KernelRunner {
 
 }  // namespace
 
-NB_MODULE(kernel_runner_extention, kernel_runner_module) {
+NB_MODULE(_extention, kernel_runner_module) {
   namespace nb = nanobind;
 
   nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec");

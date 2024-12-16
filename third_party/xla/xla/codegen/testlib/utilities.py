@@ -12,13 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""CPU specific kernel runner implementations."""
+"""Boilerplate utilities for kernel testing."""
 
-from xla.backends.cpu.testlib import kernel_runner_extention
+import numpy as np
 
-# go/keep-sorted start
-ElementalKernelEmitter = kernel_runner_extention.ElementalKernelEmitter
-KernelRunner = kernel_runner_extention.KernelRunner
-LlvmIrKernelEmitter = kernel_runner_extention.LlvmIrKernelEmitter
-LlvmIrKernelSpec = kernel_runner_extention.LlvmIrKernelSpec
-# go/keep-sorted end
+from xla.codegen.testlib import _extention
+from xla.python import xla_extension
+
+
+def create_literal_from_np(array: np.ndarray) -> xla_extension.Literal:
+  shape = xla_extension.Shape.array_shape(array.dtype, array.shape)
+  literal = xla_extension.Literal(shape)
+  np.copyto(np.asarray(literal), array)
+  return literal
+
+# Intentionally rexport-ed to be avalable in the public API.
+opcode_arity = _extention.opcode_arity

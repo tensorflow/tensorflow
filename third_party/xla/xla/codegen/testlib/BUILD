@@ -33,10 +33,11 @@ cc_library(
 )
 
 tsl_pybind_extension(
-    name = "kernel_runner_extention",
+    name = "python_bindings",
     testonly = 1,
     srcs = ["kernel_runner_extention.cc"],
-    visibility = ["//visibility:private"],  # the extention should always be linked via kernel_runner_pylib
+    module_name = "_extention",
+    visibility = ["//visibility:private"],  # the extention should always be linked via testlib
     deps = [
         ":kernel_runner",
         "//xla:comparison_util",
@@ -57,12 +58,15 @@ tsl_pybind_extension(
 )
 
 pytype_strict_library(
-    name = "kernel_runner_pylib",
+    name = "testlib",
     testonly = 1,
-    srcs = ["kernel_runner.py"],
+    srcs = [
+        "__init__.py",
+        "utilities.py",
+    ],
     srcs_version = "PY3",
     deps = [
-        ":kernel_runner_extention",
+        ":python_bindings",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
     ],
@@ -78,7 +82,8 @@ py_strict_test(
         "no_oss",
     ],
     deps = [
-        ":kernel_runner_pylib",
+        ":python_bindings",
+        ":testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
     ],

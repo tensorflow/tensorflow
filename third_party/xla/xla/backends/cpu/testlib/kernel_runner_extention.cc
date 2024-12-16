@@ -58,11 +58,10 @@ void ImportBaseClasses(const nb::module_& kernel_runner_module) {
   absl::string_view xla_module =
       backends_module.substr(0, backends_module.find_last_of('.'));
 
-  nb::module_::import_(
-      absl::StrCat(xla_module, ".codegen.testlib.kernel_runner").c_str());
+  nb::module_::import_(absl::StrCat(xla_module, ".codegen.testlib").c_str());
 }
 
-NB_MODULE(kernel_runner_extention, kernel_runner_module) {
+NB_MODULE(_extention, kernel_runner_module) {
   // We depend on the base classes so must import them before python tries to
   // register the derived versions.
   ImportBaseClasses(kernel_runner_module);

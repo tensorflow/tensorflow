@@ -21,13 +21,14 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
-from xla.backends.cpu.testlib import kernel_runner
-from xla.codegen.testlib import kernel_runner as kernel_runner_base
+from xla.backends.cpu import testlib as testlib_cpu
+from xla.codegen import testlib as testlib_base
+from xla.codegen.testlib import utilities as testlib_utilities
 
-HloOpcode = kernel_runner_base.HloOpcode
-create_literal = kernel_runner_base.create_literal_from_np
-HloInstruction = kernel_runner_base.HloInstruction
-ComparisonDirection = kernel_runner_base.ComparisonDirection
+HloOpcode = testlib_base.HloOpcode
+create_literal = testlib_base.utilities.create_literal_from_np
+HloInstruction = testlib_base.HloInstruction
+ComparisonDirection = testlib_base.ComparisonDirection
 _inf = float("inf")
 
 
@@ -126,7 +127,7 @@ class ElementalKernelRunnerTest(absltest.TestCase):
 
     [op, np_op, input_ranges, decimal_precision] = op_def
 
-    num_inputs = kernel_runner_base.opcode_arity(op)
+    num_inputs = testlib_utilities.opcode_arity(op)
     self.assertIsNotNone(num_inputs)
 
     np_inputs = [create_input(input_ranges, shape, dtype)] * num_inputs
@@ -146,9 +147,9 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         output_literal.shape(), op, hlo_parameters
     )
 
-    emitter = kernel_runner.ElementalKernelEmitter(hlo_op)
+    emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
 
-    runner = kernel_runner.KernelRunner.create(emitter.emit_kernel_spec())
+    runner = testlib_cpu.KernelRunner.create(emitter.emit_kernel_spec())
 
     runner.call(list(itertools.chain(input_literals, [output_literal])))
     np.testing.assert_array_almost_equal(
@@ -204,9 +205,9 @@ class ElementalComparisonKernelRunnerTest(absltest.TestCase):
         output_literal.shape(), lhs_param, rhs_param, direction
     )
 
-    emitter = kernel_runner.ElementalKernelEmitter(hlo_op)
+    emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
 
-    runner = kernel_runner.KernelRunner.create(emitter.emit_kernel_spec())
+    runner = testlib_cpu.KernelRunner.create(emitter.emit_kernel_spec())
 
     runner.call([lhs_literal, rhs_literal, output_literal])
     np.testing.assert_equal(

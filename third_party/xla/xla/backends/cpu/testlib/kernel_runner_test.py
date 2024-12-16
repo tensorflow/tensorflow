@@ -16,10 +16,10 @@
 from absl.testing import absltest
 import numpy as np
 
-from xla.backends.cpu.testlib import kernel_runner
-from xla.codegen.testlib import kernel_runner as kernel_runner_base
+from xla.backends.cpu import testlib as cpu_testlib
+from xla.codegen.testlib import utilities as testlib_utilities
 
-create_literal = kernel_runner_base.create_literal_from_np
+create_literal = testlib_utilities.create_literal_from_np
 
 
 class LLvmKernelRunnerTest(absltest.TestCase):
@@ -51,13 +51,11 @@ class LLvmKernelRunnerTest(absltest.TestCase):
           ret ptr null
         }
     """
-    llvm_emitter = kernel_runner.LlvmIrKernelEmitter(
-        ir, "LlvmAddI32", (4, 1, 1)
-    )
+    llvm_emitter = cpu_testlib.LlvmIrKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
 
     llvm_spec = llvm_emitter.emit_kernel_spec()
 
-    runner = kernel_runner.KernelRunner.create(llvm_spec)
+    runner = cpu_testlib.KernelRunner.create(llvm_spec)
     a = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
     b = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))
     c = create_literal(np.array([0, 0, 0, 0], dtype=np.int32))
