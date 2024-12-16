@@ -572,17 +572,55 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "triton_fusion_emitter_int4_device_test",
+    srcs = if_gpu_is_configured(["triton_fusion_emitter_int4_device_test.cc"]),
+    # TODO(b/372714955): Fix the memory leak!
+    backend_args = if_google(
+        {
+            "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
+        },
+        {},
+    ),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b100",
+        "gpu_amd_any",
+    ],
+    shard_count = 20,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
