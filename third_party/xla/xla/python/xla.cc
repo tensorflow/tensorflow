@@ -692,24 +692,23 @@ NB_MODULE(xla_extension, m) {
       .def(
           "key_value_set",
           [](DistributedRuntimeClient& client, std::string_view key,
-             std::string_view value, bool allow_overwrite) {
+             std::string_view value) {
             nb::gil_scoped_release gil_release;
-            xla::ThrowIfError(client.KeyValueSet(key, value, allow_overwrite));
+            xla::ThrowIfError(client.KeyValueSet(key, value));
           },
-          nb::arg("key"), nb::arg("value"), nb::arg("allow_overwrite") = false)
+          nb::arg("key"), nb::arg("value"))
       // The key must be a string, but the value must a
       // Python bytes object.
       // Use `key_value_set_bytes()` and `blocking_key_value_get_bytes()`.
       .def(
           "key_value_set_bytes",
           [](DistributedRuntimeClient& client, std::string_view key,
-             nb::bytes value, bool allow_overwrite) {
+             nb::bytes value) {
             nb::gil_scoped_release gil_release;
             xla::ThrowIfError(client.KeyValueSet(
-                key, std::string_view(value.c_str(), value.size()),
-                allow_overwrite));
+                key, std::string_view(value.c_str(), value.size())));
           },
-          nb::arg("key"), nb::arg("value"), nb::arg("allow_overwrite") = false)
+          nb::arg("key"), nb::arg("value"))
       // Assumes that all values in the directory are Python strings.
       .def(
           "key_value_dir_get",

@@ -1003,26 +1003,15 @@ TEST_F(ClientServerTest, KeyValueDirGet) {
                                         Pair("test_dir/3", "3")));
 }
 
-TEST_F(ClientServerTest, KeyValueSet_Duplicate_Fails) {
-  StartService(/*num_nodes=*/1);
-  auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
-  EXPECT_TRUE(
-      absl::IsAlreadyExists(client->KeyValueSet("test_key", "never_added")));
-  auto result =
-      client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
-  TF_ASSERT_OK(result.status());
-  EXPECT_EQ(result.value(), "original_value");
-}
-
 TEST_F(ClientServerTest, KeyValueSet_Duplicate_Overwrites) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
-  TF_EXPECT_OK(client->KeyValueSet("test_key", "overwritten_value",
-                                   /*allow_overwrite=*/true));
+
+  // Insert a second time.
+  TF_EXPECT_OK(client->KeyValueSet("test_key", "overwritten_value"));
+
   auto result =
       client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
   TF_ASSERT_OK(result.status());

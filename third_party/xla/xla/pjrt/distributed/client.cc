@@ -167,7 +167,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
     absl::string_view key, absl::string_view value) {
-  return KeyValueSet(key, value, /*allow_overwrite=*/false);
+  return KeyValueSet(key, value, /*allow_overwrite=*/true);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
