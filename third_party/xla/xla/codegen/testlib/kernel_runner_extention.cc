@@ -33,10 +33,12 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -57,6 +59,12 @@ void KernelRunnerCall(KernelRunner* kernel_runner,
 std::unique_ptr<HloInstruction> CreateConstantHloInstruction(
     const Literal& literal) {
   return HloInstruction::CreateConstant(literal.Clone());
+}
+
+std::unique_ptr<HloInstruction> CreateComparisonHloInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    Comparison::Direction direction) {
+  return HloInstruction::CreateCompare(shape, lhs, rhs, direction);
 }
 
 // A dummy kernel runner that implements a simple elementwise add.
@@ -136,6 +144,14 @@ NB_MODULE(kernel_runner_extention, kernel_runner_module) {
 
   kernel_runner_module.def("opcode_arity", &HloOpcodeArity);
 
+  nb::enum_<Comparison::Direction>(kernel_runner_module, "ComparisonDirection")
+      .value("kEq", Comparison::Direction::kEq)
+      .value("kNe", Comparison::Direction::kNe)
+      .value("kGe", Comparison::Direction::kGe)
+      .value("kGt", Comparison::Direction::kGt)
+      .value("kLe", Comparison::Direction::kLe)
+      .value("kLt", Comparison::Direction::kLt);
+
   nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
                                              "HloInstruction");
   // Factory methods
@@ -145,7 +161,8 @@ NB_MODULE(kernel_runner_extention, kernel_runner_module) {
       .def_static("create_unary", &HloInstruction::CreateUnary)
       .def_static("create_binary", &HloInstruction::CreateBinary)
       .def_static("create_ternary", &HloInstruction::CreateTernary)
-      .def_static("create_variadic", &HloInstruction::CreateVariadic);
+      .def_static("create_variadic", &HloInstruction::CreateVariadic)
+      .def_static("create_compare", &CreateComparisonHloInstruction);
 }
 
 }  // namespace xla
