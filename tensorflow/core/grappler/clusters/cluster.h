@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/public/session_options.h"
 

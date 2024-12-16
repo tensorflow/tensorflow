@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_H_
 #define TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
