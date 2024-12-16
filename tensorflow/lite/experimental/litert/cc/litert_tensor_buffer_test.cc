@@ -14,8 +14,11 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <memory>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "absl/types/span.h"
@@ -300,6 +303,34 @@ TEST(TensorBuffer, NotOwned) {
   ASSERT_EQ(tensor_buffer.Get(), litert_tensor_buffer);
 
   LiteRtDestroyTensorBuffer(litert_tensor_buffer);
+}
+
+TEST(TensorBuffer, ExternalHostMemory) {
+  // Allocate a tensor buffer with host memory.
+  const int kTensorBufferSize =
+      std::max<int>(sizeof(kTensorData), LITERT_HOST_MEMORY_BUFFER_ALIGNMENT);
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  void* host_memory_ptr;
+  ASSERT_EQ(
+      ::posix_memalign(&host_memory_ptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
+                       kTensorBufferSize),
+      0);
+  std::unique_ptr<void, void (*)(void*) noexcept> host_memory_ptr_deleter(
+      host_memory_ptr, ::free);
+
+  std::memcpy(host_memory_ptr, kTensorData, sizeof(kTensorData));
+
+  // Create a tensor buffer that wraps the host memory.
+  auto tensor_buffer_from_external_memory =
+      litert::TensorBuffer::CreateFromHostMemory(kTensorType, host_memory_ptr,
+                                                 kTensorBufferSize);
+
+  auto lock_and_addr_external_memory = litert::TensorBufferScopedLock::Create(
+      *tensor_buffer_from_external_memory);
+  ASSERT_TRUE(lock_and_addr_external_memory);
+  ASSERT_EQ(std::memcmp(lock_and_addr_external_memory->second, kTensorData,
+                        sizeof(kTensorData)),
+            0);
 }
 
 TEST(TensorBuffer, Duplicate) {

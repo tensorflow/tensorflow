@@ -70,6 +70,25 @@ class TensorBuffer
     return TensorBuffer(tensor_buffer);
   }
 
+  // Creates a TensorBuffer object that wraps the provided host memory.
+  // The provided host memory is not owned by the TensorBuffer object and must
+  // outlive the TensorBuffer object.
+  static Expected<TensorBuffer> CreateFromHostMemory(
+      const RankedTensorType& tensor_type, void* host_mem_addr,
+      size_t buffer_size) {
+    LiteRtTensorBuffer tensor_buffer;
+    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
+
+    if (auto status = LiteRtCreateTensorBufferFromHostMemory(
+            &litert_tensor_type, host_mem_addr, buffer_size,
+            /*deallocator=*/nullptr, &tensor_buffer);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status,
+                        "Failed to create tensor buffer from host memory");
+    }
+    return TensorBuffer(tensor_buffer);
+  }
+
   litert::Expected<AHardwareBuffer*> GetAhwb() const {
 #if LITERT_HAS_AHWB_SUPPORT
     AHardwareBuffer* ahwb;
