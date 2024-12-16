@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,13 +27,17 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
+#include "xla/util.h"
 
 namespace xla {
 
@@ -46,6 +51,12 @@ void KernelRunnerCall(KernelRunner* kernel_runner,
   if (!status.ok()) {
     throw std::runtime_error(std::string(status.message()));
   }
+}
+
+// Need this helper as Literal rquires an explicit clone.
+std::unique_ptr<HloInstruction> CreateConstantHloInstruction(
+    const Literal& literal) {
+  return HloInstruction::CreateConstant(literal.Clone());
 }
 
 // A dummy kernel runner that implements a simple elementwise add.
@@ -124,6 +135,17 @@ NB_MODULE(kernel_runner_extention, kernel_runner_module) {
 #undef DECLARE_ENUM
 
   kernel_runner_module.def("opcode_arity", &HloOpcodeArity);
+
+  nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
+                                             "HloInstruction");
+  // Factory methods
+  hlo_instruction
+      .def_static("create_parameter", &HloInstruction::CreateParameter)
+      .def_static("create_constant", &CreateConstantHloInstruction)
+      .def_static("create_unary", &HloInstruction::CreateUnary)
+      .def_static("create_binary", &HloInstruction::CreateBinary)
+      .def_static("create_ternary", &HloInstruction::CreateTernary)
+      .def_static("create_variadic", &HloInstruction::CreateVariadic);
 }
 
 }  // namespace xla

@@ -26,6 +26,7 @@ from xla.codegen.testlib import kernel_runner as kernel_runner_base
 
 HloOpcode = kernel_runner_base.HloOpcode
 create_literal = kernel_runner_base.create_literal_from_np
+HloInstruction = kernel_runner_base.HloInstruction
 _inf = float("inf")
 
 
@@ -131,12 +132,16 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         np.ndarray(shape, dtype=expected_output.dtype)
     )
 
-    emitter = kernel_runner.ElementalKernelEmitter(
-        op.name,
-        op,
-        [input.shape() for input in input_literals],
-        output_literal.shape(),
+    hlo_parameters = [
+        HloInstruction.create_parameter(idx, literal.shape(), f"input_{idx}")
+        for [idx, literal] in enumerate(input_literals)
+    ]
+
+    hlo_op = HloInstruction.create_variadic(
+        output_literal.shape(), op, hlo_parameters
     )
+
+    emitter = kernel_runner.ElementalKernelEmitter(hlo_op)
 
     runner = kernel_runner.KernelRunner.create(emitter.emit_kernel_spec())
 

@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -36,7 +35,6 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -47,14 +45,9 @@ limitations under the License.
 
 namespace xla::cpu {
 
-ElementalKernelEmitter::ElementalKernelEmitter(absl::string_view kernel_name,
-                                               HloOpcode opcode,
-                                               std::vector<Shape> input_shapes,
-                                               const Shape& output_shape)
-    : kernel_name_(kernel_name),
-      opcode_(opcode),
-      input_shapes_(std::move(input_shapes)),
-      output_shape_(output_shape),
+ElementalKernelEmitter::ElementalKernelEmitter(
+    std::unique_ptr<HloInstruction> op_hlo)
+    : op_hlo_(std::move(op_hlo)),
       context_(std::make_unique<llvm::LLVMContext>()),
       kernel_api_ir_builder_(*context_.getContext(),
                              KernelApiIrBuilder::Options{true, 256}) {}
@@ -63,59 +56,47 @@ absl::StatusOr<std::unique_ptr<KernelSpec>>
 ElementalKernelEmitter::EmitKernelSpec() {
   llvm::LLVMContext& ctx = *context_.getContext();
   auto module = std::make_unique<llvm::Module>(
-      absl::StrCat(kernel_name_, "_elemental_kernel_module"), ctx);
+      absl::StrCat(op_hlo_->name(), "_elemental_kernel_module"), ctx);
 
   llvm::IRBuilder<> ir_builder(ctx);
 
   llvm::Function* function =
-      kernel_api_ir_builder_.EmitKernelFunction(*module, kernel_name_);
+      kernel_api_ir_builder_.EmitKernelFunction(*module, op_hlo_->name());
 
   ir_builder.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
 
   llvm::Value* call_frame = function->getArg(0);
 
-  std::vector<std::unique_ptr<HloInstruction>> parameter_hlos;
   std::vector<llvm_ir::IrArray> input_arrays;
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
 
-  parameter_hlos.reserve(input_shapes_.size());
-  input_arrays.reserve(input_shapes_.size());
+  input_arrays.reserve(op_hlo_->operand_count());
+  for (size_t idx = 0; idx < op_hlo_->operand_count(); ++idx) {
+    const HloInstruction* operand = op_hlo_->operand(idx);
+    const Shape& input_shape = operand->shape();
 
-  for (size_t idx = 0; idx < input_shapes_.size(); ++idx) {
-    const Shape& input_shape = input_shapes_[idx];
-    std::unique_ptr<HloInstruction> parameter_hlo =
-        HloInstruction::CreateParameter(idx, input_shape,
-                                        absl::StrCat("input", idx));
     llvm_ir::IrArray& input_array =
         input_arrays.emplace_back(kernel_api_ir_builder_.EmitKernelArgument(
             ir_builder, call_frame, idx, input_shape));
 
     // We are treading a fine line here, but as we have reserved enough space
     // for the input arrays, we can safely use references to them.
-    operand_to_generator[parameter_hlo.get()] =
+    operand_to_generator[operand] =
         [&input_array, &ir_builder](const llvm_ir::IrArray::Index& index)
         -> absl::StatusOr<llvm::Value*> {
       return input_array.EmitReadArrayElement(index, &ir_builder);
     };
-    parameter_hlos.push_back(std::move(parameter_hlo));
   }
 
-  std::vector<HloInstruction*> parameter_hlo_ptrs;
-  parameter_hlo_ptrs.reserve(parameter_hlos.size());
-  for (const auto& parameter_hlo : parameter_hlos) {
-    parameter_hlo_ptrs.push_back(parameter_hlo.get());
-  }
-  std::unique_ptr<HloInstruction> op_hlo = HloInstruction::CreateVariadic(
-      output_shape_, opcode_, parameter_hlo_ptrs);
   // TODO(willfroom): use real IR emitter here.
   ElementalIrEmitterForTests elemental_ir_emitter(module.get(), &ir_builder);
 
   llvm_ir::ElementGenerator element_generator =
-      elemental_ir_emitter.MakeElementGenerator(op_hlo.get(),
+      elemental_ir_emitter.MakeElementGenerator(op_hlo_.get(),
                                                 operand_to_generator);
 
   llvm_ir::IrArray output_array = kernel_api_ir_builder_.EmitKernelArgument(
-      ir_builder, call_frame, input_shapes_.size(), output_shape_);
+      ir_builder, call_frame, op_hlo_->operand_count(), op_hlo_->shape());
 
   llvm_ir::LoopEmitter loop_emitter(element_generator, output_array,
                                     &ir_builder);
@@ -128,7 +109,7 @@ ElementalKernelEmitter::EmitKernelSpec() {
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(ctx)));
 
   auto source = std::make_unique<LlvmIrKernelSource>(
-      context_, std::move(module), kernel_name_);
+      context_, std::move(module), std::string(op_hlo_->name()));
 
   // TODO(willfroom): fill in buffer allocations and buffer uses when we support
   // creation from a real HLO instruction.
