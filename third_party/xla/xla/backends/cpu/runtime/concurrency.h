@@ -45,7 +45,7 @@ void ScheduleAll(const Eigen::ThreadPoolDevice* intra_op_threadpool, int64_t n,
 
   // Short-circuit the case of a single task.
   if (n == 1) {
-    f(0);
+    intra_op_threadpool->getPool()->Schedule(std::bind(f, 0));
     return;
   }
 
@@ -69,7 +69,8 @@ void ScheduleAll(const Eigen::ThreadPoolDevice* intra_op_threadpool, int64_t n,
   };
 
   auto s = std::make_shared<State>(intra_op_threadpool, std::forward<F>(f));
-  s->Execute(std::move(s), 0, n);
+  intra_op_threadpool->getPool()->Schedule(
+      std::bind(&State::Execute, s.get(), std::move(s), 0, n));
 }
 
 }  // namespace xla::cpu

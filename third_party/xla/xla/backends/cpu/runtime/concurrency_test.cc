@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/concurrency.h"
 
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -27,23 +28,43 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(ConcurrencyTest, ScheduleAll) {
+using ConcurrencyTest = ::testing::TestWithParam<int>;
+
+TEST_P(ConcurrencyTest, ScheduleAll) {
+  int number_of_tasks = GetParam();
+
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 10);
 
-  std::vector<int64_t> tasks(64, 0);
+  std::vector<int64_t> tasks(number_of_tasks, 0);
 
   Eigen::ThreadPoolDevice device(thread_pool.AsEigenThreadPool(),
                                  thread_pool.NumThreads());
 
-  absl::BlockingCounter counter(64);
-  ScheduleAll(&device, 64, [&](int64_t index) {
+  absl::BlockingCounter counter(number_of_tasks);
+
+  auto main_thread_id = tsl::Env::Default()->GetCurrentThreadId();
+  std::atomic<int> tasks_called_for_host_thread = 0;
+
+  ScheduleAll(&device, number_of_tasks, [&](int64_t index) {
+    if (tsl::Env::Default()->GetCurrentThreadId() == main_thread_id) {
+      ++tasks_called_for_host_thread;
+    }
+
     tasks[index] += 1;
     counter.DecrementCount();
   });
 
   counter.Wait();
+
+  // All tasks should be called exactly once.
   ASSERT_TRUE(absl::c_all_of(tasks, [](int64_t task) { return task == 1; }));
+
+  // No task should be called on the host thread.
+  EXPECT_EQ(0, tasks_called_for_host_thread);
 }
+
+INSTANTIATE_TEST_SUITE_P(ConcurrencyTest, ConcurrencyTest,
+                         ::testing::Values(1, 64));
 
 }  // namespace
 }  // namespace xla::cpu

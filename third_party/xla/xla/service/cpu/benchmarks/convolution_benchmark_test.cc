@@ -439,7 +439,8 @@ BENCHMARK(BM_Conv2D<F32>)
 
 BENCHMARK(BM_GroupedConv2D)
     ->MeasureProcessCPUTime()
-    ->Args({1, 45, 45, 1024, 5, 5, 1024, 1024});
+    ->Args({1, 45, 45, 1024, 5, 5, 1024, 1024})
+    ->Args({1, 5, 5, 16, 1, 1, 16, 16});
 
 // -------------------------------------------------------------------------- //
 // 1D and 2D strided convolutions
