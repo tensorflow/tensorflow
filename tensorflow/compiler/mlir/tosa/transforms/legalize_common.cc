@@ -592,9 +592,6 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
-  if (EqualizeRanks(rewriter, op->getLoc(), input_lhs_val, input_rhs_val)
-          .failed())
-    return std::nullopt;
   input_lhs_type = dyn_cast<ShapedType>(input_lhs_val.getType());
   input_rhs_type = dyn_cast<ShapedType>(input_rhs_val.getType());
 
@@ -669,12 +666,6 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  if (EqualizeRanks(rewriter, op->getLoc(), x, y)
-          .failed())
-    return std::nullopt;
-  x_type = dyn_cast<ShapedType>(x.getType());
-  y_type = dyn_cast<ShapedType>(y.getType());
-
   // If the output is I8 then we need to rescale to I32
   // Then scale back to I8
   if (result_is_qtype) {
@@ -706,14 +697,15 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
           (twice_max_input_scale * twice_max_input_scale) /
           ((static_cast<double>(1 << LEFT_SHIFT * 2)) * result_scale);
 
-      Value x_scaled = buildRescaleToInt32(
-          rewriter, op, x,
-          x_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          x_qtype.getZeroPoint());
-      Value y_scaled = buildRescaleToInt32(
-          rewriter, op, y,
-          y_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          y_qtype.getZeroPoint());
+      Value x_shift = buildRescaleToInt32(rewriter, op, x, (1 << LEFT_SHIFT),
+                                          x_qtype.getZeroPoint());
+      Value y_shift = buildRescaleToInt32(rewriter, op, y, (1 << LEFT_SHIFT),
+                                          y_qtype.getZeroPoint());
+
+      Value x_scaled =
+          buildRescaleToInt32(rewriter, op, x_shift, x_rescale_scale, 0);
+      Value y_scaled =
+          buildRescaleToInt32(rewriter, op, y_shift, y_rescale_scale, 0);
 
       auto sub_op = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
@@ -1585,7 +1577,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // reduce_sum on last dimension
-  int32_t input_rank = input_type.getShape().size();
+  int32_t input_rank = input_type.getRank();
   ArrayRef<int64_t> logits_shape = output_type.getShape();
 
   if (mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType()) &&
@@ -1706,11 +1698,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           rewriter, op->getLoc(), int32_logits_type,
           op12_add_op11_op9.getResult(), op10_rshift_op8.getResult());
 
-      // Step 3. get sum(exp()). output 12.19
+      // Step 3. get sum(exp()). output 13.18
       auto op14_rshift_op13_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op13_add_op12_op10.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 12, input_rank), true);
+          getTosaConstTensorSingleI32(rewriter, op, 13, input_rank), true);
 
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
@@ -1797,17 +1789,32 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
-      // (12 - headroom_plus_one) + 31 - 8 =
-      // (12 + 31 - 8) - headroom_plus_one
+      // (13 - headroom_plus_one) + 31 - 8 =
+      // (13 + 31 - 8) - headroom_plus_one
+
+      // The calculated shift amount can be larger than 31, which is invalid
+      // in TOSA. In this case, the output should be the quantized equivalent
+      // to all 0's. To emulate this behaviour, we can use two shifts:
+      // 1. Right shift of 5, calculated by:
+      //       max_headroom_plus_one_value = 31;
+      //       13 + 31 - 8 - max_headroom_plus_one_value
+      // 2. Right shift by the remainder
+      constexpr int constant_shift_amount = 5;
+
       auto op27_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8, input_rank),
+          getTosaConstTensorSingleI32(rewriter, op, 13 + 31 - 8 - constant_shift_amount, input_rank),
           op16_clz_op15.getResult());
+
+      auto constant_shift = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op26_mul_op13_x.getResult(), getTosaConstTensorSingleI32(rewriter, op, constant_shift_amount, input_rank),
+          false);
 
       auto op28_rshift_op26_op27 =
           CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
               rewriter, op->getLoc(), int32_logits_type,
-              op26_mul_op13_x.getResult(), op27_sub_op16.getResult(), true);
+              constant_shift.getResult(), op27_sub_op16.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
                           op28_rshift_op26_op27.getResult(), 1.0, 0,

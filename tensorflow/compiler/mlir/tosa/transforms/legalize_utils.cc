@@ -22,22 +22,25 @@ limitations under the License.
 #include <optional>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"                 // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"                // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"               // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"                // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"     // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"          // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"                   // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"               // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                        // from @llvm-project
+#include "mlir/Support/LLVM.h"                           // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/kernels/internal/common.h"
 #include "tensorflow/compiler/mlir/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 
 // Implements legalization and post-legalization optimization helper functions
@@ -263,8 +266,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  llvm::ArrayRef<Value> dims) {
   const ShapedType input_ty = dyn_cast<ShapedType>(input_value.getType());
   if (!input_ty) {
-    (void)rewriter.notifyMatchFailure(
-            op, "input is not a shaped type");
+    (void)rewriter.notifyMatchFailure(op, "input is not a shaped type");
     return std::nullopt;
   }
 
@@ -315,13 +317,13 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   // can easily resolve the dim to be static
   if (input_ty.hasStaticShape() && dyn_count == 1) {
     const int64_t total_elements = input_ty.getNumElements();
-    const int64_t shape_elements = std::accumulate(static_dims.begin(), static_dims.end(), 1,
-        [](int64_t a, int64_t b) {
-      return b == tensorflow::kTFDynamicSize ? a : a * b;
-    });
+    const int64_t shape_elements = std::accumulate(
+        static_dims.begin(), static_dims.end(), 1, [](int64_t a, int64_t b) {
+          return b == tensorflow::kTFDynamicSize ? a : a * b;
+        });
     const int64_t dynamic_dim_value = total_elements / shape_elements;
-    std::replace(static_dims.begin(), static_dims.end(), tensorflow::kTFDynamicSize,
-      dynamic_dim_value);
+    std::replace(static_dims.begin(), static_dims.end(),
+                 tensorflow::kTFDynamicSize, dynamic_dim_value);
   }
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
@@ -330,7 +332,8 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   auto shape_value = getTosaConstShape(rewriter, op->getLoc(), static_dims);
 
   return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_value)
+      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value,
+                               shape_value)
       .getResult();
 }
 
@@ -359,10 +362,23 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
   auto shift_val = tosa::getConstTensorInt<int8_t>(rewriter, loc,
                                             {static_cast<int8_t>(scale_shift)});
 
+  // Create input_zp matches the input type and output_zp matches the output
+  // type of RescaleOp
+  const Value empty_output_val = rewriter.create<tensor::EmptyOp>(
+      loc, output_type.getShape(), output_type.getElementType());
+  const auto input_zp_val =
+      tosa::createZeroPointTensor(rewriter, loc, input_val.getType(), input_zp);
+  if (!input_zp_val.has_value())
+    op->emitError("Failed to create input zero-point tensor for RescaleOp.");
+
+  const auto output_zp_val =
+      tosa::createZeroPointTensor(rewriter, loc, empty_output_val.getType(), output_zp);
+  if (!output_zp_val.has_value())
+    op->emitError("Failed to create output zero-point tensor for RescaleOp.");
+
   auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
       rewriter, loc, output_type, input_val, multiplier_val, shift_val,
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
+      input_zp_val.value(), output_zp_val.value(),
       rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
       rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
       rewriter.getBoolAttr(output_unsigned));
@@ -380,7 +396,9 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   int32_t scale_width = scale32 ? 32 : 16;
 
-  computeMultiplierAndShift(scale, multiplier, shift, scale_width);
+  if (!computeMultiplierAndShift(scale, multiplier, shift, scale_width)) {
+    op->emitError("buildRescale: shift must be in the range 2 <= shift <= 62");
+  }
 
   return buildRescale(rewriter, op, output_type, input_val, multiplier, shift,
                       input_zp, output_zp, rounding_mode, scale32);
@@ -401,11 +419,12 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
-  std::string rounding_mode = IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  std::string rounding_mode =
+      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
 
   return buildRescale(rewriter, op, output_type, input_val,
                       input_scale_multiplier, input_scale_shift, input_zp,
-                      /*input_zp=*/0, rounding_mode,
+                      /*output_zp=*/0, rounding_mode,
                       /*scale32=*/true);
 }
 
@@ -433,7 +452,8 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
-  std::string rounding_mode = IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  std::string rounding_mode =
+      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
 
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale,
@@ -464,6 +484,18 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool output_unsigned = output_qtype.isUnsignedInteger();
 
   auto loc = op->getLoc();
+  const Value empty_output_val = rewriter.create<tensor::EmptyOp>(
+      loc, output_type.getShape(), output_type.getElementType());
+
+  const auto input_zp_val = tosa::createZeroPointTensor(
+      rewriter, loc, conv_val.getType(), static_cast<int64_t>(0));
+  if (!input_zp_val.has_value())
+    op->emitError("Failed to create input zero-point tensor for RescaleOp.");
+
+  const auto output_zp_val =
+      tosa::createZeroPointTensor(rewriter, loc, empty_output_val.getType(), output_zp);
+  if (!output_zp_val.has_value())
+    op->emitError("Failed to create output zero-point tensor for RescaleOp.");
 
   if (auto weight_per_tensor_qtype =
           dyn_cast<mlir::quant::UniformQuantizedType>(
@@ -485,7 +517,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
-        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
+        input_zp_val.value(), output_zp_val.value(),
         rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
         rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
@@ -512,8 +544,20 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
       double op_channel_scale = (input_scale * weight_scale) / output_scale;
 
-      computeMultiplierAndShift(op_channel_scale, multiplier, shift,
-                                scale_width);
+      if (!computeMultiplierAndShift(op_channel_scale, multiplier, shift, 32)) {
+        op->emitError(
+            "buildRescaleOpConvOutput: shift must be in the range 2 <= shift "
+            "<= 62");
+      }
+      // We are matching the tflite behaviour here by scaling by 32-bit
+      // then down-scaling to 16-bit for int16x8
+      // Reference: tensorflow/lite/kernels/internal/common.cc
+      if (!scale32) {
+        multiplier = (multiplier < 0x7FFF0000)
+                         ? ((multiplier + (1 << 15)) >> 16)
+                         : 0x7FFF;
+        shift = shift - 16;
+      }
 
       multiplier_arr.push_back(multiplier);
       shift_arr.push_back(static_cast<int8_t>(shift));
@@ -525,7 +569,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
-        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
+        input_zp_val.value(), output_zp_val.value(),
         rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
@@ -1211,8 +1255,9 @@ void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
   TrimQuantizedIntegerRangeMax(dtype, val_max);
 }
 
-tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op, Type result_ty,
-    Value input1, Value input2, int8_t shift) {
+tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op,
+                                Type result_ty, Value input1, Value input2,
+                                int8_t shift) {
   if (EqualizeRanks(rewriter, op->getLoc(), input1, input2).failed()) {
     // uncompatible broadcast shapes, no reshape is inserted
     // ResultsBroadcastableShape verify will handle this
@@ -1323,11 +1368,7 @@ LogicalResult broadcastLowRankTensor(PatternRewriter& rewriter, Operation* op,
 
   std::optional<Value> result = convertBroadcastToOp(
       rewriter, op, low_rank_tensor, broadcast_shape_value);
-  if (!result) {
-    return rewriter.notifyMatchFailure(op,
-                                       "failed to broadcast low rank tensor "
-                                       "from convertBroadcastToOp");
-  }
+  if (!result) return failure();
 
   low_rank_tensor = result.value();
 
