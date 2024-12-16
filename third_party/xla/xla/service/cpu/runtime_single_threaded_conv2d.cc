@@ -30,14 +30,16 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
     int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
     int64_t lhs_col_dilation, int64_t rhs_row_dilation,
-    int64_t rhs_col_dilation, int64_t feature_group_count) {
+    int64_t rhs_col_dilation, int64_t feature_group_count,
+    int64_t max_workspace_size) {
   xla::cpu::internal::EigenConv2D(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_rows,
       input_cols, input_channels, kernel_rows, kernel_cols, kernel_channels,
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false,
+      max_workspace_size);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -50,12 +52,13 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     int64_t padding_top, int64_t padding_bottom, int64_t padding_left,
     int64_t padding_right, int64_t lhs_row_dilation, int64_t lhs_col_dilation,
     int64_t rhs_row_dilation, int64_t rhs_col_dilation,
-    int64_t feature_group_count) {
+    int64_t feature_group_count, int64_t max_workspace_size) {
   xla::cpu::internal::EigenConv2D(
       Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_rows,
       input_cols, input_channels, kernel_rows, kernel_cols, kernel_channels,
       kernel_filters, output_rows, output_cols, row_stride, col_stride,
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false,
+      max_workspace_size);
 }

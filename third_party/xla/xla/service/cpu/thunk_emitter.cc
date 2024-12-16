@@ -577,6 +577,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       options.multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       options.use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
+      options.max_workspace_size =
+          hlo_module_config_.debug_options().xla_cpu_max_workspace_size();
       return ThunkSequence::Of<ConvolutionThunk>(
           ThunkInfo(instruction), options, input_buffer, input_shape,
           kernel_buffer, kernel_shape, output_buffer, output_shape,

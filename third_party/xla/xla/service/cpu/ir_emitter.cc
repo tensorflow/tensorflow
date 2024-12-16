@@ -996,6 +996,9 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       }
       args.push_back(b()->getInt64(convolution->feature_group_count()));
 
+      args.push_back(b()->getInt64(
+          hlo_module_config_.debug_options().xla_cpu_max_workspace_size()));
+
       VLOG(1) << "Ir emitter emitted Convolution to runtime:" << fn_name;
       EmitCallToFunc(fn_name, args, b()->getVoidTy(),
                      /*does_not_throw=*/true,

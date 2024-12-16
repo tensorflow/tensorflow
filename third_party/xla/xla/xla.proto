@@ -113,6 +113,9 @@ message DebugOptions {
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
 
+  // Maximum size of the memory allocated for temporary buffers, in bytes.
+  int64 xla_cpu_max_workspace_size = 355;
+
   // When set, XLA:CPU will only generate code up to the specified ISA.
   // (It will not use newer ISAs.) Using the string format allows us to extend
   // the flag for more flexible control if necessary.
@@ -1081,7 +1084,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 355
+  // Next id: 356
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

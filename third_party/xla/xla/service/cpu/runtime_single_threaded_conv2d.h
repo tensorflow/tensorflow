@@ -32,7 +32,7 @@ extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     int64_t padding_bottom, int64_t padding_left, int64_t padding_right,
     int64_t lhs_row_dilation, int64_t lhs_col_dilation,
     int64_t rhs_row_dilation, int64_t rhs_col_dilation,
-    int64_t feature_group_count);
+    int64_t feature_group_count, int64_t max_workspace_size);
 
 extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
@@ -43,7 +43,8 @@ extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
     int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
     int64_t lhs_col_dilation, int64_t rhs_row_dilation,
-    int64_t rhs_col_dilation, int64_t feature_group_count);
+    int64_t rhs_col_dilation, int64_t feature_group_count,
+    int64_t max_workspace_size);
 
 }  // extern "C"
 

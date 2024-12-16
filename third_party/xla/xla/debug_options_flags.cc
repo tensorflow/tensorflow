@@ -90,6 +90,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
   opts.set_xla_cpu_prefer_vector_width(256);
+  opts.set_xla_cpu_max_workspace_size(8LL << 30);  // 8 GiB
   opts.set_xla_cpu_max_isa("");
 
   opts.set_xla_cpu_enable_fast_math(false);
@@ -913,6 +914,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
       debug_options->xla_cpu_prefer_vector_width(),
       "Preferred vector with for the XLA:CPU LLVM backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_max_workspace_size",
+      int64_setter_for(&DebugOptions::set_xla_cpu_max_workspace_size),
+      debug_options->xla_cpu_max_workspace_size(),
+      "Maximum size of the temporary memory allocated by operators. For "
+      "example, in transposed convolutions, this is the size of the "
+      "convolution matrix before packing into output."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_max_isa",
       uppercase_string_setter_for(&DebugOptions::set_xla_cpu_max_isa),

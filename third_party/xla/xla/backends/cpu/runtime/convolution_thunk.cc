@@ -345,7 +345,8 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
         strides_.x, strides_.y, padding_before_.x, padding_after_.x,
         padding_before_.y, padding_after_.y, base_dilation_.x, base_dilation_.y,
         window_dilation_.x, window_dilation_.y, feature_group_count_,
-        std::move(done_callback), /*use_thunk_runtime=*/true);
+        std::move(done_callback), /*use_thunk_runtime=*/true,
+        options_.max_workspace_size);
   };
 
   if (options_.multi_threaded) {
