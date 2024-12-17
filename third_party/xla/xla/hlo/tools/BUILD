@@ -143,6 +143,7 @@ xla_cc_binary(
     name = "hlo_proto_to_json",
     srcs = ["hlo_proto_to_json.cc"],
     deps = [
+        "//third_party/protobuf/util:json_util",
         "//xla:util",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/util:command_line_flags",
