@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
 #define TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
 
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/string_view.h"
