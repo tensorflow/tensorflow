@@ -60,124 +60,124 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
   template <typename... TArgs>
   explicit GpuBlasLtAdaptor(TArgs... args) : TBlasSupport{args...} {}
 
-  // absl::Status DoBlasGemm(Stream *stream, blas::Transpose transa,
-  // blas::Transpose transb, uint64_t m, uint64 n,
-  // uint64_t k, blas::DataType dtype, const void *alpha,
-  // const DeviceMemoryBase &a, int lda,
-  // const DeviceMemoryBase &b, int ldb, const void *beta,
-  // DeviceMemoryBase *c, int ldc,
-  // const NumericOptions &numeric_options,
+  absl::Status DoBlasGemm(Stream *stream, blas::Transpose transa,
+                          blas::Transpose transb, uint64_t m, uint64 n,
+                          uint64_t k, blas::DataType dtype, const void *alpha,
+                          const DeviceMemoryBase &a, int lda,
+                          const DeviceMemoryBase &b, int ldb, const void *beta,
+                          DeviceMemoryBase *c, int ldc,
+                          const NumericOptions &numeric_options,
+                          blas::CallContext context) override {
+    if (IsGpuBlasLtEnabled()) {
+      auto &runner = gpu::BlasLtGemmRunner::i(stream);
+      auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
+      switch (dtype) {
+        case blas::DataType::kFloat:
+          return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
+                                       alpha, a, lda, b, ldb, beta, c, ldc,
+                                       numeric_options, context, allocator);
+        case blas::DataType::kBF16:
+          return DoBlasGemmImpl<Eigen::bfloat16>(
+              stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
+              beta, c, ldc, numeric_options, context, allocator);
+        default:
+          LOG(ERROR) << "Not supported type by blaslt "
+                     << blas::DataTypeString(dtype) << " fall back to blas";
+          return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
+                                          dtype, alpha, a, lda, b, ldb, beta, c,
+                                          ldc, numeric_options, context);
+      };
+    } else {
+      return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k, dtype,
+                                      alpha, a, lda, b, ldb, beta, c, ldc,
+                                      numeric_options, context);
+    }
+  }
+
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, float alpha, DeviceMemorySlice<float> a,
+  // int lda, DeviceMemorySlice<float> b, int ldb,
+  // float beta, DeviceMemorySlice<float> c, int ldc,
+  // int batch_count, const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
   // blas::CallContext context) override {
-  // if (IsGpuBlasLtEnabled()) {
-  // auto &runner = gpu::BlasLtGemmRunner::i(stream);
-  // auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
-  // switch (dtype) {
-  // case blas::DataType::kFloat:
-  // return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
-  // alpha, a, lda, b, ldb, beta, c, ldc,
-  // numeric_options, context, allocator);
-  // case blas::DataType::kBF16:
-  // return DoBlasGemmImpl<Eigen::bfloat16>(
-  // stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-  // beta, c, ldc, numeric_options, context, allocator);
-  // default:
-  // LOG(ERROR) << "Not supported type by blaslt "
-  //<< blas::DataTypeString(dtype) << " fall back to blas";
-  // return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
-  // dtype, alpha, a, lda, b, ldb, beta, c,
-  // ldc, numeric_options, context);
-  //};
-  //} else {
-  // return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k, dtype,
-  // alpha, a, lda, b, ldb, beta, c, ldc,
-  // numeric_options, context);
-  //}
+  // return DoBlasGemmBatchedImpl<float>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
   //}
 
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, float alpha, DeviceMemorySlice<float> a,
-                         int lda, DeviceMemorySlice<float> b, int ldb,
-                         float beta, DeviceMemorySlice<float> c, int ldc,
-                         int batch_count, const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<float>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, double alpha, DeviceMemorySlice<double> a,
+  // int lda, DeviceMemorySlice<double> b, int ldb,
+  // double beta, DeviceMemorySlice<double> c, int ldc,
+  // int batch_count, const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
+  // blas::CallContext context) override {
+  // return DoBlasGemmBatchedImpl<double>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
+  //}
 
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, double alpha, DeviceMemorySlice<double> a,
-                         int lda, DeviceMemorySlice<double> b, int ldb,
-                         double beta, DeviceMemorySlice<double> c, int ldc,
-                         int batch_count, const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<double>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, float alpha,
+  // DeviceMemorySlice<Eigen::bfloat16> a, int lda,
+  // DeviceMemorySlice<Eigen::bfloat16> b, int ldb,
+  // float beta, DeviceMemorySlice<Eigen::bfloat16> c,
+  // int ldc, int batch_count,
+  // const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
+  // blas::CallContext context) override {
+  // return DoBlasGemmBatchedImpl<Eigen::bfloat16>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
+  //}
 
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, float alpha,
-                         DeviceMemorySlice<Eigen::bfloat16> a, int lda,
-                         DeviceMemorySlice<Eigen::bfloat16> b, int ldb,
-                         float beta, DeviceMemorySlice<Eigen::bfloat16> c,
-                         int ldc, int batch_count,
-                         const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<Eigen::bfloat16>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, float alpha,
+  // DeviceMemorySlice<Eigen::half> a, int lda,
+  // DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
+  // DeviceMemorySlice<Eigen::half> c, int ldc,
+  // int batch_count, const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
+  // blas::CallContext context) override {
+  // return DoBlasGemmBatchedImpl<Eigen::half>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
+  //}
 
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, float alpha,
-                         DeviceMemorySlice<Eigen::half> a, int lda,
-                         DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
-                         DeviceMemorySlice<Eigen::half> c, int ldc,
-                         int batch_count, const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<Eigen::half>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, std::complex<float> alpha,
+  // DeviceMemorySlice<std::complex<float>> a, int lda,
+  // DeviceMemorySlice<std::complex<float>> b, int ldb,
+  // std::complex<float> beta,
+  // DeviceMemorySlice<std::complex<float>> c, int ldc,
+  // int batch_count, const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
+  // blas::CallContext context) override {
+  // return DoBlasGemmBatchedImpl<std::complex<float>>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
+  //}
 
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, std::complex<float> alpha,
-                         DeviceMemorySlice<std::complex<float>> a, int lda,
-                         DeviceMemorySlice<std::complex<float>> b, int ldb,
-                         std::complex<float> beta,
-                         DeviceMemorySlice<std::complex<float>> c, int ldc,
-                         int batch_count, const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<std::complex<float>>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
-
-  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
-                         blas::Transpose transb, uint64_t m, uint64_t n,
-                         uint64 k, std::complex<double> alpha,
-                         DeviceMemorySlice<std::complex<double>> a, int lda,
-                         DeviceMemorySlice<std::complex<double>> b, int ldb,
-                         std::complex<double> beta,
-                         DeviceMemorySlice<std::complex<double>> c, int ldc,
-                         int batch_count, const NumericOptions &numeric_options,
-                         ScratchAllocator *scratch_allocator,
-                         blas::CallContext context) override {
-    return DoBlasGemmBatchedImpl<std::complex<double>>(
-        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        batch_count, numeric_options, scratch_allocator, context);
-  }
+  // bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+  // blas::Transpose transb, uint64_t m, uint64_t n,
+  // uint64 k, std::complex<double> alpha,
+  // DeviceMemorySlice<std::complex<double>> a, int lda,
+  // DeviceMemorySlice<std::complex<double>> b, int ldb,
+  // std::complex<double> beta,
+  // DeviceMemorySlice<std::complex<double>> c, int ldc,
+  // int batch_count, const NumericOptions &numeric_options,
+  // ScratchAllocator *scratch_allocator,
+  // blas::CallContext context) override {
+  // return DoBlasGemmBatchedImpl<std::complex<double>>(
+  // stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+  // batch_count, numeric_options, scratch_allocator, context);
+  //}
 
   absl::Status DoBlasGemmStridedBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
