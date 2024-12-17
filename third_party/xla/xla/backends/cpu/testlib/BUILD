@@ -130,10 +130,9 @@ cc_library(
 )
 
 tsl_pybind_extension(
-    name = "python_bindings",
+    name = "_extention",
     testonly = 1,
     srcs = ["kernel_runner_extention.cc"],
-    module_name = "_extention",
     visibility = ["//visibility:private"],  # the extention should always be linked via testlib
     deps = [
         ":elemental_kernel_emitter",
@@ -161,7 +160,7 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":python_bindings",
+        ":_extention",
         "//xla/codegen/testlib",  # buildcleaner: keep
     ],
 )
