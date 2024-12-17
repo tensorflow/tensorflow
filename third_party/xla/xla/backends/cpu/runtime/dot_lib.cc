@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -39,7 +41,7 @@ absl::InlinedVector<BufferUse, 4> DotBufferUses(const DotSlices& slices) {
           BufferUse::Write(slices.out_buffer)};
 }
 
-absl::StatusOr<DotShape> GetDotShape(DotDimensionNumbers dot_dimensions,
+absl::StatusOr<DotShape> GetDotShape(const DotDimensionNumbers& dot_dimensions,
                                      const Shape& lhs_shape,
                                      const Shape& rhs_shape,
                                      const Shape& out_shape) {
@@ -93,6 +95,50 @@ absl::StatusOr<DotShape> GetDotShape(DotDimensionNumbers dot_dimensions,
       std::move(rhs_matmul_shape),
       std::move(out_matmul_shape),
   };
+}
+
+absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
+    const DotDimensionNumbers& dot_dimensions, const DotShape& dot_shape) {
+  // Copy from the original dot dimension numbers.
+  absl::InlinedVector<int64_t, 2> lhs_contracting_dims;
+  absl::InlinedVector<int64_t, 2> rhs_contracting_dims;
+
+  lhs_contracting_dims.assign(
+      dot_dimensions.lhs_contracting_dimensions().begin(),
+      dot_dimensions.lhs_contracting_dimensions().end());
+  rhs_contracting_dims.assign(
+      dot_dimensions.rhs_contracting_dimensions().begin(),
+      dot_dimensions.rhs_contracting_dimensions().end());
+
+  // Adjust contracting dimensions for leading batch dimensions.
+  for (int64_t& dim : lhs_contracting_dims)
+    dim -= dot_dimensions.lhs_batch_dimensions_size();
+  for (int64_t& dim : rhs_contracting_dims)
+    dim -= dot_dimensions.rhs_batch_dimensions_size();
+
+  // Non-contracting dots should never make it here.
+  TF_RET_CHECK(lhs_contracting_dims.size() == 1);
+  TF_RET_CHECK(rhs_contracting_dims.size() == 1);
+  TF_RET_CHECK(lhs_contracting_dims[0] < 2);
+  TF_RET_CHECK(rhs_contracting_dims[0] < 2);
+
+  auto is_column_major = [](const Shape& shape) {
+    return shape.rank() > 1 && LayoutUtil::Minor(shape.layout(), 0) == 0;
+  };
+
+  return DotCanonicalDims{
+      /*m=*/dot_shape.lhs_matmul_shape.rank() <= 1
+          ? int64_t{1}
+          : dot_shape.lhs_matmul_shape.dimensions(1 - lhs_contracting_dims[0]),
+      /*k=*/dot_shape.lhs_matmul_shape.dimensions(lhs_contracting_dims[0]),
+      /*n=*/dot_shape.rhs_matmul_shape.rank() <= 1
+          ? int64_t{1}
+          : dot_shape.rhs_matmul_shape.dimensions(1 - rhs_contracting_dims[0]),
+      /*lhs_column_major=*/is_column_major(dot_shape.lhs_matmul_shape),
+      /*lhs_canonical=*/dot_shape.lhs_matmul_shape.rank() <= 1 ||
+          lhs_contracting_dims[0] == 1,
+      /*rhs_column_major=*/is_column_major(dot_shape.rhs_matmul_shape),
+      /*rhs_canonical=*/rhs_contracting_dims[0] == 0};
 }
 
 }  // namespace xla::cpu

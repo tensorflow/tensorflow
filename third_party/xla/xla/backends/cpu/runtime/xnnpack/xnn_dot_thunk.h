@@ -30,6 +30,12 @@ namespace xla::cpu {
 // Dot operation implemented on top of XNNPACK.
 class XnnDotThunk : public Thunk {
  public:
+  // Returns true if the dot operation is supported by XNNPACK. Returns an error
+  // if the dot operation shape is invalid.
+  static absl::StatusOr<bool> IsSupported(
+      const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+      const Shape& rhs_shape, const Shape& out_shape);
+
   static absl::StatusOr<std::unique_ptr<XnnDotThunk>> Create(
       Info info, DotDimensionNumbers dot_dimensions,
       BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
@@ -42,11 +48,13 @@ class XnnDotThunk : public Thunk {
 
  private:
   XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
-              DotSlices dot_slices, DotShape dot_shape);
+              DotSlices dot_slices, DotShape dot_shape,
+              DotCanonicalDims dot_canonical_dims);
 
   DotDimensionNumbers dot_dimensions_;
   DotSlices dot_slices_;
   DotShape dot_shape_;
+  DotCanonicalDims dot_canonical_dims_;
 };
 
 }  // namespace xla::cpu
