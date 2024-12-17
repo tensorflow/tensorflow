@@ -21,6 +21,7 @@
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_format.h"
@@ -158,7 +159,7 @@ absl::string_view Context::CmdStr(ApplyPluginRun::Cmd cmd) {
   }
 }
 
-Expected<SmallVec<CompilerPlugin>> LoadAllPlugins(Context& ctx) {
+Expected<std::vector<CompilerPlugin>> LoadAllPlugins(Context& ctx) {
   ctx.Dump().Start("Load Plugins");
   ctx.Dump().Labeled() << "Loading plugins from: ";
   const auto paths = ctx.LibSearchPaths();

@@ -50,7 +50,6 @@
 #include "tensorflow/lite/stderr_reporter.h"
 
 using litert::Expected;
-using litert::SmallVec;
 using litert::TensorBuffer;
 using litert::TensorBufferScopedLock;
 using litert::Unexpected;

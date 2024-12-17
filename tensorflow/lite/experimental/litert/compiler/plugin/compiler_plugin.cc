@@ -138,9 +138,9 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
   return kLiteRtStatusOk;
 }
 
-Expected<SmallVec<std::string>> GetSocModels(
+Expected<std::vector<std::string>> GetSocModels(
     const LiteRtCompilerPluginApi& api, LiteRtCompilerPlugin plugin_handle) {
-  SmallVec<std::string> soc_models;
+  std::vector<std::string> soc_models;
 
   LiteRtParamIndex num_models;
   LITERT_EXPECT_OK(
@@ -213,7 +213,7 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   return plugin;
 }
 
-Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
+Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     absl::Span<const absl::string_view> lib_search_paths) {
   std::vector<std::string> plugin_lib_paths;
   for (auto search_path : lib_search_paths) {
@@ -223,7 +223,7 @@ Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     }
   }
 
-  SmallVec<CompilerPlugin> loaded_plugins;
+  std::vector<CompilerPlugin> loaded_plugins;
   loaded_plugins.reserve(lib_search_paths.size());
 
   for (const auto& lib_path : plugin_lib_paths) {

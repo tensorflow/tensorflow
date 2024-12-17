@@ -24,11 +24,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_consts.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -37,11 +39,14 @@
 
 namespace litert {
 
+using Dimensions = absl::InlinedVector<int32_t, kExpectedMaxTensorRank>;
+using Strides = absl::InlinedVector<uint32_t, kExpectedMaxTensorRank>;
+
 // Tensor layout. C++ equivalent to LiteRtLayout.
 class Layout {
  public:
-  explicit Layout(SmallVec<int32_t>&& dimensions,
-                  SmallVec<uint32_t>&& strides = SmallVec<uint32_t>())
+  explicit Layout(litert::Dimensions&& dimensions,
+                  litert::Strides&& strides = litert::Strides())
       : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
 
   explicit Layout(const LiteRtLayout& layout)
@@ -84,8 +89,8 @@ class Layout {
   }
 
  private:
-  SmallVec<int32_t> dimensions_;
-  SmallVec<uint32_t> strides_;
+  litert::Dimensions dimensions_;
+  litert::Strides strides_;
 };
 
 // Type for tensors with known dimensions. C++ equivalent to
@@ -205,7 +210,10 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   }
 
   struct TensorUse;
-  SmallVec<TensorUse> Uses() const;
+  using TensorUses =
+      absl::InlinedVector<TensorUse, kExpectedMaxNumOfTensorUses>;
+
+  TensorUses Uses() const;
 
   template <typename T>
   Expected<absl::Span<const T>> WeightsData() const {
@@ -253,6 +261,9 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   bool IsConstant() const;
 };
 
+using OpInputs = absl::InlinedVector<Tensor, kExpectedMaxNumOfOpInputs>;
+using OpOutputs = absl::InlinedVector<Tensor, kExpectedMaxNumOfOpOutputs>;
+
 // Operator. C++ equivalent of LiteRtOp.
 class Op : public internal::NonOwnedHandle<LiteRtOp> {
  public:
@@ -265,18 +276,18 @@ class Op : public internal::NonOwnedHandle<LiteRtOp> {
     return opcode;
   }
 
-  SmallVec<Tensor> Inputs() const {
+  OpInputs Inputs() const {
     LiteRtParamIndex num_inputs;
     LiteRtTensorArray inputs;
     internal::AssertOk(LiteRtGetOpInputs, Get(), &num_inputs, &inputs);
-    return SmallVec<Tensor>(inputs, inputs + num_inputs);
+    return OpInputs(inputs, inputs + num_inputs);
   }
 
-  SmallVec<Tensor> Outputs() const {
+  OpOutputs Outputs() const {
     LiteRtParamIndex num_outputs;
     LiteRtTensorArray outputs;
     internal::AssertOk(LiteRtGetOpOutputs, Get(), &num_outputs, &outputs);
-    return SmallVec<Tensor>(outputs, outputs + num_outputs);
+    return OpOutputs(outputs, outputs + num_outputs);
   }
 };
 
@@ -285,6 +296,11 @@ struct Tensor::TensorUse {
   LiteRtParamIndex user_arg_ind;
 };
 
+using SubgraphInputs =
+    absl::InlinedVector<Tensor, kExpectedMaxNumOfSubgraphInputs>;
+using SubgraphOutputs =
+    absl::InlinedVector<Tensor, kExpectedMaxNumOfSubgraphOutputs>;
+
 // Model subgraph. C++ equivalent of LiteRtSubgraph.
 class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
  public:
@@ -292,18 +308,18 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   explicit Subgraph(LiteRtSubgraph subgraph)
       : internal::NonOwnedHandle<LiteRtSubgraph>(subgraph) {}
 
-  SmallVec<Tensor> Inputs() const {
+  SubgraphInputs Inputs() const {
     LiteRtParamIndex num_inputs;
     LiteRtTensorArray inputs;
     internal::AssertOk(LiteRtGetSubgraphInputs, Get(), &num_inputs, &inputs);
-    return SmallVec<Tensor>(inputs, inputs + num_inputs);
+    return SubgraphInputs(inputs, inputs + num_inputs);
   }
 
-  SmallVec<Tensor> Outputs() const {
+  SubgraphOutputs Outputs() const {
     LiteRtParamIndex num_outputs;
     LiteRtTensorArray outputs;
     internal::AssertOk(LiteRtGetSubgraphOutputs, Get(), &num_outputs, &outputs);
-    return SmallVec<Tensor>(outputs, outputs + num_outputs);
+    return SubgraphOutputs(outputs, outputs + num_outputs);
   }
 
   std::vector<Op> Ops() const {

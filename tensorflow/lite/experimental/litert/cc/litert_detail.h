@@ -20,17 +20,10 @@
 #include <optional>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 namespace litert {
-
-// Expected size for inlined vectors for things like the input/outputs of ops or
-// subgraphs.
-static constexpr size_t kTensorVecSize = 8;
-template <typename T>
-using SmallVec = absl::InlinedVector<T, kTensorVecSize>;
 
 // See "std::construct_at" from C++20.
 template <class T, class... Args>

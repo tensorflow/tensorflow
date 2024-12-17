@@ -28,6 +28,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_consts.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/model_builder.h"
@@ -77,12 +78,12 @@ struct TflShapeInfo {
 
   // Basic shape, all elements are non-negative (even if this is a dynamic
   // shape).
-  SmallVec<int32_t> shape;
+  absl::InlinedVector<int32_t, kExpectedMaxTensorRank> shape;
 
   // Dynamic dyn info. If this is not empty, then its length is equal to shape.
   // If i is a dyn dim, then shape[i] == 1 and shape_signature[i] < 0. Otherwise
   // shape_signature[i] == shape[i].
-  SmallVec<int32_t> shape_signature;
+  absl::InlinedVector<int32_t, kExpectedMaxTensorRank> shape_signature;
 
   // Convert from a single dims array. Will detect if array is static/dynamic
   // and populate fields accordingly.
@@ -108,10 +109,9 @@ struct TflShapeInfo {
   // Convert from tensor.
   explicit TflShapeInfo(const TflTensor& tfl_tensor)
       : has_rank(tfl_tensor.has_rank),
-        shape(SmallVec<int32_t>(tfl_tensor.shape.begin(),
-                                tfl_tensor.shape.end())),
-        shape_signature(SmallVec<int32_t>(tfl_tensor.shape_signature.begin(),
-                                          tfl_tensor.shape_signature.end())) {}
+        shape(tfl_tensor.shape.begin(), tfl_tensor.shape.end()),
+        shape_signature(tfl_tensor.shape_signature.begin(),
+                        tfl_tensor.shape_signature.end()) {}
 };
 
 using TflTensorType = std::pair<TflElementType, TflShapeInfo>;

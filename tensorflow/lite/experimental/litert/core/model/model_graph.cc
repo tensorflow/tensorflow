@@ -84,9 +84,8 @@ std::optional<LiteRtParamIndex> FindOutput(const LiteRtSubgraphT& subgraph,
                  &tensor);
 }
 
-SmallVec<LiteRtParamIndex> FindUseInds(const LiteRtTensorT& tensor,
-                                       const LiteRtOpT& op) {
-  SmallVec<LiteRtParamIndex> res;
+UseIndices FindUseInds(const LiteRtTensorT& tensor, const LiteRtOpT& op) {
+  UseIndices res;
   for (auto i = 0; i < tensor.NumUses(); ++i) {
     if (tensor.Users().at(i) == &op) {
       res.push_back(i);

@@ -54,7 +54,10 @@ cc_test(
 cc_library(
     name = "litert_model",
     srcs = ["litert_model.cc"],
-    hdrs = ["litert_model.h"],
+    hdrs = [
+        "litert_consts.h",
+        "litert_model.h",
+    ],
     deps = [
         ":litert_buffer_ref",
         ":litert_detail",
@@ -64,6 +67,7 @@ cc_library(
         ":litert_layout",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
@@ -219,7 +223,6 @@ cc_library(
     hdrs = ["litert_detail.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
     ],
 )
@@ -349,3 +352,5 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+exports_files(srcs = glob(["litert_*.h"]))

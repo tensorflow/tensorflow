@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -29,7 +30,7 @@
 namespace litert::internal {
 
 // Append all given subpaths together (e.g. os.path.join).
-std::string Join(const SmallVec<absl::string_view>& paths);
+std::string Join(const std::vector<absl::string_view>& paths);
 
 // Make a new empty file at the given path.
 void Touch(absl::string_view path);

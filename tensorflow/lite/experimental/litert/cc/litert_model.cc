@@ -29,13 +29,13 @@ bool Tensor::IsConstant() const {
   return HasWeights() && !DefiningOp().has_value();
 }
 
-SmallVec<Tensor::TensorUse> Tensor::Uses() const {
+Tensor::TensorUses Tensor::Uses() const {
   LiteRtParamIndex num_uses;
   LiteRtOpArray users;
   LiteRtParamIndex* user_arg_inds;
   litert::internal::AssertOk(LiteRtGetTensorUses, Get(), &num_uses, &users,
                              &user_arg_inds);
-  SmallVec<Tensor::TensorUse> res;
+  TensorUses res;
   for (int i = 0; i < num_uses; ++i) {
     res.push_back(Tensor::TensorUse{Op(users[i]), user_arg_inds[i]});  // NOLINT
   }

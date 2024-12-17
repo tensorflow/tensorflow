@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <filesystem>  // NOLINT
 #include <fstream>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -63,7 +64,7 @@ LiteRtStatus StdIFRead(const StdPath& std_path, char* data, size_t size) {
 
 void Touch(absl::string_view path) { std::ofstream(MakeStdPath(path)); }
 
-std::string Join(const SmallVec<absl::string_view>& paths) {
+std::string Join(const std::vector<absl::string_view>& paths) {
   StdPath std_path;
   for (auto subpath : paths) {
     std_path /= MakeStdPath(subpath);
