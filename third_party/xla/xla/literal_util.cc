@@ -472,6 +472,11 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   return ConvertType<int32_t, float>(s32_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertS32ToS1(
+    const LiteralSlice& s32_literal) {
+  return ConvertType<int32_t, tsl::int1>(s32_literal);
+}
+
 /* static */ Literal LiteralUtil::CreateToken() {
   return Literal(ShapeUtil::MakeTokenShape());
 }
