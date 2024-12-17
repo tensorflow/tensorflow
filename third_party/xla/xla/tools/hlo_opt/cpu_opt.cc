@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/service/transpose_folding.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"

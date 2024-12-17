@@ -24,17 +24,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
 
 namespace xla {
 
 // Platform-specific provider of `hlo-opt` functionality.
 class CompiledOptProvider : public OptProvider {
  public:
-  CompiledOptProvider() : OptProvider() {}
+  CompiledOptProvider() : OptProvider() {
+    RegisterSharedHardwareSpecificPasses();
+  }
 
   // Generates textual output for a given stage on a given platform, returns
   // empty optional if the stage is not supported.
@@ -61,6 +63,10 @@ class CompiledOptProvider : public OptProvider {
 
   // Gets a compiler associated with the provider.
   virtual absl::StatusOr<Compiler *> GetCompiler();
+
+  // Registers hardware-specific passes which are shared by
+  // multiple backends (CPU, GPU, xPU).
+  void RegisterSharedHardwareSpecificPasses();
 };
 
 }  // namespace xla
