@@ -354,11 +354,8 @@ xla_cc_test(
     deps = [
         ":concurrency",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
