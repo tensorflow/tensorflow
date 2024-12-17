@@ -1518,7 +1518,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.strict_shape_checking = true;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
-  options.context = nullptr;
+  if (args->options->context) {
+    options.context = args->options->context->execute_context.get();
+  }
   options.multi_slice_config = nullptr;
   options.use_major_to_minor_data_layout_for_callbacks = true;
   if (args->options->num_non_donatable_input_indices > 0) {
