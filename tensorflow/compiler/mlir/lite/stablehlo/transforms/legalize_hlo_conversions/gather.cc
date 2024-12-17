@@ -22,10 +22,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -192,6 +195,13 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
 
 namespace {
 
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder* builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
 // Transform the canonicalized result produced by tf.GatherNd with the
 // canonicalized operand and start indices back into the original result.
 // The canonicalized result will have the start indices batching dimensions
@@ -205,7 +215,11 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
                            ShapedType canonical_result_type,
                            ShapedType original_result_type,
                            ArrayRef<int64_t> offset_dims,
+                           ArrayRef<int64_t> operand_batching_dims,
                            ArrayRef<int64_t> start_indices_batching_dims,
+                           ArrayRef<int64_t> start_index_map,
+                           ArrayRef<int64_t> slice_sizes,
+                           ArrayRef<int64_t> collapsed_slice_dims,
                            ConversionPatternRewriter& rewriter) {
   // For those dims NOT inside the original_offset_dims are considered "batch
   // dims".
@@ -238,7 +252,34 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
       unflattened_shape.push_back(original_result_type.getDimSize(dim));
     }
   }
-  for (int64_t dim : offset_dims) {
+  // The remaining dimensions are the offset dims. We expect non-collapsed
+  // indexed dimensions first, followed by the rest of the operand dimensions.
+  llvm::SmallVector<int64_t> operand_dim_to_offset_dim_map(slice_sizes.size(),
+                                                           -1);
+  int offset_dim_index = 0;
+  llvm::SmallVector<int64_t> remaining_operand_dims;
+  for (int64_t operand_dim = 0; operand_dim < slice_sizes.size();
+       ++operand_dim) {
+    if (llvm::count(collapsed_slice_dims, operand_dim) ||
+        llvm::count(operand_batching_dims, operand_dim)) {
+      continue;
+    } else {
+      if (llvm::count(start_index_map, operand_dim) == 0) {
+        remaining_operand_dims.push_back(operand_dim);
+      }
+      operand_dim_to_offset_dim_map[operand_dim] =
+          offset_dims[offset_dim_index++];
+    }
+  }
+  for (int64_t s : start_index_map) {
+    if (llvm::count(collapsed_slice_dims, s) == 0) {
+      int64_t dim = operand_dim_to_offset_dim_map[s];
+      permutation_to_canonical.push_back(dim);
+      unflattened_shape.push_back(original_result_type.getDimSize(dim));
+    }
+  }
+  for (int64_t operand_dim : remaining_operand_dims) {
+    int64_t dim = operand_dim_to_offset_dim_map[operand_dim];
     permutation_to_canonical.push_back(dim);
     unflattened_shape.push_back(original_result_type.getDimSize(dim));
   }
@@ -315,35 +356,55 @@ Value CanonicalizeOperand(mhlo::GatherOp gather_op, Value operand,
 // it can be used by tf.GatherNd:
 // - Transpose so that the batching dimensions are the leading dimensions.
 // - Flatten the batching dimensions if they exist.
+// - For each indexed dimension with non-trivial slicing, introduce a new
+//   dimension, and broadcast and add iota values to the indices.
 // - Add iota index values for the operand batching dimensions.
 Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
                                ShapedType start_indices_type,
                                ArrayRef<int64_t> start_indices_batching_dims,
+                               ArrayRef<int64_t> start_index_map,
+                               ArrayRef<int64_t> slice_sizes,
                                ConversionPatternRewriter& rewriter) {
-  if (start_indices_batching_dims.empty()) {
-    // Don't need to do anything if there are no batching dimensions. This
-    // assumes that `index_vector_dim` is already the last dimension.
-    return start_indices;
-  }
   int batch_size = 1;
   llvm::SmallVector<int64_t> permutation;
   llvm::SmallVector<int64_t> transposed_shape;
-  llvm::SmallVector<int64_t> flattened_shape;
+  llvm::SmallVector<int64_t> reshaped_shape;
+
   // First add the batching dimensions.
   for (int64_t batch_dim : start_indices_batching_dims) {
     permutation.push_back(batch_dim);
     transposed_shape.push_back(start_indices_type.getDimSize(batch_dim));
     batch_size *= start_indices_type.getDimSize(batch_dim);
   }
-  flattened_shape.push_back(batch_size);
-  // Add remaining dimensions.
-  for (int64_t i = 0; i < start_indices_type.getRank(); i++) {
-    if (llvm::count(start_indices_batching_dims, i) == 0) {
-      permutation.push_back(i);
-      transposed_shape.push_back(start_indices_type.getDimSize(i));
-      flattened_shape.push_back(start_indices_type.getDimSize(i));
+  if (!start_indices_batching_dims.empty()) {
+    reshaped_shape.push_back(batch_size);
+  }
+
+  // Add remaining dimensions before the final index vector dim.
+  for (int64_t dim = 0; dim < start_indices_type.getRank() - 1; dim++) {
+    if (llvm::count(start_indices_batching_dims, dim) == 0) {
+      permutation.push_back(dim);
+      transposed_shape.push_back(start_indices_type.getDimSize(dim));
+      reshaped_shape.push_back(start_indices_type.getDimSize(dim));
     }
   }
+
+  // Introduce new dimensions associated with each indexed operand dimension
+  // that is taking a non-trivial slice. We will broadcast and add iota values
+  // after reshaping. See comment below for more details.
+  int64_t first_non_trivial_sliced_dim = reshaped_shape.size();
+  for (int64_t operand_dim : start_index_map) {
+    if (slice_sizes[operand_dim] > 1) {
+      reshaped_shape.push_back(1);
+    }
+  }
+
+  // Add the index vector dimension.
+  int64_t index_vector_size =
+      start_indices_type.getDimSize(start_indices_type.getRank() - 1);
+  permutation.push_back(permutation.size());
+  transposed_shape.push_back(index_vector_size);
+  reshaped_shape.push_back(index_vector_size);
 
   // Transpose the dimensions and flatten the batching dimensions.
   auto transposed_start_indices = rewriter.create<mhlo::TransposeOp>(
@@ -351,31 +412,94 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
       RankedTensorType::get(transposed_shape,
                             start_indices_type.getElementType()),
       start_indices, rewriter.getI64TensorAttr(permutation));
-  auto flattened_start_indices = rewriter.create<mhlo::ReshapeOp>(
+  start_indices = rewriter.create<mhlo::ReshapeOp>(
       gather_op.getLoc(),
-      RankedTensorType::get(flattened_shape,
+      RankedTensorType::get(reshaped_shape,
                             start_indices_type.getElementType()),
       transposed_start_indices);
 
-  // Concat iota values for indexing into the batching dimensions of the
-  // operand.
-  llvm::SmallVector<int64_t> offsets_shape = flattened_shape;
-  offsets_shape.back() = 1;
-  auto offsets = rewriter.create<mhlo::IotaOp>(
-      gather_op.getLoc(),
-      RankedTensorType::get(offsets_shape, start_indices_type.getElementType()),
-      rewriter.getI64IntegerAttr(0));
+  // Because tf.GatherNd does not support non-trivial slicing on indexed
+  // dimensions, we introduce new dimensions in start_indices and broadcast
+  // and add iota values to the indices. For example:
+  //
+  //  operand_shape = [10, 10, 10]
+  //  start_indices_original_shape = [1, 3]
+  //  start_index_map = [0, 1, 2]
+  //  slice_sizes = [1, 5, 1]
+  //
+  // We then transform the start indices by broadcasting the shape to
+  // [1, 5, 3], and adding the iota tensor with the following values:
+  //
+  //  [[[ 0 0 0 ]
+  //    [ 0 1 0 ]
+  //    [ 0 2 0 ]
+  //    [ 0 3 0 ]
+  //    [ 0 4 0 ]]]
+  //
+  // This allows us to take trivial slices when indexing into operand
+  // dimension 1.
+  llvm::SmallVector<int64_t> start_indices_shape = reshaped_shape;
+  int64_t non_trivial_sliced_dim = first_non_trivial_sliced_dim;
+  for (int i = 0; i < start_index_map.size(); ++i) {
+    int64_t operand_dim = start_index_map[i];
+    if (slice_sizes[operand_dim] == 1) {
+      continue;
+    }
+    // Create iota values along the sliced dimension.
+    llvm::SmallVector<int64_t> offsets_shape(start_indices_shape.size(), 1);
+    offsets_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
+    start_indices_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
+    auto offsets = rewriter.create<mhlo::IotaOp>(
+        gather_op.getLoc(),
+        RankedTensorType::get(offsets_shape,
+                              start_indices_type.getElementType()),
+        rewriter.getI64IntegerAttr(non_trivial_sliced_dim));
+    non_trivial_sliced_dim++;
 
-  llvm::SmallVector<int64_t> new_start_indices_shape = flattened_shape;
-  new_start_indices_shape.back()++;
-  auto new_start_indices = rewriter.create<mhlo::ConcatenateOp>(
-      gather_op.getLoc(),
-      RankedTensorType::get(new_start_indices_shape,
-                            start_indices_type.getElementType()),
-      ValueRange{offsets, flattened_start_indices},
-      rewriter.getI32IntegerAttr(new_start_indices_shape.size() - 1));
+    // Pad with 0s on the other operand dimensions.
+    Value zero = rewriter.create<arith::ConstantOp>(
+        gather_op.getLoc(), rewriter.getZeroAttr(RankedTensorType::get(
+                                {}, start_indices_type.getElementType())));
+    int rank = offsets_shape.size();
+    llvm::SmallVector<int64_t> padding_low(rank, 0);
+    llvm::SmallVector<int64_t> padding_high(rank, 0);
+    llvm::SmallVector<int64_t> padding_interior(rank, 0);
+    padding_low.back() = i;
+    padding_high.back() = start_indices_shape.back() - i - 1;
+    auto padded_offsets = rewriter.create<mhlo::PadOp>(
+        gather_op.getLoc(), offsets, zero,
+        GetI64ElementsAttr(padding_low, &rewriter),
+        GetI64ElementsAttr(padding_high, &rewriter),
+        GetI64ElementsAttr(padding_interior, &rewriter));
 
-  return new_start_indices;
+    // Add the padded offsets to the start indices (with broadcasting).
+    start_indices = rewriter.create<TFL::AddOp>(
+        gather_op.getLoc(), start_indices, padded_offsets,
+        /*fused_activation_function=*/
+        mlir::StringAttr::get(rewriter.getContext(), "NONE"));
+  }
+
+  if (!start_indices_batching_dims.empty()) {
+    // Concat iota values for indexing into the batching dimensions of the
+    // operand.
+    llvm::SmallVector<int64_t> offsets_shape = start_indices_shape;
+    offsets_shape.back() = 1;
+    auto offsets = rewriter.create<mhlo::IotaOp>(
+        gather_op.getLoc(),
+        RankedTensorType::get(offsets_shape,
+                              start_indices_type.getElementType()),
+        rewriter.getI64IntegerAttr(0));
+
+    start_indices_shape.back()++;
+    start_indices = rewriter.create<mhlo::ConcatenateOp>(
+        gather_op.getLoc(),
+        RankedTensorType::get(start_indices_shape,
+                              start_indices_type.getElementType()),
+        ValueRange{offsets, start_indices},
+        rewriter.getI32IntegerAttr(start_indices_shape.size() - 1));
+  }
+
+  return start_indices;
 }
 }  // namespace
 
@@ -447,9 +571,9 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
       gather_op.getDimensionNumbers().getStartIndexMap();
   llvm::ArrayRef<int64_t> collapsed_slice_dims =
       gather_op.getDimensionNumbers().getCollapsedSliceDims();
-  if (!start_indices_type.hasStaticShape()) {
-    // Dynamic dimensions in the start indices aren't supported in certain
-    // cases that require reshaping the indices or result.
+  if (!start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+    // Dynamic dimensions aren't supported in certain cases that require
+    // reshaping the indices or result.
     if (!start_indices_batching_dims.empty()) {
       gather_op.emitOpError()
           << "Dynamic shaped start indices aren't supported when there are "
@@ -480,24 +604,27 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
   }
   start_indices_type = mlir::cast<ShapedType>(start_indices.getType());
 
-  // Verify that slice_sizes is 1 for the batching and indexed dimensions and
-  // the full shape for the rest of the dimensions.
+  // Verify that slice_sizes is 1 for the batching dimensions and the full
+  // shape for non-indexed dimensions.
   auto slice_sizes = gather_op.getSliceSizes();
-  int64_t index = 0;
+  llvm::SmallVector<int64_t> slice_sizes_vector;
+  slice_sizes_vector.reserve(slice_sizes.size());
   for (int64_t s : slice_sizes.getValues<int64_t>()) {
-    if (llvm::count(start_index_map, index) ||
-        llvm::count(start_indices_batching_dims, index)) {
+    slice_sizes_vector.push_back(s);
+  }
+  for (int i = 0; i < slice_sizes_vector.size(); ++i) {
+    int s = slice_sizes_vector[i];
+    if (llvm::count(start_indices_batching_dims, i)) {
       if (s != 1) {
         return rewriter.notifyMatchFailure(gather_op,
                                            "unsupported slice sizes");
       }
-    } else {
-      if (s != operand_type.getShape()[index]) {
+    } else if (llvm::count(start_index_map, i) == 0) {
+      if (s != operand_type.getShape()[i]) {
         return rewriter.notifyMatchFailure(gather_op,
                                            "unsupported slice sizes");
       }
     }
-    ++index;
   }
 
   // Canonicalize the operand and start indices.
@@ -507,9 +634,9 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
   auto canonical_operand_type =
       mlir::cast<ShapedType>(canonical_operand.getType());
 
-  auto canonical_start_indices =
-      CanonicalizeStartIndices(gather_op, start_indices, start_indices_type,
-                               start_indices_batching_dims, rewriter);
+  auto canonical_start_indices = CanonicalizeStartIndices(
+      gather_op, start_indices, start_indices_type, start_indices_batching_dims,
+      start_index_map, slice_sizes_vector, rewriter);
   auto canonical_start_indices_type =
       mlir::cast<ShapedType>(canonical_start_indices.getType());
 
@@ -542,7 +669,8 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
   auto offset_dims = gather_op.getDimensionNumbers().getOffsetDims();
   auto final_result = UncanonicalizeResult(
       gather_op, canonical_result, canonical_result_type, result_type,
-      offset_dims, start_indices_batching_dims, rewriter);
+      offset_dims, operand_batching_dims, start_indices_batching_dims,
+      start_index_map, slice_sizes_vector, collapsed_slice_dims, rewriter);
 
   rewriter.replaceOp(gather_op, final_result);
   return success();
@@ -550,7 +678,10 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
 
 void PopulateGatherPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                             ConversionTarget& target) {
-  patterns.add<LegalizeGatherToSlice, LegalizeGatherToGatherND>(ctx);
+  // Prefer `LegalizeGatherToSlice` for the cases it handles, since it produces
+  // simpler IR.
+  patterns.add<LegalizeGatherToSlice>(ctx, /*benefit=*/2);
+  patterns.add<LegalizeGatherToGatherND>(ctx);
   target.addDynamicallyLegalOp<mhlo::GatherOp>(IsGatherLegal);
 }
 
