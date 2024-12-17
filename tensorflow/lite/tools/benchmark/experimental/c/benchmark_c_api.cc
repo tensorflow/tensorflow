@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/experimental/c/benchmark_c_api.h"
 
+#include <cstdint>
+#include <memory>
 #include <utility>
 
 #include "xla/tsl/util/stats_calculator.h"
