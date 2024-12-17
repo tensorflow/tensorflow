@@ -342,8 +342,6 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       return Future<Response>(HandleCheckValueReadyRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCopyArraysRequest:
       return Future<Response>(HandleCopyArraysRequest(std::move(request)));
-    case IfrtRequest::RequestCase::kReshardRequest:
-      return Future<Response>(HandleReshardRequest(std::move(request)));
     case IfrtRequest::RequestCase::kFullyReplicatedShardRequest:
       return Future<Response>(
           HandleFullyReplicatedShardRequest(std::move(request)));
@@ -1026,44 +1024,6 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
     }
   }
 
-  return ifrt_resp;
-}
-
-absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
-    std::unique_ptr<IfrtRequest> request) {
-  const auto& reshard_request = request->reshard_request();
-  TF_ASSIGN_OR_RETURN(auto array, GetArray(reshard_request.array_handle()));
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const Sharding> sharding,
-      Sharding::FromProto(
-          absl::bind_front(&Client::LookupDevice, client_.get()),
-          reshard_request.sharding()));
-  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
-                                          reshard_request.copy_semantics()));
-
-  // Emulate the old `Array::Reshard` behavior using `Client::CopyArrays`. No
-  // existing IFRT implementations before `Array::Reshard` was deleted actually
-  // supported resharding, so this should be safe.
-  if (!array->sharding().HasSamePartitioning(*sharding)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "IFRT Proxy does not support resharding, but got ",
-        array->sharding().DebugString(), " as the original sharding and ",
-        sharding->DebugString(), " as the target sharding"));
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
-                          sharding->memory_kind(), semantics));
-
-  uint64_t resharded_array_handle = handle_generator_.GenerateAtServer();
-  {
-    absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
-  }
-
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
-  ifrt_resp->mutable_reshard_response()->set_array_handle(
-      resharded_array_handle);
   return ifrt_resp;
 }
 
