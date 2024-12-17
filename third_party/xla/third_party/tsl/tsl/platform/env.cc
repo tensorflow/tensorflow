@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <cstdint>
 #include <deque>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
@@ -445,12 +447,12 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-  int32_t tid = GetCurrentThreadId();
+  int64_t tid = GetCurrentThreadId();
   int32_t pid = GetProcessId();
   long long now_microsec = NowMicros();  // NOLINT
 
-  *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
-                             pid, now_microsec);
+  absl::StrAppendFormat(prefix, "%s-%x-%d-%llx", port::Hostname(), tid, pid,
+                        now_microsec);
 
   if (!suffix.empty()) {
     *prefix += suffix;

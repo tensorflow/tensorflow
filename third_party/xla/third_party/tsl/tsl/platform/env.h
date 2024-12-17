@@ -461,7 +461,7 @@ class Env {
   // Posix: Returns pthread id which is only guaranteed to be unique within a
   //        process.
   // Windows: Returns thread id which is unique.
-  virtual int32 GetCurrentThreadId() = 0;
+  virtual int64_t GetCurrentThreadId() = 0;
 
   // Copies current thread name to "name". Returns true if success.
   virtual bool GetCurrentThreadName(std::string* name) = 0;
@@ -559,7 +559,9 @@ class EnvWrapper : public Env {
                       absl::AnyInvocable<void()> fn) override {
     return target_->StartThread(thread_options, name, std::move(fn));
   }
-  int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
+  int64_t GetCurrentThreadId() override {
+    return target_->GetCurrentThreadId();
+  }
   bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
