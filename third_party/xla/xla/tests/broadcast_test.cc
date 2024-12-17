@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/hlo/ir/hlo_computation.h"

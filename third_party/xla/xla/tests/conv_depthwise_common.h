@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 #define XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/transforms/despecializer.h"

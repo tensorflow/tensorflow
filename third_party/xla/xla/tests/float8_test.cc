@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <memory>
-#include <vector>
-
 #include <gtest/gtest.h>
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/test.h"

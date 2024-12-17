@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service.h"
 #include "xla/service/shaped_buffer.h"

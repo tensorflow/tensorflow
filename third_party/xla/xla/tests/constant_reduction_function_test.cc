@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"

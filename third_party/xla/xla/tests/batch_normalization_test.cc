@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
+#include <ostream>
 #include <vector>
 
 #include "absl/status/statusor.h"

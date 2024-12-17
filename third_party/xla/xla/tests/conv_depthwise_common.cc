@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "xla/tests/conv_depthwise_common.h"
 
-#include <optional>
+#include <string>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/transforms/despecializer.h"

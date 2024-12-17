@@ -16,10 +16,15 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
-#include <new>
+#include <optional>
 #include <random>
+#include <type_traits>
 #include <utility>
+
+#include <gtest/gtest.h>
+#include "xla/xla.pb.h"
 
 #define EIGEN_USE_THREADS
 

@@ -16,8 +16,6 @@ limitations under the License.
 // Tests that passing a bad shape to RNG's output parameter causes a validation
 // failure rather than causing a crash.
 
-#include <memory>
-
 #include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"

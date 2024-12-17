@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "xla/tests/client_library_test_base.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
+#include <numeric>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/execution_options_util.h"
@@ -31,6 +41,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/test_helpers.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
