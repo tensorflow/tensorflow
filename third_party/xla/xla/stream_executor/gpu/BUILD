@@ -403,11 +403,7 @@ gpu_only_cc_library(
         "redzone_allocator_kernel.h",
     ],
     hdrs = ["redzone_allocator.h"],
-    visibility = internal_visibility([
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-        "//tensorflow/core/kernels:__subpackages__",
-    ]),
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:shape_util",
         "//xla/service/gpu:stream_executor_util",
