@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define kint16max 0x00007FFF
 
