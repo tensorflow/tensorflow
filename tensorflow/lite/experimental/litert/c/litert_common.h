@@ -21,9 +21,6 @@ extern "C" {
 
 // Declares canonical opaque type.
 #define LITERT_DEFINE_HANDLE(name) typedef struct name##T* name
-// Declares an array of references to opaque type. `name` must be
-// previously declared opaque type.
-#define LITERT_DEFINE_HANDLE_ARRAY(name) typedef name* name##Array
 
 #if __ANDROID_API__ >= 26
 #define LITERT_HAS_AHWB_SUPPORT 1

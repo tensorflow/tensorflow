@@ -114,15 +114,20 @@ TEST(LiteRtTensorTest, GetUses) {
   tensor.UserArgInds().push_back(1);
 
   LiteRtParamIndex num_uses;
-  LiteRtOpArray actual_users;
-  LiteRtParamIndex* user_arg_inds;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetTensorUses(&tensor, &num_uses, &actual_users, &user_arg_inds));
-
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumTensorUses(&tensor, &num_uses));
   ASSERT_EQ(num_uses, 2);
-  EXPECT_THAT(absl::MakeConstSpan(actual_users, 2),
-              ElementsAreArray({&user, &other_user}));
-  EXPECT_THAT(absl::MakeConstSpan(user_arg_inds, 2), ElementsAreArray({0, 1}));
+
+  LiteRtOp actual_user;
+  LiteRtParamIndex actual_user_arg_index;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
+      &tensor, /*use_index=*/0, &actual_user, &actual_user_arg_index));
+  ASSERT_EQ(actual_user, &user);
+  ASSERT_EQ(actual_user_arg_index, 0);
+
+  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
+      &tensor, /*use_index=*/1, &actual_user, &actual_user_arg_index));
+  ASSERT_EQ(actual_user, &other_user);
+  ASSERT_EQ(actual_user_arg_index, 1);
 }
 
 TEST(LiteRtTensorTest, GetDefiningOp) {
@@ -243,12 +248,18 @@ TEST(LiteRtOpTest, GetInputs) {
   op.Inputs().push_back(&input1);
   op.Inputs().push_back(&input2);
 
-  LiteRtTensorArray inputs;
   LiteRtParamIndex num_inputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetOpInputs(&op, &num_inputs, &inputs));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpInputs(&op, &num_inputs));
   ASSERT_EQ(num_inputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(inputs, num_inputs),
-              ElementsAreArray({&input1, &input2}));
+
+  LiteRtTensor actual_input;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpInput(&op, /*input_index=*/0, &actual_input));
+  EXPECT_EQ(actual_input, &input1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpInput(&op, /*input_index=*/1, &actual_input));
+  EXPECT_EQ(actual_input, &input2);
 }
 
 TEST(LiteRtOpTest, GetOutputs) {
@@ -259,12 +270,18 @@ TEST(LiteRtOpTest, GetOutputs) {
   op.Outputs().push_back(&output1);
   op.Outputs().push_back(&output2);
 
-  LiteRtTensorArray outputs;
   LiteRtParamIndex num_outputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetOpOutputs(&op, &num_outputs, &outputs));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpOutputs(&op, &num_outputs));
   ASSERT_EQ(num_outputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(outputs, num_outputs),
-              ElementsAreArray({&output1, &output2}));
+
+  LiteRtTensor actual_output;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpOutput(&op, /*output_index=*/0, &actual_output));
+  EXPECT_EQ(actual_output, &output1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpOutput(&op, /*output_index=*/1, &actual_output));
+  EXPECT_EQ(actual_output, &output2);
 }
 
 TEST(LiteRtSubgraphTest, GetInputs) {
@@ -275,13 +292,17 @@ TEST(LiteRtSubgraphTest, GetInputs) {
   subgraph.Inputs().push_back(&input1);
   subgraph.Inputs().push_back(&input2);
 
-  LiteRtTensorArray inputs;
   LiteRtParamIndex num_inputs;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphInputs(&subgraph, &num_inputs));
+
+  LiteRtTensor actual_input;
   LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphInputs(&subgraph, &num_inputs, &inputs));
-  ASSERT_EQ(num_inputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(inputs, num_inputs),
-              ElementsAreArray({&input1, &input2}));
+      LiteRtGetSubgraphInput(&subgraph, /*input_index=*/0, &actual_input));
+  EXPECT_EQ(actual_input, &input1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphInput(&subgraph, /*input_index=*/1, &actual_input));
+  EXPECT_EQ(actual_input, &input2);
 }
 
 TEST(LiteRtSubgraphTest, GetOutputs) {
@@ -292,13 +313,17 @@ TEST(LiteRtSubgraphTest, GetOutputs) {
   subgraph.Outputs().push_back(&output1);
   subgraph.Outputs().push_back(&output2);
 
-  LiteRtTensorArray outputs;
   LiteRtParamIndex num_outputs;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOutputs(&subgraph, &num_outputs));
+
+  LiteRtTensor actual_output;
   LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphOutputs(&subgraph, &num_outputs, &outputs));
-  ASSERT_EQ(num_outputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(outputs, num_outputs),
-              ElementsAreArray({&output1, &output2}));
+      LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/0, &actual_output));
+  EXPECT_EQ(actual_output, &output1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/1, &actual_output));
+  EXPECT_EQ(actual_output, &output2);
 }
 
 TEST(LiteRtSubgraphTest, GetOps) {
@@ -306,12 +331,18 @@ TEST(LiteRtSubgraphTest, GetOps) {
   auto& op1 = subgraph.EmplaceOp();
   auto& op2 = subgraph.EmplaceOp();
 
-  LiteRtOpArray ops;
   LiteRtParamIndex num_ops;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetSubgraphOps(&subgraph, &num_ops, &ops));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOps(&subgraph, &num_ops));
   ASSERT_EQ(num_ops, 2);
-  EXPECT_THAT(absl::MakeConstSpan(ops, num_ops),
-              ElementsAreArray({&op1, &op2}));
+
+  LiteRtOp actual_op;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/0, &actual_op));
+  ASSERT_EQ(actual_op, &op1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/1, &actual_op));
+  ASSERT_EQ(actual_op, &op2);
 }
 
 TEST(LiteRtModelTest, GetMetadata) {

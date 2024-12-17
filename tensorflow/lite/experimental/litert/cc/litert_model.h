@@ -276,19 +276,8 @@ class Op : public internal::NonOwnedHandle<LiteRtOp> {
     return opcode;
   }
 
-  OpInputs Inputs() const {
-    LiteRtParamIndex num_inputs;
-    LiteRtTensorArray inputs;
-    internal::AssertOk(LiteRtGetOpInputs, Get(), &num_inputs, &inputs);
-    return OpInputs(inputs, inputs + num_inputs);
-  }
-
-  OpOutputs Outputs() const {
-    LiteRtParamIndex num_outputs;
-    LiteRtTensorArray outputs;
-    internal::AssertOk(LiteRtGetOpOutputs, Get(), &num_outputs, &outputs);
-    return OpOutputs(outputs, outputs + num_outputs);
-  }
+  OpInputs Inputs() const;
+  OpOutputs Outputs() const;
 };
 
 struct Tensor::TensorUse {
@@ -308,26 +297,9 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   explicit Subgraph(LiteRtSubgraph subgraph)
       : internal::NonOwnedHandle<LiteRtSubgraph>(subgraph) {}
 
-  SubgraphInputs Inputs() const {
-    LiteRtParamIndex num_inputs;
-    LiteRtTensorArray inputs;
-    internal::AssertOk(LiteRtGetSubgraphInputs, Get(), &num_inputs, &inputs);
-    return SubgraphInputs(inputs, inputs + num_inputs);
-  }
-
-  SubgraphOutputs Outputs() const {
-    LiteRtParamIndex num_outputs;
-    LiteRtTensorArray outputs;
-    internal::AssertOk(LiteRtGetSubgraphOutputs, Get(), &num_outputs, &outputs);
-    return SubgraphOutputs(outputs, outputs + num_outputs);
-  }
-
-  std::vector<Op> Ops() const {
-    LiteRtParamIndex num_ops;
-    LiteRtOpArray ops;
-    internal::AssertOk(LiteRtGetSubgraphOps, Get(), &num_ops, &ops);
-    return std::vector<Op>(ops, ops + num_ops);
-  }
+  SubgraphInputs Inputs() const;
+  SubgraphOutputs Outputs() const;
+  std::vector<Op> Ops() const;
 };
 
 // Model signature. C++ equivalent of LiteRtSignature.

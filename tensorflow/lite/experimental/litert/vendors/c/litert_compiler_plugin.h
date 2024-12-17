@@ -71,7 +71,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 // partition step.
 LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
                                          const char* soc_model,
-                                         LiteRtSubgraphArray partitions,
+                                         LiteRtSubgraph* partitions,
                                          LiteRtParamIndex num_partitions,
                                          LiteRtCompiledResult* compiled_result);
 

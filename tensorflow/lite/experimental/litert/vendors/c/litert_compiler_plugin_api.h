@@ -54,7 +54,7 @@ typedef LiteRtStatus (*LiteRtCompilerPluginPartitionT)(
     LiteRtCompilerPlugin, LiteRtSubgraph subgraph, LiteRtOpList selected_ops);
 
 typedef LiteRtStatus (*LiteRtCompilerPluginCompileT)(
-    LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraphArray partitions,
+    LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraph* partitions,
     LiteRtParamIndex num_partitions, LiteRtCompiledResult* compiled_result);
 
 typedef void (*LiteRtDestroyCompiledResultT)(LiteRtCompiledResult);

@@ -52,9 +52,7 @@ TEST(CompiledModelTest, Basic) {
   ASSERT_EQ(LiteRtGetModelSubgraph(model, 0, &subgraph), kLiteRtStatusOk);
 
   LiteRtParamIndex num_inputs;
-  LiteRtTensorArray input_tensors;
-  ASSERT_EQ(LiteRtGetSubgraphInputs(subgraph, &num_inputs, &input_tensors),
-            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtGetNumSubgraphInputs(subgraph, &num_inputs), kLiteRtStatusOk);
 
   std::vector<LiteRtTensorBuffer> input_tensor_buffers;
   input_tensor_buffers.reserve(num_inputs);
@@ -82,8 +80,7 @@ TEST(CompiledModelTest, Basic) {
   }
 
   LiteRtParamIndex num_outputs;
-  LiteRtTensorArray output_tensors;
-  ASSERT_EQ(LiteRtGetSubgraphOutputs(subgraph, &num_outputs, &output_tensors),
+  ASSERT_EQ(LiteRtGetNumSubgraphOutputs(subgraph, &num_outputs),
             kLiteRtStatusOk);
 
   std::vector<LiteRtTensorBuffer> output_tensor_buffers;

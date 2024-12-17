@@ -216,27 +216,65 @@ LiteRtStatus LiteRtGetSignatureOutputName(LiteRtSignature signature,
 // Subgraph
 //
 
-LiteRtStatus LiteRtGetSubgraphInputs(LiteRtSubgraph subgraph,
-                                     LiteRtParamIndex* num_inputs,
-                                     LiteRtTensorArray* inputs) {
+LiteRtStatus LiteRtGetNumSubgraphInputs(LiteRtSubgraph subgraph,
+                                        LiteRtParamIndex* num_inputs) {
+  if (!subgraph || !num_inputs) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_inputs = subgraph->Inputs().size();
-  *inputs = subgraph->Inputs().data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtGetSubgraphOutputs(LiteRtSubgraph subgraph,
-                                      LiteRtParamIndex* num_outputs,
-                                      LiteRtTensorArray* outputs) {
+LiteRtStatus LiteRtGetSubgraphInput(LiteRtSubgraph subgraph,
+                                    LiteRtParamIndex input_index,
+                                    LiteRtTensor* input) {
+  if (!subgraph || !input) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (input_index < 0 || input_index >= subgraph->Inputs().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *input = subgraph->Inputs()[input_index];
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumSubgraphOutputs(LiteRtSubgraph subgraph,
+                                         LiteRtParamIndex* num_outputs) {
+  if (!subgraph || !num_outputs) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_outputs = subgraph->Outputs().size();
-  *outputs = subgraph->Outputs().data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtGetSubgraphOps(LiteRtSubgraph subgraph,
-                                  LiteRtParamIndex* num_ops,
-                                  LiteRtOpArray* ops) {
+LiteRtStatus LiteRtGetSubgraphOutput(LiteRtSubgraph subgraph,
+                                     LiteRtParamIndex output_index,
+                                     LiteRtTensor* output) {
+  if (!subgraph || !output) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (output_index < 0 || output_index >= subgraph->Outputs().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *output = subgraph->Outputs()[output_index];
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumSubgraphOps(LiteRtSubgraph subgraph,
+                                     LiteRtParamIndex* num_ops) {
+  if (!subgraph || !num_ops) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_ops = subgraph->Ops().size();
-  *ops = subgraph->Ops().data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSubgraphOp(LiteRtSubgraph subgraph,
+                                 LiteRtParamIndex op_index, LiteRtOp* op) {
+  if (!subgraph || !op) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (op_index < 0 || op_index >= subgraph->Ops().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *op = subgraph->Ops()[op_index];
   return kLiteRtStatusOk;
 }
 
@@ -244,22 +282,63 @@ LiteRtStatus LiteRtGetSubgraphOps(LiteRtSubgraph subgraph,
 // Op
 //
 
-LiteRtStatus LiteRtGetOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs,
-                                LiteRtTensorArray* outputs) {
-  *num_outputs = op->Outputs().size();
-  *outputs = op->Outputs().data();
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs,
-                               LiteRtTensorArray* inputs) {
-  *num_inputs = op->Inputs().size();
-  *inputs = op->Inputs().data();
-  return kLiteRtStatusOk;
-}
-
 LiteRtStatus LiteRtGetOpCode(LiteRtOp op, LiteRtOpCode* code) {
+  if (!op || !code) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *code = op->OpCode();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs) {
+  if (!op || !num_inputs) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_inputs = op->Inputs().size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetOpInput(LiteRtOp op, LiteRtParamIndex input_index,
+                              LiteRtTensor* input) {
+  if (!op || !input) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (input_index < 0 || input_index >= op->Inputs().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *input = op->Inputs()[input_index];
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs) {
+  if (!op || !num_outputs) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_outputs = op->Outputs().size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetOpOutput(LiteRtOp op, LiteRtParamIndex output_index,
+                               LiteRtTensor* output) {
+  if (!op || !output) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (output_index < 0 || output_index >= op->Outputs().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *output = op->Outputs()[output_index];
+  return kLiteRtStatusOk;
+}
+
+//
+// Weights
+//
+
+LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
+                                   size_t* size) {
+  if (!weights || !addr || !size) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *addr = weights->Buf().Data();
+  *size = weights->Buf().Size();
   return kLiteRtStatusOk;
 }
 
@@ -267,26 +346,34 @@ LiteRtStatus LiteRtGetOpCode(LiteRtOp op, LiteRtOpCode* code) {
 // Tensor
 //
 
-LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
-                                   size_t* size) {
-  *addr = weights->Buf().Data();
-  *size = weights->Buf().Size();
-  return kLiteRtStatusOk;
-}
-
 LiteRtStatus LiteRtGetTensorWeights(LiteRtTensor tensor,
                                     LiteRtWeights* weights) {
+  if (!tensor || !weights) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *weights = &tensor->Weights();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtGetTensorUses(LiteRtTensor tensor,
-                                 LiteRtParamIndex* num_uses,
-                                 LiteRtOpArray* use_users,
-                                 LiteRtParamIndex** use_user_arg_inds) {
+LiteRtStatus LiteRtGetNumTensorUses(LiteRtTensor tensor,
+                                    LiteRtParamIndex* num_uses) {
+  if (!tensor || !num_uses) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_uses = tensor->Users().size();
-  *use_users = tensor->Users().data();
-  *use_user_arg_inds = tensor->UserArgInds().data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTensorUse(LiteRtTensor tensor, LiteRtParamIndex use_index,
+                                LiteRtOp* user,
+                                LiteRtParamIndex* user_arg_index) {
+  if (!tensor || !user || !user_arg_index) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (use_index < 0 || use_index >= tensor->Users().size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *user = tensor->Users()[use_index];
+  *user_arg_index = tensor->UserArgInds()[use_index];
   return kLiteRtStatusOk;
 }
 
@@ -294,6 +381,9 @@ LiteRtStatus LiteRtGetTensorUses(LiteRtTensor tensor,
 LiteRtStatus LiteRtGetTensorDefiningOp(LiteRtTensor tensor,
                                        bool* has_defining_op,
                                        LiteRtTensorDefiningOp* defining_op) {
+  if (!tensor || !has_defining_op || !defining_op) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   if (tensor->DefiningOp() != nullptr) {
     *has_defining_op = true;
     defining_op->op = tensor->DefiningOp();
@@ -306,13 +396,18 @@ LiteRtStatus LiteRtGetTensorDefiningOp(LiteRtTensor tensor,
 
 LiteRtStatus LiteRtGetTensorTypeId(LiteRtTensor tensor,
                                    LiteRtTensorTypeId* type_id) {
+  if (!tensor || !type_id) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *type_id = tensor->Type().first;
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetUnrankedTensorType(
     LiteRtTensor tensor, LiteRtUnrankedTensorType* unranked_tensor_type) {
-  if (tensor->Type().first != kLiteRtUnrankedTensorType) {
+  if (!tensor || !unranked_tensor_type) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (tensor->Type().first != kLiteRtUnrankedTensorType) {
     return kLiteRtStatusErrorInvalidIrType;
   }
   *unranked_tensor_type = tensor->Type().second.unranked_tensor_type;
@@ -321,7 +416,9 @@ LiteRtStatus LiteRtGetUnrankedTensorType(
 
 LiteRtStatus LiteRtGetRankedTensorType(
     LiteRtTensor tensor, LiteRtRankedTensorType* ranked_tensor_type) {
-  if (tensor->Type().first != kLiteRtRankedTensorType) {
+  if (!tensor || !ranked_tensor_type) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (tensor->Type().first != kLiteRtRankedTensorType) {
     return kLiteRtStatusErrorInvalidIrType;
   }
   *ranked_tensor_type = tensor->Type().second.ranked_tensor_type;
@@ -329,19 +426,27 @@ LiteRtStatus LiteRtGetRankedTensorType(
 }
 
 LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name) {
+  if (!tensor || !name) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *name = tensor->Name().data();
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetQuantizationTypeId(LiteRtTensor tensor,
                                          LiteRtQuantizationTypeId* q_type_id) {
+  if (!tensor || !q_type_id) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *q_type_id = tensor->Qparams().first;
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetPerTensorQuantization(
     LiteRtTensor tensor, LiteRtQuantizationPerTensor* per_tensor_quantization) {
-  if (tensor->Qparams().first != kLiteRtQuantizationPerTensor) {
+  if (!tensor || !per_tensor_quantization) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (tensor->Qparams().first != kLiteRtQuantizationPerTensor) {
     return kLiteRtStatusErrorInvalidIrType;
   }
   auto& per_tensor = tensor->Qparams().second.per_tensor;
@@ -353,7 +458,9 @@ LiteRtStatus LiteRtGetPerTensorQuantization(
 LiteRtStatus LiteRtGetPerChannelQuantization(
     LiteRtTensor tensor,
     LiteRtQuantizationPerChannel* per_channel_quantization) {
-  if (tensor->Qparams().first != kLiteRtQuantizationPerChannel) {
+  if (!tensor || !per_channel_quantization) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (tensor->Qparams().first != kLiteRtQuantizationPerChannel) {
     return kLiteRtStatusErrorInvalidIrType;
   }
   auto& per_channel = tensor->Qparams().second.per_channel;
