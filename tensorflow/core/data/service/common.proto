@@ -128,6 +128,7 @@ enum TargetWorkers {
 }
 
 // Information about one of a worker server's data transfer servers.
+// Next tag: 6
 message DataTransferServerInfo {
   string protocol = 1;
   string address = 2;
@@ -139,4 +140,8 @@ message DataTransferServerInfo {
   // If `true`, data service clients should fall back to gRPC for this server if
   // they fail to create a data transfer client for it.
   bool fall_back_to_grpc_at_client_creation_time = 4;
+
+  // If `true`, data service clients should fall back to gRPC for this server if
+  // it nonretryably fails to transfer an element.
+  bool fall_back_to_grpc_at_get_element_time = 5;
 }

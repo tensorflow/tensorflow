@@ -64,7 +64,8 @@ CreateDataServiceWorkerClient(
     Allocator* allocator) {
   auto client = std::make_unique<DataServiceWorkerClient>(
       info.address(), dispatcher_protocol, info.protocol(),
-      accelerator_device_info, allocator);
+      info.fall_back_to_grpc_at_get_element_time(), accelerator_device_info,
+      allocator);
   TF_RETURN_IF_ERROR(client->Initialize());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       client->CheckCompatibility(info.compatibility_info()),

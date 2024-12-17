@@ -140,6 +140,10 @@ class DataTransferServer {
   // If `true`, data service clients should fall back to gRPC for this server if
   // they fail to create a data transfer client for it.
   virtual bool FallBackToGrpcAtClientCreationTime() const { return true; }
+
+  // If `true`, data service clients should fall back to gRPC for this server if
+  // it nonretryably fails to transfer an element.
+  virtual bool FallBackToGrpcAtGetElementTime() const { return true; }
 };
 
 }  // namespace data

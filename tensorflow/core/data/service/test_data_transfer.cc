@@ -34,6 +34,9 @@ namespace data {
 // - bad_with_secondary_fallback: Fails at get element time and falls back to
 // gRPC.
 //
+// - bad_without_secondary_fallback: Fails at get element time and doesn't fall
+// back, taking down the entire data service client.
+//
 constexpr const char kGoodProtocol[] = "good";
 constexpr const char kBadProtocolWithPrimaryFallback[] =
     "bad_with_primary_fallback";
@@ -41,15 +44,20 @@ constexpr const char kBadProtocolWithoutPrimaryFallback[] =
     "bad_without_primary_fallback";
 constexpr const char kBadProtocolWithSecondaryFallback[] =
     "bad_with_secondary_fallback";
+constexpr const char kBadProtocolWithoutSecondaryFallback[] =
+    "bad_without_secondary_fallback";
 
 // A server that works.
 class GoodTestServer : public DataTransferServer {
  public:
   explicit GoodTestServer(DataTransferServer::GetElementT get_element,
-                          bool fall_back_to_grpc_at_client_creation_time = true)
+                          bool fall_back_to_grpc_at_client_creation_time = true,
+                          bool fall_back_to_grpc_at_get_element_time = true)
       : get_element_(get_element),
         fall_back_to_grpc_at_client_creation_time_(
-            fall_back_to_grpc_at_client_creation_time) {}
+            fall_back_to_grpc_at_client_creation_time),
+        fall_back_to_grpc_at_get_element_time_(
+            fall_back_to_grpc_at_get_element_time) {}
 
   virtual absl::Status GetElement(const GetElementRequest& req,
                                   GetElementResult& result) {
@@ -58,6 +66,10 @@ class GoodTestServer : public DataTransferServer {
 
   bool FallBackToGrpcAtClientCreationTime() const override {
     return fall_back_to_grpc_at_client_creation_time_;
+  }
+
+  bool FallBackToGrpcAtGetElementTime() const override {
+    return fall_back_to_grpc_at_get_element_time_;
   }
 
   absl::Status Start(const experimental::WorkerConfig& config) override {
@@ -69,14 +81,17 @@ class GoodTestServer : public DataTransferServer {
  private:
   DataTransferServer::GetElementT get_element_;
   bool fall_back_to_grpc_at_client_creation_time_;
+  bool fall_back_to_grpc_at_get_element_time_;
 };
 
 // A server that doesn't work (by failing at get element time).
-class BadTestServerSecondaryFallback : public GoodTestServer {
+class BadTestServer : public GoodTestServer {
  public:
-  explicit BadTestServerSecondaryFallback(
-      DataTransferServer::GetElementT get_element)
-      : GoodTestServer(get_element) {}
+  explicit BadTestServer(DataTransferServer::GetElementT get_element,
+                         bool fall_back_to_grpc_at_client_creation_time = true,
+                         bool fall_back_to_grpc_at_get_element_time = true)
+      : GoodTestServer(get_element, fall_back_to_grpc_at_client_creation_time,
+                       fall_back_to_grpc_at_get_element_time) {}
 
   absl::Status GetElement(const GetElementRequest& req,
                           GetElementResult& result) override {
@@ -109,31 +124,45 @@ class DataTransferRegistrar {
     RegisterClient<GoodTestServer>(kGoodProtocol, good_);
 
     // "bad_with_primary_fallback".
-    RegisterUnusedServerForBadClient(kBadProtocolWithPrimaryFallback,
-                                     /*fall_back=*/true);
+    RegisterUnusedServerForBadClient(
+        kBadProtocolWithPrimaryFallback,
+        /*fall_back_to_grpc_at_client_creation_time=*/true);
     RegisterBadClient(kBadProtocolWithPrimaryFallback);
 
     // "bad_without_primary_fallback".
-    RegisterUnusedServerForBadClient(kBadProtocolWithoutPrimaryFallback,
-                                     /*fall_back=*/false);
+    RegisterUnusedServerForBadClient(
+        kBadProtocolWithoutPrimaryFallback,
+        /*fall_back_to_grpc_at_client_creation_time=*/false);
     RegisterBadClient(kBadProtocolWithoutPrimaryFallback);
 
     // "bad_with_secondary_fallback".
-    RegisterServer<BadTestServerSecondaryFallback>(
-        kBadProtocolWithSecondaryFallback, bad_with_secondary_fallback_);
-    RegisterClient<BadTestServerSecondaryFallback>(
-        kBadProtocolWithSecondaryFallback, bad_with_secondary_fallback_);
+    RegisterServer<BadTestServer>(
+        kBadProtocolWithSecondaryFallback, bad_with_secondary_fallback_,
+        /*fall_back_to_grpc_at_get_element_time=*/true);
+    RegisterClient<BadTestServer>(kBadProtocolWithSecondaryFallback,
+                                  bad_with_secondary_fallback_);
+
+    // "bad_without_secondary_fallback".
+    RegisterServer<BadTestServer>(
+        kBadProtocolWithoutSecondaryFallback, bad_without_secondary_fallback_,
+        /*fall_back_to_grpc_at_get_element_time=*/false);
+    RegisterClient<BadTestServer>(kBadProtocolWithoutSecondaryFallback,
+                                  bad_without_secondary_fallback_);
   }
 
  private:
   // Registers a server that may or may not work.
   template <typename TestServerT>
   void RegisterServer(const std::string& protocol,
-                      std::shared_ptr<TestServerT>& my_server) {
+                      std::shared_ptr<TestServerT>& my_server,
+                      bool fall_back_to_grpc_at_get_element_time = true) {
     DataTransferServer::Register(
-        protocol, [&](DataTransferServer::GetElementT get_element,
+        protocol, [&my_server, fall_back_to_grpc_at_get_element_time](
+                      DataTransferServer::GetElementT get_element,
                       std::shared_ptr<DataTransferServer>* server) {
-          my_server = std::make_shared<TestServerT>(get_element);
+          my_server = std::make_shared<TestServerT>(
+              get_element, /*fall_back_to_grpc_at_client_creation_time=*/true,
+              fall_back_to_grpc_at_get_element_time);
           *server = my_server;
           return absl::OkStatus();
         });
@@ -151,14 +180,17 @@ class DataTransferRegistrar {
         });
   }
 
-  // Registers a working server that shouldn't be used (because its client
+  // Registers a working server that shouldn't get used (because its client
   // should fail first, which may or may not result in a fall back).
-  void RegisterUnusedServerForBadClient(const std::string& protocol,
-                                        bool fall_back) {
+  void RegisterUnusedServerForBadClient(
+      const std::string& protocol,
+      bool fall_back_to_grpc_at_client_creation_time) {
     DataTransferServer::Register(
-        protocol, [fall_back](DataTransferServer::GetElementT get_element,
-                              std::shared_ptr<DataTransferServer>* server) {
-          *server = std::make_shared<GoodTestServer>(get_element, fall_back);
+        protocol, [fall_back_to_grpc_at_client_creation_time](
+                      DataTransferServer::GetElementT get_element,
+                      std::shared_ptr<DataTransferServer>* server) {
+          *server = std::make_shared<GoodTestServer>(
+              get_element, fall_back_to_grpc_at_client_creation_time);
           return absl::OkStatus();
         });
   }
@@ -173,8 +205,8 @@ class DataTransferRegistrar {
   }
 
   std::shared_ptr<GoodTestServer> good_ = nullptr;
-  std::shared_ptr<BadTestServerSecondaryFallback> bad_with_secondary_fallback_ =
-      nullptr;
+  std::shared_ptr<BadTestServer> bad_with_secondary_fallback_ = nullptr;
+  std::shared_ptr<BadTestServer> bad_without_secondary_fallback_ = nullptr;
 };
 
 static DataTransferRegistrar data_transfer_registrar;

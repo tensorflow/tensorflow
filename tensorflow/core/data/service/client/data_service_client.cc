@@ -882,12 +882,25 @@ absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     if (!IsPreemptedError(s)) {
       if (task->worker->GetDataTransferProtocol() == kGrpcTransferProtocol ||
           task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
-        return s;
+        return absl::Status(
+            s.code(),
+            absl::StrCat(
+                "Failed to get an element, with a nonretryable error: ",
+                s.message()));
       }
-      LOG(ERROR) << "Failed to use alternative data transfer protocol '"
-                 << task->worker->GetDataTransferProtocol() << "' for worker '"
-                 << task->info.worker_address()
-                 << "'; falling back to grpc. Original error: " << s;
+      if (!task->worker->FallBackToGrpcAtGetElementTime()) {
+        return absl::Status(
+            s.code(),
+            absl::StrCat("Failed to get an element over data "
+                         "transfer protocol '",
+                         task->worker->GetDataTransferProtocol(),
+                         "', with a nonretryable error: ", s.message()));
+      }
+      LOG(ERROR) << "Failed to get an element over data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol()
+                 << "', with a nonretryable error; falling back to grpc. "
+                    "Original error: "
+                 << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
           task->worker->GetDataTransferProtocol(),
           static_cast<error::Code>(s.raw_code()), std::string(s.message()));
