@@ -221,7 +221,11 @@ Expected<void> LiteRtCompiledModelT::BufferRegister(
 
   auto requirements = buffer_context_->GetBufferRequirement(tensor);
   if (requirements) {
-    for (auto& type : *(*requirements)->SupportedTypes()) {
+    auto supported_types = (*requirements)->SupportedTypes();
+    if (!supported_types) {
+      return supported_types.Error();
+    }
+    for (auto& type : *supported_types) {
       if (type == buffer->buffer_type()) {
         // Register tensor buffer if it can be used by the backend.
         buffer->Duplicate();
