@@ -186,7 +186,7 @@ func.func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tenso
 // result. Canonicalize will think it can remove both slot#0 and slot#1 and do
 // so without replacing all operands, and in assert builds it will fail an
 // assert failure ( op->use_empty() && "expected 'op' to have no uses")
-// CHECK-LABEL: WhileCanonicalizeBug1
+// CHECK-LABEL: @WhileCanonicalizeBug1
 func.func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%carg0: tensor<f32>, %carg1: tensor<f32>):
@@ -240,6 +240,17 @@ func.func @RemoveFcZeroBias(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>) -
 // CHECK: "tfl.fully_connected"
 // CHECK-SAME: (tensor<1x37xf32>, tensor<40x37xf32>, none) -> tensor<1x40xf32>
   func.return %1 : tensor<1x40xf32>
+}
+
+// CHECK-LABEL: forceAsymmetricQuantizeInput
+func.func @forceAsymmetricQuantizeInput(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+  %cst0 = arith.constant dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>
+  %cst1 = arith.constant dense<2.0> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
+  // CHECK %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  // CHECK return %0
 }
 
 // CHECK-LABEL: RemoveLstmQuantZeroBias
