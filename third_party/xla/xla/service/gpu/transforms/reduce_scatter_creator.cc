@@ -50,7 +50,7 @@ absl::StatusOr<bool> ReduceScatterCreator::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+      if (HloPredicateIsNotOp<HloOpcode::kAllReduce>(instruction)) {
         continue;
       }
       auto *ar = Cast<HloAllReduceInstruction>(instruction);

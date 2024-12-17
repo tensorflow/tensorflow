@@ -86,11 +86,9 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
     HloInstruction* operand = param_tuple->mutable_operand(k);
     // Capture bitcast, broadcast, copy, reshape and transpose ops between
     // dequantization and the loop.
-    while (operand->opcode() == HloOpcode::kBitcast ||
-           operand->opcode() == HloOpcode::kBroadcast ||
-           operand->opcode() == HloOpcode::kCopy ||
-           operand->opcode() == HloOpcode::kReshape ||
-           operand->opcode() == HloOpcode::kTranspose) {
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kBroadcast,
+                            HloOpcode::kCopy, HloOpcode::kReshape,
+                            HloOpcode::kTranspose>(operand)) {
       unaries[k].push_back(operand);
       operand = operand->mutable_operand(0);
     }

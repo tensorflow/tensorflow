@@ -78,7 +78,7 @@ absl::StatusOr<bool> RenameFusions::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kFusion ||
+      if (HloPredicateIsNotOp<HloOpcode::kFusion>(instruction) ||
           instruction->fusion_kind() == HloInstruction::FusionKind::kCustom) {
         continue;
       }

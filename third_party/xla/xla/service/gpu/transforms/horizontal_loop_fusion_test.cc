@@ -60,7 +60,7 @@ auto MakeDeviceDescription() {
 class HorizontalLoopFusionTest : public HloTestBase {
  public:
   static bool IsFusion(const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kFusion;
+    return HloPredicateIsOp<HloOpcode::kFusion>(instr);
   }
   const se::DeviceDescription device_description_{MakeDeviceDescription()};
 };
@@ -296,7 +296,7 @@ TEST_F(HorizontalLoopFusionTest, FusingIntoKLoopAndKInputTogether) {
   int input_fusion_count = 0;
   int loop_fusion_count = 0;
   for (auto inst : module->entry_computation()->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kFusion) {
+    if (HloPredicateIsOp<HloOpcode::kFusion>(inst)) {
       input_fusion_count +=
           (inst->fusion_kind() == HloInstruction::FusionKind::kInput) ? 1 : 0;
       loop_fusion_count +=

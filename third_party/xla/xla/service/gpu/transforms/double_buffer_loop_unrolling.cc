@@ -118,9 +118,9 @@ absl::Status SetSendRecvValidationForPeeledInstr(HloInstruction* new_instr,
   TF_RET_CHECK(
       new_instr->opcode() == old_instr->opcode() &&
       "cloned instruction and original instruction have different opcodes");
-  if (!HloPredicateIsOp<HloOpcode::kCollectivePermute,
-                        HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
-                        HloOpcode::kRecv>(old_instr)) {
+  if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute,
+                          HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
+                          HloOpcode::kRecv>(old_instr)) {
     return absl::OkStatus();
   }
 
@@ -188,9 +188,9 @@ absl::Status SetSendRecvValidation(HloInstruction* cp1, HloInstruction* cp2,
   TF_RET_CHECK(
       cp2->opcode() == cp1->opcode() &&
       "cloned instruction and original instruction have different opcodes");
-  if (!HloPredicateIsOp<HloOpcode::kCollectivePermute,
-                        HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
-                        HloOpcode::kRecv>(cp1)) {
+  if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute,
+                          HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
+                          HloOpcode::kRecv>(cp1)) {
     return absl::OkStatus();
   }
   const auto& attribute_map = cp2->frontend_attributes().map();

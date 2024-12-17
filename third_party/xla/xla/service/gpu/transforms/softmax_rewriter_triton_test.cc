@@ -47,7 +47,7 @@ namespace m = ::xla::match;
 using ::testing::HasSubstr;
 
 bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
-  return fusion->opcode() == HloOpcode::kFusion &&
+  return HloPredicateIsOp<HloOpcode::kFusion>(fusion) &&
          fusion->has_backend_config() &&
          fusion->backend_config<GpuBackendConfig>().ok() &&
          fusion->backend_config<GpuBackendConfig>()

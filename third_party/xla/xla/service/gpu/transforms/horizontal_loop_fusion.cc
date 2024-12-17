@@ -166,16 +166,15 @@ bool IsConcatenationInputFusion(const HloInstruction& instr) {
 }
 
 bool IsDynamicUpdateSliceFusion(const HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(instr)) {
     return false;
   }
   auto root = instr->fused_expression_root();
-  if (root->opcode() == HloOpcode::kTuple) {
-    return absl::c_any_of(root->operands(), [&](const HloInstruction* operand) {
-      return operand->opcode() == HloOpcode::kDynamicUpdateSlice;
-    });
+  if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
+    return absl::c_any_of(root->operands(),
+                          HloPredicateIsOp<HloOpcode::kDynamicUpdateSlice>);
   }
-  return root->opcode() == HloOpcode::kDynamicUpdateSlice;
+  return HloPredicateIsOp<HloOpcode::kDynamicUpdateSlice>(root);
 }
 
 bool IsFusibleCandidate(const HloInstruction& instr,

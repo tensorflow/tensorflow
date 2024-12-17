@@ -75,7 +75,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     }
     HloInstruction* root = fused_computation->root_instruction();
     if (IsReductionFromOrToContiguousDimensions(*root, device_description_) ||
-        root->opcode() == HloOpcode::kScatter ||
+        HloPredicateIsOp<HloOpcode::kScatter>(root) ||
         (hlo->IsMultiOutputFusion() &&
          absl::c_all_of(root->operands(),
                         HloPredicateIsOp<HloOpcode::kSlice>))) {

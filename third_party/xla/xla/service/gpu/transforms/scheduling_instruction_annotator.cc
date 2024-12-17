@@ -41,7 +41,7 @@ absl::StatusOr<bool> AnnotateSchedulingInstructionNames(
     // We skip constants as we might have to sanitize them in order to satisfy
     // LLVM backend. I.e. we allow `GpuSanitizeConstantNames` pass to run post
     // scheduling.
-    if (inst->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(inst)) {
       continue;
     }
     inst->set_metadata_scheduling_name(inst->name());

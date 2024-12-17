@@ -176,10 +176,10 @@ class PriorityFusionQueue {
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       TF_CHECK_OK(UpdatePerformanceModelCache(instruction));
-      if (instruction->opcode() == HloOpcode::kParameter ||
+      if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
           instruction->user_count() == 0 || !instruction->IsFusible() ||
-          instruction->opcode() == HloOpcode::kTuple ||
-          instruction->opcode() == HloOpcode::kGetTupleElement) {
+          HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
+              instruction)) {
         continue;
       }
       instructions.push_back(instruction);
@@ -255,7 +255,7 @@ class PriorityFusionQueue {
 
       current_consumers_ = current_producer_->users();
 
-      if (current_producer_->opcode() == HloOpcode::kBitcast) {
+      if (HloPredicateIsOp<HloOpcode::kBitcast>(current_producer_)) {
         // We don't check if bitcasts can be fused with all consumers, so we
         // have to do it here.
         llvm::erase_if(current_consumers_, [&](HloInstruction* consumer) {
@@ -423,8 +423,8 @@ class PriorityFusionQueue {
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
-          operand->opcode() == HloOpcode::kConstant ||
-          operand->opcode() == HloOpcode::kGetTupleElement) {
+          HloPredicateIsOp<HloOpcode::kConstant, HloOpcode::kGetTupleElement>(
+              operand)) {
         continue;
       }
       // Need to consider only instructions that are fusible, e.g., rng with
@@ -476,13 +476,13 @@ class PriorityFusionQueue {
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
     // Bitcasts should always be fused first, since they are no-ops.
-    if (producer->opcode() == HloOpcode::kBitcast) {
+    if (HloPredicateIsOp<HloOpcode::kBitcast>(producer)) {
       return absl::InfiniteDuration();
     }
     // We always fuse constants, but the cost model doesn't handle them very
     // well: fusing constants changes costs significantly. Also, there's no
     // point recomputing priorities. Therefore, we fuse all of them at the end.
-    if (producer->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(producer)) {
       return -absl::InfiniteDuration();
     }
 
@@ -678,7 +678,7 @@ class PriorityFusionQueue {
       return can_fuse_triton;
     }
 
-    if (consumer->opcode() == HloOpcode::kBitcast) {
+    if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
     }
@@ -784,7 +784,7 @@ class PriorityFusionQueue {
 
     bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
-      if (user->opcode() == HloOpcode::kBitcast) {
+      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
         continue;
       }
       has_non_bitcast_user = true;
@@ -896,8 +896,8 @@ class PriorityFusionQueue {
 //
 // This function matches the emitter logic.
 bool IsSmallConstant(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kConstant && instr->shape().IsArray() &&
-         ShapeUtil::ElementsIn(instr->shape()) <= 1;
+  return HloPredicateIsOp<HloOpcode::kConstant>(instr) &&
+         instr->shape().IsArray() && ShapeUtil::ElementsIn(instr->shape()) <= 1;
 }
 
 bool PriorityFusion::ConsumeFuel(HloInstruction* producer,
@@ -1003,7 +1003,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
       for (auto* consumer : fusion_queue->current_consumers()) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
-        if (consumer->opcode() == HloOpcode::kBitcast) {
+        if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
           continue;
         }
         if (!ConsumeFuel(producer, consumer)) continue;
@@ -1117,7 +1117,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
   auto kind = ChooseKind(producer, consumer);
   HloInstruction* fusion_instruction = consumer;
 
-  if (fusion_instruction->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(fusion_instruction)) {
     fusion_instruction = computation->AddInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
@@ -1129,7 +1129,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
       computation->execution_thread(),
       /*skip_async_execution_thread_overwrite=*/false);
 
-  if (producer->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(producer)) {
     fusion_instruction->MergeFusionInstruction(producer);
   } else {
     fusion_instruction->FuseInstruction(producer);
