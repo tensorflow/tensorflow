@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
@@ -531,6 +532,76 @@ ENTRY entry {
   EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
       << "Expected the same input/output layouts.  Input: " << input_layout
       << ". Output: " << output_layout;
+}
+
+TEST_F(LayoutAssignmentTest, CuDNNConvolutionHasNHWCLayoutPostHopper) {
+  const char* hlo = R"(
+ENTRY entry {
+  p0 = f32[1,64,64,16]{3,2,1,0} parameter(0)
+  p1 = f32[3,16,3,32]{3,2,1,0} parameter(1)
+  ROOT conv = (f32[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call(p0, p1),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b10f_o10i->b10f,
+    custom_call_target="__cudnn$convForwardGraph"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo));
+  ComputationLayout computation_layout(
+      hlo_module->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, se::CudaComputeCapability::Hopper(), GetDnnVersion(),
+      GetDeviceDescription());
+
+  EXPECT_THAT(layout_assignment.Run(hlo_module.get()), IsOkAndHolds(true));
+
+  // We start from b10f_o10i->b10f, meaning that the inputs start out as
+  // NWHC_OWHI->NWHC. Layout assignment should yield layouts of the form
+  // {3,1,2,0} (transpose the middle dimensions) for both inputs and for the
+  // output, therefore, in order to get to the desired NHWC_OHWI->NHWC layout.
+  EXPECT_THAT(
+      RunFileCheck(hlo_module->ToString(HloPrintOptions::ShortParsable()), R"(
+// CHECK-DAG: [[P0:[^ ]+]] = {{.*}} parameter(0)
+// CHECK-DAG: [[P1:[^ ]+]] = {{.*}} parameter(1)
+// CHECK-DAG: [[COPY_P0:[^ ]+]] = {{.*}}{3,1,2,0} copy([[P0]])
+// CHECK-DAG: [[COPY_P1:[^ ]+]] = {{.*}}{3,1,2,0} copy([[P1]])
+// CHECK:     [[CONV:[^ ]+]] = {{.*}}{3,1,2,0}, {{.*}} custom-call([[COPY_P0]], [[COPY_P1]])
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(LayoutAssignmentTest, F64CuDNNConvolutionHasNCHWLayoutPostHopper) {
+  const char* hlo = R"(
+ENTRY entry {
+  p0 = f64[2,64,64,16]{3,2,1,0} parameter(0)
+  p1 = f64[6,16,3,32]{3,2,1,0} parameter(1)
+  ROOT conv = (f64[2,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call(p0, p1),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b10f_o10i->b10f,
+    custom_call_target="__cudnn$convForwardGraph"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo));
+  ComputationLayout computation_layout(
+      hlo_module->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, se::CudaComputeCapability::Hopper(), GetDnnVersion(),
+      GetDeviceDescription());
+
+  EXPECT_THAT(layout_assignment.Run(hlo_module.get()), IsOkAndHolds(true));
+
+  // We start from b10f_o10i->b10f, meaning that the inputs start out as
+  // NWHC_OWHI->NWHC. Layout assignment should yield layouts of the form
+  // {1,2,3,0} for both inputs and for the output, therefore, in order to get to
+  // the desired NCHW_OIHW->NCHW layout.
+  EXPECT_THAT(
+      RunFileCheck(hlo_module->ToString(HloPrintOptions::ShortParsable()), R"(
+// CHECK-DAG: [[P0:[^ ]+]] = {{.*}} parameter(0)
+// CHECK-DAG: [[P1:[^ ]+]] = {{.*}} parameter(1)
+// CHECK-DAG: [[COPY_P0:[^ ]+]] = {{.*}}{1,2,3,0} copy([[P0]])
+// CHECK-DAG: [[COPY_P1:[^ ]+]] = {{.*}}{1,2,3,0} copy([[P1]])
+// CHECK:     [[CONV:[^ ]+]] = {{.*}}{1,2,3,0}, {{.*}} custom-call([[COPY_P0]], [[COPY_P1]])
+)"),
+      IsOkAndHolds(true));
 }
 
 TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
