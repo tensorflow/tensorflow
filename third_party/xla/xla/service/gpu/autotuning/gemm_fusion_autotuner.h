@@ -156,7 +156,6 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
-  static std::string ToString(const BackendConfig& config);
 
   static const int64_t BLAS_GEMM_DEFAULT;
 
