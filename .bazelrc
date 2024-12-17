@@ -289,7 +289,7 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
-startup --output_base=/tmp/atheodor_tmpfs
+#startup --output_base=/tmp/atheodor_tmpfs
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
