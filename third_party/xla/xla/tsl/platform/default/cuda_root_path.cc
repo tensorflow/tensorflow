@@ -46,7 +46,7 @@ std::vector<std::string> CandidateCudaRoots() {
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();
   std::string cuda_nvcc_dir =
       io::JoinPath(executable_path + "." + runfiles_suffix, "cuda_nvcc");
-  roots.emplace_back(cuda_nvcc_dir);
+  roots.push_back(cuda_nvcc_dir);
 
   // The CUDA candidate root for python targets.
   std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
@@ -54,9 +54,9 @@ std::vector<std::string> CandidateCudaRoots() {
   cuda_nvcc_dir = io::JoinPath(
       runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
       "cuda_nvcc");
-  roots.emplace_back(cuda_nvcc_dir);
+  roots.push_back(cuda_nvcc_dir);
 
-  roots.emplace_back(TF_CUDA_TOOLKIT_PATH);
+  roots.push_back(TF_CUDA_TOOLKIT_PATH);
   roots.emplace_back(std::string("/usr/local/cuda"));
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
