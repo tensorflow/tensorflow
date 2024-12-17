@@ -801,15 +801,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/stablehlo/transforms/StablehloRefineShapes.h
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.h
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.h
-@@ -16,7 +16,6 @@
- #ifndef STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
- #define STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
- 
--#include "llvm/ADT/SmallVector.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
- #include "mlir/IR/BuiltinOps.h"
- #include "mlir/IR/Operation.h"
-@@ -101,6 +100,18 @@
+@@ -101,6 +101,18 @@
    return refineReturnShape(rewriter, op, shape);
  }
  
