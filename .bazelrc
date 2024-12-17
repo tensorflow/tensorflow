@@ -289,11 +289,15 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
+startup --output_base=/tmp/atheodor_tmpfs
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm_base --repo_env TF_NEED_ROCM=1
+#build:rocm_base --test_env XLA_FLAGS="--xla_gpu_enable_cublaslt=true"
 
+build:rocm --remote_upload_local_results=true
+build:rocm --remote_cache=http://hyd-7c0603-18-build-3:9092
 build:rocm --config=rocm_base
 build:rocm --config=release_cpu_linux_base
 build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
