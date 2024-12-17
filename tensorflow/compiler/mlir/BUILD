@@ -241,6 +241,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
