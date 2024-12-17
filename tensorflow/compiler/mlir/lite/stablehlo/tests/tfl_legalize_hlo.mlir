@@ -1802,6 +1802,27 @@ func.func @gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tensor<3x2x12
 
 // -----
 
+// CHECK-LABEL: convert_gather_non_collapsed_index_dim
+func.func @convert_gather_non_collapsed_index_dim(%arg0: tensor<10x5xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x1x5xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 5]> : tensor<2xi64>
+  } : (tensor<10x5xi32>, tensor<2x1xi32>) -> tensor<2x1x5xi32>
+  func.return %0 : tensor<2x1x5xi32>
+}
+
+// CHECK:     %[[VAL_0:.*]] = "tfl.gather_nd"(%arg0, %arg1) : (tensor<10x5xi32>, tensor<2x1xi32>) -> tensor<2x5xi32
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<[2, 1, 5]> : tensor<3xi64>
+// CHECK:     %[[VAL_1:.*]] = "tfl.cast"(%[[CST]]) : (tensor<3xi64>) -> tensor<3xi32>
+// CHECK:     %[[VAL_2:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2x5xi32>, tensor<3xi32>) -> tensor<2x1x5xi32>
+
+// -----
+
 // CHECK-LABEL: gather_to_slice_batch_size_1
 func.func @gather_to_slice_batch_size_1(%arg0: tensor<1x2944xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x1504xi32> {
   %0 = "mhlo.gather"(%arg0, %arg1) {

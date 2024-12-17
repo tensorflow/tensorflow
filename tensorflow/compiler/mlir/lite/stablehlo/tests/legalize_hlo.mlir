@@ -3792,6 +3792,27 @@ func.func @convert_gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tenso
   func.return %0 : tensor<3x2x128xf32>
 }
 
+// CHECK-LABEL: func @convert_gather_non_collapsed_index_dim(
+// CHECK-SAME:                                      %[[ARG_0:.*]]: tensor<10x5xi32>,
+// CHECK-SAME:                                      %[[ARG_1:.*]]: tensor<2x1xi32>) -> tensor<2x1x5xi32> {
+// CHECK:           %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) <{bad_indices_policy = ""}> : (tensor<10x5xi32>, tensor<2x1xi32>) -> tensor<2x5xi32>
+// CHECK-DAG:       %[[CST:.*]] = arith.constant dense<[2, 1, 5]> : tensor<3xi64>
+// CHECK:           %[[VAL_1:.*]] = "tf.Reshape"(%[[VAL_0]], %[[CST]]) : (tensor<2x5xi32>, tensor<3xi64>) -> tensor<2x1x5xi32>
+// CHECK:           return %[[VAL_1]] : tensor<2x1x5xi32>
+// CHECK:       }
+func.func @convert_gather_non_collapsed_index_dim(%arg0: tensor<10x5xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x1x5xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 5]> : tensor<2xi64>
+  } : (tensor<10x5xi32>, tensor<2x1xi32>) -> tensor<2x1x5xi32>
+  func.return %0 : tensor<2x1x5xi32>
+}
+
 // CHECK-LABEL:   func @convert_gather_to_slice_batch_size_1(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<1x2944xi32>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<1x2xi32>)

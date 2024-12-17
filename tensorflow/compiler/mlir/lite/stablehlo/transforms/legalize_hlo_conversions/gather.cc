@@ -198,6 +198,7 @@ namespace {
 // flattened as leading dimension, and the offset dimensions as trailing
 // dimensions. To transform back, we:
 // - Unflatten the start indices batching dimensions.
+// - Introduce trivial index dimensions that aren't in `collapsed_slice_dims`.
 // - Transpose dimensions back based on `offset_dims` and
 //   `start_indices_batching_dims`.
 Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
@@ -220,8 +221,9 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
   }
 
   // Determine the canonical shape after unflattening the start indices
-  // batching dimensions (if they exist), and the permutation to transform
-  // the original shape to the unflattened canonical shape.
+  // batching dimensions (if they exist) and introducing any trivial index
+  // dimensions that weren't collapsed. Also compute the permutation to
+  // transform the original shape to the unflattened canonical shape.
   llvm::SmallVector<int64_t> permutation_to_canonical;
   llvm::SmallVector<int64_t> unflattened_shape;
   for (int64_t i : start_indices_batching_dims) {
@@ -241,14 +243,16 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
     unflattened_shape.push_back(original_result_type.getDimSize(dim));
   }
 
-  // Unflatten the canonical result if necessary, and transpose back to the
-  // original result shape.
-  if (!start_indices_batching_dims.empty()) {
+  // Reshape the result to unflatten the batching dimensions and add back any
+  // non-collapsed indexed dimensions. The caller should ensure that a
+  // reshape is not needed if the result has dynamic dimensions.
+  if (canonical_result_type.hasStaticShape()) {
     auto unflattened_result_type = RankedTensorType::get(
         unflattened_shape, original_result_type.getElementType());
     canonical_result = rewriter.create<mhlo::ReshapeOp>(
         gather_op.getLoc(), unflattened_result_type, canonical_result);
   }
+  // Transpose back to the original result shape.
   return rewriter.create<mhlo::TransposeOp>(
       gather_op.getLoc(), original_result_type, canonical_result,
       rewriter.getI64TensorAttr(
@@ -439,6 +443,10 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
       gather_op.getDimensionNumbers().getOperandBatchingDims();
   llvm::ArrayRef<int64_t> start_indices_batching_dims =
       gather_op.getDimensionNumbers().getStartIndicesBatchingDims();
+  llvm::ArrayRef<int64_t> start_index_map =
+      gather_op.getDimensionNumbers().getStartIndexMap();
+  llvm::ArrayRef<int64_t> collapsed_slice_dims =
+      gather_op.getDimensionNumbers().getCollapsedSliceDims();
   if (!start_indices_type.hasStaticShape()) {
     // Dynamic dimensions in the start indices aren't supported in certain
     // cases that require reshaping the indices or result.
@@ -446,6 +454,20 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
       gather_op.emitOpError()
           << "Dynamic shaped start indices aren't supported when there are "
              "batching dimensions.";
+    }
+
+    // Verify that start_index_map and collapsed_slice_dims contains the same
+    // values.
+    if (start_index_map.size() != collapsed_slice_dims.size()) {
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "different size for start index map and collapsed slice dims");
+    }
+    for (auto c : collapsed_slice_dims) {
+      if (llvm::count(start_index_map, c) == 0) {
+        return rewriter.notifyMatchFailure(
+            gather_op, "collapsed slice dim isn't present in start index map");
+      }
     }
   }
 
@@ -457,23 +479,6 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
     return failure();
   }
   start_indices_type = mlir::cast<ShapedType>(start_indices.getType());
-
-  // Verify that start_index_map and collapsed_slice_dims contains the same
-  // values.
-  auto start_index_map = gather_op.getDimensionNumbers().getStartIndexMap();
-  auto collapsed_slice_dims =
-      gather_op.getDimensionNumbers().getCollapsedSliceDims();
-  if (start_index_map.size() != collapsed_slice_dims.size()) {
-    return rewriter.notifyMatchFailure(
-        gather_op,
-        "different size for start index map and collapsed slice dims");
-  }
-  for (auto c : collapsed_slice_dims) {
-    if (llvm::count(start_index_map, c) == 0) {
-      return rewriter.notifyMatchFailure(
-          gather_op, "collapsed slice dim isn't present in start index map");
-    }
-  }
 
   // Verify that slice_sizes is 1 for the batching and indexed dimensions and
   // the full shape for the rest of the dimensions.
