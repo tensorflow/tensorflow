@@ -84,7 +84,7 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
   }
   for (NamedAttribute entry : frontendAttributes) {
     if (entry.getName() != excludedAttribute) {
-      dictEntries.emplace_back(entry);
+      dictEntries.push_back(entry);
     }
   }
   return dictEntries;
