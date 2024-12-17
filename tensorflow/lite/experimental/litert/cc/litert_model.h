@@ -145,22 +145,36 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   explicit Tensor(LiteRtTensor tensor)
       : internal::NonOwnedHandle<LiteRtTensor>(tensor) {}
 
+  enum ElementType ElementType() const {
+    if (TypeId() == kLiteRtUnrankedTensorType) {
+      return static_cast<enum ElementType>(UnrankedTensorType()->element_type);
+    } else {
+      return RankedTensorType()->ElementType();
+    }
+  }
+
   LiteRtTensorTypeId TypeId() const {
     LiteRtTensorTypeId type_id;
     internal::AssertOk(LiteRtGetTensorTypeId, Get(), &type_id);
     return type_id;
   }
 
-  LiteRtUnrankedTensorType UnrankedTensorType() const {
-    internal::AssertEq([&]() { return TypeId(); }, kLiteRtUnrankedTensorType);
+  Expected<LiteRtUnrankedTensorType> UnrankedTensorType() const {
+    if (TypeId() != kLiteRtUnrankedTensorType) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Not an unranked invalid tensor");
+    }
     LiteRtUnrankedTensorType unranked_tensor_type;
     internal::AssertOk(LiteRtGetUnrankedTensorType, Get(),
                        &unranked_tensor_type);
     return unranked_tensor_type;
   }
 
-  class RankedTensorType RankedTensorType() const {
-    internal::AssertEq([&]() { return TypeId(); }, kLiteRtRankedTensorType);
+  Expected<class RankedTensorType> RankedTensorType() const {
+    if (TypeId() != kLiteRtRankedTensorType) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Not a ranked tensor type");
+    }
     LiteRtRankedTensorType ranked_tensor_type;
     internal::AssertOk(LiteRtGetRankedTensorType, Get(), &ranked_tensor_type);
     return litert::RankedTensorType(ranked_tensor_type);
@@ -217,7 +231,12 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
 
   template <typename T>
   Expected<absl::Span<const T>> WeightsData() const {
-    const ElementType ty = RankedTensorType().ElementType();
+    auto ranked_tensor_type = RankedTensorType();
+    if (!ranked_tensor_type) {
+      return ranked_tensor_type.Error();
+    }
+
+    const enum ElementType ty = ranked_tensor_type->ElementType();
     if (ty != GetElementType<T>()) {
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
@@ -227,7 +246,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     }
     const absl::Span<const uint8_t> weights = Weights().Bytes();
 
-    auto num_elements = RankedTensorType().Layout().NumElements();
+    auto num_elements = ranked_tensor_type->Layout().NumElements();
     if (!num_elements.has_value()) {
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }

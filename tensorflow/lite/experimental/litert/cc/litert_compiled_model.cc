@@ -50,10 +50,13 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputBuffers(
                         input_buffer_requirements.Error().Message());
     }
     auto tensor_type = input_tensors[i].RankedTensorType();
+    if (!tensor_type) {
+      return tensor_type.Error();
+    }
     LiteRtTensorBufferType tensor_buffer_type =
         (*(*input_buffer_requirements).SupportedTypes())[0];
     auto input_buffer = TensorBuffer::CreateManaged(
-        tensor_buffer_type, tensor_type,
+        tensor_buffer_type, *tensor_type,
         (*input_buffer_requirements).BufferSize().Value());
     if (!input_buffer) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
@@ -85,10 +88,13 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
                         output_buffer_requirements.Error().Message());
     }
     auto tensor_type = output_tensors[i].RankedTensorType();
+    if (!tensor_type) {
+      return tensor_type.Error();
+    }
     LiteRtTensorBufferType tensor_buffer_type =
         (*(*output_buffer_requirements).SupportedTypes())[0];
     auto output_buffer = TensorBuffer::CreateManaged(
-        tensor_buffer_type, tensor_type,
+        tensor_buffer_type, *tensor_type,
         (*output_buffer_requirements).BufferSize().Value());
     if (!output_buffer.HasValue()) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,

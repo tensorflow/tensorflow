@@ -77,8 +77,14 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   const auto& src_input_tensor = op_ins.front();
-  auto src_input_tensor_rank =
-      src_input_tensor.RankedTensorType().Layout().Rank();
+  auto src_input_tensor_type = src_input_tensor.RankedTensorType();
+  if (!src_input_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_input_tensor_type.Error().Message().data());
+    return src_input_tensor_type.Error().Status();
+  }
+
+  auto src_input_tensor_rank = src_input_tensor_type->Layout().Rank();
 
   // Prepare qnn strided slice parameters.
 
