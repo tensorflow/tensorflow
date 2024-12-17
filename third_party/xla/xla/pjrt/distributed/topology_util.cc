@@ -180,7 +180,8 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   }
   CHECK(kv_store != nullptr);
   TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
-                                   local_topology.SerializeAsString()));
+                                   local_topology.SerializeAsString(),
+                                   /*allow_overwrite=*/false));
 
   // The lead node gets all local topologies, builds the global topology and
   // puts it to the key-value store.
@@ -193,7 +194,8 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
                             assign_global_device_ids);
     TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
-                                     global_topology->SerializeAsString()));
+                                     global_topology->SerializeAsString(),
+                                     /*allow_overwrite=*/false));
   } else {
     TF_ASSIGN_OR_RETURN(
         std::string global_topology_str,

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -169,6 +170,25 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_enable_analytical_latency_estimator(false);
+  opts.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+  auto* sol_estimator_defaults =
+      opts.mutable_xla_gpu_analytical_latency_estimator_options();
+  sol_estimator_defaults->emplace(
+      "nccl_op_launch_us",
+      absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
+  sol_estimator_defaults->emplace(
+      "nic_speed_gbps",
+      absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));
+  sol_estimator_defaults->emplace(
+      "chunk_prep_us",
+      absl::StrCat(static_cast<int>(13.34f * kDefaultNcclCostModelCoeff)));
+  sol_estimator_defaults->emplace(
+      "rtt_us",
+      absl::StrCat(static_cast<int>(68.89f * kDefaultNcclCostModelCoeff)));
+  sol_estimator_defaults->emplace(
+      "chunk_size_bytes", absl::StrCat(kDefaultNcclCostModelChunkSizeBytes));
+  sol_estimator_defaults->emplace(
+      "gpus_per_node", absl::StrCat(kDefaultNcclCostModelGPUsPerNode));
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
@@ -467,6 +487,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             debug_options->mutable_xla_backend_extra_options();
         parse_xla_backend_extra_options(extra_options_map,
                                         comma_separated_values);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for
+  // xla_gpu_analytical_latency_estimator_options.
+  auto setter_for_xla_gpu_analytical_latency_estimator_options =
+      [debug_options](std::string comma_separated_values) {
+        google::protobuf::Map<std::string, std::string>* options_map =
+            debug_options
+                ->mutable_xla_gpu_analytical_latency_estimator_options();
+        parse_xla_backend_extra_options(options_map, comma_separated_values);
         return true;
       };
 
@@ -1568,6 +1599,25 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_analytical_latency_estimator(),
       "Enable analytical latency estimator for latency-hiding scheduler for "
       "XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_analytical_sol_latency_estimator",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_analytical_sol_latency_estimator),
+      debug_options->xla_gpu_enable_analytical_sol_latency_estimator(),
+      "Enable analytical Speed-of-Light latency estimator for latency-hiding "
+      "scheduler for XLA:GPU, must be used without "
+      "xla_gpu_enable_analytical_latency_estimator. It can also benefit from "
+      "user-passed options in xla_gpu_analytical_latency_estimator_options"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_analytical_latency_estimator_options",
+      setter_for_xla_gpu_analytical_latency_estimator_options, "",
+      "Extra platform-specific options to improve analytical latency "
+      "estimator precision; comma-separated list of 'key=val' "
+      "strings (=val may be omitted); no whitespace around commas."
+      "Available options: "
+      "--xla_gpu_analytical_latency_estimator_options='nccl_op_launch_ms=55,"
+      "nic_speed_gbps=40,chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,"
+      "chunk_size_bytes=1024'"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_pgle_profile_file_or_directory_path",
       string_setter_for(

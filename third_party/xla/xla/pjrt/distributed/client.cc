@@ -216,8 +216,10 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
     return client_->BlockingKeyValueGet(absl::StrCat(prefix_, key), timeout);
   }
 
-  absl::Status Set(absl::string_view key, absl::string_view value) override {
-    return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
+  absl::Status Set(absl::string_view key, absl::string_view value,
+                   bool allow_overwrite) override {
+    return client_->KeyValueSet(absl::StrCat(prefix_, key), value,
+                                allow_overwrite);
   }
 
  private:

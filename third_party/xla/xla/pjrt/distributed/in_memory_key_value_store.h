@@ -31,7 +31,8 @@ class InMemoryKeyValueStore : public KeyValueStoreInterface {
   absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override;
 
-  absl::Status Set(absl::string_view key, absl::string_view value) override;
+  absl::Status Set(absl::string_view key, absl::string_view value,
+                   bool allow_overwrite) override;
 
  private:
   absl::Mutex mu_;

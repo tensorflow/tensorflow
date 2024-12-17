@@ -126,9 +126,10 @@ class XlaKeyValueStore : public xla::KeyValueStoreInterface {
         absl::StrCat(key_prefix_, key), timeout);
   }
 
-  absl::Status Set(std::string_view key, std::string_view value) override {
+  absl::Status Set(std::string_view key, std::string_view value,
+                   bool allow_overwrite) override {
     return coordination_service_agent_->InsertKeyValue(
-        absl::StrCat(key_prefix_, key), value);
+        absl::StrCat(key_prefix_, key), value, allow_overwrite);
   };
 
  private:

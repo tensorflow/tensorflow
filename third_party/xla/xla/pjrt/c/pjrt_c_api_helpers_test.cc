@@ -110,12 +110,23 @@ TEST(PjRtCApiHelperTest, Callback) {
       kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func,
       kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
 
-  auto s = converted_kv_store->Set("key", "value");
+  auto s = converted_kv_store->Set("key", "value", /*allow_overwrite=*/false);
   TF_EXPECT_OK(s);
 
   auto v = converted_kv_store->Get("key", absl::Seconds(1));
   TF_EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
+
+  auto status_no_overwrite =
+      converted_kv_store->Set("key", "value2", /*allow_overwrite=*/false);
+  EXPECT_TRUE(absl::IsAlreadyExists(status_no_overwrite));
+
+  auto status_overwrite =
+      converted_kv_store->Set("key", "value2", /*allow_overwrite=*/true);
+  TF_EXPECT_OK(status_overwrite);
+  auto v2 = converted_kv_store->Get("key", absl::Seconds(1));
+  TF_EXPECT_OK(v2.status());
+  EXPECT_EQ(*v2, "value2");
 }
 
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {

@@ -39,7 +39,9 @@ GlooKeyValueStore::~GlooKeyValueStore() = default;
 
 void GlooKeyValueStore::set(const std::string& key,
                             const std::vector<char>& data) {
-  ThrowIfError(kv_store_->Set(key, std::string_view(data.data(), data.size())));
+  ThrowIfError(kv_store_->Set(key, std::string_view(data.data(), data.size()),
+                              // TODO(hanyangtay): Confirm.
+                              /*allow_overwrite=*/true));
 }
 
 std::vector<char> GlooKeyValueStore::get(const std::string& key) {

@@ -32,6 +32,11 @@ constexpr int64_t kDefaultAllGatherCombineThreshold = 30 * 1024 * 1024 + 7;
 // pass will combine collectives.
 constexpr int64_t kDefaultReduceScatterCombineThreshold = 30 * 1024 * 1024 + 7;
 
+// Defines the default coefficient for the SoL NCCL collective cost model.
+// Note: XLA flags allow a user to override the default values of the model.
+constexpr float kDefaultNcclCostModelCoeff = 0.45f;
+constexpr int64_t kDefaultNcclCostModelChunkSizeBytes = 4194304;  // 4MB
+constexpr int64_t kDefaultNcclCostModelGPUsPerNode = 8;
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_UTILS_H_

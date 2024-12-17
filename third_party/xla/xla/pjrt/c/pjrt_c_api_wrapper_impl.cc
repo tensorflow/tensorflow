@@ -263,7 +263,8 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     return result;
   }
 
-  absl::Status Set(absl::string_view key, absl::string_view value) override {
+  absl::Status Set(absl::string_view key, absl::string_view value,
+                   bool allow_overwrite) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -275,6 +276,7 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     args.key_size = key.size();
     args.value = value.data();
     args.value_size = value.size();
+    args.allow_overwrite = allow_overwrite;
     args.callback_error = &callback_error;
     args.user_arg = put_user_arg_;
     std::unique_ptr<PJRT_Error> error(c_put_callback_(&args));

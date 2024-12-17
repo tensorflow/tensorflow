@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -786,7 +788,8 @@ static PJRT_KeyValuePutCFunc ToKVPutCFunc(
   return [kv_store](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
     absl::Status status =
         kv_store->Set(absl::string_view(args->key, args->key_size),
-                      absl::string_view(args->value, args->value_size));
+                      absl::string_view(args->value, args->value_size),
+                      args->allow_overwrite);
     if (!status.ok()) {
       absl::string_view message = status.message();
       return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),

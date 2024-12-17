@@ -53,8 +53,8 @@ absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
   if (node_id_ == primary_node_id) {
     TF_ASSIGN_OR_RETURN(clique_id,
                         gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
-    TF_RETURN_IF_ERROR(
-        kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
+    TF_RETURN_IF_ERROR(kv_store_->Set(gpu_key->ToString(), clique_id.ToString(),
+                                      /*allow_overwrite=*/false));
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,
                         kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));

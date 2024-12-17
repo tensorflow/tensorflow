@@ -43,7 +43,8 @@ class KeyValueStoreInterface {
   virtual absl::StatusOr<std::string> Get(absl::string_view key,
                                           absl::Duration timeout) = 0;
 
-  virtual absl::Status Set(absl::string_view key, absl::string_view value) = 0;
+  virtual absl::Status Set(absl::string_view key, absl::string_view value,
+                           bool allow_overwrite) = 0;
 };
 
 struct MultiProcessKeyValueStore {

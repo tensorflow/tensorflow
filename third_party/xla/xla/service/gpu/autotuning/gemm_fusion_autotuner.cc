@@ -1360,7 +1360,9 @@ static absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
   TF_RET_CHECK(!fusion_set_fingerprint.empty());
   const std::string local_key = absl::StrFormat(
       "%s_%s_%d", kKeyPrefix, fusion_set_fingerprint, shard_index);
-  TF_RETURN_IF_ERROR(key_value_store.Set(local_key, results_str));
+  TF_RETURN_IF_ERROR(key_value_store.Set(local_key, results_str,
+                                         // TODO(hanyangtay): Confirm.
+                                         /*allow_overwrite=*/true));
   VLOG(2) << "Rank " << shard_index << ": published results at " << local_key;
   for (int i = 0; i < shard_count; ++i) {
     if (i == shard_index) {

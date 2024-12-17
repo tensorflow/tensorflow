@@ -41,8 +41,13 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
 }
 
 absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
-                                        absl::string_view value) {
+                                        absl::string_view value,
+                                        bool allow_overwrite) {
   absl::MutexLock lock(&mu_);
+  if (!allow_overwrite && kv_store_.contains(key)) {
+    return absl::AlreadyExistsError(
+        absl::StrCat(key, " already exists in the kv store."));
+  }
   kv_store_[key] = value;
   return absl::OkStatus();
 }
