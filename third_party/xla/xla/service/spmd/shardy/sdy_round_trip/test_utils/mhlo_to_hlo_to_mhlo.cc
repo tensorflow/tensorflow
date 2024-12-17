@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -37,13 +38,13 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/shape.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace sdy {
@@ -55,21 +56,16 @@ using ::mlir::StringRef;
 
 // Converts an MHLO module to an HLO module.
 absl::StatusOr<std::unique_ptr<HloModule>> toHlo(ModuleOp module) {
-  absl::StatusOr<std::unique_ptr<HloModule>> hloModule;
-  xla::HloProto hloProto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hloProto,
-                                         /*use_tuple_args=*/false,
-                                         /*return_tuple=*/false));
-  xla::HloModuleConfig moduleConfig;
-  xla::ProgramShape expectedProgramShape(
-      hloProto.hlo_module().host_program_shape());
-  moduleConfig.SetDefaultComputationLayout(expectedProgramShape);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hloModule,
+                      xla::ConvertStablehloToHlo(module));
+  xla::HloModuleConfig& moduleConfig = hloModule->mutable_config();
   moduleConfig.set_use_spmd_partitioning(true);
-  return xla::HloModule::CreateFromProto(hloProto.hlo_module(), moduleConfig);
+  return hloModule;
 }
 
-// Converts an HLO module to an MHLO module.
-absl::Status toMhlo(std::unique_ptr<HloModule> hloModule, ModuleOp module) {
+// Converts an HLO module to a StableHLO module.
+absl::Status toStablehlo(std::unique_ptr<HloModule> hloModule,
+                         ModuleOp& module) {
   // Delete the functions, which can be more than one due to preserving
   // the shmap_body functions.
   mlir::SymbolTableCollection symbolTableCollection;
@@ -79,9 +75,7 @@ absl::Status toMhlo(std::unique_ptr<HloModule> hloModule, ModuleOp module) {
     symbolTable.erase(&op);
   }
   TF_RETURN_IF_ERROR(
-      xla::ConvertHloToMlirHlo(module, hloModule.get(),
-                               /*import_all_computations=*/false,
-                               /*flatten_computation_args_result=*/true));
+      xla::ConvertHloToStablehloForRoundTripTests(module, hloModule.get()));
   return absl::OkStatus();
 }
 
@@ -101,9 +95,11 @@ class SdyRoundTripMhloToHloToMhloPass
                                     hloModule.status().message()));
       return signalPassFailure();
     }
+    // LOG(INFO) << "HLO: " << hloModule->get()->ToString();
+    // LOG(INFO) << "END of HLO MODULE \n";
 
     // 2. HLO -> MHLO
-    if (absl::Status status = toMhlo(std::move(*hloModule), module);
+    if (absl::Status status = toStablehlo(std::move(*hloModule), module);
         !status.ok()) {
       module.emitError(absl::StrCat("Failed to convert to MHLO from HLO: ",
                                     status.message()));
@@ -120,9 +116,7 @@ class SdyRoundTripMhloToHloToMhloPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::mhlo::MhloDialect, mlir::quant::QuantDialect,
-                    mlir::sparse_tensor::SparseTensorDialect>();
+    xla::RegisterMlirToHloDependentDialects(registry);
   }
 };
 

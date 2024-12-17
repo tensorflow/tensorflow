@@ -91,6 +91,19 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
   return std::move(mlir_module);
 }
 
+absl::Status ConvertHloToStablehloForRoundTripTests(
+    mlir::ModuleOp& module, const xla::HloModule* hlo_module) {
+  // llvm::DebugFlag = true;
+  TF_RETURN_IF_ERROR(HloModuleImporter(module,
+                                       /*import_all_computation=*/true,
+                                       /*flatten_computation_args_result=*/true)
+                         .Import(*hlo_module));
+  // module->dump();
+  // llvm::DebugFlag = true;
+  TF_RETURN_IF_ERROR(MhloToStablehlo(module));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
     mlir::ModuleOp module) {
   xla::HloProto hlo_proto;
@@ -127,7 +140,7 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
         mlir::mhlo::createSinkConstantsToControlFlowPass());
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
-      module->dump();
+      // module->dump();
       return diagnostic_handler.ConsumeStatus();
     }
 

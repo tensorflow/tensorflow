@@ -33,6 +33,10 @@ namespace xla {
 void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
 
 // Convert HloModule to StableHLO module.
+absl::Status ConvertHloToStablehloForRoundTripTests(
+    mlir::ModuleOp& module, const xla::HloModule* hlo_module);
+
+// Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module);
 
