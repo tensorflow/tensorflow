@@ -101,8 +101,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       instr->convolution_dimension_numbers();
   Shape input_shape = instr->operand(0)->shape();
   PrimitiveType input_ty = instr->operand(0)->shape().element_type();
+  int num_spatial_dimensions = dnums.input_spatial_dimensions_size();
   if (primitive_util::IsIntegralType(input_ty)) {
-    if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
+    if (input_ty == S8 && num_spatial_dimensions == 2 &&
         input_shape.dimensions_size() == 5) {
       VLOG(2) << "Using NCHW_VECT_C for int8_t conv " << instr->ToString();
       return kAllNCHW_VECT_C;
@@ -127,6 +128,31 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (debug_options.xla_gpu_force_conv_nhwc()) {
     VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
     return kAllNHWC;
+  }
+
+  // Despite the specialized logic below for Volta, we expect GPUs with Tensor
+  // Cores work best using NHWC layouts for cuDNN convolutions---as per
+  // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
+    // TODO(b/383560056): investigate chips below Hopper as well.
+    if (cc->IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+      // With that said, cuDNN's documentation states that NHWC is not supported
+      // for float64, so we use NCHW instead.
+      if (input_ty == F64) {
+        VLOG(2) << "Using NCHW for F64 conv " << instr->ToString() << " on "
+                << cc->ToString();
+        return kAllNCHW;
+        // TODO(b/383560056): find the right filter for 3D convolutions. 3D
+        // convolutions also have a much smaller surface of support. We filter
+        // them out completely as well for now.
+      } else if (num_spatial_dimensions > 2) {
+        VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
+                << instr->ToString() << " on " << cc->ToString();
+        return kAllNCHW;
+      } else {
+        return kAllNHWC;
+      }
+    }
   }
 
   const auto* rocm_compute_capability =

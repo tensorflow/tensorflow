@@ -2183,6 +2183,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:computation_layout",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
