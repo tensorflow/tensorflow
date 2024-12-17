@@ -501,7 +501,7 @@ func.func @giant_tensor_input() -> (tensor<*xf32>) {
   %input = "tf.Const"() {value = dense<1.000000e+00> : tensor<1024x1024x1024x1024xf32>} : () -> tensor<1024x1024x1024x1024xf32>
   %zero = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
   %one = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
-  // CHECK: tf.StridedSlice
+  // CHECK: tf.Slice
   %0 = "tf.StridedSlice"(%input, %zero, %one, %one) {begin_mask = 15 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1024x1024x1024x1024xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
 
   func.return %0 : tensor<*xf32>

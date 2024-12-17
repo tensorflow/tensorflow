@@ -18401,6 +18401,8 @@ clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`}]>:$str
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
+  let hasCanonicalizer = 1;
+
   let hasFolder = 1;
 
   let hasVerifier = 1;

@@ -1846,20 +1846,6 @@ OpFoldResult SumOp::fold(FoldAdaptor) {
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/154160827): Add a canonicalization pattern from tf.StridedSliceOp to
-// tf.SliceOp if both of the following are true:
-// - All strides have a known value equal to 1
-// - No masks are set (or masks can be applied by transforming the inputs to
-//   Slice)
-
-// Verifies that,
-//
-// - begin, end and strides operands are 1D and they have the same number of
-//   elements. Here, the number of elements should be less than 32 to support
-//   32-bit mask attributes.
-// - None of the strides values are zero.
-// - Ellipsis mask can have at most one bit set.
-
 template <class OpTy>
 static LogicalResult VerifyStridedSliceBase(OpTy op) {
   // Expected size for operands begin, end and strides vector operands.
@@ -2288,6 +2274,54 @@ OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
     return DenseIntElementsAttr::get(output_ty, sub_shape_i32);
   }
   return DenseIntElementsAttr::get(output_ty, sub_shape);
+}
+
+namespace {
+
+// Canonicalization pattern converting tf.StridedSliceOp to tf.SliceOp.
+// - All strides have a known value equal to 1
+// - The new_axis_mask and shrink_axis_mask are not set i.e. no reshapes.
+class ConvertStridedSliceToSlice : public OpRewritePattern<StridedSliceOp> {
+  using OpRewritePattern<StridedSliceOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(StridedSliceOp op,
+                                PatternRewriter &rewriter) const override {
+    // No conversion that requires a reshape.
+    if (op.getNewAxisMask() != 0 || op.getShrinkAxisMask() != 0) {
+      return failure();
+    }
+
+    DenseIntElementsAttr begin_attr, end_attr, strides_attr;
+    if (!matchPattern(op.getBegin(), m_Constant(&begin_attr)) ||
+        !matchPattern(op.getEnd(), m_Constant(&end_attr)) ||
+        (!matchPattern(op.getStrides(), m_Constant(&strides_attr)) ||
+         !strides_attr.isSplat() ||
+         !strides_attr.getSplatValue<APInt>().isOne())) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> begin_indices, end_indices, strides;
+    if (!op.GetSlicedBoundRanges(&begin_indices, &end_indices, &strides)) {
+      return failure();
+    }
+    SmallVector<int64_t, 4> sizes;
+    for (const auto &[start, end] : llvm::zip(begin_indices, end_indices)) {
+      sizes.push_back(end - start);
+    }
+
+    auto start_attr = rewriter.create<TF::ConstOp>(
+        op.getLoc(), rewriter.getI64TensorAttr(begin_indices));
+    auto size_attr = rewriter.create<TF::ConstOp>(
+        op.getLoc(), rewriter.getI64TensorAttr(sizes));
+    rewriter.replaceOpWithNewOp<SliceOp>(op, op.getOutput().getType(),
+                                         op.getInput(), start_attr, size_attr);
+    return success();
+  }
+};
+}  // namespace
+
+void StridedSliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                 MLIRContext *context) {
+  results.add<ConvertStridedSliceToSlice>(context);
 }
 
 //===----------------------------------------------------------------------===//
