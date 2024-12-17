@@ -416,6 +416,10 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
 
 TEST(CommandBufferThunkTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12300(executor)) {
+    // TODO(rocm): weekly sync 24-12-10
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -504,6 +508,10 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
 TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12300(executor)) {
+    // TODO(rocm): weekly sync 24-12-10
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1019,6 +1027,10 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
 
 TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12300(executor)) {
+    // TODO(rocm): weekly sync 24-12-10
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
