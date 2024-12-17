@@ -131,7 +131,12 @@ enum TargetWorkers {
 message DataTransferServerInfo {
   string protocol = 1;
   string address = 2;
+
   // If provided, properties of the server used to determine compatibility with
   // a client.
   bytes compatibility_info = 3;
+
+  // If `true`, data service clients should fall back to gRPC for this server if
+  // they fail to create a data transfer client for it.
+  bool fall_back_to_grpc_at_client_creation_time = 4;
 }

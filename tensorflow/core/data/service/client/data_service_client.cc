@@ -80,9 +80,9 @@ absl::StatusOr<DataTransferServerInfo> GetTransferServer(
       return transfer_server;
     }
   }
-  return errors::NotFound("protocol ", protocol,
-                          " is not available for worker ",
-                          task_info.worker_address());
+  return absl::NotFoundError(absl::StrCat("Protocol '", protocol,
+                                          "' is not available for worker '",
+                                          task_info.worker_address(), "'."));
 }
 
 }  // namespace
@@ -362,7 +362,7 @@ DataServiceClient::CreateGrpcWorkerClient(const TaskInfo& task_info) {
 }
 
 absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
+DataServiceClient::CreateAlternativeWorkerClientMaybeWithGrpcFallback(
     const DataTransferServerInfo& transfer_server, const TaskInfo& task_info) {
   absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
       CreateDataServiceWorkerClient(params_.protocol, transfer_server,
@@ -373,10 +373,17 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
               << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(INFO) << "Failed to start client for data transfer protocol '"
-            << transfer_server.protocol() << "' for worker '"
-            << task_info.worker_address() << "'; falling back to grpc. "
-            << "Original error: " << worker.status();
+  std::string client_creation_error_message =
+      absl::StrCat("Failed to start client for data transfer protocol '",
+                   transfer_server.protocol(), "' for worker '",
+                   task_info.worker_address(), "'.");
+  if (!transfer_server.fall_back_to_grpc_at_client_creation_time()) {
+    return absl::InternalError(
+        absl::StrCat(client_creation_error_message,
+                     " Original error: ", worker.status().message()));
+  }
+  LOG(INFO) << client_creation_error_message
+            << "; falling back to gRPC. Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),
@@ -398,16 +405,16 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     TF_ASSIGN_OR_RETURN(
         DataTransferServerInfo transfer_server,
         GetTransferServer(params_.data_transfer_protocol, task_info));
-    return CreateAlternativeWorkerClientWithGrpcFallback(transfer_server,
-                                                         task_info);
+    return CreateAlternativeWorkerClientMaybeWithGrpcFallback(transfer_server,
+                                                              task_info);
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
     absl::StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
-      return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
-                                                           task_info);
+      return CreateAlternativeWorkerClientMaybeWithGrpcFallback(
+          *transfer_server, task_info);
     }
     VLOG(1) << "Failed to find transfer server for default data transfer "
                "protocol '"
