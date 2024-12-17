@@ -84,6 +84,7 @@ xla_cc_test(
         ":cost_analysis",
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
+        ":memory_space_assignment_test_base",
         ":options",
         ":prefetch_interval_picker",
         ":repacking",
@@ -157,6 +158,34 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "memory_space_assignment_test_base",
+    testonly = True,
+    hdrs = ["memory_space_assignment_test_base.h"],
+    deps = [
+        ":buffer_interval_comparator",
+        ":cost_analysis",
+        ":memory_space_assignment",
+        ":options",
+        ":prefetch_interval_picker",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:instruction_hoister",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_value",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
