@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -140,8 +139,8 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occurred "
           "while trying to hash an object of type ",
-          nanobind::cast<std::string_view>(nanobind::str(static_arg.type())),
-          ", ", nanobind::cast<std::string_view>(nanobind::str(static_arg)),
+          nanobind::cast<absl::string_view>(nanobind::str(static_arg.type())),
+          ", ", nanobind::cast<absl::string_view>(nanobind::str(static_arg)),
           ". The error was:\n", e.what(), "\n"));
     }
     h = H::combine(std::move(h), hash);
@@ -185,7 +184,7 @@ absl::Status ParseArguments(
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
   // Not part of the signature, but we need it for error messages.
-  std::string_view function_name;
+  absl::string_view function_name;
 
   ArgumentSignature arg_signature;
 

@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -91,7 +89,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -489,7 +486,7 @@ PyClient::DeserializeExecutable(nb_class_ptr<PyClient> client,
     TF_ASSIGN_OR_RETURN(
         ifrt_loaded_executable,
         client->ifrt_client_->GetDefaultCompiler()->DeserializeLoadedExecutable(
-            std::string_view(serialized.c_str(), serialized.size()),
+            absl::string_view(serialized.c_str(), serialized.size()),
             std::move(ifrt_deserialize_options)));
   }
   TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
@@ -785,7 +782,7 @@ PyType_Slot PyClient::slots_[] = {
           },
           nb::arg("dtype"), nb::arg("shard_shape"), nb::arg("device"))
       .def("__getattr__",
-           [](PyClient& client, std::string_view name) -> nb::object {
+           [](PyClient& client, absl::string_view name) -> nb::object {
              const auto& attrs = client.Attributes().map();
              auto it = attrs.find(name);
              if (it != attrs.end()) {
