@@ -296,8 +296,6 @@ build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm_base --repo_env TF_NEED_ROCM=1
 #build:rocm_base --test_env XLA_FLAGS="--xla_gpu_enable_cublaslt=true"
 
-build:rocm --remote_upload_local_results=true
-build:rocm --remote_cache=http://hyd-7c0603-18-build-3:9090
 build:rocm --config=rocm_base
 build:rocm --config=release_cpu_linux_base
 build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
