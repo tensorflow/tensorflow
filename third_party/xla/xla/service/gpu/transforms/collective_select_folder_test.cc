@@ -449,5 +449,49 @@ TEST_F(CollectiveSelectFolderTest,
   EXPECT_TRUE(filecheck_result);
 }
 
+TEST_F(CollectiveSelectFolderTest, DtypeConvertedPartitionId) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+
+    ENTRY computation {
+      param = (f32[1,1,28672,2048]{3,2,1,0}, f32[1,1,28672,2048]{3,2,1,0})
+          parameter(0)
+      get-tuple-element-a = f32[1,1,28672,2048]{3,2,1,0}
+          get-tuple-element(param), index=0
+      get-tuple-element-b = f32[1,1,28672,2048]{3,2,1,0}
+          get-tuple-element(param), index=1
+      partition-id.1 = u32[] partition-id()
+      convert = s32[] convert(partition-id.1)
+      constant.148 = s32[] constant(3)
+      compare.83 = pred[] compare(convert, constant.148), direction=EQ
+      broadcast.19 = pred[1,1,28672,2048]{3,2,1,0} broadcast(compare.83),
+          dimensions={}
+      select.33 = f32[1,1,28672,2048]{3,2,1,0} select(broadcast.19,
+          get-tuple-element-a, get-tuple-element-b)
+      cp-a = f32[1,1,28672,2048]{3,2,1,0} collective-permute(select.33),
+          channel_id=1, source_target_pairs={{3,0}}
+      cp-b = f32[1,1,28672,2048]{3,2,1,0} collective-permute(select.33),
+          channel_id=2, source_target_pairs={{0,1},{1,2},{2,3}}
+      ROOT tuple = (f32[1,1,28672,2048]{3,2,1,0}, f32[1,1,28672,2048]{3,2,1,0})
+          tuple(cp-a, cp-b)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunAndCheckHloRewrite(kHlo, CollectiveSelectFolder(),
+                                                /*expect_change=*/true));
+  const absl::string_view kExpected = R"(
+    // CHECK: %[[PARAM:.*]] = {{.*}} parameter(0)
+    // CHECK: %[[DATA_A:.*]] = {{.*}} get-tuple-element({{.*}} %[[PARAM]]), index=0
+    // CHECK: %[[DATA_B:.*]] = {{.*}} get-tuple-element({{.*}} %[[PARAM]]), index=1
+    // CHECK: %[[DATA_A_:.*]] = {{.*}} collective-permute({{.*}} %[[DATA_A]])
+    // CHECK: %[[DATA_B_:.*]] = {{.*}} collective-permute({{.*}} %[[DATA_B]])
+    // CHECK: ROOT %[[RESULT:.*]] = {{.*}} tuple({{.*}} %[[DATA_A_]], {{.*}} %[[DATA_B_]])
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), kExpected));
+  EXPECT_TRUE(filecheck_result);
+}
+
 }  // namespace
 }  // namespace xla
