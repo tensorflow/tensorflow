@@ -150,18 +150,20 @@ TEST(GpuCliqueKeyGetterTest, ToString) {
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
-  std::array<char, 128> id;
+  std::array<char, 129> id;
   std::fill(id.begin(), id.end(), 0x01);
+  id[128] = 0;
   CliqueId clique_id(id.data());
   EXPECT_EQ(std::memcmp(clique_id.data().data(), id.data(), 128), 0);
 }
 
 TEST(GpuCliqueIdStringTest, ToString) {
-  std::array<char, 128> id;
+  std::array<char, 129> id;
   std::fill(id.begin(), id.end(), 0x01);
+  id[128] = 0;
   CliqueId clique_id(id.data());
   for (int i = 0; i < 128; ++i) {
-    EXPECT_THAT(clique_id.ToString().substr(i, 1), "\x1");
+    EXPECT_EQ(clique_id.ToString()[i], id[i]);
   }
 }
 
