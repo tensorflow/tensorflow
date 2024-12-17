@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <string>
@@ -30,6 +32,7 @@
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
 using ::litert::BufferRef;
+using ::litert::OwningBufferRef;
 using ::litert::internal::TflBuffer;
 using ::litert::internal::TflBufferPtr;
 using ::litert::internal::TflOpCode;
@@ -111,8 +114,10 @@ TflBufferPtr TakeTflBuffer(LiteRtWeightsT& litert_weights) {
   return std::move(litert_weights.tfl_buf_);
 }
 
-void SetTflBuffer(LiteRtWeightsT& litert_weights, TflBufferPtr tfl_buffer) {
+void SetTflBuffer(LiteRtWeightsT& litert_weights, TflBufferPtr tfl_buffer,
+                  BufferRef<uint8_t> flatbuffer) {
   litert_weights.tfl_buf_ = std::move(tfl_buffer);
+  litert_weights.flatbuffer_ = flatbuffer;
 }
 
 const std::vector<TflOpCodePtr>& GetTflOpCodes(
@@ -126,7 +131,8 @@ std::vector<TflOpCodePtr>&& TakeTflOpCodes(LiteRtModelT& litert_model) {
 
 void SetTflInitFlatbuffer(LiteRtModelT& litert_model,
                           BufferRef<uint8_t> init_flatbuffer) {
-  litert_model.tfl_init_flatbuffer_ = init_flatbuffer;
+  litert_model.tfl_init_flatbuffer_ =
+      OwningBufferRef<uint8_t>(init_flatbuffer.Data(), init_flatbuffer.Size());
 }
 
 BufferRef<uint8_t> GetTflInitFlatbuffer(const LiteRtModelT& litert_model) {

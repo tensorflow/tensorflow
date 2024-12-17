@@ -79,9 +79,9 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/core:filesystem",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -125,6 +125,7 @@ cc_library(
     deps = [
         ":litert_to_flatbuffer",
         ":model",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
@@ -133,6 +134,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

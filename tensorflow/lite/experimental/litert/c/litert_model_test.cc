@@ -50,7 +50,7 @@ TEST(LiteRtWeightsTest, GetNullWeights) {
 
 TEST(LiteRtWeightsTest, GetWeights) {
   LiteRtWeightsT weights;
-  detail::SetTflBuffer(weights, MakeTflBuffer({1, 2, 3}));
+  detail::SetTflBuffer(weights, MakeTflBuffer({1, 2, 3}), {});
 
   const void* addr;
   size_t size;
