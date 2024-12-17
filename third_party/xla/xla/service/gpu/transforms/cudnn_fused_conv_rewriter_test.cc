@@ -2197,7 +2197,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2224,7 +2224,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2251,7 +2251,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2277,7 +2277,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {

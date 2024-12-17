@@ -23,7 +23,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -641,7 +640,7 @@ std::vector<AutotuneResult> KeepNonFailures(
 }
 
 absl::Status AllAlgorithmsFailedInternalError(
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     absl::Span<AutotuneResult const> profile_results) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
@@ -659,7 +658,7 @@ absl::Status AllAlgorithmsFailedInternalError(
 }
 
 absl::Status NoAlgorithmSuppliedInternalError(
-    std::optional<std::string_view> instr_str) {
+    std::optional<absl::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
     msg << "There are no algorithm candidates for computing: \n  "
@@ -703,7 +702,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
 
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
   if (profile_results.empty()) {
     return NoAlgorithmSuppliedInternalError(instr_str);

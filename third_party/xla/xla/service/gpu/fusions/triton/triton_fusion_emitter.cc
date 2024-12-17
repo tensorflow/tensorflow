@@ -1041,7 +1041,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   return llvmModule;
 }
 
-absl::Status CreateInternalError(std::string_view message,
+absl::Status CreateInternalError(absl::string_view message,
                                  const HloFusionInstruction* fusion,
                                  mlir::ModuleOp triton_module) {
   std::string err;

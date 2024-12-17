@@ -637,11 +637,11 @@ class Decision {
 
   static Decision Allow() { return {FusionDecision::Allow(), true}; };
 
-  static Decision Deny(std::string_view value) {
+  static Decision Deny(absl::string_view value) {
     return {FusionDecision::Forbid(value), false};
   }
 
-  static Decision NotProfitable(std::string_view value) {
+  static Decision NotProfitable(absl::string_view value) {
     return {FusionDecision::Forbid(value), true};
   }
 

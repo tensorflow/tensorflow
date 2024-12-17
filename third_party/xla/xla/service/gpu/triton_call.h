@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 
 namespace xla::gpu {
@@ -34,7 +34,7 @@ struct TritonCall {
   int32_t grid_z;
 
   // Parse the metadata of a __gpu$xla.gpu.triton call.
-  static TritonCall Parse(std::string_view backend_config,
+  static TritonCall Parse(absl::string_view backend_config,
                           mlir::MLIRContext* mlir_context);
 };
 

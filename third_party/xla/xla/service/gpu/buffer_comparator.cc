@@ -19,7 +19,6 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -60,7 +59,7 @@ struct ComparisonParams {
 //
 // Returns `true` if two buffers are equal, `false` otherwise.
 template <typename ElementT>
-static absl::StatusOr<bool> DeviceCompare(std::string_view kernel_name,
+static absl::StatusOr<bool> DeviceCompare(absl::string_view kernel_name,
                                           void* kernel_symbol,
                                           const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
@@ -163,7 +162,7 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
 
 template <typename ElementT, typename ComparisonT>
 static absl::StatusOr<bool> CompareEqualParameterized(
-    std::string_view kernel_name, void* kernel_symbol,
+    absl::string_view kernel_name, void* kernel_symbol,
     const ComparisonParams& params) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
   TF_ASSIGN_OR_RETURN(

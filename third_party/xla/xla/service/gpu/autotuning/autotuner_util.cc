@@ -120,7 +120,7 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
 
 absl::Status AddResultToFileBasedCacheIfEnabled(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   if (cache_dir.empty() ||
@@ -163,7 +163,7 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
 
 absl::StatusOr<ResultAndInserted> AddResultToCaches(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);

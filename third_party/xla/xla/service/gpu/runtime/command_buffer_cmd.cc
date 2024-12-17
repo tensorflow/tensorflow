@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -105,7 +104,7 @@ std::string CommandBufferCmdString(CommandBufferCmdType type) {
   }
 }
 
-static std::string_view ReductionKindString(ReductionKind kind) {
+static absl::string_view ReductionKindString(ReductionKind kind) {
   switch (kind) {
     case ReductionKind::MAX:
       return "max";
@@ -286,7 +285,7 @@ void CommandBufferCmdSequence::ClearTrackedBuffers(
   read_write_sets_[execution_stream_id] = ReadWriteSet();
 }
 
-static std::string_view RecordModeString(
+static absl::string_view RecordModeString(
     CommandBufferCmdSequence::RecordMode mode) {
   switch (mode) {
     case CommandBufferCmdSequence::RecordMode::kExclusive:
@@ -492,7 +491,7 @@ absl::Status TracedCommandBufferCmd::AddTracedCommandBuffer(
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kMemset32Kernel = R"(
+inline constexpr absl::string_view kMemset32Kernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64

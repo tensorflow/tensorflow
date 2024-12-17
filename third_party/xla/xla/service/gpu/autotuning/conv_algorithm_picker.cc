@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -346,7 +345,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // "input/output" or "scratch".
 absl::StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                                    se::Stream* stream, absl::string_view name,
-                                   std::string_view instr_str,
+                                   absl::string_view instr_str,
                                    AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
