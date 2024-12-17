@@ -177,11 +177,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     compute_function_.pop();
   }
 
-  // Emit LLVM global variable for a small constant buffer allocation.
-  absl::Status EmitSmallConstantGlobals();
-
-  // Emit LLVM global variables for all constant buffer allocations.
-  absl::Status EmitAllConstantGlobals();
+  // Emit an LLVM global variable for every constant buffer allocation.
+  absl::Status EmitConstantGlobals();
 
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
@@ -241,9 +238,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  protected:
   friend class IrEmitter2;
-
-  // Emit an LLVM global variable for every constant buffer allocation.
-  absl::Status EmitConstantGlobals(std::optional<size_t> max_size_bytes);
 
   //
   // The following methods implement the DfsHloVisitor interface.

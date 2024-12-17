@@ -43,12 +43,6 @@ class CpuInstructionFusion : public InstructionFusion {
     return InstructionFusion::Run(module, execution_threads);
   }
 
-  // Returns the threshold for a constant to be considered a large constant.
-  static constexpr int64_t GetLargeConstantThresholdBytes() {
-    constexpr int64_t kLargeConstantThresholdBytes = 10000;
-    return kLargeConstantThresholdBytes;
-  }
-
  protected:
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
@@ -58,9 +52,6 @@ class CpuInstructionFusion : public InstructionFusion {
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
-
-  // Returns if a constant is large enough to be considered a large constant.
-  bool IsLargeConstant(const HloInstruction* constant) const;
 
   // Keep track of the number of times each instruction inside a fusion node is
   // indexed with different index vectors.

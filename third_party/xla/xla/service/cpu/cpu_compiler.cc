@@ -1477,7 +1477,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // TODO(ezhulenev): Figure out how to emit constants that are only needed for
   // thread local computations as with Thunks runtime we keep constants outside
   // of the LLVM module. Currently we end up doubling memory for constants.
-  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
+  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitConstantGlobals());
 
   // If we use Thunk runtime then instead of emitting LLVM function for the
   // entry computation we emit a sequence of thunks that implement the
@@ -1873,7 +1873,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           // TODO(b/66051036): Run full msan for AOT.
           /*emit_code_for_msan=*/false);
 
-      TF_RETURN_IF_ERROR(ir_emitter.EmitAllConstantGlobals());
+      TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
       for (ComputationToEmit subcomputation :
            SubcomputationEmissionOrder(computation)) {

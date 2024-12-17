@@ -935,45 +935,5 @@ ENTRY main {
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
 
-TEST_F(OpcodeFusionTest, BigConstantNotInFusion) {
-  absl::string_view module_string = R"(
-HloModule module
-
-ENTRY main {
-  a = f32[1000,1000]{1,0} parameter(0)
-  b = f32[1000,1000]{1,0} constant({...})
-  a_plus_b = f32[1000,1000]{1,0} add(a, b)
-  c = f32[1000,1000]{1,0} constant({...})
-  ROOT result = f32[1000,1000]{1,0} add(a_plus_b, c)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  RunFusionAndCheckOpcodesWereFused(
-      module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
-                     HloOpcode::kParameter, HloOpcode::kAdd, HloOpcode::kAdd});
-}
-
-TEST_F(OpcodeFusionTest, SmallConstantInFusion) {
-  absl::string_view module_string = R"(
-HloModule module
-
-ENTRY main {
-  a = f32[10,10]{1,0} parameter(0)
-  b = f32[10,10]{1,0} constant({...})
-  a_plus_b = f32[10,10]{1,0} add(a, b)
-  c = f32[10,10]{1,0} constant({...})
-  ROOT result = f32[10,10]{1,0} add(a_plus_b, c)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  RunFusionAndCheckOpcodesWereFused(
-      module.get(), {HloOpcode::kParameter, HloOpcode::kConstant,
-                     HloOpcode::kConstant, HloOpcode::kAdd, HloOpcode::kAdd});
-}
-
 }  // namespace
 }  // namespace xla::cpu
