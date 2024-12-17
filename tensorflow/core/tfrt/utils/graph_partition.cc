@@ -72,7 +72,7 @@ struct OutputNodeInfo {
 // input/output info for the following processing.
 // TODO(b/217581711): Consider to use another GraphToFunctionDef() helper which
 // does not require _Arg and _Retval nodes.
-Status PrepareSubgraphForFunctionConversion(
+absl::Status PrepareSubgraphForFunctionConversion(
     const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs, const Device* host_device,
     const std::string& func_name,
