@@ -1451,6 +1451,190 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
                                            ErrorSpec{1e-5, 1e-5}));
 }
 
+// This is the async-grouped version of
+// NaiveBFSMicrobatch5CircularRepeat2Replica4 and should yield the same results.
+// TODO(b/383868854): replace this with GPU pipeliner implementation.
+XLA_TEST_P(CollectivePipelineParallelismTest,
+           NaiveBFSMb5Cr2Replica4SendRecvAsyncGroup) {
+  constexpr char kMoreComputationsStr[] = R"(
+
+  wrapped_send_recv_1 {
+    fwd_send_data = f32[16] parameter(0)
+    fwd_send_after_all = token[] parameter(1)
+    fwd_send = (f32[16], u32[], token[]) send(fwd_send_data, fwd_send_after_all),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+
+    fwd_recv_after_all = token[] parameter(2)
+    fwd_recv = (f32[16], u32[], token[]) recv(fwd_recv_after_all), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+
+    bwd_send_data = f32[16] parameter(3)
+    bwd_send_after_all = token[] parameter(4)
+    bwd_send = (f32[16], u32[], token[]) send(bwd_send_data, bwd_send_after_all), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{3,0}}}
+
+    bwd_recv_after_all = token[] parameter(5)
+    bwd_recv = (f32[16], u32[], token[]) recv(bwd_recv_after_all), frontend_attributes={
+        _xla_send_recv_source_target_pairs={{3,0}}}
+
+    ROOT out = ((f32[16], u32[], token[]),(f32[16], u32[], token[]),
+      (f32[16], u32[], token[]),(f32[16], u32[], token[])) tuple(fwd_send,
+      fwd_recv, bwd_send, bwd_recv)
+
+  }
+
+  while_condition {
+    tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
+        parameter(0)
+    i = u32[] get-tuple-element(tuple), index=5
+    n = u32[] constant(13)
+    ROOT predicate = pred[] compare(i, n), direction=LT
+  }
+
+  while_body {
+    tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
+        parameter(0)
+    weights = f32[16,16] get-tuple-element(tuple), index=0
+    input = f32[5,16] get-tuple-element(tuple), index=1
+    output = f32[5,16] get-tuple-element(tuple), index=2
+    buffer = f32[5,16] get-tuple-element(tuple), index=3
+    prev_iteration_compute_res = f32[16] get-tuple-element(tuple), index=4
+    i = u32[] get-tuple-element(tuple), index=5
+
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    c2 = u32[] constant(2)
+    c3 = u32[] constant(3)
+    c4 = u32[] constant(4)
+    c5 = u32[] constant(5)
+
+    // Read from buffers.
+    input_slice = f32[16] call(input, c0, i), to_apply=read_buffer_mb5
+    buffer_slice = f32[16] call(buffer, c3, i), to_apply=read_buffer_mb5
+
+    // Shift data to the next stage in the pipeline.
+    // Directly depends on the updated buffer of the previous iteration and,
+    // therefore, depends on the previous iteration's compute.
+    is_output_replica = pred[] call(), to_apply=is_output_replica
+    next_stage_slice = select(is_output_replica, buffer_slice,
+        prev_iteration_compute_res)
+
+
+    // Shift data to the next stage in the pipeline.
+    after_all_fwd = token[] after-all()
+    after_all_bwd = token[] after-all()
+
+    async_comp_start = (( f32[16], token[], token[], f32[16], token[], token[]),
+      ((f32[16], u32[], token[]), (f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      (f32[16], u32[], token[])), s32[]) async-start(next_stage_slice,
+        after_all_fwd, after_all_fwd, next_stage_slice,
+        after_all_bwd, after_all_bwd), calls=wrapped_send_recv_1
+
+    async_comp_done = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      (f32[16], u32[], token[]), (f32[16], u32[], token[])) async-done(async_comp_start)
+    unpack_fwd_recv = (f32[16], u32[], token[]) get-tuple-element(async_comp_done), index=1
+    fwd_recv_data = f32[16] get-tuple-element(unpack_fwd_recv), index=0
+    fwd_recv_token = token[] get-tuple-element(unpack_fwd_recv), index=2
+    fwd_recv_done = (f32[16], token[]) tuple(fwd_recv_data, fwd_recv_token),
+      control-predecessors={async_comp_start}
+
+    unpack_bwd_recv = (f32[16], u32[], token[]) get-tuple-element(async_comp_done), index=3
+    bwd_recv_data = f32[16] get-tuple-element(unpack_bwd_recv), index=0
+    bwd_recv_token = token[] get-tuple-element(unpack_bwd_recv), index=2
+    bwd_recv_done = (f32[16], token[]) tuple(bwd_recv_data, bwd_recv_token),
+      control-predecessors={async_comp_start}
+    prev_stage_slice_fwd = f32[16] get-tuple-element(fwd_recv_done), index=0
+    prev_stage_slice_bwd = f32[16] get-tuple-element(bwd_recv_done), index=0
+
+
+    // Select compute argument from previous stage or from input and perform
+    // compute.
+    is_read_input = pred[] call(i), to_apply=is_read_input_mb5
+    compute_arg_bwd = f32[16] select(is_read_input, input_slice, prev_stage_slice_bwd)
+    compute_res_bwd = f32[16] dot(weights, compute_arg_bwd), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    is_device_zero = pred[] call(), to_apply=is_input_replica
+    compute_arg_fwd = f32[16] select(is_device_zero, prev_stage_slice_bwd, prev_stage_slice_fwd)
+    compute_res_fwd = f32[16] dot(weights, compute_arg_fwd), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+
+    // Update buffers.
+    compute_res = f32[16] select(is_device_zero, compute_res_bwd, compute_res_fwd)
+    output_ = f32[5,16] call(output, compute_res, c2, i),
+        to_apply=update_buffer_mb5
+    buffer_ = f32[5,16] call(buffer, compute_res, c0, i),
+        to_apply=update_buffer_mb5
+
+    i_ = add(i, c1)
+
+    ROOT tuple_ = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
+        tuple(weights, input, output_, buffer_, compute_res, i_)
+
+    unpack-send-done1 = (f32[16], u32[], token[]) get-tuple-element(async_comp_done), index=0
+    send-done1 = token[] get-tuple-element(unpack-send-done1), index=2
+    unpack-send-done2 = (f32[16], u32[], token[]) get-tuple-element(async_comp_done), index=2
+    send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
+  }
+
+  ENTRY main {
+    weights = f32[16,16] parameter(0)
+    input = f32[5,16] parameter(1)
+
+    cf0 = f32[] constant(0)
+    output = f32[5,16] broadcast(cf0), dimensions={}
+    buffer = f32[5,16] broadcast(cf0), dimensions={}
+    prev_iteration_compute_res = f32[16] broadcast(cf0), dimensions={}
+    c0 = u32[] constant(0)
+
+    // Iterate through pipeline stages.
+    tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
+        tuple(weights, input, output, buffer, prev_iteration_compute_res, c0)
+    tuple_ = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
+        while(tuple), condition=while_condition, body=while_body
+
+    ROOT output_ = f32[5,16] get-tuple-element(tuple_), index=2
+  }
+  )";
+
+  const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
+                                       /*name=*/"test", kMoreComputationsStr),
+                                   config));
+
+  const int64_t kInputSize = 16;
+  Literal weights_r0 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 1.0);
+  Literal weights_r1 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 2.0);
+  Literal weights_r2 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 3.0);
+  Literal weights_r3 = LiteralUtil::MakeScalarMatrixR2<float>(kInputSize, 4.0);
+
+  const int64_t kMicrobatches = 5;
+  Literal real_input =
+      LiteralUtil::CreateFingerprintMatixR2<float>(kMicrobatches, kInputSize);
+  Literal fake_input =
+      LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
+
+  const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
+  Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
+      kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), args, kNumReplicas,
+                        /*run_hlo_passes=*/true));
+  EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+      expected_output, results[3],
+      ErrorSpec{/*abs_error=*/1e-5, /*rel_error=*/1e-5}));
+}
+
 INSTANTIATE_TEST_SUITE_P(CollectivePipelineParallelismTestWithAndWithoutOpts,
                          CollectivePipelineParallelismTest, ::testing::Bool(),
                          ::testing::PrintToStringParamName());

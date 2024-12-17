@@ -131,7 +131,6 @@ cc_library(
         ":hlo_function_importer",
         ":module_attributes_importer",
         "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "@com_google_absl//absl/status",
