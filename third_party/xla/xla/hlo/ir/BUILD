@@ -65,6 +65,7 @@ cc_library(
         "//xla:array",
         "//xla:comparison_util",
         "//xla:literal",
+        "//xla:literal_pool",
         "//xla:literal_util",
         "//xla:printer",
         "//xla:protobuf_util",

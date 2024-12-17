@@ -630,6 +630,33 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "literal_pool",
+    srcs = ["literal_pool.cc"],
+    hdrs = ["literal_pool.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":literal",
+        ":shape_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "literal_pool_test",
+    srcs = ["literal_pool_test.cc"],
+    deps = [
+        ":literal",
+        ":literal_pool",
+        ":literal_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "literal_util",
     srcs = ["literal_util.cc"],
     hdrs = ["literal_util.h"],

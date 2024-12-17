@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_pool.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -1341,6 +1342,18 @@ class HloConstantInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kConstant;
+  }
+
+  // Canonicalize constant literal using the given literal pool.
+  bool Canonicalize(LiteralPool* literal_pool) {
+    if (literal_pool && literal_) {
+      auto canonical = literal_pool->GetCanonicalLiteral(literal_);
+      if (canonical != literal_) {
+        literal_ = std::move(canonical);
+        return true;
+      }
+    }
+    return false;
   }
 
  private:

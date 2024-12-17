@@ -2027,6 +2027,40 @@ cc_library(
 )
 
 cc_library(
+    name = "literal_canonicalizer",
+    srcs = ["literal_canonicalizer.cc"],
+    hdrs = ["literal_canonicalizer.h"],
+    deps = [
+        "//xla:literal_pool",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "literal_canonicalizer_test",
+    srcs = ["literal_canonicalizer_test.cc"],
+    deps = [
+        ":literal_canonicalizer",
+        "//xla:literal_pool",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "optimize_input_output_buffer_alias",
     srcs = ["simplifiers/optimize_input_output_buffer_alias.cc"],
     hdrs = ["simplifiers/optimize_input_output_buffer_alias.h"],
