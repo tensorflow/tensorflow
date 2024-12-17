@@ -16,6 +16,10 @@ limitations under the License.
 // This pass inserts corert.transfer op to make sure any argument of any op is
 // on the same device of the op itself.
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

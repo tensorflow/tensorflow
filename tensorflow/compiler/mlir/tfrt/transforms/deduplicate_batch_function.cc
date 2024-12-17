@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <iterator>
+#include <memory>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
