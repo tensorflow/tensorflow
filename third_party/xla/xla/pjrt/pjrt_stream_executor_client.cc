@@ -514,7 +514,7 @@ AllocateDestinationBuffer(
     // put it as the first definition event so that we can guarantee only the
     // first one might not have event recorded.
     if (definition_event) {
-      definition_events.emplace_back(definition_event);
+      definition_events.push_back(definition_event);
     }
     if (local_device->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
@@ -532,7 +532,7 @@ AllocateDestinationBuffer(
     // We have at least one definition event, for the copy completing to
     // the device buffers.
     if (definition_event) {
-      definition_events.emplace_back(definition_event);
+      definition_events.push_back(definition_event);
     } else {
       definition_events.emplace_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
