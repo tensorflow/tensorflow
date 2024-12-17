@@ -32,6 +32,7 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S1 = 30;
   S2 = 26;
   S4 = 21;
   S8 = 2;
@@ -40,6 +41,7 @@ enum PrimitiveType {
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U1 = 31;
   U2 = 27;
   U4 = 22;
   U8 = 6;
@@ -134,7 +136,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 30
+  // Next = 32
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc

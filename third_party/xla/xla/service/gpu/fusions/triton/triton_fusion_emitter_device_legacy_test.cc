@@ -2933,8 +2933,8 @@ ENTRY e {
   s0 = f16[3,3,128] slice(p0), slice={[0:3], [0:3], [123:251]}
   r0 = f16[3,3,128] reshape(s0)
   p1 = f16[3,3,256] parameter(1)
-  s1 = f16[3,3,128] slice(p1), slice={[0:3], [0:3], [30:158]}
-  r1 = f16[3,3,128] reshape(s1)
+  svar1 = f16[3,3,128] slice(p1), slice={[0:3], [0:3], [30:158]}
+  r1 = f16[3,3,128] reshape(svar1)
   ROOT d = f16[128,3,3]{2,1,0} dot(r0, r1),
     lhs_batch_dims={2}, lhs_contracting_dims={1},
     rhs_batch_dims={2}, rhs_contracting_dims={1}

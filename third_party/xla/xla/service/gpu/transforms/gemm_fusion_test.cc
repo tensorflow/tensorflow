@@ -213,8 +213,8 @@ ENTRY e {
   p1 = f32[101,16] parameter(1)
   d = f32[16,7] dot(p1, s0),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
-  s1 = f32[3,33] slice(p0), slice={[10:13], [20:53]}
-  ROOT t = tuple(d, s1)
+  sout1 = f32[3,33] slice(p0), slice={[10:13], [20:53]}
+  ROOT t = tuple(d, sout1)
 })"));
 
   const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
@@ -247,9 +247,9 @@ ENTRY e {
     slice={[0:1], [0:1], [0:256], [0:256]}
   r0 = f32[256,256] reshape(s0)
   p1 = f16[2,2,256,256] parameter(1)
-  s1 = f16[1,1,256,256] slice(p1),
+  sout1 = f16[1,1,256,256] slice(p1),
     slice={[0:1], [0:1], [0:256], [0:256]}
-  r1 = f16[256,256] reshape(s1)
+  r1 = f16[256,256] reshape(sout1)
   ROOT d = f32[256,256] dot(r0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));

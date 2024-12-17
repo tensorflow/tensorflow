@@ -308,8 +308,8 @@ f {
   m0 = s8[10] multiply(n0, n0)
   a0 = s8[10] add(n0, n0)
   s0 = s8[5] slice(a0), slice={[0:5]}
-  s1 = s8[2] slice(n0), slice={[4:6]}
-  n1 = s8[2] negate(s1)
+  svar1 = s8[2] slice(n0), slice={[4:6]}
+  n1 = s8[2] negate(svar1)
   ROOT c0 = s8[17] concatenate(s0, m0, n1), dimensions={0}
 }
 
