@@ -161,10 +161,46 @@ absl::Status NcclCollectivePermuteStartThunk::Initialize(
   if (p2p_memcpy_enabled_) {
     TF_ASSIGN_OR_RETURN(const int64_t current_id,
                         GetCurrentId(params.collective_params, config_));
+    absl::MutexLock lock(&barrier_mutex_);
+    if (barrier_flags_.find(current_id) == barrier_flags_.end()) {
+      if (!params.stream->parent()->HostMemoryRegister(
+              &barrier_flags_[current_id], sizeof(uint8_t))) {
+        LOG(ERROR) << "Registering barrier flag failed.";
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        std::vector<DeviceBufferPair> device_buffers,
+        ConvertToDeviceBuffers(params.buffer_allocations, {buffer_},
+                               config_.config.operand_element_type));
+    TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
+    DeviceBufferPair& buffer = device_buffers[0];
+    const NcclP2PConfig::SourceTargetMapEntry source_target =
+        NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+
+    const std::optional<int64_t> source_id = source_target.source;
+    se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
 
     TF_RETURN_IF_ERROR(recv_ptr_map_.InitializeId(current_id));
+
+    if (source_id) {
+      TF_RETURN_IF_ERROR(
+          recv_ptr_map_.PutRecvPtr(current_id, dest_addr.opaque()));
+    }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status NcclCollectivePermuteStartThunk::Cleanup(
+    const CleanupParams& params) {
+  TF_ASSIGN_OR_RETURN(const int64_t current_id,
+                      GetCurrentId(params.collective_params, config_));
+
+  absl::MutexLock lock(&barrier_mutex_);
+  if (!params.executor->HostMemoryUnregister(&barrier_flags_[current_id])) {
+    LOG(ERROR) << "Unregistering barrier flag failed.";
+  }
   return absl::OkStatus();
 }
 
@@ -190,6 +226,14 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
                     p2p_memcpy_enabled_;
 
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  if (use_memcpy) {
+    se::DeviceMemoryBase sync_var_address =
+        se::DeviceMemoryBase((void*)(&barrier_flags_[current_id]));
+    TF_RETURN_IF_ERROR(comm_handle.comm->AllReduce(
+        sync_var_address, sync_var_address, PrimitiveType::U8, 1,
+        ReductionKind::MIN, GpuCollectives::On(stream)));
+  }
+
   return ::xla::gpu::RunCollectivePermute(
       collectives, source_target, device_buffers[0], stream, comm_handle.comm,
       device_string, current_id, use_memcpy, recv_ptr_map_);
@@ -241,16 +285,7 @@ absl::Status RunCollectivePermute(
                                 device_string, current_id,
                                 source_id.value_or(-1), target_id.value_or(-1));
 
-  // If all peers are local, only get/send device pointer values and invoke
-  // memcpy.
-  if (use_memcpy) {
-    // If sending to another peer, get the pointer value of the src addr.
-    // Only change the pointer value when it's different from stored one.
-    if (source_id) {
-      TF_RETURN_IF_ERROR(
-          recv_ptr_map.PutRecvPtr(current_id, dest_addr.opaque()));
-    }
-  } else {
+  if (!use_memcpy) {
     // GroupStart/End API is needed only if we will issue both send & recv
     // calls.
     const bool is_nccl_group_needed = (target_id && source_id);
@@ -284,10 +319,6 @@ absl::Status RunCollectivePermute(
   }
   if (use_memcpy && target_id) {
     TF_ASSIGN_OR_RETURN(auto recv_ptr, recv_ptr_map.GetRecvPtr(*target_id));
-    if (recv_ptr.IsUnavailable()) {
-      // TODO make BlockUntilReady support AsyncValueRef directly.
-      BlockUntilReady(recv_ptr.GetAsyncValue());
-    }
 
     VLOG(3) << "Using memcpy, received target pointer: " << recv_ptr.get()
             << " current_id " << current_id << " target_id: " << *target_id;

@@ -541,8 +541,18 @@ absl::Status ExecuteThunks(
 
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
 
-  return MaybeSyncAndProfile(run_options, execution_timer.get(),
-                             block_host_until_done ? main_stream : nullptr);
+  auto status =
+      MaybeSyncAndProfile(run_options, execution_timer.get(),
+                          block_host_until_done ? main_stream : nullptr);
+
+  Thunk::CleanupParams cleanup_params{
+      executor,
+      &collective_params,
+      &collective_cliques,
+  };
+  TF_RETURN_IF_ERROR(thunk_sequence.Cleanup(cleanup_params));
+
+  return status;
 }
 
 namespace {
