@@ -264,6 +264,7 @@ enum StatType {
   kFlops,
   kModelFlops,
   kBytesAccessed,
+  kRawBytesAccessed,
   kMemoryAccessBreakdown,
   kShapeWithLayout,
   kSourceInfo,
