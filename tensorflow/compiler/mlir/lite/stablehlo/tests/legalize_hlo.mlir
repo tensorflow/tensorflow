@@ -3751,27 +3751,45 @@ func.func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>
   func.return %0 : tensor<1x1xi32>
 }
 
-// CHECK-LABEL:   func @convert_gather_trivial_batching_dims(
-// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<1x128xf32>,
-// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<1x128x1xi32>)
-// CHECK:            %[[VAL_0:.*]] = arith.constant dense<128> : tensor<1xi64>
-// CHECK:            %[[VAL_1:.*]] = "tf.Reshape"(%[[ARG_0]], %[[VAL_0]]) : {{.*}} -> tensor<128xf32>
-// CHECK:            %[[VAL_2:.*]] = "tf.GatherNd"(%[[VAL_1]], %[[ARG_1]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<1x128xf32>
-// CHECK:            return %[[VAL_2]]
+// CHECK-LABEL:   func @convert_gather_batching_dims(
+// CHECK-SAME:                          %[[ARG_0:.*]]: tensor<2x3x128xf32>,
+// CHECK-SAME:                          %[[ARG_1:.*]]: tensor<3x2x128x1xi32>)
+// CHECK-DAG:         %[[CST:.*]] = arith.constant dense<[6, 128]> : tensor<2xi64>
+// CHECK:             %[[VAL_0:.*]] = "tf.Reshape"(%[[ARG_0]], %[[CST]]) : (tensor<2x3x128xf32>, tensor<2xi64>) -> tensor<6x128xf32>
+// CHECK-DAG:         %[[CST_0:.*]] = "tf.Const"() <{value = dense<[1, 0, 2, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:             %[[VAL_1:.*]] = "tf.Transpose"(%[[ARG_1]], %[[CST_0]]) : (tensor<3x2x128x1xi32>, tensor<4xi64>) -> tensor<2x3x128x1xi32>
+// CHECK-DAG:         %[[CST_1:.*]] = arith.constant dense<[6, 128, 1]> : tensor<3xi64>
+// CHECK:             %[[VAL_2:.*]] = "tf.Reshape"(%[[VAL_1]], %[[CST_1]]) : (tensor<2x3x128x1xi32>, tensor<3xi64>) -> tensor<6x128x1xi32>
+// CHECK-DAG:         %[[CST_2:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG:         %[[CST_3:.*]] = "tf.Const"() <{value = dense<6> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG:         %[[CST_4:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK:             %[[VAL_3:.*]] = "tf.Range"(%[[CST_2]], %[[CST_3]], %[[CST_4]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<6xi32>
+// CHECK-DAG:         %[[CST_5:.*]] = "tf.Const"() <{value = dense<[6, 1, 1]> : tensor<3xi64>}> : () -> tensor<3xi64>
+// CHECK:             %[[VAL_4:.*]] = "tf.Reshape"(%[[VAL_3]], %[[CST_5]]) : (tensor<6xi32>, tensor<3xi64>) -> tensor<6x1x1xi32>
+// CHECK-DAG:         %[[CST_6:.*]] = "tf.Const"() <{value = dense<[6, 128, 1]> : tensor<3xi64>}> : () -> tensor<3xi64>
+// CHECK:             %[[VAL_5:.*]] = "tf.BroadcastTo"(%[[VAL_4]], %[[CST_6]]) : (tensor<6x1x1xi32>, tensor<3xi64>) -> tensor<6x128x1xi32>
+// CHECK-DAG:         %[[CST_7:.*]] = "tf.Const"() <{value = dense<2> : tensor<i32>}> : () -> tensor<i32>
+// CHECK:             %[[VAL_6:.*]] = "tf.ConcatV2"(%[[VAL_5]], %[[VAL_2]], %[[CST_7]]) : (tensor<6x128x1xi32>, tensor<6x128x1xi32>, tensor<i32>) -> tensor<6x128x2xi32>
+// CHECK:             %[[VAL_7:.*]] = "tf.GatherNd"(%[[VAL_0]], %[[VAL_6]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<6x128xf32>
+// CHECK-DAG:         %[[CST_8:.*]] = arith.constant dense<[2, 3, 128]> : tensor<3xi64>
+// CHECK:             %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_7]], %[[CST_8]]) : (tensor<6x128xf32>, tensor<3xi64>) -> tensor<2x3x128xf32>
+// CHECK-DAG:         %[[CST_9:.*]] = "tf.Const"() <{value = dense<[1, 0, 2]> : tensor<3xi64>}> : () -> tensor<3xi64>
+// CHECK:             %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_8]], %[[CST_9]]) : (tensor<2x3x128xf32>, tensor<3xi64>) -> tensor<3x2x128xf32>
+// CHECK:             return %[[VAL_9]]
 // CHECK:         }
-func.func @convert_gather_trivial_batching_dims(%arg0: tensor<1x128xf32>, %arg1: tensor<1x128x1xi32>) -> tensor<1x128xf32> {
+func.func @convert_gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tensor<3x2x128x1xi32>) -> tensor<3x2x128xf32> {
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
-      index_vector_dim = 2,
-      start_index_map = [1],
-      operand_batching_dims = [0],
-      start_indices_batching_dims = [0],
-      collapsed_slice_dims = [1],
+      index_vector_dim = 3,
+      start_index_map = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [1, 0],
+      collapsed_slice_dims = [2],
     >,
     indices_are_sorted = false,
-    slice_sizes = dense<1> : tensor<2xi64>
-  } : (tensor<1x128xf32>, tensor<1x128x1xi32>) -> tensor<1x128xf32>
-  func.return %0 : tensor<1x128xf32>
+    slice_sizes = dense<1> : tensor<3xi64>
+  } : (tensor<2x3x128xf32>, tensor<3x2x128x1xi32>) -> tensor<3x2x128xf32>
+  func.return %0 : tensor<3x2x128xf32>
 }
 
 // CHECK-LABEL:   func @convert_gather_to_slice_batch_size_1(
