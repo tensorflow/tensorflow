@@ -108,6 +108,17 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     if (!dictAttr) {
       return;
     }
+    // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
+    // through JAX.
+    if (auto sendOp = mlir::dyn_cast<mlir::stablehlo::SendOp>(op)) {
+      sendOp->setAttr(kShardingAttr,
+                      parseStringAttr<TensorShardingPerValueAttr>(
+                          dictAttr, kShardingRoundTripAttr));
+    } else if (auto recvOp = mlir::dyn_cast<mlir::stablehlo::RecvOp>(op)) {
+      recvOp->setAttr(kShardingAttr,
+                      parseStringAttr<TensorShardingPerValueAttr>(
+                          dictAttr, kShardingRoundTripAttr));
+    }
     // NOTE: we are only setting the sharding on known custom-calls. For any
     // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes
     // creates new instructions, copying over the operand's frontend attrs,
@@ -139,7 +150,9 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
       }
       if (targetName == kShardingCustomCallTargetName ||
           targetName == kSPMDFullToShardShapeCallTargetName ||
-          targetName == kSPMDShardToFullShapeCallTargetName) {
+          targetName == kSPMDShardToFullShapeCallTargetName ||
+          targetName == "xla_python_cpu_callback" ||
+          targetName == "xla_python_gpu_callback") {
         customCallOp->setAttr(kShardingAttr,
                               parseStringAttr<TensorShardingPerValueAttr>(
                                   dictAttr, kShardingRoundTripAttr));
