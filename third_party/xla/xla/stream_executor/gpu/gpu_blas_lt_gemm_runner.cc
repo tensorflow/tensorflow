@@ -33,7 +33,7 @@ bool AutotuneEnabled() {
                             /*default_val=*/false, &value);
     return value;
   }()};
-  return result;
+  return false;
 }
 
 }  // namespace

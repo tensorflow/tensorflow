@@ -301,6 +301,8 @@ build:rocm --config=release_cpu_linux_base
 build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:rocm --action_env=TF_ROCM_CLANG="1"
 build:rocm --linkopt="-fuse-ld=lld"
+test:rocm --test_env=ROCBLAS_LAYER="4"
+test:rocm --test_env=HIPBLASLT_LOG_MASK="32"
 # We have some invalid linker scripts in the build,
 # so we need to disable this check
 build:rocm --linkopt=-Wl,--undefined-version
