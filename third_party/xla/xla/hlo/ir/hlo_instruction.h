@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -538,17 +539,25 @@ class HloInstructionIteratorBase {
   using reference = value_type&;
 
   HloInstructionIteratorBase(UnderlyingList* list, int begin_index,
-                             int end_index)
+                             int end_index, const int64_t* sequence_number_ptr)
       : list_(list), current_(begin_index), end_index_(end_index) {
+    SetSequenceNumber(sequence_number_ptr);
     if (current_ < end_index_ && (*list_)[current_].inst() == nullptr) {
       ++*this;
     }
   }
 
-  HloInstruction* get() const { return (*list_)[current_].inst(); }
+  HloInstruction* get() const {
+    CheckSequenceNumber();
+    return (*list_)[current_].inst();
+  }
 
-  auto operator*() -> HloInstructionInfo { return (*list_)[current_]; }
+  auto operator*() -> HloInstructionInfo {
+    CheckSequenceNumber();
+    return (*list_)[current_];
+  }
   HloInstructionIteratorBase& operator++() {
+    CheckSequenceNumber();
     int next = current_;
     do {
       ++next;
@@ -557,22 +566,51 @@ class HloInstructionIteratorBase {
     return *this;
   }
   HloInstructionIteratorBase operator++(int) {
-    HloInstructionIteratorBase temp(list_, current_, end_index_);
+    CheckSequenceNumber();
+    HloInstructionIteratorBase temp(list_, current_, end_index_,
+                                    LiveSequenceNumber());
     operator++();
     return temp;
   }
 
   friend bool operator==(const HloInstructionIteratorBase& a,
                          const HloInstructionIteratorBase& b) {
+    a.CheckSequenceNumber();
+    b.CheckSequenceNumber();
     return a.current_ == b.current_;
   }
 
   friend bool operator!=(const HloInstructionIteratorBase& a,
                          const HloInstructionIteratorBase& b) {
+    a.CheckSequenceNumber();
+    b.CheckSequenceNumber();
     return !(a == b);
   }
 
+  void SetSequenceNumber(const int64_t* sequence_number_ptr) {
+#ifndef NDEBUG
+    original_sequence_number_ = *sequence_number_ptr;
+    live_sequence_number_ = sequence_number_ptr;
+#endif
+  }
+  void CheckSequenceNumber() const {
+#ifndef NDEBUG
+    CHECK_EQ(*live_sequence_number_, original_sequence_number_);
+#endif
+  }
+  const int64_t* LiveSequenceNumber() const {
+#ifndef NDEBUG
+    return live_sequence_number_;
+#else
+    return nullptr;
+#endif
+  }
+
  private:
+#ifndef NDEBUG
+  int64_t original_sequence_number_;
+  const int64_t* live_sequence_number_;
+#endif
   UnderlyingList* list_;
   int current_;
   int end_index_;

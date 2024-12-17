@@ -181,6 +181,7 @@ HloComputation* HloModule::AddComputationInternal(
 
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
+  IncrementIteratorSequenceNumber();
   return computations_.back().get();
 }
 
@@ -210,6 +211,7 @@ absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
+  IncrementIteratorSequenceNumber();
   return absl::OkStatus();
 }
 
