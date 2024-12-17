@@ -393,9 +393,6 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
       : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
 
   void AddWorkspace(HloInstruction &hlo, int64_t workspace_size) {
-    if (workspace_size == 0) {
-      return;
-    }
     VLOG(4) << "Applying workspace size " << workspace_size << " to "
             << hlo.ToString();
     Shape *shape = hlo.mutable_shape();
