@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <vector>
