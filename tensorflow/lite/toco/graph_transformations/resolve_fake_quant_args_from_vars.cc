@@ -27,9 +27,9 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveFakeQuantArgsFromVars::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveFakeQuantArgsFromVars::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
