@@ -14,11 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/utils.h"
 
-#include <algorithm>
-#include <memory>
-#include <utility>
-#include <vector>
-
 #include "absl/status/status.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/minimal_logging.h"
