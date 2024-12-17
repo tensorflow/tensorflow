@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
+#include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
@@ -490,6 +491,16 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
   if (options.xla_gpu_enable_analytical_latency_estimator()) {
     LOG(INFO) << "Using analytical latency estimator";
     return std::make_unique<AnalyticalLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), gpu_device_info,
+        [input_pointer_size = pointer_size](const Shape& shape) {
+          return GetSizeOfShape(shape, input_pointer_size);
+        },
+        module.entry_computation());
+  }
+
+  if (options.xla_gpu_enable_analytical_sol_latency_estimator()) {
+    LOG(INFO) << "Using Speed-of-Light (SoL) analytical latency estimator";
+    return std::make_unique<SolLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         [input_pointer_size = pointer_size](const Shape& shape) {
           return GetSizeOfShape(shape, input_pointer_size);

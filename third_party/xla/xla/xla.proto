@@ -522,6 +522,15 @@ message DebugOptions {
   // xla_gpu_enable_async_collectives
   reserved 152, 278, 183, 199, 200, 201, 238;
 
+  // Enables NCCL Speed-of-Light (SoL) analytical cost model
+  bool xla_gpu_enable_analytical_sol_latency_estimator = 356;
+  // Extra platform-specific options to improve analytical latency
+  // estimator precision; comma-separated list of 'key=val' strings (=val may be
+  // omitted); no whitespace around commas. Available options:
+  // --xla_gpu_analytical_latency_estimator_options=
+  //'nccl_op_launch_ms=55,nic_speed_gbps=40,
+  // chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,chunk_size_bytes=1024'
+  map<string, string> xla_gpu_analytical_latency_estimator_options = 357;
   // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
   int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
@@ -1084,7 +1093,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 356
+  // Next id: 358
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
