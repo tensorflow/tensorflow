@@ -360,6 +360,7 @@ py_test(
     srcs = ["import_api_packages_test.py"],
     main = "import_api_packages_test.py",
     tags = [
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
         "cpu",
         "gpu",
         "windows_excluded",
