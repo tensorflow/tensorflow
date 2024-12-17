@@ -54,10 +54,61 @@ def _check_params(window_length, dtype):
 @dispatch.add_dispatch_support
 def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
   """Generate a [Kaiser window][kaiser].
+  
+```python
+# Example:
+import tensorflow as tf
 
+window_length = 16
+beta = 14.0
+
+window = tf.signal.kaiser_window(window_length, beta, dtype=tf.float32, 
+name=None)
+print(window)
+
+# tf.Tensor(
+# [7.72686690e-06 1.28406240e-03 1.37837855e-02 6.81537315e-02
+#  2.11134031e-01 4.62716490e-01 7.61509001e-01 9.70435679e-01
+#  9.70435679e-01 7.61509001e-01 4.62716490e-01 2.11134031e-01
+#  6.81537315e-02 1.37837855e-02 1.28406240e-03 7.72686690e-06], 
+shape=(16,), dtype=float32)
+```
+```python
+
+# UseCase: Kasier_window in Spectrum Analysis of a given signal.
+
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Generate a signal
+N = 1024  # Number of samples
+fs = 500  # Sampling frequency
+t = tf.linspace(0.0, (N - 1) / fs, N)  
+f = 50  # Frequency of the signal
+signal = tf.sin(2 * np.pi * f * t)
+
+# Generate a Kaiser window
+window = tf.signal.kaiser_window(N, beta=10)
+
+# Apply the window to the signal
+windowed_signal = tf.cast(signal * window, dtype= tf.complex64)
+
+
+# Perform Fourier transform using TensorFlow's FFT implementation
+spectrum = tf.signal.fft(windowed_signal)
+print(spectrum)
+
+#  tf.Tensor(
+#  [0.00087254+0.0000000e+00j 0.00074008-5.3524971e-05j
+#  0.00082543+4.1484833e-05j ... 0.00073601+1.4910256e-05j
+#  0.00082583-4.1408104e-05j 0.00073934+5.2323940e-05j], shape=(1024,), dtype=complex64)
+```
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
-    beta: Beta parameter for Kaiser window, see reference below.
+    beta: A parameter that determines the shape of the Kaiser window, 
+          For beta = 0, the shape is rectangular. 
+          For larger `beta` value, the window becomes narrow.
     dtype: The data type to produce. Must be a floating point type.
     name: An optional name for the operation.
 
