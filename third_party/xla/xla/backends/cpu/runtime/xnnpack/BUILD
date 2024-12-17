@@ -98,7 +98,6 @@ cc_library(
 xla_cc_test(
     name = "xnn_threadpool_test",
     srcs = ["xnn_threadpool_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":parallel_loop_runner",
         ":xnn_threadpool",
