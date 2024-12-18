@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/dot_op_emitter.h"
@@ -330,9 +331,24 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
   return result_global;
 }
 
-absl::Status IrEmitter::EmitConstantGlobals() {
+absl::Status IrEmitter::EmitSmallConstantGlobals() {
+  return EmitConstantGlobals(/*max_size_bytes=*/CpuInstructionFusion::
+                                 GetLargeConstantThresholdBytes());
+}
+
+absl::Status IrEmitter::EmitAllConstantGlobals() {
+  return EmitConstantGlobals(/*max_size_bytes=*/std::nullopt);
+}
+
+absl::Status IrEmitter::EmitConstantGlobals(
+    std::optional<size_t> max_size_bytes) {
   for (const BufferAllocation& allocation : assignment_.Allocations()) {
-    if (!allocation.is_constant()) {
+    // Large constants don't get fused with other instructions, so we don't
+    // need to emit them as globals.
+    if (!allocation.is_constant() ||
+        (max_size_bytes &&
+         llvm_ir::LiteralForConstantAllocation(allocation).size_bytes() >
+             *max_size_bytes)) {
       continue;
     }
 
