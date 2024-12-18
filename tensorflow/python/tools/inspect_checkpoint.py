@@ -66,7 +66,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
     tensor_name: Name of the tensor in the checkpoint file to print.
     all_tensors: Boolean indicating whether to print all tensors.
     all_tensor_names: Boolean indicating whether to print all tensor names.
-    count_exclude_pattern: Regex string, pattern to exclude tensors when count.
+    count_exclude_pattern: Regex string, pattern to exclude tensors when counted.
   """
   try:
     reader = py_checkpoint_reader.NewCheckpointReader(file_name)
@@ -123,7 +123,7 @@ def parse_numpy_printoption(kv_str):
 
   Raises:
     argparse.ArgumentTypeError: If the string couldn't be used to set any
-        nump printoption.
+        numpy printoption.
   """
   k_v_str = kv_str.split("=", 1)
   if len(k_v_str) != 2 or not k_v_str[0]:
@@ -151,6 +151,7 @@ def main(unused_argv):
           "[--tensor_name=tensor_to_print] "
           "[--all_tensors] "
           "[--all_tensor_names] "
+          "[--count_exclude_pattern] "
           "[--printoptions]")
     sys.exit(1)
   else:
