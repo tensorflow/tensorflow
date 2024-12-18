@@ -127,7 +127,8 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
   return it->second.factory.get();
 }
 
-Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
+absl::Status DeviceFactory::ListAllPhysicalDevices(
+    std::vector<string>* devices) {
   // CPU first. A CPU device is required.
   // TODO(b/183974121): Consider merge the logic into the loop below.
   auto cpu_factory = GetFactory("CPU");
@@ -154,7 +155,7 @@ Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
   return absl::OkStatus();
 }
 
-Status DeviceFactory::ListPluggablePhysicalDevices(
+absl::Status DeviceFactory::ListPluggablePhysicalDevices(
     std::vector<string>* devices) {
   tf_shared_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
@@ -166,7 +167,7 @@ Status DeviceFactory::ListPluggablePhysicalDevices(
   return absl::OkStatus();
 }
 
-Status DeviceFactory::GetAnyDeviceDetails(
+absl::Status DeviceFactory::GetAnyDeviceDetails(
     int device_index, std::unordered_map<string, string>* details) {
   if (device_index < 0) {
     return errors::InvalidArgument("Device index out of bounds: ",
@@ -209,7 +210,7 @@ Status DeviceFactory::GetAnyDeviceDetails(
                                  orig_device_index);
 }
 
-Status DeviceFactory::AddCpuDevices(
+absl::Status DeviceFactory::AddCpuDevices(
     const SessionOptions& options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   auto cpu_factory = GetFactory("CPU");
@@ -226,7 +227,7 @@ Status DeviceFactory::AddCpuDevices(
   return absl::OkStatus();
 }
 
-Status DeviceFactory::AddDevices(
+absl::Status DeviceFactory::AddDevices(
     const SessionOptions& options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   // CPU first. A CPU device is required.

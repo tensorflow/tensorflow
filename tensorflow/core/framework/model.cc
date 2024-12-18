@@ -363,7 +363,8 @@ inline void UpdateStateValues(Node::ModelParameters* parameters) {
 
 // Recursively produces protos for nodes in a subtree of `output` node and
 // appends them to nodes of the given model.
-Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
+absl::Status ModelToProtoHelper(std::shared_ptr<Node> output,
+                                ModelProto* model) {
   model->set_output(output->id());
   std::list<std::shared_ptr<Node>> to_serialize = {output};
   auto& nodes = *model->mutable_nodes();
@@ -379,7 +380,8 @@ Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
 }
 
 // Recursively produces node tree rooted in `output` from the given model proto.
-Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
+absl::Status ModelFromProtoHelper(ModelProto model,
+                                  std::shared_ptr<Node>* output) {
   if (model.nodes().empty()) {
     return errors::Internal(
         "Cannot restore model from proto because it has no nodes.");
@@ -552,7 +554,7 @@ class InterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::INTERLEAVE_MANY);
     return absl::OkStatus();
@@ -775,7 +777,7 @@ class AsyncInterleaveMany : public Node {
     return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_INTERLEAVE_MANY);
     return absl::OkStatus();
@@ -867,7 +869,7 @@ class KnownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::KNOWN_RATIO);
     node_proto->set_ratio(ratio_);
@@ -1247,7 +1249,7 @@ class UnknownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN_RATIO);
     return absl::OkStatus();
@@ -1301,7 +1303,7 @@ class Unknown : public Node {
         TotalProcessingTimeForInputs(*total_processing_times);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN);
     return absl::OkStatus();
@@ -1330,7 +1332,7 @@ class AsyncKnownRatio : public AsyncRatio {
         is_legacy_prefetch_autotuned_);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
     node_proto->set_ratio(Ratio());
@@ -1387,7 +1389,7 @@ class AsyncUnknownRatio : public AsyncRatio {
         Args{id_, name_, std::move(output)}, parameters);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const override {
+  absl::Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
     return absl::OkStatus();
@@ -2138,7 +2140,7 @@ double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
   return 0;
 }
 
-Status Node::ToProto(ModelProto::Node* node_proto) const {
+absl::Status Node::ToProto(ModelProto::Node* node_proto) const {
   tf_shared_lock l(mu_);
   node_proto->set_id(id_);
   node_proto->set_name(name_);
@@ -2171,8 +2173,8 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
   return absl::OkStatus();
 }
 
-Status Node::FromProtoHelper(ModelProto::Node node_proto,
-                             std::shared_ptr<Node> node) {
+absl::Status Node::FromProtoHelper(ModelProto::Node node_proto,
+                                   std::shared_ptr<Node> node) {
   {
     tf_shared_lock l(node->mu_);
     node->autotune_.store(node_proto.autotune());
@@ -2221,9 +2223,9 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
   return absl::OkStatus();
 }
 
-Status Node::FromProto(ModelProto::Node node_proto,
-                       std::shared_ptr<Node> output,
-                       std::shared_ptr<Node>* node) {
+absl::Status Node::FromProto(ModelProto::Node node_proto,
+                             std::shared_ptr<Node> output,
+                             std::shared_ptr<Node>* node) {
   // Note that parameters are restored in `FromProtoHelper`.
   Args args = {node_proto.id(), node_proto.name(), std::move(output)};
   switch (node_proto.node_class()) {
@@ -2274,7 +2276,7 @@ Model::Model(std::optional<std::string> dataset_name)
           tf_shared_lock snapshot_lock(mu_);
           if (snapshot_ != nullptr) {
             ModelProto model_proto;
-            Status s = ModelToProtoHelper(snapshot_, &model_proto);
+            absl::Status s = ModelToProtoHelper(snapshot_, &model_proto);
             if (s.ok()) {
               *model_proto.mutable_optimization_params() = optimization_params_;
               tf_shared_lock l(gap_mu_);
@@ -2538,12 +2540,12 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
 }
 
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
-                           std::function<int64_t()> cpu_budget_func,
-                           double ram_budget_share,
-                           std::optional<int64_t> fixed_ram_budget,
-                           RamBudgetManager& ram_budget_manager,
-                           CancellationManager* cancellation_manager) {
+absl::Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
+                                 std::function<int64_t()> cpu_budget_func,
+                                 double ram_budget_share,
+                                 std::optional<int64_t> fixed_ram_budget,
+                                 RamBudgetManager& ram_budget_manager,
+                                 CancellationManager* cancellation_manager) {
   std::function<void()> unused;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       cancellation_manager,
@@ -3182,7 +3184,7 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
   return node->TotalProcessingTime(/*processing_times=*/nullptr);
 }
 
-Status Model::ToProto(ModelProto* model_proto) {
+absl::Status Model::ToProto(ModelProto* model_proto) {
   tf_shared_lock l(mu_);
   model_proto->set_id_counter(id_counter_);
   TF_RETURN_IF_ERROR(ModelToProtoHelper(output_, model_proto));
@@ -3197,7 +3199,8 @@ Status Model::ToProto(ModelProto* model_proto) {
   return absl::OkStatus();
 }
 
-Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
+absl::Status Model::FromProto(ModelProto model_proto,
+                              std::unique_ptr<Model>* model) {
   std::unique_ptr<Model> restored_model = std::make_unique<Model>();
   mutex_lock l(restored_model->mu_);
   TF_RETURN_IF_ERROR(
@@ -3207,8 +3210,8 @@ Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   return absl::OkStatus();
 }
 
-Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
-                   const OptimizationParams& optimization_params) {
+absl::Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
+                         const OptimizationParams& optimization_params) {
   ModelProto model_proto;
   std::unique_ptr<Model> model_snapshot = std::make_unique<Model>();
   {
@@ -3223,8 +3226,8 @@ Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
   return WriteBinaryProto(Env::Default(), fname, model_proto);
 }
 
-Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
-                   OptimizationParams* optimization_params) {
+absl::Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
+                         OptimizationParams* optimization_params) {
   ModelProto model_proto;
   TF_RETURN_IF_ERROR(
       ReadTextOrBinaryProto(Env::Default(), fname, &model_proto));
@@ -3246,7 +3249,7 @@ std::string Model::DebugString() {
   }
   // TODO(jsimsa): Populate OptimizationParams.
   ModelProto model_proto;
-  Status s = ModelToProtoHelper(snapshot, &model_proto);
+  absl::Status s = ModelToProtoHelper(snapshot, &model_proto);
   if (s.ok()) {
     cached_debug_string_ = model_proto.DebugString();
   } else {

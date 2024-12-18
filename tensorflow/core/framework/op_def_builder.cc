@@ -664,7 +664,7 @@ OpDefBuilder& OpDefBuilder::AllowAttrTypeAny() {
   return *this;
 }
 
-Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
+absl::Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   std::vector<string> errors = errors_;
   *op_reg_data = op_reg_data_;
 

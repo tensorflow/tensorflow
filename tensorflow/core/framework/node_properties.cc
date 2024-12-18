@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-Status NodeProperties::CreateFromNodeDef(
+absl::Status NodeProperties::CreateFromNodeDef(
     NodeDef node_def, const OpRegistryInterface* op_registry,
     std::shared_ptr<const NodeProperties>* props) {
   const OpDef* op_def;

@@ -33,12 +33,12 @@ class FakeInputImpl {
   void SetN(int n);
   void SetDataType(DataType dt);
   void SetTypeList(DataTypeSlice dts);
-  Status AddInputToBuilder();
+  absl::Status AddInputToBuilder();
 
  private:
   static string FakeNodeName(int in_index);
-  Status GetN(int* n) const;
-  Status GetDataType(DataType* dt) const;
+  absl::Status GetN(int* n) const;
+  absl::Status GetDataType(DataType* dt) const;
   void NSources(int n, DataType dt) const;
   void SourceList(DataTypeSlice dts) const;
 
@@ -82,7 +82,7 @@ void FakeInputImpl::SetTypeList(DataTypeSlice dts) {
   dts_ = dts;
 }
 
-Status FakeInputImpl::AddInputToBuilder() {
+absl::Status FakeInputImpl::AddInputToBuilder() {
   if (dts_specified_) {
     SourceList(dts_);
 
@@ -101,7 +101,8 @@ Status FakeInputImpl::AddInputToBuilder() {
   } else {
     if (!dt_specified_ && !arg_->type_list_attr().empty()) {
       DataTypeVector dts;
-      Status status = GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
+      absl::Status status =
+          GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
       if (!status.ok()) {
         return errors::InvalidArgument(
             "Could not infer list of types for input '", arg_->name(),
@@ -124,11 +125,11 @@ string FakeInputImpl::FakeNodeName(int in_index) {
   return string(&c, 1);
 }
 
-Status FakeInputImpl::GetN(int* n) const {
+absl::Status FakeInputImpl::GetN(int* n) const {
   if (n_specified_) {
     *n = n_;
   } else {
-    Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
+    absl::Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
       return errors::InvalidArgument("Could not infer length of input '",
                                      arg_->name(), "': ", status.message());
@@ -137,14 +138,14 @@ Status FakeInputImpl::GetN(int* n) const {
   return absl::OkStatus();
 }
 
-Status FakeInputImpl::GetDataType(DataType* dt) const {
+absl::Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (dt_specified_) {
     *dt = dt_;
     return absl::OkStatus();  // Ignore is_ref field of arg_.
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
-    Status status = GetNodeAttr(*node_def_, arg_->type_attr(), dt);
+    absl::Status status = GetNodeAttr(*node_def_, arg_->type_attr(), dt);
     if (!status.ok()) {
       // Check if the type attr has a default
       const OpDef::AttrDef* attr = FindAttr(arg_->type_attr(), *op_def_);

@@ -227,14 +227,14 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
   Notification n1;
   Notification n2;
   Notification n3;
-  Status s0;
-  Status s1;
-  Status s2;
-  Status s3;
+  absl::Status s0;
+  absl::Status s1;
+  absl::Status s2;
+  absl::Status s3;
 
   rendez_->RecvAsync(
       KeyFoo(), args,
-      [&n0, &s0](const Status& s, const Rendezvous::Args& send_args,
+      [&n0, &s0](const absl::Status& s, const Rendezvous::Args& send_args,
                  const Rendezvous::Args& recv_args, const Tensor& v,
                  const bool dead) {
         s0.Update(s);
@@ -242,7 +242,7 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
       });
   rendez_->RecvAsync(
       KeyFoo(), args_with_cancellation,
-      [&n1, &s1](const Status& s, const Rendezvous::Args& send_args,
+      [&n1, &s1](const absl::Status& s, const Rendezvous::Args& send_args,
                  const Rendezvous::Args& recv_args, const Tensor& v,
                  const bool dead) {
         s1.Update(s);
@@ -250,7 +250,7 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
       });
   rendez_->RecvAsync(
       KeyFoo(), args,
-      [&n2, &s2](const Status& s, const Rendezvous::Args& send_args,
+      [&n2, &s2](const absl::Status& s, const Rendezvous::Args& send_args,
                  const Rendezvous::Args& recv_args, const Tensor& v,
                  const bool dead) {
         s2.Update(s);
@@ -258,7 +258,7 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
       });
   rendez_->RecvAsync(
       KeyFoo(), args_with_cancellation,
-      [&n3, &s3](const Status& s, const Rendezvous::Args& send_args,
+      [&n3, &s3](const absl::Status& s, const Rendezvous::Args& send_args,
                  const Rendezvous::Args& recv_args, const Tensor& v,
                  const bool dead) {
         s3.Update(s);
@@ -304,7 +304,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
                                  V(strings::StrCat(i)), false));
     });
-    auto recv_done = [this, &state, i](const Status& status,
+    auto recv_done = [this, &state, i](const absl::Status& status,
                                        const Rendezvous::Args& sender_args,
                                        const Rendezvous::Args& recver_args,
                                        const Tensor& val, const bool val_dead) {
@@ -365,7 +365,7 @@ TEST_F(LocalRendezvousTest, RecvAbort) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
+  absl::Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
   EXPECT_TRUE(absl::IsAborted(status));
 }
 
@@ -381,7 +381,7 @@ TEST_F(LocalRendezvousTest, RecvSleepAbort) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
+  absl::Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
   EXPECT_TRUE(absl::IsAborted(status));
 }
 
@@ -421,7 +421,7 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   args1.device_context = new DummyDeviceContext(1);
   rendez_->RecvAsync(
       KeyFoo(), args1,
-      [&n](const Status& s, const Rendezvous::Args& send_args,
+      [&n](const absl::Status& s, const Rendezvous::Args& send_args,
            const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
         CHECK_EQ(123, dynamic_cast<const DummyDeviceContext*>(
                           send_args.device_context)
@@ -462,7 +462,7 @@ void BM_RecvSend(::testing::benchmark::State& state) {
     bool received = false;
     rendez->RecvAsync(
         KeyFoo(), args,
-        [&val, &received](const Status& /*s*/,
+        [&val, &received](const absl::Status& /*s*/,
                           const Rendezvous::Args& /*send_args*/,
                           const Rendezvous::Args& /*recv_args*/,
                           const Tensor& tensor, bool /*is_dead*/) {
