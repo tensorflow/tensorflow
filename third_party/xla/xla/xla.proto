@@ -163,6 +163,11 @@ message DebugOptions {
   // When possible, XLA will use Triton's experimental TMA feature.
   bool xla_gpu_experimental_enable_triton_tma = 355;
 
+  // If true, XLA will annotate instructions in the dumps with emitter code
+  // location (source:line) annotations. This helps to identify the source of
+  // the code that emits a particular instruction.
+  bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
+
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
@@ -1093,7 +1098,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 358
+  // Next id: 359
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
