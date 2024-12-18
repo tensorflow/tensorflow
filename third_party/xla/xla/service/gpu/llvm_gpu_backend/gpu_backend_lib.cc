@@ -86,11 +86,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #endif
 
-#if TENSORFLOW_USE_SYCL
-#include "LLVMSPIRVLib.h"
-#include "LLVMSPIRVOpts.h"
-#endif  // TENSORFLOW_USE_SYCL
-
 namespace xla {
 namespace gpu {
 
@@ -634,108 +629,6 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
   return kMaxPtxVersion;
 }
 }  // namespace nvptx
-
-namespace {
-
-std::unique_ptr<llvm::TargetMachine> SPIRGetTargetMachine(
-    llvm::Triple target_triple, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options) {
-  return nullptr;
-}
-
-absl::Status SPIRTargetModuleLinker(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options,
-    const std::string& device_bitcode_dir_path) {
-  return absl::OkStatus();
-}
-
-absl::StatusOr<std::string> EmitModuleToSpir(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options) {
-#if TENSORFLOW_USE_SYCL
-  SPIRV::TranslatorOpts::ExtensionsStatusMap ExtensionsStatus;
-  SPIRV::TranslatorOpts opts(SPIRV::VersionNumber::MaximumVersion,
-                             ExtensionsStatus);
-  opts.enableAllExtensions();  // enable all SPIR-V extension first
-
-  std::ostringstream oss;
-  std::string err;
-  bool success = llvm::writeSpirv(module, opts, oss, err);
-  if (!success) {
-    return xla::Internal("Fails to convert LLVM as SPIR-V: %s", err);
-  }
-  return oss.str();
-#else
-  return absl::UnimplementedError("Not implemented for SYCL");
-#endif
-}
-
-void SPIRBackendInit() {
-  llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
-  InitializePasses(registry);
-}
-
-std::vector<std::string> GetSPIRBackendOptions(
-    const DebugOptions& debug_options) {
-  std::vector<std::string> backend_llvm_opts;
-
-  backend_llvm_opts.emplace_back("-slp-vectorize-hor=false");
-  backend_llvm_opts.emplace_back("-slp-min-reg-size=64");
-  backend_llvm_opts.emplace_back("-slp-max-reg-size=64");
-
-  // Extra backend options must go after regular backend options in order to be
-  // able for the later to override the former.
-  auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
-      debug_options.xla_backend_extra_options());
-  backend_llvm_opts.insert(backend_llvm_opts.end(),
-                           backend_extra_llvm_opts.cbegin(),
-                           backend_extra_llvm_opts.cend());
-
-  return backend_llvm_opts;
-}
-
-}  // namespace
-
-namespace spir {
-
-absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options) {
-  std::string libdevice_dir_path;
-  static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, SPIRBackendInit);
-  auto llvm_opts = GetSPIRBackendOptions(debug_options);
-  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
-
-  std::string spir;
-  {
-    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
-
-    // If the module has no functions or globals, there's nothing to compile.
-    if (module->empty() && module->global_empty()) {
-      VLOG(2) << "Module '" << module->getName().str()
-              << "' is empty. Skipping compilation.";
-      return std::vector<uint8_t>();
-    }
-
-    llvm::Triple default_target_triple("spir64-unknown-unknown");
-    std::unique_ptr<llvm::TargetMachine> target_machine =
-        SPIRGetTargetMachine(default_target_triple, gpu_version, debug_options);
-
-    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-        module, gpu_version, debug_options, libdevice_dir_path,
-        SPIRTargetModuleLinker, default_target_triple, target_machine.get(),
-        kDefaultInlineThreshold));
-
-    // Lower optimized LLVM module to SPIR.
-    TF_ASSIGN_OR_RETURN(spir,
-                        EmitModuleToSpir(module, gpu_version, debug_options));
-  }
-  return std::vector<uint8_t>(spir.begin(), spir.end());
-}
-
-}  // namespace spir
 
 }  // namespace gpu
 }  // namespace xla

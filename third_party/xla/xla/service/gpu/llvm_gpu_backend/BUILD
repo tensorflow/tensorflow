@@ -2,10 +2,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load(
-    "@local_config_sycl//sycl:build_defs.bzl",
-    "if_sycl_is_configured",
-)
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -100,8 +96,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@llvm-project//llvm:AMDGPUCodeGen",
         "@llvm-project//llvm:AMDGPUAsmParser",
-    ]) + if_sycl_is_configured([
-        "@spirv_llvm_translator//:spirv_llvm_translator",
     ]),
 )
 
