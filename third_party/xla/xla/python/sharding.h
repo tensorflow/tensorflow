@@ -52,8 +52,6 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
-extern bool (*GetEnableMemories)();
-
 // Checks if the memory kind is valid, and canonicalizes the
 // memory kind to default memory on backends that support memories.
 nanobind::object CheckAndCanonicalizeMemoryKind(

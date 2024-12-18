@@ -46,17 +46,6 @@ namespace jax {
 
 namespace nb = nanobind;
 
-bool (*GetEnableMemories)() = +[] {
-  static bool fetch_memory_kind_on_executable = [] {
-    char* v = getenv("JAX_ENABLE_MEMORIES");
-    if (v == nullptr || *v == '\0') {
-      return false;
-    }
-    return true;
-  }();
-  return fetch_memory_kind_on_executable;
-};
-
 nb::object CheckAndCanonicalizeMemoryKind(
     nb::object memory_kind,
     const xla::nb_class_ptr<PyDeviceList>& device_list) {

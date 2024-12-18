@@ -52,7 +52,6 @@ except ImportError:
 xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
 )
-xla_client._xla.jax_jit.global_state().enable_memories = False
 
 bfloat16 = xla_client.bfloat16
 # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.

@@ -59,7 +59,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> enable_memories;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -205,7 +204,6 @@ struct CallSignature {
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_enable_memories = false;
 
   // For JIT on PJIT, we need to fallback to python whenever default_device
   // changes.

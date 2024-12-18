@@ -138,14 +138,6 @@ static std::string OptionalDebugString(
   }
 }
 
-bool FetchMemoriesFlag() {
-  auto& global_state = GlobalJitState();
-  auto& thread_local_state = ThreadLocalJitState();
-  CHECK(global_state.enable_memories.has_value());
-  return thread_local_state.enable_memories.value_or(
-      *global_state.enable_memories);
-}
-
 std::string ArgumentSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
     out->append(nb::cast<absl::string_view>(nb::str(o)));
@@ -224,7 +216,6 @@ std::string CallSignature::DebugString() const {
       "device: %s\n"
       "default_device: %s\n"
       "jax_enable_x64: %d\n"
-      "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
       "thread_local_extra_jit_context: %s\n"
       "configs: %s\n",
@@ -234,7 +225,7 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_layouts, ", ", layout_formatter),
       absl::StrJoin(committed_args, ",", bool_formatter),
       device != nullptr ? device->DebugString() : "nullptr",
-      OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
+      OptionalDebugString(default_device), jax_enable_x64,
       OptionalDebugString(global_extra_jit_context),
       OptionalDebugString(thread_local_extra_jit_context),
       absl::StrJoin(configs, ", ", py_object_formatter));
@@ -251,9 +242,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
     return false;
   }
   if (jax_enable_x64 != other.jax_enable_x64) {
-    return false;
-  }
-  if (jax_enable_memories != other.jax_enable_memories) {
     return false;
   }
   if (committed_args != other.committed_args) {
@@ -387,15 +375,11 @@ void BuildJaxjitSubmodule(nb::module_& m) {
   nb::class_<JitState> jit_state_(jitlib, "JitState");
   jit_state_.def_rw("disable_jit", &JitState::disable_jit, nb::arg().none());
   jit_state_.def_rw("enable_x64", &JitState::enable_x64, nb::arg().none());
-  jit_state_.def_rw("enable_memories", &JitState::enable_memories,
-                    nb::arg().none());
   jit_state_.def_rw("default_device", &JitState::default_device,
                     nb::arg().none());
   jit_state_.def_rw("extra_jit_context", &JitState::extra_jit_context,
                     nb::arg().none());
   jit_state_.def_rw("post_hook", &JitState::post_hook, nb::arg().none());
-
-  GetEnableMemories = +[] { return FetchMemoriesFlag(); };
 
   jitlib.def(
       "global_state", [&]() { return &GlobalJitState(); },

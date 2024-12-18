@@ -396,9 +396,6 @@ void PyDeviceList::PopulateMemoryKindInfoForDuckTypedDevices() {
 }
 
 absl::StatusOr<nb::tuple> PyDeviceList::MemoryKinds() {
-  if (!GetEnableMemories()) {
-    return nb::tuple();
-  }
   if (!memory_kind_info_.has_value()) {
     PopulateMemoryKindInfo();
   }
@@ -409,9 +406,6 @@ absl::StatusOr<nb::tuple> PyDeviceList::MemoryKinds() {
 }
 
 absl::StatusOr<nb::object> PyDeviceList::DefaultMemoryKind() {
-  if (!GetEnableMemories()) {
-    return nb::none();
-  }
   if (!memory_kind_info_.has_value()) {
     PopulateMemoryKindInfo();
   }

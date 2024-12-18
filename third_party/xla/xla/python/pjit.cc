@@ -804,7 +804,6 @@ absl::Status PjitFunction::ComputeCallSignature(
 
   signature.default_device = GetDefaultDevice();
   signature.jax_enable_x64 = jax_enable_x64;
-  signature.jax_enable_memories = GetEnableMemories();
 
   auto& dynamic_arg_signatures = signature.dynamic_arg_signatures;
   dynamic_arg_signatures.reserve(flat_dynamic_args.size());
