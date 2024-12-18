@@ -424,7 +424,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
-  FunctionLibraryDefinition& operator=(FunctionLibraryDefinition&& other);
+  FunctionLibraryDefinition& operator=(
+      FunctionLibraryDefinition&& other) noexcept;
 
   // Returns True if the library contains `func`, False otherwise.
   bool Contains(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
