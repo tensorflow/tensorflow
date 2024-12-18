@@ -879,7 +879,6 @@ def tf_resource_deps():
 def tf_portable_deps_no_runtime():
     return [
         "@eigen_archive//:eigen3",
-        "@double_conversion//:double-conversion",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
     ]

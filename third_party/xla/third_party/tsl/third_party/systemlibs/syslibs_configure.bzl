@@ -21,7 +21,6 @@ VALID_LIBS = [
     "curl",
     "cython",
     "dill_archive",
-    "double_conversion",
     "flatbuffers",
     "functools32_archive",
     "gast_archive",
