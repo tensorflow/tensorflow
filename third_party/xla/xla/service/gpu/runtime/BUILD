@@ -645,6 +645,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":thunk",
+        ":tma_metadata",
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -653,6 +654,7 @@ cc_library(
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream_executor_h",
@@ -664,6 +666,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -1229,5 +1234,35 @@ cc_library(
     hdrs = ["custom_call_target.h"],
     deps = [
         "//xla/service:custom_call_status",
+    ],
+)
+
+cc_library(
+    name = "tma_metadata",
+    srcs = ["tma_metadata.cc"],
+    hdrs = ["tma_metadata.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "tma_metadata_test",
+    srcs = ["tma_metadata_test.cc"],
+    deps = [
+        ":tma_metadata",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
