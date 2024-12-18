@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -65,14 +66,14 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
 
-using ::mlir::stablehlo::CustomCallOp;
-
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
+
+namespace stablehlo = ::mlir::stablehlo;
 
 // Builds the shardy attributes coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
@@ -108,13 +109,19 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     if (!dictAttr) {
       return;
     }
+    // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
+    // through JAX.
+    if (isa<stablehlo::SendOp, stablehlo::RecvOp>(op)) {
+      op->setAttr(kShardingAttr, parseStringAttr<TensorShardingPerValueAttr>(
+                                     dictAttr, kShardingRoundTripAttr));
+    }
     // NOTE: we are only setting the sharding on known custom-calls. For any
     // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes
     // creates new instructions, copying over the operand's frontend attrs,
     // which may mean the shapes are wrong when the new instruction is a reshape
     // for example. This does mean we can't fully round-trip b/w HLO and MLIR
     // after SDY propagation.
-    if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
+    if (auto customCallOp = mlir::dyn_cast<stablehlo::CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kFuncResultShardingTargetName) {
         // This is a temporary CustomCallOp that holds the sharding from a
@@ -139,7 +146,9 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
       }
       if (targetName == kShardingCustomCallTargetName ||
           targetName == kSPMDFullToShardShapeCallTargetName ||
-          targetName == kSPMDShardToFullShapeCallTargetName) {
+          targetName == kSPMDShardToFullShapeCallTargetName ||
+          targetName == "xla_python_cpu_callback" ||
+          targetName == "xla_python_gpu_callback") {
         customCallOp->setAttr(kShardingAttr,
                               parseStringAttr<TensorShardingPerValueAttr>(
                                   dictAttr, kShardingRoundTripAttr));
