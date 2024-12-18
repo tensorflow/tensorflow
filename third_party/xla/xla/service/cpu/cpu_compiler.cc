@@ -1498,17 +1498,15 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 #endif
   );
 
-  // Emit global variables for constants.
-  //
-  // TODO(ezhulenev): Figure out how to emit constants that are only needed for
-  // thread local computations as with Thunks runtime we keep constants outside
-  // of the LLVM module. Currently we end up doubling memory for constants.
-  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitConstantGlobals());
 
   // If we use Thunk runtime then instead of emitting LLVM function for the
   // entry computation we emit a sequence of thunks that implement the
   // computation as a sequence of interpreted commands.
   if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+    // The thunk runtime manages large constants, therefore we only emit
+    // small ones.
+    TF_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
+
     // IR emitter is responsible for building LLVM module with host kernels for
     // corresponding HLO instructions (fusions, elemental instructions, etc.).
     IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
@@ -1641,6 +1639,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     return with_hlo_proto(std::move(cpu_executable));
   }
+
+  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitAllConstantGlobals());
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
@@ -1899,7 +1899,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           // TODO(b/66051036): Run full msan for AOT.
           /*emit_code_for_msan=*/false);
 
-      TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+      TF_RETURN_IF_ERROR(ir_emitter.EmitAllConstantGlobals());
 
       for (ComputationToEmit subcomputation :
            SubcomputationEmissionOrder(computation)) {

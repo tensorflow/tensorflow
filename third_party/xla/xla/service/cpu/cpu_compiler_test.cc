@@ -10,6 +10,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -53,6 +54,25 @@ TEST_F(CpuCompilerTest, RecordsStreamzStackTrace) {
   // Since Streamz is recorded every call, we expect at least one point.
   // All other callers may increment the counter as well.
   EXPECT_GT(it->second->points.size(), 0);
+}
+
+TEST_F(CpuCompilerTest, CompilationWithLargeConstants) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1000,1000]{1,0} parameter(0)
+  b = f32[1000,1000]{1,0} constant({...})
+  a_plus_b = f32[1000,1000]{1,0} add(a, b)
+  c = f32[1000,1000]{1,0} constant({...})
+  ROOT result = f32[1000,1000]{1,0} add(a_plus_b, c)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 }  // namespace
