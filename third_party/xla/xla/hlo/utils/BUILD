@@ -60,6 +60,7 @@ xla_cc_test(
         "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -78,10 +79,12 @@ cc_library(
     srcs = ["hlo_matchers.cc"],
     hdrs = ["hlo_matchers.h"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -171,10 +174,12 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

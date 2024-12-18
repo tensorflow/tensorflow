@@ -65,8 +65,8 @@ NB_MODULE(_extention, kernel_runner_module) {
   // register the derived versions.
   ImportBaseClasses(kernel_runner_module);
 
-  nb::class_<LlvmIrKernelSpec, KernelSpec>(kernel_runner_module,
-                                           "LlvmIrKernelSpec");
+  nb::class_<LlvmIrKernelSpec, KernelSpec> give_me_a_name(kernel_runner_module,
+                                                          "LlvmIrKernelSpec");
 
   // Use a tuple and cast to ThreadDim to take advantage of built in bindings.
   using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
