@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include "absl/log/check.h"
