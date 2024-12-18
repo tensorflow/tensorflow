@@ -679,6 +679,37 @@ cc_library(
 )
 
 cc_library(
+    name = "dot_lib",
+    srcs = ["dot_lib.cc"],
+    hdrs = ["dot_lib.h"],
+    deps = [
+        ":thunk",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "dot_thunk",
     srcs = [
         "dot_thunk.cc",
@@ -691,6 +722,7 @@ cc_library(
     ],
     hdrs = ["dot_thunk.h"],
     deps = [
+        ":dot_lib",
         ":thunk",
         "//xla:shape_util",
         "//xla:types",

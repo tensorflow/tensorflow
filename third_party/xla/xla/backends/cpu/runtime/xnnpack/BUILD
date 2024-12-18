@@ -68,9 +68,13 @@ xla_cc_test(
 
 cc_library(
     name = "xnn_interop",
+    srcs = ["xnn_interop.cc"],
     hdrs = ["xnn_interop.h"],
     deps = [
+        "//xla:util",
         "@XNNPACK",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -111,5 +115,64 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
         "@pthreadpool",
+    ],
+)
+
+cc_library(
+    name = "xnn_dot_thunk",
+    srcs = ["xnn_dot_thunk.cc"],
+    hdrs = ["xnn_dot_thunk.h"],
+    deps = [
+        ":parallel_loop_runner",
+        ":xnn_interop",
+        ":xnn_threadpool",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@XNNPACK",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "xnn_dot_thunk_test",
+    srcs = ["xnn_dot_thunk_test.cc"],
+    deps = [
+        ":xnn_dot_thunk",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

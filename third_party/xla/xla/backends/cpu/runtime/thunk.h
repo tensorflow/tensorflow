@@ -88,6 +88,7 @@ class Thunk {
     kSort,
     kTopK,
     kWhile,
+    kXnnDot,
   };
 
   struct Info {

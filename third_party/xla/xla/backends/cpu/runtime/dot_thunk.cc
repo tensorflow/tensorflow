@@ -17,24 +17,20 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <numeric>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/types.h"
@@ -112,75 +108,24 @@ absl::StatusOr<std::unique_ptr<DotThunk>> DotThunk::Create(
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
     BufferAllocation::Slice out_buffer, Shape out_shape) {
-  // All shapes must be in dim0-major layout.
-  if (!LayoutUtil::IsMonotonicWithDim0Major(lhs_shape.layout()) ||
-      !LayoutUtil::IsMonotonicWithDim0Major(rhs_shape.layout()) ||
-      !LayoutUtil::IsMonotonicWithDim0Major(out_shape.layout())) {
-    return InvalidArgument(
-        "DotThunk requires all operands and outputs to be in "
-        "dim0-major layout: lhs_shape=[%s], rhs_shape=[%s], out_shape=[%s]",
-        lhs_shape.ToString(true), rhs_shape.ToString(true),
-        out_shape.ToString(true));
-  }
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                      rhs_shape, out_shape));
 
-  // Batch dimensions must be contiguous and start at 0.
-  std::vector<int64_t> batch_dims(dot_dimensions.lhs_batch_dimensions().size());
-  absl::c_iota(batch_dims, 0);
+  DotSlices dot_slices{lhs_buffer, std::move(lhs_shape),
+                       rhs_buffer, std::move(rhs_shape),
+                       out_buffer, std::move(out_shape)};
 
-  if (!absl::c_equal(dot_dimensions.lhs_batch_dimensions(), batch_dims) ||
-      !absl::c_equal(dot_dimensions.rhs_batch_dimensions(), batch_dims)) {
-    return InvalidArgument(
-        "Batch dimensions must be contiguous and start at 0: "
-        "lhs_batch_dims=[%s], rhs_batch_dims=[%s]",
-        absl::StrJoin(dot_dimensions.lhs_batch_dimensions(), ","),
-        absl::StrJoin(dot_dimensions.rhs_batch_dimensions(), ","));
-  }
-
-  int64_t num_batch_dims = batch_dims.size();
-  int64_t batch_size =
-      std::accumulate(out_shape.dimensions().begin(),
-                      out_shape.dimensions().begin() + num_batch_dims, 1LL,
-                      std::multiplies<int64_t>());
-
-  Shape lhs_matmul_shape = ShapeUtil::DeleteDimensions(batch_dims, lhs_shape);
-  Shape rhs_matmul_shape = ShapeUtil::DeleteDimensions(batch_dims, rhs_shape);
-  Shape out_matmul_shape = ShapeUtil::DeleteDimensions(batch_dims, out_shape);
-
-  // Check that matmul shapes are rank 2 or less and can be represented as
-  // Eigen 2D contraction.
-  if (lhs_matmul_shape.rank() > 2 || rhs_matmul_shape.rank() > 2 ||
-      out_matmul_shape.rank() > 2) {
-    return InvalidArgument(
-        "MatMul shape must be rank 2 or less: lhs=%s, rhs=%s, out=%s",
-        lhs_matmul_shape.ToString(true), rhs_matmul_shape.ToString(true),
-        out_matmul_shape.ToString(true));
-  }
-
-  return absl::WrapUnique(new DotThunk(
-      info, std::move(dot_dimensions), lhs_buffer, std::move(lhs_shape),
-      rhs_buffer, std::move(rhs_shape), out_buffer, std::move(out_shape),
-      batch_size, std::move(lhs_matmul_shape), std::move(rhs_matmul_shape),
-      std::move(out_matmul_shape)));
+  return absl::WrapUnique(new DotThunk(info, std::move(dot_dimensions),
+                                       std::move(dot_slices),
+                                       std::move(dot_shape)));
 }
 
 DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
-                   BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
-                   BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
-                   BufferAllocation::Slice out_buffer, Shape out_shape,
-                   int64_t batch_size, Shape lhs_matmul_shape,
-                   Shape rhs_matmul_shape, Shape out_matmul_shape)
+                   DotSlices dot_slices, DotShape dot_shape)
     : Thunk(Kind::kDot, info),
-      dot_dimensions_(dot_dimensions),
-      lhs_buffer_(lhs_buffer),
-      lhs_shape_(lhs_shape),
-      rhs_buffer_(rhs_buffer),
-      rhs_shape_(rhs_shape),
-      out_buffer_(out_buffer),
-      out_shape_(out_shape),
-      batch_size_(batch_size),
-      lhs_matmul_shape_(lhs_matmul_shape),
-      rhs_matmul_shape_(rhs_matmul_shape),
-      out_matmul_shape_(out_matmul_shape) {
+      dot_dimensions_(std::move(dot_dimensions)),
+      dot_slices_(std::move(dot_slices)),
+      dot_shape_(std::move(dot_shape)) {
   // Copy from the original dot dimension numbers.
   lhs_matmul_contracting_dims_.assign(
       dot_dimensions_.lhs_contracting_dimensions().begin(),
@@ -200,14 +145,17 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_data,
-                      params.buffer_allocations->GetDeviceAddress(lhs_buffer_));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase lhs_data,
+      params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_data,
-                      params.buffer_allocations->GetDeviceAddress(rhs_buffer_));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase rhs_data,
+      params.buffer_allocations->GetDeviceAddress(dot_slices_.rhs_buffer));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase out_data,
-                      params.buffer_allocations->GetDeviceAddress(out_buffer_));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase out_data,
+      params.buffer_allocations->GetDeviceAddress(dot_slices_.out_buffer));
 
   VLOG(3) << absl::StreamFormat(
       "Dot operation: lhs_batch_dims=[%s], rhs_batch_dims=[%s], "
@@ -217,24 +165,25 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
       absl::StrJoin(dot_dimensions_.lhs_contracting_dimensions(), ","),
       absl::StrJoin(dot_dimensions_.rhs_contracting_dimensions(), ","));
 
-  VLOG(3) << absl::StreamFormat("  lhs: %s in slice %s (%p)",
-                                lhs_shape_.ToString(true),
-                                lhs_buffer_.ToString(), lhs_data.opaque());
-  VLOG(3) << absl::StreamFormat("  rhs: %s in slice %s (%p)",
-                                rhs_shape_.ToString(true),
-                                rhs_buffer_.ToString(), rhs_data.opaque());
-  VLOG(3) << absl::StreamFormat("  out: %s in slice %s (%p)",
-                                out_shape_.ToString(true),
-                                out_buffer_.ToString(), out_data.opaque());
+  VLOG(3) << absl::StreamFormat(
+      "  lhs: %s in slice %s (%p)", dot_slices_.lhs_shape.ToString(true),
+      dot_slices_.lhs_buffer.ToString(), lhs_data.opaque());
+  VLOG(3) << absl::StreamFormat(
+      "  rhs: %s in slice %s (%p)", dot_slices_.rhs_shape.ToString(true),
+      dot_slices_.rhs_buffer.ToString(), rhs_data.opaque());
+  VLOG(3) << absl::StreamFormat(
+      "  out: %s in slice %s (%p)", dot_slices_.out_shape.ToString(true),
+      dot_slices_.out_buffer.ToString(), out_data.opaque());
 
   VLOG(3) << absl::StreamFormat(
-      "  matmul shape: batch_size=%d, lhs=%s, rhs=%s, out=%s", batch_size_,
-      lhs_matmul_shape_.ToString(true), rhs_matmul_shape_.ToString(true),
-      out_matmul_shape_.ToString(true));
+      "  matmul shape: batch_size=%d, lhs=%s, rhs=%s, out=%s",
+      dot_shape_.batch_size, dot_shape_.lhs_matmul_shape.ToString(true),
+      dot_shape_.rhs_matmul_shape.ToString(true),
+      dot_shape_.out_matmul_shape.ToString(true));
 
   MatMulDims matmul_dims =
-      GetMatMulDims(lhs_matmul_shape_, lhs_matmul_contracting_dims_,
-                    rhs_matmul_shape_, rhs_matmul_contracting_dims_);
+      GetMatMulDims(dot_shape_.lhs_matmul_shape, lhs_matmul_contracting_dims_,
+                    dot_shape_.rhs_matmul_shape, rhs_matmul_contracting_dims_);
 
   VLOG(3) << absl::StreamFormat(
       "  matmul dims: m=%d, k=%d, n=%d, lhs_column_major=%v, lhs_canonical=%v, "
@@ -272,7 +221,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     std::swap(transpose_lhs, transpose_rhs);
   }
 
-  PrimitiveType element_type = lhs_matmul_shape_.element_type();
+  PrimitiveType element_type = dot_shape_.lhs_matmul_shape.element_type();
   int64_t byte_width = primitive_util::ByteWidth(element_type);
 
   int64_t lhs_stride = matmul_dims.m * matmul_dims.k * byte_width;
@@ -283,10 +232,10 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     return static_cast<uint8_t*>(ptr) + stride * index;
   };
 
-  tsl::CountDownAsyncValueRef<ExecuteEvent> state(batch_size_);
+  tsl::CountDownAsyncValueRef<ExecuteEvent> state(dot_shape_.batch_size);
 
   auto dispatch = [&](auto type_tag) {
-    for (int64_t i = 0; i < batch_size_; ++i) {
+    for (int64_t i = 0; i < dot_shape_.batch_size; ++i) {
       TypedMatMul<decltype(type_tag)>(
           params.intra_op_threadpool, batch_ptr(out, out_stride, i),
           batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i),
