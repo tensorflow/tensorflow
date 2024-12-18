@@ -1,4 +1,5 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -41,5 +42,67 @@ cc_library(
     deps = [
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:collectives_interface",
+    ],
+)
+
+cc_library(
+    name = "cpu_device_description",
+    srcs = ["cpu_device_description.cc"],
+    hdrs = ["cpu_device_description.h"],
+    deps = [
+        ":cpu_topology",
+        "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "cpu_topology_description",
+    srcs = ["cpu_topology_description.cc"],
+    hdrs = ["cpu_topology_description.h"],
+    deps = [
+        ":cpu_device_description",
+        ":cpu_topology",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_proto_library(
+    name = "cpu_topology_proto",
+    srcs = ["cpu_topology.proto"],
+)
+
+cc_library(
+    name = "cpu_topology",
+    srcs = ["cpu_topology.cc"],
+    hdrs = ["cpu_topology.h"],
+    deps = [
+        ":cpu_topology_proto_cc",
+        "//xla/pjrt:pjrt_common",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_topology_test",
+    srcs = ["cpu_topology_test.cc"],
+    deps = [
+        ":cpu_topology",
+        ":cpu_topology_proto_cc",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

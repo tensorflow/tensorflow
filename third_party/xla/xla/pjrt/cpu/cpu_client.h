@@ -44,16 +44,16 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
-#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
-#include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
@@ -72,189 +72,6 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
-
-class TfrtCpuDevice;  // forward declare
-
-class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
- public:
-  explicit TfrtCpuDeviceDescription(int process_id, int local_device_id);
-
-  int id() const override { return id_.value(); }
-
-  int process_index() const override { return process_index_; }
-
-  int local_hardware_id() const { return local_hardware_id_; }
-
-  absl::string_view device_kind() const override;
-
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
-
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- private:
-  PjRtGlobalDeviceId id_;
-  int process_index_;
-  int local_hardware_id_;
-  std::string debug_string_;
-  std::string to_string_;
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
-};
-
-class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
- public:
-  static TfrtCpuTopologyDescription Create(
-      PjRtPlatformId platform_id, absl::string_view platform_name,
-      absl::string_view platform_version,
-      absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
-      absl::Span<const std::string> machine_attributes);
-
-  // `cpu_device_ids` is the list of logical device ids for the CPU devices and
-  // will be used to initialize the CPU topology.
-  TfrtCpuTopologyDescription(
-      const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      const absl::string_view platform_version,
-      const std::vector<CpuTopology::CpuDevice> cpu_devices,
-      absl::Span<const std::string> machine_attributes)
-      : platform_id_(platform_id),
-        platform_name_(platform_name),
-        platform_version_(platform_version),
-        cpu_topology_(std::move(cpu_devices),
-                      std::vector<std::string>(machine_attributes.begin(),
-                                               machine_attributes.end())) {}
-
-  bool operator==(const TfrtCpuTopologyDescription& other) const {
-    return this->platform_id() == other.platform_id() &&
-           this->platform_name() == other.platform_name() &&
-           this->platform_version() == other.platform_version() &&
-           this->cpu_topology().devices() == other.cpu_topology().devices();
-  }
-
-  PjRtPlatformId platform_id() const override { return platform_id_; }
-
-  absl::string_view platform_name() const override { return platform_name_; }
-
-  absl::string_view platform_version() const override {
-    return platform_version_;
-  }
-
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override;
-
-  const CpuTopology& cpu_topology() const { return cpu_topology_; }
-  const CpuTopology* cpu_topology_ptr() const { return &cpu_topology_; }
-
-  // No subslice is supported.
-  bool is_subslice_topology() const override { return false; }
-
-  // TODO(b/319478189): We support multi-host CPU computations and should
-  // correctly report process count.
-  absl::StatusOr<int> ProcessCount() const override { return 1; }
-
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
-    return 1;
-  }
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  // Returns vendor specific attributes about the topology.
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type,
-      absl::Span<const int64_t> dims) const override;
-
- private:
-  const PjRtPlatformId platform_id_;
-  const std::string platform_name_;
-  const std::string platform_version_;
-  const CpuTopology cpu_topology_;
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-};
-
-class TfrtCpuDevice final : public PjRtDevice {
- public:
-  explicit TfrtCpuDevice(int process_id, int local_device_id,
-                         int max_inflight_computations = 32);
-
-  const TfrtCpuDeviceDescription& description() const override {
-    return description_;
-  }
-
-  void SetClient(PjRtClient* client) {
-    CHECK(client_ == nullptr);
-    client_ = client;
-  }
-
-  PjRtClient* client() const override { return client_; }
-
-  bool IsAddressable() const override {
-    return process_index() == client()->process_index();
-  }
-
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id().value());
-  }
-
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(description_.local_hardware_id());
-  }
-
-  absl::Status TransferToInfeed(const LiteralSlice& literal) override;
-
-  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
-
-  void AttachMemorySpace(PjRtMemorySpace* memory_space);
-
-  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
-
-  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
-
-  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
-      absl::string_view memory_space_kind) const override;
-
-  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
-
-  // Returns a semaphore for admission control on inflight computations.
-  Semaphore& max_inflight_computations_semaphore() {
-    return max_inflight_computations_semaphore_;
-  }
-
-  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
-
- private:
-  PjRtClient* client_ = nullptr;
-  TfrtCpuDeviceDescription description_;
-  absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
-  absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;
-
-  // TODO(zhangqiaorjc): Optimize semaphore related overhead.
-  // Semaphore used to limit how many programs can be enqueued by the host
-  // ahead of the device.
-  Semaphore max_inflight_computations_semaphore_;
-};
 
 class TfrtCpuClient final : public PjRtClient {
  public:
@@ -480,7 +297,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   std::shared_ptr<cpu::CollectivesInterface> collectives_;
 
-  xla::TfrtCpuTopologyDescription topology_;
+  xla::CpuTopologyDescription topology_;
 
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
