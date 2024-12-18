@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -139,6 +140,19 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
     EXPECT_EQ(executable->FingerprintExecutable().status().code(),
               absl::StatusCode::kUnimplemented);
   }
+}
+
+TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  xla::Shape host_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::PrimitiveType::F32, /*dimensions=*/{2, 2, 2},
+      /*minor_to_major=*/{1, 0, 2});
+  std::vector<xla::Shape> host_shapes = {host_shape};
+  auto status_or_transfer_manager = client->CreateBuffersForAsyncHostToDevice(
+      absl::MakeSpan(host_shapes), client->addressable_devices()[0]);
+  EXPECT_FALSE(status_or_transfer_manager.ok());
 }
 
 TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {

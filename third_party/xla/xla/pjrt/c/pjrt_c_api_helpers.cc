@@ -74,6 +74,20 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_AsyncHostToDeviceTransferManagerDeleter
+MakeAsyncHostToDeviceTransferManagerDeleter(const PJRT_Api* api) {
+  return [api](
+             PJRT_AsyncHostToDeviceTransferManager* transfer_manager) -> void {
+    PJRT_AsyncHostToDeviceTransferManager_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_Destroy_Args_STRUCT_SIZE;
+    destroy_args.extension_start = nullptr;
+    destroy_args.transfer_manager = transfer_manager;
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_Destroy(&destroy_args), api);
+  };
+}
+
 PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
   return [api](PJRT_Error* error) -> void {
     PJRT_Error_Destroy_Args destroy_args;
@@ -1062,6 +1076,29 @@ PJRT_Profiler_Extension CreatePjrtProfilerExtension(
       /*traceme_context_id=*/traceme_context_id,
   };
   return profiler_extension;
+}
+
+PJRT_ShapeSpec ConvertToPjRtShapeSpec(
+    const xla::PjRtClient::ShapeSpec& shape_spec) {
+  PJRT_ShapeSpec c_shape_spec;
+  c_shape_spec.struct_size = PJRT_ShapeSpec_STRUCT_SIZE;
+  c_shape_spec.extension_start = nullptr;
+  c_shape_spec.element_type =
+      pjrt::ConvertToPjRtBufferType(shape_spec.element_type);
+  c_shape_spec.dims = shape_spec.dims.data();
+  c_shape_spec.num_dims = shape_spec.dims.size();
+  return c_shape_spec;
+}
+
+xla::PjRtClient::ShapeSpec ConvertFromPjrtShapeSpec(
+    PJRT_ShapeSpec c_shape_spec) {
+  xla::PjRtClient::ShapeSpec shape_spec;
+  shape_spec.element_type =
+      pjrt::ConvertFromPjRtBufferType(c_shape_spec.element_type);
+
+  shape_spec.dims = xla::DimensionVector(
+      c_shape_spec.dims, c_shape_spec.dims + c_shape_spec.num_dims);
+  return shape_spec;
 }
 
 }  // namespace pjrt

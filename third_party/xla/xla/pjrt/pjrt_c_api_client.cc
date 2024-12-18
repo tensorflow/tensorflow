@@ -694,6 +694,210 @@ absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
   return pjrt_xla_layout.xla_layout();
 }
 
+class PjRtCApiAsyncHostToDeviceTransferManager
+    : public PjRtClient::AsyncHostToDeviceTransferManager {
+ public:
+  PjRtCApiAsyncHostToDeviceTransferManager(
+      PjRtCApiClient* client,
+      PJRT_AsyncHostToDeviceTransferManager* c_transfer_manager)
+      : c_client_(client), c_transfer_manager_(std::move(c_transfer_manager)) {}
+
+  size_t buffer_count() const override {
+    LOG(FATAL) << "PJRT C API does not support buffer_count. Please "
+                  "report an issue at https://github.com/google/jax/issues if "
+                  "you need "
+                  "this feature.";
+  }
+
+  PjRtDevice* device() const override {
+    LOG(FATAL) << "PJRT C API does not support device. Please "
+                  "report an issue at https://github.com/google/jax/issues if "
+                  "you need "
+                  "this feature.";
+  }
+
+  std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
+    LOG(FATAL) << "PJRT C API does not support RetrieveBuffer. Please "
+                  "report an issue at https://github.com/google/jax/issues if "
+                  "you need "
+                  "this feature.";
+  }
+
+  absl::Status TransferLiteralToBuffer(
+      int buffer_index, const LiteralSlice& literal,
+      absl::AnyInvocable<void() &&> on_done) override {
+    return Unimplemented(
+        "PJRT C API does not support TransferLiteralToBuffer. Please report an "
+        "issue at https://github.com/google/jax/issues if you need this "
+        "feature.");
+  }
+
+  size_t buffer_size(int buffer_index) const override {
+    LOG(FATAL)
+        << "PJRT C API does not support buffer_size. Please report an "
+           "issue at https://github.com/google/jax/issues if you need this "
+           "feature.";
+  }
+
+  absl::Status TransferRawDataToBuffer(
+      int buffer_index, absl::string_view data,
+      absl::AnyInvocable<void() &&> on_done) override {
+    return TransferRawDataToSubBuffer(buffer_index, data.data(), 0, data.size(),
+                                      /*is_last_transfer=*/true,
+                                      std::move(on_done));
+  }
+
+  absl::Status TransferRawDataToSubBuffer(
+      int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
+    PJRT_AsyncHostToDeviceTransferManager_TransferData_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_TransferData_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    args.data = data;
+    args.offset = offset;
+    args.transfer_size = transfer_size;
+    args.is_last_transfer = is_last_transfer;
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    RETURN_STATUS_IF_PJRT_ERROR(
+        api->PJRT_AsyncHostToDeviceTransferManager_TransferData(&args), api);
+    std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
+        args.done_with_h2d_transfer, ::pjrt::MakeEventDeleter(api));
+    if (on_done) {
+      PJRT_Event_OnReady_Args event_args;
+      event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+      event_args.extension_start = nullptr;
+      event_args.event = event.get();
+      event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
+          [on_done = std::move(on_done),
+           c_api = api](PJRT_Error* error) mutable {
+            if (error) {
+              ::pjrt::MakeErrorDeleter(c_api)(error);
+            }
+            std::move(on_done)();
+          });
+      event_args.callback = [](PJRT_Error* error, void* args) {
+        auto* on_done_with_d2h_transfer =
+            reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
+        (*on_done_with_d2h_transfer)(error);
+        delete on_done_with_d2h_transfer;
+      };
+
+      RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Event_OnReady(&event_args), api);
+    }
+    return absl::OkStatus();
+  }
+
+  void SetBufferError(int buffer_index, absl::Status error) override {
+    LOG(FATAL) << "PJRT C API does not support SetBufferError. Please "
+                  "report an issue at https://github.com/google/jax/issues if "
+                  "you need "
+                  "this feature.";
+  }
+
+  using TransferMetadata = absl::flat_hash_map<std::string, std::string>;
+  void AddTransferMetadata(const TransferMetadata& metadata) override {
+    LOG(FATAL) << "PJRT C API does not support AddTransferMetadata. Please "
+                  "report an issue at https://github.com/google/jax/issues if "
+                  "you need "
+                  "this feature.";
+  }
+
+ private:
+  PjRtCApiClient* c_client_;
+  std::unique_ptr<PJRT_AsyncHostToDeviceTransferManager,
+                  ::pjrt::PJRT_AsyncHostToDeviceTransferManagerDeleter>
+      c_transfer_manager_;
+};
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_Client_CreateBuffersForAsyncHostToDevice_Args args;
+  args.struct_size =
+      PJRT_Client_CreateBuffersForAsyncHostToDevice_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.num_shape_specs = shape_specs.size();
+  args.shape_specs = new PJRT_ShapeSpec[shape_specs.size()];
+  absl::Cleanup cleanup =
+      absl::MakeCleanup([&args] { delete[] args.shape_specs; });
+  const ShapeSpec* iterator = shape_specs.begin();
+  for (int i = 0; i < shape_specs.size(); ++i) {
+    args.shape_specs[i] = pjrt::ConvertToPjRtShapeSpec(*(iterator++));
+  }
+  if (device_layouts.has_value()) {
+    args.num_device_layouts = device_layouts->size();
+    auto device_layout_list =
+        std::make_unique<std::vector<PJRT_Buffer_MemoryLayout*>>(
+            device_layouts->size());
+    for (int i = 0; i < device_layouts->size(); ++i) {
+      if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
+        const Layout& layout = (*device_layouts)[i].value();
+        TF_ASSIGN_OR_RETURN(pjrt::BufferMemoryLayoutData c_layout_data,
+                            pjrt::ConvertToBufferMemoryLayoutData(layout));
+        device_layout_list->emplace_back(&(c_layout_data.c_layout));
+      } else {
+        device_layout_list->emplace_back(nullptr);
+      }
+    }
+    args.device_layouts = device_layout_list->data();
+  } else {
+    args.num_device_layouts = 0;
+    args.device_layouts = nullptr;
+  }
+  args.memory =
+      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api->PJRT_Client_CreateBuffersForAsyncHostToDevice(&args), c_api);
+  return std::make_unique<PjRtCApiAsyncHostToDeviceTransferManager>(
+      this, args.transfer_manager);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtDevice* device) {
+  TF_ASSIGN_OR_RETURN(auto memory_space, device->default_memory_space());
+  return CreateBuffersForAsyncHostToDevice(shape_specs, device_layouts,
+                                           memory_space);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtDevice* device) {
+  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+  shape_specs.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    shape_specs.emplace_back(PjRtClient::ShapeSpec{
+        shape.element_type(),
+        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
+  }
+  return CreateBuffersForAsyncHostToDevice(
+      shape_specs, /*device_layouts=*/std::nullopt, device);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
+  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+  shape_specs.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    shape_specs.emplace_back(PjRtClient::ShapeSpec{
+        shape.element_type(),
+        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
+  }
+  return CreateBuffersForAsyncHostToDevice(
+      shape_specs, /*device_layouts=*/std::nullopt, memory_space);
+}
+
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------

@@ -936,6 +936,12 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 57) {
       add_field("PJRT_Buffer_CopyRawToHost", kFnPtrSize);
     }
+    if (minor_version >= 58) {
+      add_field("PJRT_AsyncHostToDeviceTransferManager_Destroy", kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_TransferData",
+                kFnPtrSize);
+      add_field("PJRT_Client_CreateBuffersForAsyncHostToDevice", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1264,6 +1270,17 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Buffer_CopyRawToHost",
            {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHost),
             sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHost)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_Destroy",
+           {offsetof(PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_Destroy),
+            sizeof(PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_Destroy)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_TransferData",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_TransferData),
+            sizeof(
+                PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_TransferData)}},
+          {"PJRT_Client_CreateBuffersForAsyncHostToDevice",
+           {offsetof(PJRT_Api, PJRT_Client_CreateBuffersForAsyncHostToDevice),
+            sizeof(PJRT_Api::PJRT_Client_CreateBuffersForAsyncHostToDevice)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

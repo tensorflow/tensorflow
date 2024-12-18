@@ -91,6 +91,14 @@ struct PJRT_MemoryDescription {
   xla::PjRtMemorySpaceDescription memory_space_description;
 };
 
+// PJRT_AsyncHostToDeviceTransferManager is owned by its corresponding
+// PJRT_Client.
+struct PJRT_AsyncHostToDeviceTransferManager {
+  std::unique_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>
+      transfer_manager;
+  PJRT_Client* client;
+};
+
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
 struct PJRT_DeviceDescription {
   // The xla::PjRtDeviceDescription* is owned transitively by the
@@ -254,7 +262,12 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
-
+PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
+    PJRT_Client_CreateBuffersForAsyncHostToDevice_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_Destroy(
+    PJRT_AsyncHostToDeviceTransferManager_Destroy_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
+    PJRT_AsyncHostToDeviceTransferManager_TransferData_Args* args);
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
 PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
     PJRT_DeviceDescription_ProcessIndex_Args* args);

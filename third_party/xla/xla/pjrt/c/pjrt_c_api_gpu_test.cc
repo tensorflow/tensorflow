@@ -274,6 +274,71 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   api_->PJRT_ExecuteContext_Destroy(&destroy_args);
 }
 
+TEST_F(PjrtCApiGpuTest, CreateBuffersWithMemorytForH2DAndTransfer) {
+  xla::Shape host_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::F32, /*dimensions=*/{2, 2, 2}, /*minor_to_major=*/{1, 0, 2});
+  std::vector<float> float_data = {1, 2, 3, 4, 5, 6, 7, 8};
+
+  PJRT_Client_CreateBuffersForAsyncHostToDevice_Args args;
+  args.struct_size =
+      PJRT_Client_CreateBuffersForAsyncHostToDevice_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = client_;
+  PJRT_ShapeSpec c_shape_spec;
+  c_shape_spec.element_type =
+      pjrt::ConvertToPjRtBufferType(xla::PrimitiveType::F32);
+  c_shape_spec.dims = host_shape.dimensions().data();
+  c_shape_spec.num_dims = host_shape.dimensions().size();
+  args.shape_specs = &c_shape_spec;
+  args.num_shape_specs = 1;
+  TF_ASSERT_OK_AND_ASSIGN(pjrt::BufferMemoryLayoutData c_layout_data,
+                          ConvertToBufferMemoryLayoutData(host_shape.layout()));
+  std::vector<PJRT_Buffer_MemoryLayout*> device_layout_list(1);
+  device_layout_list[0] = &(c_layout_data.c_layout);
+  args.device_layouts = device_layout_list.data();
+  args.num_device_layouts = device_layout_list.size();
+  PJRT_Client_AddressableMemories_Args memory_args;
+  memory_args.struct_size = PJRT_Client_AddressableMemories_Args_STRUCT_SIZE;
+  memory_args.extension_start = nullptr;
+  memory_args.client = client_;
+
+  PJRT_Error* memory_error =
+      api_->PJRT_Client_AddressableMemories(&memory_args);
+  ASSERT_EQ(memory_error, nullptr);
+  ASSERT_NE(memory_args.addressable_memories, nullptr);
+  ASSERT_GT(memory_args.num_addressable_memories, 0);
+  args.memory = memory_args.addressable_memories[0];
+  PJRT_Error* error =
+      api_->PJRT_Client_CreateBuffersForAsyncHostToDevice(&args);
+  ASSERT_EQ(error, nullptr);
+
+  PJRT_AsyncHostToDeviceTransferManager_TransferData_Args transfer_args;
+  transfer_args.struct_size =
+      PJRT_AsyncHostToDeviceTransferManager_TransferData_Args_STRUCT_SIZE;
+  transfer_args.extension_start = nullptr;
+  transfer_args.transfer_manager = args.transfer_manager;
+  transfer_args.buffer_index = 0;
+  transfer_args.data = float_data.data();
+  transfer_args.offset = 0;
+  transfer_args.transfer_size = float_data.size();
+  transfer_args.is_last_transfer = true;
+
+  PJRT_Error* transfer_error =
+      PJRT_AsyncHostToDeviceTransferManager_TransferData(&transfer_args);
+  ASSERT_EQ(transfer_error, nullptr);
+  std::unique_ptr<PJRT_Event, PJRT_EventDeleter> done_with_h2d_transfer_event(
+      transfer_args.done_with_h2d_transfer, MakeEventDeleter(api_));
+
+  // Destroy the transfer manager.
+  PJRT_AsyncHostToDeviceTransferManager_Destroy_Args destroy_args;
+  destroy_args.struct_size =
+      PJRT_AsyncHostToDeviceTransferManager_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.transfer_manager = args.transfer_manager;
+  LogFatalIfPjrtError(
+      api_->PJRT_AsyncHostToDeviceTransferManager_Destroy(&destroy_args), api_);
+}
+
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
     std::vector<PJRT_NamedValue>& c_options) {
