@@ -18,6 +18,7 @@ limitations under the License.
 #include "mhlo/transforms/passes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -243,16 +244,17 @@ void BuildMlirSubmodule(nb::module_& m) {
   mlir_module.def(
       "refine_polymorphic_shapes",
       [](nb::bytes bytecode, bool enable_shape_assertions,
-         bool validate_static_shapes) -> nb::bytes {
+         bool validate_static_shapes, bool shardy_enabled) -> nb::bytes {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
         xla::ThrowIfError(RefinePolymorphicShapes(
             absl::string_view(bytecode.c_str(), bytecode.size()), os,
-            enable_shape_assertions, validate_static_shapes));
+            enable_shape_assertions, validate_static_shapes, shardy_enabled));
         return nb::bytes(buffer.data(), buffer.size());
       },
       nb::arg("mlir_module"), nb::arg("enable_shape_assertions") = true,
       nb::arg("validate_static_shapes") = true,
+      nb::arg("shardy_enabled") = false,
       R"(Refines the dynamic shapes for a module.
         The "main" function must have static shapes and all the
         intermediate dynamic shapes depend only on the input static
