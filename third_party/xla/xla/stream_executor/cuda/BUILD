@@ -608,6 +608,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -692,6 +693,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -705,6 +707,7 @@ xla_cc_test(
     deps = [
         ":ptx_compiler_helpers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
@@ -1515,6 +1518,7 @@ cc_library(
         ":compilation_provider",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
@@ -1785,6 +1789,7 @@ xla_cc_test(
         ":mock_compilation_provider",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",

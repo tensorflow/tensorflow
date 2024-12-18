@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,7 +33,7 @@ limitations under the License.
 namespace stream_executor::cuda {
 absl::StatusOr<std::vector<uint8_t>>
 NvptxcompilerCompilationProvider::CompileHelper(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options,
     bool compile_to_relocatable_module) const {
   GpuAsmOpts asm_opts{};
@@ -55,7 +54,7 @@ NvptxcompilerCompilationProvider::CompileHelper(
 }
 
 absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   TF_ASSIGN_OR_RETURN(auto cubin,
                       CompileHelper(cc, ptx, options,
@@ -65,7 +64,7 @@ absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::Compile(
 
 absl::StatusOr<RelocatableModule>
 NvptxcompilerCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   TF_ASSIGN_OR_RETURN(auto cubin,
                       CompileHelper(cc, ptx, options,

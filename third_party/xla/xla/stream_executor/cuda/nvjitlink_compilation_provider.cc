@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,14 +35,14 @@ namespace stream_executor::cuda {
 
 absl::StatusOr<Assembly>
 stream_executor::cuda::NvJitLinkCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return CompileAndLink(cc, {Ptx{std::string{ptx}}}, options);
 }
 
 absl::StatusOr<RelocatableModule>
 stream_executor::cuda::NvJitLinkCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return absl::UnavailableError(
       "Compilation to relocatable module is not supported.");

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -60,7 +59,7 @@ limitations under the License.
 
 namespace stream_executor {
 static absl::StatusOr<std::string> GetToolVersionString(
-    std::string_view binary_path) {
+    absl::string_view binary_path) {
   // If binary_path doesn't exist, then tsl::SubProcess will log a bunch of
   // error messages that have confused users in the past. Therefore we first
   // check whether the binary_path exists and error out early if not.
@@ -91,7 +90,7 @@ static absl::StatusOr<std::string> GetToolVersionString(
 }
 
 static absl::StatusOr<SemanticVersion> GetToolVersionImpl(
-    std::string_view tool_path) {
+    absl::string_view tool_path) {
   absl::StatusOr<std::string> tool_version = GetToolVersionString(tool_path);
   if (!tool_version.ok()) {
     return absl::FailedPreconditionError(
@@ -100,7 +99,7 @@ static absl::StatusOr<SemanticVersion> GetToolVersionImpl(
   }
   static constexpr LazyRE2 kVersionRegex = {R"(\bV(\d+)\.(\d+)\.(\d+)\b)"};
   SemanticVersion version{0, 0, 0};
-  std::string_view vmaj_str, vmin_str, vdot_str;
+  absl::string_view vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
                          &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &version.major()) ||
@@ -113,7 +112,7 @@ static absl::StatusOr<SemanticVersion> GetToolVersionImpl(
   return version;
 }
 
-absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path) {
+absl::StatusOr<SemanticVersion> GetToolVersion(absl::string_view tool_path) {
   // This is only implementing a static cache. `GetToolVersionImpl` has the
   // actual business logic.
   static absl::Mutex mutex(absl::kConstInit);
@@ -132,7 +131,7 @@ absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path) {
 }
 
 absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir,
+    absl::string_view binary_name, absl::string_view preferred_cuda_dir,
     SemanticVersion minimum_version,
     absl::Span<const SemanticVersion> excluded_versions) {
   std::string binary_filename = std::string{binary_name};
@@ -146,14 +145,14 @@ absl::StatusOr<std::string> FindCudaExecutable(
 
   // #2 - Check generic CUDA locations if that is preferred over the PATH
   if (!tsl::PreferPtxasFromPath()) {
-    for (std::string_view path : tsl::CandidateCudaRoots()) {
+    for (absl::string_view path : tsl::CandidateCudaRoots()) {
       candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
     }
   }
 
   // #3 - Check the PATH environment variable
   if (const auto* path_env_ptr = std::getenv("PATH")) {
-    std::string_view path_env{path_env_ptr ? path_env_ptr : ""};
+    absl::string_view path_env{path_env_ptr ? path_env_ptr : ""};
 
 #if defined(PLATFORM_WINDOWS)
     constexpr char kSearchPathSeparator = ';';
@@ -161,7 +160,7 @@ absl::StatusOr<std::string> FindCudaExecutable(
     constexpr char kSearchPathSeparator = ':';
 #endif
 
-    for (std::string_view path :
+    for (absl::string_view path :
          absl::StrSplit(path_env, kSearchPathSeparator)) {
       candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
     }
@@ -169,7 +168,7 @@ absl::StatusOr<std::string> FindCudaExecutable(
 
   // #4 - Check generic CUDA locations if we didn't do that already in #2
   if (tsl::PreferPtxasFromPath()) {
-    for (std::string_view path : tsl::CandidateCudaRoots()) {
+    for (absl::string_view path : tsl::CandidateCudaRoots()) {
       candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
     }
   }
@@ -206,7 +205,7 @@ absl::StatusOr<std::string> FindCudaExecutable(
 }
 
 absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir) {
+    absl::string_view binary_name, absl::string_view preferred_cuda_dir) {
   static constexpr SemanticVersion kNoMinimumVersion{0, 0, 0};
   static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};
   return FindCudaExecutable(binary_name, preferred_cuda_dir, kNoMinimumVersion,
@@ -214,10 +213,10 @@ absl::StatusOr<std::string> FindCudaExecutable(
 }
 
 absl::StatusOr<std::string> FindPtxAsExecutable(
-    std::string_view preferred_cuda_dir) {
+    absl::string_view preferred_cuda_dir) {
   static constexpr SemanticVersion kMinimumSupportedPtxAsVersion{11, 8, 0};
   static constexpr SemanticVersion kBuggyPtxAsVersions[] = {{12, 3, 103}};
-  static constexpr std::string_view kPtxAsBinaryName = "ptxas";
+  static constexpr absl::string_view kPtxAsBinaryName = "ptxas";
 
   return FindCudaExecutable(kPtxAsBinaryName, preferred_cuda_dir,
                             kMinimumSupportedPtxAsVersion, kBuggyPtxAsVersions);
@@ -252,7 +251,7 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    const CudaComputeCapability& cc, std::string_view ptx, GpuAsmOpts options,
+    const CudaComputeCapability& cc, absl::string_view ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill) {
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
                       FindPtxAsExecutable(options.preferred_cuda_dir));
@@ -261,8 +260,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    std::string_view ptxas_path, const CudaComputeCapability& cc,
-    std::string_view ptx, GpuAsmOpts options, bool cancel_if_reg_spill) {
+    absl::string_view ptxas_path, const CudaComputeCapability& cc,
+    absl::string_view ptx, GpuAsmOpts options, bool cancel_if_reg_spill) {
   TF_ASSIGN_OR_RETURN(auto version, GetToolVersion(ptxas_path));
   WarnIfBadPtxasVersion("ptxas", cc, version);
 
@@ -364,7 +363,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
 }
 
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
-    std::string_view preferred_cuda_dir) {
+    absl::string_view preferred_cuda_dir) {
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
                       FindPtxAsExecutable(preferred_cuda_dir));
   return GetToolVersion(ptxas_path);
@@ -454,17 +453,17 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
 }
 
 absl::StatusOr<std::string> FindNvlinkExecutable(
-    std::string_view preferred_cuda_dir) {
+    absl::string_view preferred_cuda_dir) {
   static constexpr SemanticVersion kMinimumNvlinkVersion{11, 8, 0};
   static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};
-  static constexpr std::string_view kNvLinkBinaryName = "nvlink";
+  static constexpr absl::string_view kNvLinkBinaryName = "nvlink";
 
   return FindCudaExecutable(kNvLinkBinaryName, preferred_cuda_dir,
                             kMinimumNvlinkVersion, kNoExcludedVersions);
 }
 
 absl::StatusOr<SemanticVersion> GetNvLinkVersion(
-    std::string_view preferred_cuda_dir) {
+    absl::string_view preferred_cuda_dir) {
   // Make sure nvlink exists and is executable.
   TF_ASSIGN_OR_RETURN(std::string bin_path,
                       FindNvlinkExecutable(preferred_cuda_dir));
@@ -474,7 +473,7 @@ absl::StatusOr<SemanticVersion> GetNvLinkVersion(
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
-    std::string_view preferred_cuda_dir,
+    absl::string_view preferred_cuda_dir,
     absl::Span<const std::vector<uint8_t>> images) {
   TF_ASSIGN_OR_RETURN(std::string bin_path,
                       FindNvlinkExecutable(preferred_cuda_dir));
@@ -483,7 +482,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 }
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
-    std::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
+    absl::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
     absl::Span<const std::vector<uint8_t>> images) {
   LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
 
@@ -516,7 +515,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   };
   std::vector<std::string> args;
   args.push_back(std::string{nvlink_path});
-  std::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
