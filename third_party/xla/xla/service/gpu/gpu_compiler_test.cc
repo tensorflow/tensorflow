@@ -528,9 +528,10 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
 
 TEST_F(GpuCompilerTestWithAutotuneDb,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
-  }
+  // if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {  
+  //  GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
+  // }
+  // TODO: weekly-sync 24-12-10
   GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
                << " until flakiness is fixed.";
   auto cc = backend()
