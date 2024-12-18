@@ -4913,6 +4913,9 @@ cc_library(
 
 tf_kernel_library(
     name = "stateful_random_ops",
+    copts = [
+        "-Wno-thread-safety-analysis",  # TODO(b/384723765): Remove this once the bug is fixed.
+    ],
     features = if_cuda(["-layering_check"]),
     prefix = "stateful_random_ops",
     deps = [
