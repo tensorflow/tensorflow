@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {
@@ -74,6 +75,12 @@ inline constexpr absl::string_view kHloAsyncUpdate = "async-update";
 inline constexpr absl::string_view kHloAsyncDone = "async-done";
 inline constexpr absl::string_view kHloReshape = "reshape";
 inline constexpr absl::string_view kHloTranspose = "transpose";
+
+// SparseCore V0 sub-categories.
+TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0Infeed;
+TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0Outfeed;
+TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0InfeedWait;
+TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0InfeedTransform;
 
 // Return if a category is fusion.
 inline bool IsFusion(absl::string_view category) {
