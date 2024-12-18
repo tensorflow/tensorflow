@@ -116,7 +116,7 @@ struct RuntimeFallbackOpEntry {
 static Expected<tfrt::RCReference<tfrt::Device>> GetDeviceFromFallbackTensor(
     const RuntimeFallbackTensor& result_tensor,
     const ExecutionContext& exec_ctx) {
-  tensorflow::Status status;
+  absl::Status status;
   // Obtain the device. Please note that this device is probably not
   // the device that the TensorHandle is located on. E.g. for a TPU resource
   // its device is TPU but it is physicially located on CPU.
