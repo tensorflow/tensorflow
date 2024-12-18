@@ -118,6 +118,12 @@ inline bool IsInfeedOrOutfeed(absl::string_view category) {
          absl::StrContains(category, kHloInfeed) ||
          absl::StrContains(category, kHloOutfeed);
 }
+
+inline bool IsHostOrSparseCoreV0Infeed(absl::string_view category) {
+  return category == tsl::profiler::kHloInfeed ||
+         category == tsl::profiler::kHloSparseCoreV0Infeed;
+}
+
 inline bool MayHaveInnerOps(absl::string_view category) {
   return category == kHloCall || category == kHloConditional ||
          category == kHloWhile || category == kHloMegacoreFusion;

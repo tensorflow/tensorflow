@@ -52,6 +52,13 @@ TEST(XlaOpUtilsTest, IsRematerialization) {
                                    "test_function_name/reshape/dot_general"));
 }
 
+TEST(XlaOpUtilsTest, IsHostOrSparseCoreV0Infeed) {
+  EXPECT_TRUE(IsHostOrSparseCoreV0Infeed(kHloInfeed));
+  EXPECT_TRUE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0Infeed));
+  EXPECT_FALSE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0InfeedWait));
+  EXPECT_FALSE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0InfeedTransform));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
