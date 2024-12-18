@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -71,7 +72,8 @@ class KernelThunk : public Thunk {
   KernelThunk(const HloInstruction* instr, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
-              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes);
+              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
+              TmaMetadata tma_metadata = TmaMetadata());
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -110,6 +112,8 @@ class KernelThunk : public Thunk {
   const std::optional<se::ClusterDim> cluster_dim_;
 
   int64_t shmem_bytes_;
+
+  const TmaMetadata tma_metadata_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
