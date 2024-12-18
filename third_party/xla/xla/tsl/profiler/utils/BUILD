@@ -126,6 +126,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],

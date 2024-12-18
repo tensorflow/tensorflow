@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -497,14 +498,11 @@ class XFlow {
     return FlowDirection(encoded_.parts.direction);
   }
 
-  static uint64_t GetUniqueId() {  // unique in current process.
-    return next_flow_id_.fetch_add(1);
-  }
+  static uint64_t GetUniqueId() { return tsl::random::New64() & kFlowMask; }
 
  private:
   explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
   static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
-  static std::atomic<uint64_t> next_flow_id_;
 
   union {
     // Encoded representation.
