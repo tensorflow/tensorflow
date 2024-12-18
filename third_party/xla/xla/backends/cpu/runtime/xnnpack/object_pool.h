@@ -21,6 +21,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -37,13 +39,15 @@ class ObjectPool {
   };
 
  public:
-  explicit ObjectPool(absl::AnyInvocable<T()> builder, size_t initial_size = 0);
+  explicit ObjectPool(absl::AnyInvocable<absl::StatusOr<T>()> builder);
   ~ObjectPool();
 
   class BorrowedObject {
    public:
     ~BorrowedObject();
+
     T& operator*() { return entry_->object; }
+    T* operator->() { return &entry_->object; }
 
     BorrowedObject(BorrowedObject&&) = default;
     BorrowedObject& operator=(BorrowedObject&&) = default;
@@ -57,22 +61,23 @@ class ObjectPool {
     std::unique_ptr<Entry> entry_;
   };
 
-  BorrowedObject GetOrCreate();
+  absl::StatusOr<BorrowedObject> GetOrCreate();
+
+  size_t num_created() const { return num_created_.load(); }
 
  private:
-  std::unique_ptr<Entry> CreateEntry();
+  absl::StatusOr<std::unique_ptr<Entry>> CreateEntry();
   std::unique_ptr<Entry> PopEntry();
   void PushEntry(std::unique_ptr<Entry> entry);
 
-  absl::AnyInvocable<T()> builder_;
+  absl::AnyInvocable<absl::StatusOr<T>()> builder_;
   std::atomic<Entry*> head_;
+  std::atomic<size_t> num_created_;
 };
 
 template <typename T>
-ObjectPool<T>::ObjectPool(absl::AnyInvocable<T()> builder, size_t initial_size)
-    : builder_(std::move(builder)), head_(nullptr) {
-  for (size_t i = 0; i < initial_size; ++i) PushEntry(CreateEntry());
-}
+ObjectPool<T>::ObjectPool(absl::AnyInvocable<absl::StatusOr<T>()> builder)
+    : builder_(std::move(builder)), head_(nullptr), num_created_(0) {}
 
 template <typename T>
 ObjectPool<T>::~ObjectPool() {
@@ -83,10 +88,11 @@ ObjectPool<T>::~ObjectPool() {
 }
 
 template <typename T>
-auto ObjectPool<T>::CreateEntry() -> std::unique_ptr<Entry> {
+auto ObjectPool<T>::CreateEntry() -> absl::StatusOr<std::unique_ptr<Entry>> {
   auto entry = std::make_unique<Entry>();
-  entry->object = builder_();
+  TF_ASSIGN_OR_RETURN(entry->object, builder_());
   entry->next = nullptr;
+  num_created_.fetch_add(1);
   return entry;
 }
 
@@ -118,11 +124,12 @@ ObjectPool<T>::BorrowedObject::~BorrowedObject() {
 }
 
 template <typename T>
-auto ObjectPool<T>::GetOrCreate() -> BorrowedObject {
+auto ObjectPool<T>::GetOrCreate() -> absl::StatusOr<BorrowedObject> {
   if (std::unique_ptr<Entry> entry = PopEntry()) {
     return BorrowedObject(this, std::move(entry));
   }
-  return BorrowedObject(this, CreateEntry());
+  TF_ASSIGN_OR_RETURN(auto entry, CreateEntry());
+  return BorrowedObject(this, std::move(entry));
 }
 
 }  // namespace xla::cpu
