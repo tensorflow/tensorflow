@@ -120,6 +120,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_memory_descriptions_extension_hdrs",
+    hdrs = ["pjrt_c_api_memory_descriptions_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -128,6 +137,7 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -399,6 +409,7 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -455,6 +466,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_test_base",
         "//xla:literal",
         "//xla:literal_util",

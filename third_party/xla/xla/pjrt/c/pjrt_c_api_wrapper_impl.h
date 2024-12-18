@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -84,6 +85,10 @@ struct PJRT_Client {
   absl::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
 
   explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
+};
+
+struct PJRT_MemoryDescription {
+  xla::PjRtMemorySpaceDescription memory_space_description;
 };
 
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
@@ -454,6 +459,9 @@ std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
 PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 
 PJRT_Layouts_Extension CreateLayoutsExtension(
+    PJRT_Extension_Base* next = nullptr);
+
+PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
     PJRT_Extension_Base* next = nullptr);
 
 // Creates a PJRT_Api with create_fn from the input and other functions in

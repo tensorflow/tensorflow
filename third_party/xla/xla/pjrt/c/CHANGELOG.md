@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.59
+* Added ``PJRT_MemoryDescriptions_Extension``.
+
 ## 0.57
 * Rearranged fields in the PJRT_Api
 * Update outdated struct sizes from previous changes to
