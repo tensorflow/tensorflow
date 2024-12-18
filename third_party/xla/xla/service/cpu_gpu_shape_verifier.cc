@@ -28,22 +28,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
-  return ShapeUtil::ForEachSubshapeWithStatus(
-      instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
-        if (primitive_util::IsSubByteNonPredType(shape.element_type()) &&
-            IsCollective(instruction)) {
-          return absl::InvalidArgumentError(
-              absl::StrFormat("Int4 is not supported in collective operations, "
-                              "but got instruction: %s",
-                              instruction->ToString()));
-        }
-        return absl::OkStatus();
-      });
-}
-}  // namespace
-
 absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
@@ -64,7 +48,6 @@ absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
         return absl::OkStatus();
       }));
 
-  TF_RETURN_IF_ERROR(VerifyS4U4Usage(hlo));
   return ShapeVerifier::Preprocess(hlo);
 }
 
