@@ -347,6 +347,7 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "cpu",
+        "manual",
         "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
@@ -365,6 +366,7 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
@@ -376,6 +378,7 @@ py_test(
     main = "import_api_packages_test.py",
     tags = [
         "cpu",
+        "manual",
         "windows_excluded",
     ],
     deps = [
@@ -393,6 +396,7 @@ py_test(
     main = "import_api_packages_test.py",
     tags = [
         "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = [
