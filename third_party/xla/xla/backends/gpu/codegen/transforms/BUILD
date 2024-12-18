@@ -1,5 +1,9 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -53,6 +57,7 @@ cc_library(
         "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":passes_inc_gen",
         "//xla:shape_util",
@@ -113,7 +118,9 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:protobuf",
-    ] + if_rocm_is_configured([
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
+    ]) + if_rocm_is_configured([
         "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
     ]),
 )
