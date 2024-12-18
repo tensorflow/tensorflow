@@ -1,1 +1,38 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
+--- a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
++++ b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
+@@ -654,8 +654,10 @@
+       // There is a potential that the model could be adversarial and
+       // continually evict live ranges over and over again, leading to a
+       // large amount of compile time being spent in regalloc. If we hit the
+-      // threshold, prevent the range from being evicted.
+-      if (IntfCascade >= MaxCascade)
++      // threshold, prevent the range from being evicted. We still let the
++      // range through if it is urgent as we are required to produce an
++      // eviction if the candidate is not spillable.
++      if (IntfCascade >= MaxCascade && !Urgent)
+         return false;
+ 
+       // Only evict older cascades or live ranges without a cascade.
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+--- a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
++++ b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+@@ -1,5 +1,5 @@
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_20 | FileCheck %s
+-; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64 -mcpu=sm_20 | %ptxas-verify %}
++; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | FileCheck %s
++; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | %ptxas-verify %}
+ 
+ target triple = "nvptx-unknown-nvcl"
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-write.ll b/llvm/test/CodeGen/NVPTX/surf-write.ll
+--- a/llvm/test/CodeGen/NVPTX/surf-write.ll
++++ b/llvm/test/CodeGen/NVPTX/surf-write.ll
+@@ -1,5 +1,5 @@
+ ; RUN: llc < %s -mcpu=sm_20 -verify-machineinstrs | FileCheck %s
+-; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -verify-machineinstrs | %ptxas-verify %}
++; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -mtriple=nvptx64-nvcl -verify-machineinstrs | %ptxas-verify %}
+ 
+ target triple = "nvptx-unknown-nvcl"
+ 

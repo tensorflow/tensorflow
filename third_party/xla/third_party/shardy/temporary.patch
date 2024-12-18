@@ -1,15 +1,58 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..b1fe52b 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,38 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
++--- a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
+++++ b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
++@@ -654,8 +654,10 @@
++       // There is a potential that the model could be adversarial and
++       // continually evict live ranges over and over again, leading to a
++       // large amount of compile time being spent in regalloc. If we hit the
++-      // threshold, prevent the range from being evicted.
++-      if (IntfCascade >= MaxCascade)
+++      // threshold, prevent the range from being evicted. We still let the
+++      // range through if it is urgent as we are required to produce an
+++      // eviction if the candidate is not spillable.
+++      if (IntfCascade >= MaxCascade && !Urgent)
++         return false;
++ 
++       // Only evict older cascades or live ranges without a cascade.
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
++--- a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+++++ b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
++@@ -1,5 +1,5 @@
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_20 | FileCheck %s
++-; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64 -mcpu=sm_20 | %ptxas-verify %}
+++; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | FileCheck %s
+++; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | %ptxas-verify %}
++ 
++ target triple = "nvptx-unknown-nvcl"
++ 
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-write.ll b/llvm/test/CodeGen/NVPTX/surf-write.ll
++--- a/llvm/test/CodeGen/NVPTX/surf-write.ll
+++++ b/llvm/test/CodeGen/NVPTX/surf-write.ll
++@@ -1,5 +1,5 @@
++ ; RUN: llc < %s -mcpu=sm_20 -verify-machineinstrs | FileCheck %s
++-; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -verify-machineinstrs | %ptxas-verify %}
+++; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -mtriple=nvptx64-nvcl -verify-machineinstrs | %ptxas-verify %}
++ 
++ target triple = "nvptx-unknown-nvcl"
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 0e243d3..8caa08d 100644
+index 8caa08d..d9050b7 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a21f9bfe29c2b9f1967952d12a5b7cb8f8b75202"
--    LLVM_SHA256 = "7039c2826841e473fe6431e36a2d8ba3746f200da53c481384f7f5d970e5bca1"
-+    LLVM_COMMIT = "af20aff35ec37ead88903bc3e44f6a81c5c9ca4e"
-+    LLVM_SHA256 = "6e31682011d8c483c6a41adf5389eb09ad7db84331ca985d33a5d59efd0388f6"
+-    LLVM_COMMIT = "af20aff35ec37ead88903bc3e44f6a81c5c9ca4e"
+-    LLVM_SHA256 = "6e31682011d8c483c6a41adf5389eb09ad7db84331ca985d33a5d59efd0388f6"
++    LLVM_COMMIT = "e86910337f98e57f5b9253f7d80d5b916eb1d97e"
++    LLVM_SHA256 = "4ca0eff0ca86ed6f2fdb7682354fdf4c85151d90ac9fb6e55a868e4191359e9f"
  
      tf_http_archive(
          name = name,
