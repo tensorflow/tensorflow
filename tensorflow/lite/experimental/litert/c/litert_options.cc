@@ -29,8 +29,11 @@ LiteRtStatus LiteRtGetAddFusedActivationOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAdd) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *fused_activation =
-      detail::GetTflOptions(*op).AsAddOptions()->fused_activation_function;
+  const auto& opts = detail::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorNotFound;
+  }
+  *fused_activation = opts.AsAddOptions()->fused_activation_function;
   return kLiteRtStatusOk;
 }
 
