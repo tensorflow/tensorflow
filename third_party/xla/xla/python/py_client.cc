@@ -189,6 +189,7 @@ absl::StatusOr<nb_class_ptr<PyDevice>> PyClient::DeviceFromLocalHardwareId(
 
 nb::list PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
+  nb::ft_lock_guard lock(executables_mutex_);
   nb::list executables;
   for (PyLoadedExecutable* exec = executables_; exec; exec = exec->next_) {
     if (!exec->is_deleted()) {
@@ -223,15 +224,16 @@ absl::Status PyClient::Defragment() {
   // Synchronously copy all buffers to host
   absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
 
-  for (PyArray_Storage* array = arrays_; array; array = array->next) {
+  std::vector<PyArray> arrays = LiveArrays();
+  for (const PyArray& array : arrays) {
     // TODO(hyeontaek): Support non-PjRt Arrays.
     // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
     // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
-    if (array->ifrt_array == nullptr) {
+    if (array.ifrt_array() == nullptr) {
       continue;
     }
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-        array->ifrt_array.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(array.ifrt_array());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend "
@@ -546,12 +548,13 @@ absl::StatusOr<nb::bytes> PyClient::HeapProfile() {
     return absl::OkStatus();
   };
 
-  for (PyArray_Storage* array = arrays_; array; array = array->next) {
-    if (array->ifrt_array == nullptr) {
+  std::vector<PyArray> arrays = LiveArrays();
+  for (const PyArray& array : arrays) {
+    if (array.ifrt_array() == nullptr) {
       continue;
     }
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-        array->ifrt_array.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(array.ifrt_array());
     // TODO(hyeontaek): Support non-PjRt Arrays.
     if (arr == nullptr) {
       throw XlaRuntimeError(
@@ -560,7 +563,8 @@ absl::StatusOr<nb::bytes> PyClient::HeapProfile() {
     }
     for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(add_buffer_to_profile(
-          buffer.get(), array->traceback ? array->traceback->get() : nullptr));
+          buffer.get(),
+          array.traceback() ? array.traceback()->get() : nullptr));
     }
   }
 

@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,10 +30,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
-#include "xla/hlo/builder/xla_builder.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -217,7 +219,7 @@ class PyClient {
       absl::Span<uint16_t const> recv_channel_ids,
       nanobind::callable serializer);
 
-  std::vector<nanobind::object> LiveArrays() const;
+  std::vector<PyArray> LiveArrays() const;
 
   static void RegisterPythonTypes(nanobind::module_& m);
 
@@ -239,8 +241,20 @@ class PyClient {
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
 
+  nanobind::ft_mutex executables_mutex_;
+  // List guarded by executables_mutex_.
   PyLoadedExecutable* executables_ = nullptr;
-  PyArray_Storage* arrays_ = nullptr;
+
+#ifdef NB_FREE_THREADING
+  static constexpr size_t kNumArraysShards = 16;
+#else
+  static constexpr size_t kNumArraysShards = 1;
+#endif
+  struct ArraysShard {
+    mutable nanobind::ft_mutex mutex;
+    PyArray_Storage* arrays;
+  };
+  std::array<ArraysShard, kNumArraysShards> arrays_;
 
   absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices_;
   absl::flat_hash_map<ifrt::Memory*, nb_class_ptr<PyMemorySpace>>

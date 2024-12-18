@@ -86,21 +86,23 @@ PyLoadedExecutable::PyLoadedExecutable(
       traceback_(std::move(traceback)),
       fingerprint_(std::move(fingerprint)) {
   CHECK(PyGILState_Check());
+  if (fingerprint_) {
+    options_.launch_id = tsl::Fingerprint32(*fingerprint_);
+    VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
+            << ": " << *fingerprint_;
+  }
+  nb::ft_lock_guard lock(client_->executables_mutex_);
   next_ = client_->executables_;
   client_->executables_ = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
   }
-  if (fingerprint_) {
-    options_.launch_id = tsl::Fingerprint32(*fingerprint_);
-    VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
-            << ": " << *fingerprint_;
-  }
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
   CHECK(PyGILState_Check());
+  nb::ft_lock_guard lock(client_->executables_mutex_);
   if (client_->executables_ == this) {
     client_->executables_ = next_;
   }

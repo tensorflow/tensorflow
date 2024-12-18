@@ -113,6 +113,8 @@ struct PyArray_Storage {
   // duplicate PjRtBuffers in this list.
   PyArray_Storage* next;
   PyArray_Storage* prev;
+
+  uint8_t thread_id_bucket;
 };
 
 // The C++ implementation of jax.Array. A few key methods and data members are

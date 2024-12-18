@@ -22,11 +22,13 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <new>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <thread>  // NOLINT
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -376,6 +378,7 @@ struct ShapedArrayCacheKey {
 nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
   using CacheT =
       LRUCache<ShapedArrayCacheKey, std::shared_ptr<std::optional<nb::object>>>;
+  static nb::ft_mutex mu;
   static auto* lru_list = new CacheT::LRUList(4096);
   static auto* cache = new CacheT(lru_list);
 
@@ -392,6 +395,7 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
     return nb::none();
   }
 
+  nb::ft_lock_guard lock(mu);
   auto value =
       cache->GetOrCreateIfAbsent(key, [](const ShapedArrayCacheKey& key) {
         return std::make_shared<std::optional<nb::object>>();
@@ -454,8 +458,15 @@ PyArray_Storage::PyArray_Storage(
       traceback(std::move(traceback)),
       ifrt_array(std::move(ifrt_array)),
       result_status(std::move(result_status)) {
-  next = this->py_client->arrays_;
-  this->py_client->arrays_ = this;
+  static_assert(PyClient::kNumArraysShards <
+                std::numeric_limits<uint8_t>::max());
+  thread_id_bucket = std::hash<std::thread::id>()(std::this_thread::get_id()) %
+                     PyClient::kNumArraysShards;
+
+  PyClient::ArraysShard& shard = this->py_client->arrays_[thread_id_bucket];
+  nanobind::ft_lock_guard lock(shard.mutex);
+  next = shard.arrays;
+  shard.arrays = this;
   if (next) {
     next->prev = this;
   }
@@ -1054,14 +1065,18 @@ nb::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
-  if (py_client && py_client->arrays_ == this) {
-    py_client->arrays_ = next;
-  }
-  if (prev) {
-    prev->next = next;
-  }
-  if (next) {
-    next->prev = prev;
+  if (py_client) {
+    PyClient::ArraysShard& shard = py_client->arrays_[thread_id_bucket];
+    nanobind::ft_lock_guard lock(shard.mutex);
+    if (shard.arrays == this) {
+      shard.arrays = next;
+    }
+    if (prev) {
+      prev->next = next;
+    }
+    if (next) {
+      next->prev = prev;
+    }
   }
   // Release GIL and then explicitly destroy `ifrt_array` to prevent deadlock on
   // CPU backend caused by interactions between argument donations and host
@@ -1296,13 +1311,16 @@ absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
   return AwaitBuffersReady(absl::MakeConstSpan(ifrt_arrays));
 }
 
-std::vector<nb::object> PyClient::LiveArrays() const {
-  std::vector<nb::object> result;
-  for (PyArray::Storage* array = arrays_; array; array = array->next) {
-    bool all_deleted =
-        (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
-    if (!all_deleted) {
-      result.push_back(nb::borrow(array->AsHandle()));
+std::vector<PyArray> PyClient::LiveArrays() const {
+  std::vector<PyArray> result;
+  for (auto& shard : arrays_) {
+    nb::ft_lock_guard lock(shard.mutex);
+    for (PyArray::Storage* array = shard.arrays; array; array = array->next) {
+      bool all_deleted =
+          (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
+      if (!all_deleted) {
+        result.push_back(nb::borrow<PyArray>(array->AsHandle()));
+      }
     }
   }
   return result;
