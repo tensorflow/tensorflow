@@ -32,11 +32,8 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -87,12 +84,7 @@ class XlaCallModuleLoader {
   // much easier to detect here.
   absl::Status ValidateStaticShapes();
 
-  // Lowers the StableHLO module to MHLO in place.
-  absl::Status LowerModuleToMhlo();
-
-  // Lowers the MHLO module to XlaComputation and returns it.
-  //
-  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
+  // Lowers the StableHLO module to XlaComputation and returns it.
   absl::StatusOr<xla::XlaComputation> ToXlaComputation();
 
   // Returns the deserialized stablehlo module.
