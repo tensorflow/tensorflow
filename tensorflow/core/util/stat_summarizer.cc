@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/stat_summarizer.h"
 
-#include <iomanip>
+#include <cstdint>
 #include <map>
 #include <queue>
 #include <sstream>
