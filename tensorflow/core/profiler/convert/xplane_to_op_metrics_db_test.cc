@@ -242,6 +242,7 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                  self_time_ps: 10000
                                  flops: 68
                                  model_flops: 68
+                                 num_cores: 1
                                  occurrences: 2
                                  name: "MatMul"
                                  time_ps: 10000
