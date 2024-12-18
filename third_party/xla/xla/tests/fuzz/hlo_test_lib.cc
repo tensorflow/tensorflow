@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/env.h"
