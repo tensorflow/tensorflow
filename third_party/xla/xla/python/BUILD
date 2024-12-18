@@ -352,6 +352,7 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -373,6 +374,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@nanobind",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "//third_party/py/numpy:headers",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
