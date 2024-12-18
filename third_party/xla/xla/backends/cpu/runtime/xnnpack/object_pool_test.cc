@@ -21,11 +21,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla::cpu {
 namespace {
@@ -34,19 +36,21 @@ using IntPool = ObjectPool<std::unique_ptr<int32_t>>;
 
 TEST(ObjectPoolTest, GetOrCreate) {
   int32_t counter = 0;
-  IntPool pool([&] { return std::make_unique<int32_t>(counter++); });
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
 
-  auto obj0 = pool.GetOrCreate();
+  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
   ASSERT_EQ(**obj0, 0);
 
-  auto obj1 = pool.GetOrCreate();
+  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
   ASSERT_EQ(**obj1, 1);
 
   auto destroy = [](IntPool::BorrowedObject obj) {};
   destroy(std::move(obj0));
   destroy(std::move(obj1));
 
-  auto obj2 = pool.GetOrCreate();
+  TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
   ASSERT_EQ(**obj2, 1);
   ASSERT_EQ(counter, 2);
 }
@@ -55,7 +59,9 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
 
   std::atomic<int32_t> counter = 0;
-  IntPool pool([&] { return std::make_unique<int32_t>(counter++); });
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
 
   size_t num_tasks = 10;
   absl::BlockingCounter blocking_counter(num_tasks);
@@ -63,7 +69,7 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   for (int32_t t = 0; t < num_tasks; ++t) {
     threads.Schedule([&] {
       for (int32_t i = 0; i < 100; ++i) {
-        auto obj = pool.GetOrCreate();
+        TF_ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
         ASSERT_GE(**obj, 0);
       }
       blocking_counter.DecrementCount();
@@ -81,8 +87,9 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
 //===----------------------------------------------------------------------===//
 
 static void BM_GetOrCreate(benchmark::State& state) {
-  int32_t counter = 0;
-  IntPool pool([&] { return std::make_unique<int32_t>(counter++); });
+  IntPool pool([cnt = 0]() mutable -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(cnt++);
+  });
 
   for (auto _ : state) {
     auto obj = pool.GetOrCreate();
