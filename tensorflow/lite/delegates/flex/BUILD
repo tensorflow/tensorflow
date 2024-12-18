@@ -63,6 +63,7 @@ cc_library(
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":util",
+        "//tensorflow/core:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -70,7 +71,6 @@ cc_library(
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
         "//tensorflow/c:c_api_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
