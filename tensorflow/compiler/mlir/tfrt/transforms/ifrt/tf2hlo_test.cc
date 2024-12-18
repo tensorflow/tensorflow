@@ -58,7 +58,6 @@ namespace {
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Ne;
-using ::testing::status::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS

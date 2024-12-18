@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/builders/min_max_builder.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {

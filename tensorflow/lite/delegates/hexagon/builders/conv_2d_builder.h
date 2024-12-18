@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_CONV_2D_BUILDER_H_
 #define TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_CONV_2D_BUILDER_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
