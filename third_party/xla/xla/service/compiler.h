@@ -52,9 +52,6 @@ namespace xla {
 
 // The following types are used for ahead of time compilation.
 
-// Contains the object file data created as a result of ahead-of-time
-// computation.
-using ObjectFileData = std::vector<char>;
 
 class Compiler;
 class AotCompilationOptions;

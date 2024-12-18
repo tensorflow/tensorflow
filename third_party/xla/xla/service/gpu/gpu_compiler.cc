@@ -1867,9 +1867,7 @@ absl::Status RunPostSchedulingCopyInsertion(
 }
 }  // namespace
 
-using OutputInfoMap =
-    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-
+namespace {
 static void NullDiagnosticHandler(const llvm::DiagnosticInfo* diag_info,
                                   void* context) {
   std::string error_string;
@@ -1879,8 +1877,6 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo* diag_info,
 
   VLOG(5) << error_string;
 }
-
-namespace {
 
 std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
                                             llvm::LLVMContext& context) {
