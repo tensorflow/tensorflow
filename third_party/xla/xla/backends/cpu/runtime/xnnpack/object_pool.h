@@ -21,6 +21,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -29,7 +31,7 @@ namespace xla::cpu {
 //
 // This object pool is intended to be used on a critical path and optimized for
 // zero-allocation in steady state.
-template <typename T>
+template <typename T, typename... Args>
 class ObjectPool {
   struct Entry {
     T object;
@@ -37,13 +39,15 @@ class ObjectPool {
   };
 
  public:
-  explicit ObjectPool(absl::AnyInvocable<T()> builder, size_t initial_size = 0);
+  explicit ObjectPool(absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder);
   ~ObjectPool();
 
   class BorrowedObject {
    public:
     ~BorrowedObject();
+
     T& operator*() { return entry_->object; }
+    T* operator->() { return &entry_->object; }
 
     BorrowedObject(BorrowedObject&&) = default;
     BorrowedObject& operator=(BorrowedObject&&) = default;
@@ -51,55 +55,59 @@ class ObjectPool {
    private:
     friend class ObjectPool;
 
-    BorrowedObject(ObjectPool<T>* parent, std::unique_ptr<Entry> entry);
+    BorrowedObject(ObjectPool* parent, std::unique_ptr<Entry> entry);
 
-    ObjectPool<T>* parent_;
+    ObjectPool* parent_;
     std::unique_ptr<Entry> entry_;
   };
 
-  BorrowedObject GetOrCreate();
+  absl::StatusOr<BorrowedObject> GetOrCreate(Args... args);
+
+  size_t num_created() const { return num_created_.load(); }
 
  private:
-  std::unique_ptr<Entry> CreateEntry();
+  absl::StatusOr<std::unique_ptr<Entry>> CreateEntry(Args... args);
   std::unique_ptr<Entry> PopEntry();
   void PushEntry(std::unique_ptr<Entry> entry);
 
-  absl::AnyInvocable<T()> builder_;
+  absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder_;
   std::atomic<Entry*> head_;
+  std::atomic<size_t> num_created_;
 };
 
-template <typename T>
-ObjectPool<T>::ObjectPool(absl::AnyInvocable<T()> builder, size_t initial_size)
-    : builder_(std::move(builder)), head_(nullptr) {
-  for (size_t i = 0; i < initial_size; ++i) PushEntry(CreateEntry());
-}
+template <typename T, typename... Args>
+ObjectPool<T, Args...>::ObjectPool(
+    absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder)
+    : builder_(std::move(builder)), head_(nullptr), num_created_(0) {}
 
-template <typename T>
-ObjectPool<T>::~ObjectPool() {
+template <typename T, typename... Args>
+ObjectPool<T, Args...>::~ObjectPool() {
   while (Entry* entry = head_.load()) {
     head_.store(entry->next);
     delete entry;
   }
 }
 
-template <typename T>
-auto ObjectPool<T>::CreateEntry() -> std::unique_ptr<Entry> {
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::CreateEntry(Args... args)
+    -> absl::StatusOr<std::unique_ptr<Entry>> {
   auto entry = std::make_unique<Entry>();
-  entry->object = builder_();
+  TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
   entry->next = nullptr;
+  num_created_.fetch_add(1);
   return entry;
 }
 
-template <typename T>
-auto ObjectPool<T>::PopEntry() -> std::unique_ptr<Entry> {
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
   Entry* head = head_.load();
   while (head && !head_.compare_exchange_weak(head, head->next)) {
   }
   return std::unique_ptr<Entry>(head);
 }
 
-template <typename T>
-void ObjectPool<T>::PushEntry(std::unique_ptr<Entry> entry) {
+template <typename T, typename... Args>
+void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
   Entry* head = head_.load();
   Entry* new_head = entry.release();
   do {
@@ -107,22 +115,24 @@ void ObjectPool<T>::PushEntry(std::unique_ptr<Entry> entry) {
   } while (!head_.compare_exchange_weak(head, new_head));
 }
 
-template <typename T>
-ObjectPool<T>::BorrowedObject::BorrowedObject(ObjectPool<T>* parent,
-                                              std::unique_ptr<Entry> entry)
+template <typename T, typename... Args>
+ObjectPool<T, Args...>::BorrowedObject::BorrowedObject(
+    ObjectPool<T, Args...>* parent, std::unique_ptr<Entry> entry)
     : parent_(parent), entry_(std::move(entry)) {}
 
-template <typename T>
-ObjectPool<T>::BorrowedObject::~BorrowedObject() {
+template <typename T, typename... Args>
+ObjectPool<T, Args...>::BorrowedObject::~BorrowedObject() {
   if (parent_ && entry_) parent_->PushEntry(std::move(entry_));
 }
 
-template <typename T>
-auto ObjectPool<T>::GetOrCreate() -> BorrowedObject {
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
+    -> absl::StatusOr<BorrowedObject> {
   if (std::unique_ptr<Entry> entry = PopEntry()) {
     return BorrowedObject(this, std::move(entry));
   }
-  return BorrowedObject(this, CreateEntry());
+  TF_ASSIGN_OR_RETURN(auto entry, CreateEntry(std::forward<Args>(args)...));
+  return BorrowedObject(this, std::move(entry));
 }
 
 }  // namespace xla::cpu
