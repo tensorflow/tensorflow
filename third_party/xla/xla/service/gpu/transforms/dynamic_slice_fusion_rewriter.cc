@@ -185,7 +185,7 @@ bool IsValueFunctionOfLoopInductionVariable(const HloInstruction& value,
     return false;
   }
   HloInstruction* while_op = callers[0];
-  if (while_op->opcode() != HloOpcode::kWhile) {
+  if (HloPredicateIsNotOp<HloOpcode::kWhile>(while_op)) {
     VLOG(2) << "Computation caller is not while, it is "
             << while_op->ToString();
     return false;
