@@ -24,8 +24,11 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,6 +66,35 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
+
+// MSA allows for custom post-allocation transformations. When a post-allocation
+// transformation is performed on an instruction, this result is returned. It
+// tells MSA:
+//  1. A list of instructions that MSA should delete.
+//  2. A list of HloUses that the transformation replaced.
+// This information is then passed to MsaAlgorithm and must be applied to the
+// allocations in FixAllocationSequenceAfterPostAllocationTransformation call.
+struct PostAllocationTransformationUpdate {
+  std::vector<HloInstruction*> to_be_removed;
+  absl::flat_hash_map<HloUse, HloUse> update_use_map;
+
+  std::string ToString() const {
+    return absl::StrCat(
+        "to_be_removed: ",
+        absl::StrJoin(to_be_removed, ", ",
+                      [](std::string* out, const auto& entry) {
+                        absl::StrAppend(out, entry->name());
+                      }),
+        "\n", "update_use_map_size: ", update_use_map.size(), "\n",
+        "update_use_map: ",
+        absl::StrJoin(update_use_map, ", ",
+                      [](std::string* out, const auto& entry) {
+                        absl::StrAppend(out, "<", entry.first.ToString(),
+                                        " -> ", entry.second.ToString(), ">");
+                      }),
+        "\n");
+  }
+};
 
 // The different options to be passed to the Run() API.
 struct Options {
@@ -147,6 +179,22 @@ struct Options {
   // AllocateSegment().
   std::function<void(AllocationRequest&)>
       allocation_request_modifier_testing_fn = nullptr;
+
+  // Applies post-allocation transformations to the given instruction. This
+  // function is called after the allocations are found in the MsaAlgorithm. It
+  // is called on every instruction in non-fusion computations that does not
+  // have operands in alternate memory and their operands don't have in-place
+  // users. The transformation function is allowed to do the following:
+  //  1. Mark instructions for removal.
+  //  2. Modify existing instructions.
+  // This transformation is NOT allowed to:
+  //  1. Directly remove instructions (or nullify them).
+  //  2. Add new instructions.
+  // Note that it is up to the transformation function to ensure that the
+  // changes to the module preserves the semantics of the original program.
+  std::function<absl::StatusOr<PostAllocationTransformationUpdate>(
+      HloInstruction*)>
+      post_allocation_transformation_fn;
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate
