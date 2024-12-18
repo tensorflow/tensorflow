@@ -16,7 +16,7 @@
 
 import numpy as np
 
-from xla.codegen.testlib import _extention
+from xla.codegen.testlib import _extension
 from xla.python import xla_extension
 
 
@@ -27,4 +27,4 @@ def create_literal_from_np(array: np.ndarray) -> xla_extension.Literal:
   return literal
 
 # Intentionally rexport-ed to be avalable in the public API.
-opcode_arity = _extention.opcode_arity
+opcode_arity = _extension.opcode_arity

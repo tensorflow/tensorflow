@@ -14,14 +14,14 @@
 # ==============================================================================
 """Public API for codegen testlib."""
 
-from xla.codegen.testlib import _extention
+from xla.codegen.testlib import _extension
 
 # Classes
 # go/keep-sorted start
-ComparisonDirection = _extention.ComparisonDirection
-HloInstruction = _extention.HloInstruction
-HloOpcode = _extention.HloOpcode
-KernelEmmitter = _extention.KernelEmitter
-KernelRunner = _extention.KernelRunner
-KernelSpec = _extention.KernelSpec
+ComparisonDirection = _extension.ComparisonDirection
+HloInstruction = _extension.HloInstruction
+HloOpcode = _extension.HloOpcode
+KernelEmmitter = _extension.KernelEmitter
+KernelRunner = _extension.KernelRunner
+KernelSpec = _extension.KernelSpec
 # go/keep-sorted end

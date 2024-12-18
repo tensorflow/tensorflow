@@ -115,7 +115,7 @@ class DummyAddKernelRunner final : public KernelRunner {
 
 }  // namespace
 
-NB_MODULE(_extention, kernel_runner_module) {
+NB_MODULE(_extension, kernel_runner_module) {
   namespace nb = nanobind;
 
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource");

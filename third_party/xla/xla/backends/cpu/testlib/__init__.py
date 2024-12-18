@@ -14,11 +14,11 @@
 # ==============================================================================
 """Public API for cpu codegen testlib."""
 
-from xla.backends.cpu.testlib import _extention
+from xla.backends.cpu.testlib import _extension
 
 # go/keep-sorted start
-ElementalKernelEmitter = _extention.ElementalKernelEmitter
-KernelRunner = _extention.KernelRunner
-LlvmIrKernelEmitter = _extention.LlvmIrKernelEmitter
-LlvmIrKernelSpec = _extention.LlvmIrKernelSpec
+ElementalKernelEmitter = _extension.ElementalKernelEmitter
+KernelRunner = _extension.KernelRunner
+LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
+LlvmIrKernelSpec = _extension.LlvmIrKernelSpec
 # go/keep-sorted end
