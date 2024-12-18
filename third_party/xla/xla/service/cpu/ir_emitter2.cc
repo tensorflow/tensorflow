@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -610,7 +609,7 @@ absl::Status IrEmitter2::VerifyKernelParameters(
 }
 
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
-    std::string_view name, absl::Span<const KernelParameter> arguments,
+    absl::string_view name, absl::Span<const KernelParameter> arguments,
     absl::Span<const KernelParameter> results) {
   VLOG(3) << "Emit kernel prototype: " << name
           << ", #arguments=" << arguments.size()
@@ -799,7 +798,7 @@ absl::Status IrEmitter2::CanDoFastConcatenate(
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
     llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
     const ParallelConfig& parallel_config, const Shape& shape,
-    std::string_view name) {
+    absl::string_view name) {
   ShapePartitionIterator it(shape, parallel_config.outer_dimension_partitions);
 
   size_t num_parallel_dimensions =

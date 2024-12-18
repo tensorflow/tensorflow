@@ -46,7 +46,7 @@ namespace xla {
 namespace {
 
 // Used in LOG(INFO) statements for analysis logging.
-constexpr std::string_view kLoggingAnalysisId = "COST_LOGGING";
+constexpr absl::string_view kLoggingAnalysisId = "COST_LOGGING";
 
 }  // namespace
 
@@ -291,7 +291,7 @@ class CalculationLeaf : public OpCostManager::CalculationNode {
     return cost_value.value();
   }
 
-  std::string_view Name() const override { return name_; }
+  absl::string_view Name() const override { return name_; }
 
   std::vector<std::string> LeafCalculatorNames() const override {
     return {name_};
@@ -373,7 +373,7 @@ class DelegationCalculationNode : public OpCostManager::CalculationNode {
     return final_result;
   }
 
-  std::string_view Name() const override { return name_; }
+  absl::string_view Name() const override { return name_; }
 
   std::vector<std::string> LeafCalculatorNames() const override {
     std::vector<std::string> result;

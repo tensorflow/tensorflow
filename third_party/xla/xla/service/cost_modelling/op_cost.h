@@ -265,7 +265,7 @@ class OpCostManager {
         const CostMetricId& metric_id,
         LeafCalculatorValueMap* calculator_value_map) = 0;
 
-    virtual std::string_view Name() const = 0;
+    virtual absl::string_view Name() const = 0;
 
     // Returns the names of leaf calculators at or below the node (in the tree).
     // Leaf calculator names are used to uniquely identify the costs associated

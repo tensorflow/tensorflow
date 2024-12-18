@@ -27,7 +27,6 @@ limitations under the License.
 #include <ostream>
 #include <set>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -8371,7 +8370,7 @@ ENTRY main {
   Options options = DefaultMemorySpaceOptions();
   options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
-        std::string_view inst_name = position.instruction->name();
+        absl::string_view inst_name = position.instruction->name();
         if (inst_name == "fusion1" ||
             (inst_name == "fusion2" && position.index != ShapeIndex({0}))) {
           return true;
@@ -8477,7 +8476,7 @@ ENTRY main {
   Options options = DefaultMemorySpaceOptions();
   options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
-        std::string_view inst_name = position.instruction->name();
+        absl::string_view inst_name = position.instruction->name();
         if (inst_name == "fusion1" ||
             (inst_name == "fusion2" && position.index != ShapeIndex({0}))) {
           return true;
@@ -8599,7 +8598,7 @@ ENTRY main {
   Options options = DefaultMemorySpaceOptions();
   options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
-        std::string_view inst_name = position.instruction->name();
+        absl::string_view inst_name = position.instruction->name();
         if (inst_name == "fusion1" ||
             (inst_name == "fusion2" && position.index != ShapeIndex({0})) ||
             (inst_name == "fusion3" && position.index != ShapeIndex({0}))) {
@@ -10498,7 +10497,7 @@ ENTRY entry {
 // - Test: prefetch p1, after p0 is unallocated from alternate memory (after
 //   instruction c).
 TEST_F(MemorySpaceAssignmentTest, CopyResourceIntegration) {
-  std::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
 ENTRY main {
@@ -10587,7 +10586,7 @@ ENTRY main {
   // Check the schedule
   const std::vector<HloInstruction*>& schedule =
       module->schedule().sequence(module->entry_computation()).instructions();
-  auto find_schedule_index = [&schedule](std::string_view name) -> int {
+  auto find_schedule_index = [&schedule](absl::string_view name) -> int {
     for (int i = 0; i < schedule.size(); ++i) {
       if (schedule[i]->name() == name) {
         return i;
@@ -10879,7 +10878,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
     static bool MatchMemorySpace(const HloInstruction* instruction,
                                  int64_t expected_memory_space,
-                                 std::string_view error_message_identifier,
+                                 absl::string_view error_message_identifier,
                                  ::testing::MatchResultListener* listener) {
       if (!instruction->shape().has_layout()) {
         *listener << " contains " << error_message_identifier << " named "
@@ -11036,7 +11035,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
   // Returns the index of the first instruction with the given name.
   static absl::StatusOr<int> FindScheduleIndexOfInstruction(
-      const std::vector<HloInstruction*>& schedule, std::string_view name,
+      const std::vector<HloInstruction*>& schedule, absl::string_view name,
       InstructionClass c) {
     for (int i = 0; i < schedule.size(); ++i) {
       if (schedule[i]->name() == name) {
@@ -11052,7 +11051,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
   // Returns a scheduled instruction with the specified name or null.
   static const HloInstruction* FindNamedScheduledInstruction(
-      const HloModule& module, std::string_view name) {
+      const HloModule& module, absl::string_view name) {
     for (const HloInstruction* i : module.entry_computation()->instructions()) {
       if (i->name() == name) {
         return i;
@@ -11307,8 +11306,8 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   // - concat_bitcast comes after all slice dones AND
   static absl::Status CheckSchedule(
       const HloModule& module, const HloInstruction* concat_bitcast,
-      std::string_view slices_start_after_instruction_name,
-      std::string_view slices_done_before_instruction_name,
+      absl::string_view slices_start_after_instruction_name,
+      absl::string_view slices_done_before_instruction_name,
       bool expect_slices_started_at_different_times) {
     CHECK(concat_bitcast->IsCustomCall(kConcatBitcastCustomCall));
 
@@ -12291,8 +12290,8 @@ ENTRY main {
   // A lambda for generating HLO with 2 while loops called back to back. The
   // first while loop will execute while_computation1 and the second while loop
   // will execute while_computation2.
-  auto gen_hlo = [&](std::string_view while_computation1,
-                     std::string_view while_computation2) {
+  auto gen_hlo = [&](absl::string_view while_computation1,
+                     absl::string_view while_computation2) {
     return absl::StrReplaceAll(
         module_text,
         {
@@ -12333,7 +12332,7 @@ ENTRY main {
   // Define a lambda for running MSA on the specified HLO, with the
   // configuration above.
   auto run_msa =
-      [&](std::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
+      [&](absl::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
     ModuleAndAssignments module_and_assignments;
     TF_ASSIGN_OR_RETURN(module_and_assignments.module,
                         ParseAndReturnVerifiedModule(hlo_text));

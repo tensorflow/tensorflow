@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -82,7 +81,7 @@ class IrEmitter2Test : public HloTestBase {
   // underlying FindInstruction function static first.
   absl::StatusOr<IrEmitter2::KernelInfo> EmitElementalHostKernel(
       IrEmitter2& ir_emitter, HloModule& hlo,
-      std::string_view instruction_name) {
+      absl::string_view instruction_name) {
     HloInstruction* instruction = FindInstruction(&hlo, instruction_name);
 
     if (instruction == nullptr) {

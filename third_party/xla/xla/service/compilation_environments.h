@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <typeindex>
 #include <utility>
 
@@ -118,11 +117,11 @@ class CompilationEnvironments {
   // track stats about how many such environments are created by
   // CompilationEnvironments.
   static void DefaultEnvCreatedByCompilationEnvironments(
-      std::string_view env_type);
+      absl::string_view env_type);
 
   // Called by AddEnv(), to globally track stats about how many environments
   // are added to CompilationEnvironments.
-  static void EnvAdded(std::string_view env_type);
+  static void EnvAdded(absl::string_view env_type);
 
   absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
                           std::unique_ptr<tsl::protobuf::Message> env);

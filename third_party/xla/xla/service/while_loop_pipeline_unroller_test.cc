@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/while_loop_pipeline_unroller.h"
 
 #include <cstdint>
-#include <string_view>
 
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -49,7 +49,7 @@ class WhileLoopPipelineUnrollerTest : public HloTestBase {
 };
 
 TEST_F(WhileLoopPipelineUnrollerTest, PipelinedLoop) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {
@@ -100,7 +100,7 @@ ENTRY main {
 }
 
 TEST_F(WhileLoopPipelineUnrollerTest, PipelinedLoopWithInfeed) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {

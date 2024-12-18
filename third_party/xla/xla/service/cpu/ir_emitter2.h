@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -171,7 +170,7 @@ class IrEmitter2 {
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
-      std::string_view name, absl::Span<const KernelParameter> arguments,
+      absl::string_view name, absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
 
   // Emits a host kernel prototype for the given HLO instruction.
@@ -219,7 +218,7 @@ class IrEmitter2 {
   ParallelPartitionBounds EmitParallelPartitionBounds(
       llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
       const ParallelConfig& parallel_config, const Shape& shape,
-      std::string_view name);
+      absl::string_view name);
 
   // Emits LLVM IR using elemental loop emitter and the given element generator.
   // If the instruction is parallelized, it will emit a parallel loop partition
