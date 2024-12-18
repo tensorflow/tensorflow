@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -121,6 +123,51 @@ Expected<void> CompiledModel::Run(
   if (auto status = LiteRtRunCompiledModel(
           Get(), signature_index, input_buffers.size(), input_buffers_ptr.get(),
           output_buffers.size(), output_buffers_ptr.get());
+      status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to invoke the compiled model");
+  }
+  return {};
+}
+
+Expected<void> CompiledModel::Run(
+    size_t signature_index,
+    const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+    const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map) {
+  auto signature = model_->GetSignature(signature_index);
+  if (!signature) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  }
+  auto subgraph = model_->Subgraph(signature->Key());
+  if (!subgraph) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
+  }
+  auto input_tensors = subgraph->Inputs();
+  size_t num_inputs = input_tensors.size();
+  auto input_buffers_ptr = std::make_unique<LiteRtTensorBuffer[]>(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    absl::string_view input_name = input_tensors[i].Name();
+    auto it = input_map.find(input_name);
+    if (it == input_map.end()) {
+      return Unexpected(kLiteRtStatusErrorNotFound,
+                        "The given map is missing some input TensorBuffers");
+    }
+    input_buffers_ptr[i] = it->second.Get();
+  }
+  auto output_tensors = subgraph->Outputs();
+  size_t num_outputs = output_tensors.size();
+  auto output_buffers_ptr = std::make_unique<LiteRtTensorBuffer[]>(num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    absl::string_view output_name = output_tensors[i].Name();
+    auto it = output_map.find(output_name);
+    if (it == output_map.end()) {
+      return Unexpected(kLiteRtStatusErrorNotFound,
+                        "The given map is missing some output TensorBuffers");
+    }
+    output_buffers_ptr[i] = it->second.Get();
+  }
+  if (auto status = LiteRtRunCompiledModel(Get(), signature_index, num_inputs,
+                                           input_buffers_ptr.get(), num_outputs,
+                                           output_buffers_ptr.get());
       status != kLiteRtStatusOk) {
     return Unexpected(status, "Failed to invoke the compiled model");
   }
