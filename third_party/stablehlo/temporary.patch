@@ -497,6 +497,867 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
  // Miscellaneous ops
  //===----------------------------------------------------------------------===//
  
+diff --ruN a/stablehlo/stablehlo/integrations/python/CheckModule.cpp b/stablehlo/stablehlo/integrations/python/CheckModule.cpp
+--- stablehlo/stablehlo/integrations/python/CheckModule.cpp
++++ stablehlo/stablehlo/integrations/python/CheckModule.cpp
+@@ -11,12 +11,13 @@
+ ==============================================================================*/
+ 
+ #include "mlir-c/IR.h"
+-#include "mlir/Bindings/Python/PybindAdaptors.h"
++#include "mlir/Bindings/Python/NanobindAdaptors.h"
++#include "nanobind/nanobind.h"
+ #include "stablehlo/integrations/c/CheckDialect.h"
+ 
+-namespace py = pybind11;
++namespace nb = nanobind;
+ 
+-PYBIND11_MODULE(_check, m) {
++NB_MODULE(_check, m) {
+   m.doc() = "check main python extension";
+ 
+   //
+@@ -32,5 +33,5 @@
+           mlirDialectHandleLoadDialect(dialect, context);
+         }
+       },
+-      py::arg("context"), py::arg("load") = true);
++      nb::arg("context"), nb::arg("load") = true);
+ }
+diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
+--- stablehlo/stablehlo/integrations/python/ChloModule.cpp
++++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
+@@ -12,21 +12,23 @@
+ ==============================================================================*/
+ 
+ #include "mlir-c/IR.h"
+-#include "mlir/Bindings/Python/PybindAdaptors.h"
++#include "mlir/Bindings/Python/NanobindAdaptors.h"
++#include "nanobind/nanobind.h"
++#include "nanobind/stl/string_view.h"
+ #include "stablehlo/integrations/c/ChloAttributes.h"
+ #include "stablehlo/integrations/c/ChloDialect.h"
+ 
+-namespace py = pybind11;
++namespace nb = nanobind;
+ 
+ namespace {
+ 
+ auto toPyString(MlirStringRef mlirStringRef) {
+-  return py::str(mlirStringRef.data, mlirStringRef.length);
++  return nb::str(mlirStringRef.data, mlirStringRef.length);
+ }
+ 
+ }  // namespace
+ 
+-PYBIND11_MODULE(_chlo, m) {
++NB_MODULE(_chlo, m) {
+   m.doc() = "chlo main python extension";
+ 
+   //
+@@ -42,35 +44,37 @@
+           mlirDialectHandleLoadDialect(dialect, context);
+         }
+       },
+-      py::arg("context"), py::arg("load") = true);
++      nb::arg("context"), nb::arg("load") = true);
+ 
+   //
+   // Attributes.
+   //
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ComparisonDirectionAttr", chloAttributeIsAComparisonDirectionAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, std::string_view value, MlirContext ctx) {
+             return cls(chloComparisonDirectionAttrGet(
+-                ctx, mlirStringRefCreate(value.c_str(), value.size())));
++                ctx, mlirStringRefCreate(value.data(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a ComparisonDirection attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(chloComparisonDirectionAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ComparisonTypeAttr", chloAttributeIsAComparisonTypeAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, std::string_view value, MlirContext ctx) {
+             return cls(chloComparisonTypeAttrGet(
+-                ctx, mlirStringRefCreate(value.c_str(), value.size())));
++                ctx, mlirStringRefCreate(value.data(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a ComparisonType attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(chloComparisonTypeAttrGetValue(self));
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+@@ -15,6 +15,7 @@
+ 
+ #include "stablehlo/integrations/python/StablehloApi.h"
+ 
++#include <stdexcept>
+ #include <string>
+ #include <string_view>
+ 
+@@ -22,10 +23,14 @@
+ #include "mlir-c/BuiltinAttributes.h"
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
+-#include "mlir/Bindings/Python/PybindAdaptors.h"
++#include "mlir/Bindings/Python/NanobindAdaptors.h"
++#include "nanobind/nanobind.h"
++#include "nanobind/stl/string.h"
++#include "nanobind/stl/string_view.h"
++#include "nanobind/stl/vector.h"
+ #include "stablehlo/integrations/c/StablehloApi.h"
+ 
+-namespace py = pybind11;
++namespace nb = nanobind;
+ 
+ namespace mlir {
+ namespace stablehlo {
+@@ -63,14 +68,18 @@
+   return mlirStringRefCreate(s.data(), s.size());
+ }
+ 
+-void AddStablehloApi(py::module &m) {
++static MlirStringRef toMlirStringRef(const nb::bytes &s) {
++  return mlirStringRefCreate(static_cast<const char *>(s.data()), s.size());
++}
++
++void AddStablehloApi(nb::module_ &m) {
+   // Portable API is a subset of StableHLO API
+   AddPortableApi(m);
+ 
+   //
+   // Utility APIs.
+   //
+-  py::enum_<MlirStablehloCompatibilityRequirement>(
++  nb::enum_<MlirStablehloCompatibilityRequirement>(
+       m, "StablehloCompatibilityRequirement")
+       .value("NONE", MlirStablehloCompatibilityRequirement::NONE)
+       .value("WEEK_4", MlirStablehloCompatibilityRequirement::WEEK_4)
+@@ -79,34 +88,34 @@
+ 
+   m.def(
+       "get_version_from_compatibility_requirement",
+-      [](MlirStablehloCompatibilityRequirement requirement) -> py::str {
++      [](MlirStablehloCompatibilityRequirement requirement) -> std::string {
+         StringWriterHelper accumulator;
+         stablehloVersionFromCompatibilityRequirement(
+             requirement, accumulator.getMlirStringCallback(),
+             accumulator.getUserData());
+         return accumulator.toString();
+       },
+-      py::arg("requirement"));
++      nb::arg("requirement"));
+ 
+   //
+   // Serialization APIs.
+   //
+   m.def(
+       "serialize_portable_artifact",
+-      [](MlirModule module, std::string_view target) -> py::bytes {
++      [](MlirModule module, std::string_view target) -> nb::bytes {
+         StringWriterHelper accumulator;
+         if (mlirLogicalResultIsFailure(
+                 stablehloSerializePortableArtifactFromModule(
+                     module, toMlirStringRef(target),
+                     accumulator.getMlirStringCallback(),
+                     accumulator.getUserData()))) {
+-          PyErr_SetString(PyExc_ValueError, "failed to serialize module");
+-          return "";
+-        }
+-
+-        return py::bytes(accumulator.toString());
+-      },
+-      py::arg("module"), py::arg("target"));
++          throw nb::value_error("failed to serialize module");
++        }
++
++        std::string serialized = accumulator.toString();
++        return nb::bytes(serialized.data(), serialized.size());
++      },
++      nb::arg("module"), nb::arg("target"));
+ 
+   m.def(
+       "deserialize_portable_artifact",
+@@ -114,13 +123,22 @@
+         auto module = stablehloDeserializePortableArtifactNoError(
+             toMlirStringRef(artifact), context);
+         if (mlirModuleIsNull(module)) {
+-          PyErr_SetString(PyExc_ValueError, "failed to deserialize module");
+-          return {};
++          throw nb::value_error("failed to deserialize module");
+         }
+         return module;
+       },
+-      py::arg("context"), py::arg("artifact"));
+-
++      nb::arg("context"), nb::arg("artifact"));
++  m.def(
++      "deserialize_portable_artifact",
++      [](MlirContext context, nb::bytes artifact) -> MlirModule {
++        auto module = stablehloDeserializePortableArtifactNoError(
++            toMlirStringRef(artifact), context);
++        if (mlirModuleIsNull(module)) {
++          throw nb::value_error("failed to deserialize module");
++        }
++        return module;
++      },
++      nb::arg("context"), nb::arg("artifact"));
+   //
+   // Reference APIs
+   //
+@@ -130,9 +148,7 @@
+          std::vector<MlirAttribute> &args) -> std::vector<MlirAttribute> {
+         for (auto arg : args) {
+           if (!mlirAttributeIsADenseElements(arg)) {
+-            PyErr_SetString(PyExc_ValueError,
+-                            "input args must be DenseElementsAttr");
+-            return {};
++            throw nb::value_error("input args must be DenseElementsAttr");
+           }
+         }
+ 
+@@ -141,8 +157,7 @@
+             stablehloEvalModule(module, args.size(), args.data(), &errorCode);
+ 
+         if (errorCode != 0) {
+-          PyErr_SetString(PyExc_ValueError, "interpreter failed");
+-          return {};
++          throw nb::value_error("interpreter failed");
+         }
+ 
+         std::vector<MlirAttribute> pyResults;
+@@ -151,10 +166,10 @@
+         }
+         return pyResults;
+       },
+-      py::arg("module"), py::arg("args"));
+-}
+-
+-void AddPortableApi(py::module &m) {
++      nb::arg("module"), nb::arg("args"));
++}
++
++void AddPortableApi(nb::module_ &m) {
+   //
+   // Utility APIs.
+   //
+@@ -162,28 +177,28 @@
+ 
+   m.def(
+       "get_smaller_version",
+-      [](const std::string &version1, const std::string &version2) -> py::str {
++      [](const std::string &version1,
++         const std::string &version2) -> std::string {
+         StringWriterHelper accumulator;
+         if (mlirLogicalResultIsFailure(stablehloGetSmallerVersion(
+                 toMlirStringRef(version1), toMlirStringRef(version2),
+                 accumulator.getMlirStringCallback(),
+                 accumulator.getUserData()))) {
+-          PyErr_SetString(PyExc_ValueError,
+-                          "failed to convert version to stablehlo version");
+-          return "";
++          throw nb::value_error(
++              "failed to convert version to stablehlo version");
+         }
+         return accumulator.toString();
+       },
+-      py::arg("version1"), py::arg("version2"));
+-
+-  m.def("get_current_version", []() -> py::str {
++      nb::arg("version1"), nb::arg("version2"));
++
++  m.def("get_current_version", []() -> std::string {
+     StringWriterHelper accumulator;
+     stablehloGetCurrentVersion(accumulator.getMlirStringCallback(),
+                                accumulator.getUserData());
+     return accumulator.toString();
+   });
+ 
+-  m.def("get_minimum_version", []() -> py::str {
++  m.def("get_minimum_version", []() -> std::string {
+     StringWriterHelper accumulator;
+     stablehloGetMinimumVersion(accumulator.getMlirStringCallback(),
+                                accumulator.getUserData());
+@@ -196,7 +211,7 @@
+   m.def(
+       "serialize_portable_artifact_str",
+       [](std::string_view moduleStrOrBytecode,
+-         std::string_view targetVersion) -> py::bytes {
++         std::string_view targetVersion) -> nb::bytes {
+         StringWriterHelper accumulator;
+         if (mlirLogicalResultIsFailure(
+                 stablehloSerializePortableArtifactFromStringRef(
+@@ -204,26 +219,56 @@
+                     toMlirStringRef(targetVersion),
+                     accumulator.getMlirStringCallback(),
+                     accumulator.getUserData()))) {
+-          PyErr_SetString(PyExc_ValueError, "failed to serialize module");
+-          return "";
+-        }
+-        return py::bytes(accumulator.toString());
+-      },
+-      py::arg("module_str"), py::arg("target_version"));
++          throw nb::value_error("failed to serialize module");
++        }
++        std::string serialized = accumulator.toString();
++        return nb::bytes(serialized.data(), serialized.size());
++      },
++      nb::arg("module_str"), nb::arg("target_version"));
++  m.def(
++      "serialize_portable_artifact_str",
++      [](nb::bytes moduleStrOrBytecode,
++         std::string_view targetVersion) -> nb::bytes {
++        StringWriterHelper accumulator;
++        if (mlirLogicalResultIsFailure(
++                stablehloSerializePortableArtifactFromStringRef(
++                    toMlirStringRef(moduleStrOrBytecode),
++                    toMlirStringRef(targetVersion),
++                    accumulator.getMlirStringCallback(),
++                    accumulator.getUserData()))) {
++          throw nb::value_error("failed to serialize module");
++        }
++        std::string serialized = accumulator.toString();
++        return nb::bytes(serialized.data(), serialized.size());
++      },
++      nb::arg("module_str"), nb::arg("target_version"));
+ 
+   m.def(
+       "deserialize_portable_artifact_str",
+-      [](std::string_view artifact) -> py::bytes {
++      [](std::string_view artifact) -> nb::bytes {
+         StringWriterHelper accumulator;
+         if (mlirLogicalResultIsFailure(stablehloDeserializePortableArtifact(
+                 toMlirStringRef(artifact), accumulator.getMlirStringCallback(),
+                 accumulator.getUserData()))) {
+-          PyErr_SetString(PyExc_ValueError, "failed to deserialize module");
+-          return "";
+-        }
+-        return py::bytes(accumulator.toString());
+-      },
+-      py::arg("artifact_str"));
++          throw nb::value_error("failed to deserialize module");
++        }
++        std::string serialized = accumulator.toString();
++        return nb::bytes(serialized.data(), serialized.size());
++      },
++      nb::arg("artifact_str"));
++  m.def(
++      "deserialize_portable_artifact_str",
++      [](const nb::bytes& artifact) -> nb::bytes {
++        StringWriterHelper accumulator;
++        if (mlirLogicalResultIsFailure(stablehloDeserializePortableArtifact(
++                toMlirStringRef(artifact), accumulator.getMlirStringCallback(),
++                accumulator.getUserData()))) {
++          throw nb::value_error("failed to deserialize module");
++        }
++        std::string serialized = accumulator.toString();
++        return nb::bytes(serialized.data(), serialized.size());
++      },
++      nb::arg("artifact_str"));
+ }
+ 
+ }  // namespace stablehlo
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.h b/stablehlo/stablehlo/integrations/python/StablehloApi.h
+--- stablehlo/stablehlo/integrations/python/StablehloApi.h
++++ stablehlo/stablehlo/integrations/python/StablehloApi.h
+@@ -16,20 +16,20 @@
+ #ifndef STABLEHLO_INTEGRATIONS_PYTHON_API_STABLEHLOAPI_H
+ #define STABLEHLO_INTEGRATIONS_PYTHON_API_STABLEHLOAPI_H
+ 
+-#include "pybind11/pybind11.h"
++#include "nanobind/nanobind.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+ 
+-// Add StableHLO APIs to the pybind11 module.
++// Add StableHLO APIs to the nanobind module.
+ // Signatures of these APIs have no dependency on C++ MLIR types and all must
+ // use C API passthrough.
+-void AddStablehloApi(pybind11::module& m);
++void AddStablehloApi(nanobind::module_& m);
+ 
+ // Adds a subset of the StableHLO API that doesn't use MLIR in any definitions,
+ // and is methods only, introducing no new objects / enums to avoid potential
+ // redefinition issues in complex build environments.
+-void AddPortableApi(pybind11::module& m);
++void AddPortableApi(nanobind::module_& m);
+ 
+ }  // namespace stablehlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -15,14 +15,17 @@
+ 
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
+-#include "mlir/Bindings/Python/PybindAdaptors.h"
++#include "mlir/Bindings/Python/NanobindAdaptors.h"
++#include "nanobind/nanobind.h"
++#include "nanobind/stl/string.h"
++#include "nanobind/stl/vector.h"
+ #include "stablehlo/integrations/c/StablehloAttributes.h"
+ #include "stablehlo/integrations/c/StablehloDialect.h"
+ #include "stablehlo/integrations/c/StablehloPasses.h"
+ #include "stablehlo/integrations/c/StablehloTypes.h"
+ #include "stablehlo/integrations/python/StablehloApi.h"
+ 
+-namespace py = pybind11;
++namespace nb = nanobind;
+ 
+ namespace {
+ // Returns a vector containing integers extracted from an attribute using the
+@@ -40,12 +43,12 @@
+ }
+ 
+ auto toPyString(MlirStringRef mlirStringRef) {
+-  return py::str(mlirStringRef.data, mlirStringRef.length);
++  return nb::str(mlirStringRef.data, mlirStringRef.length);
+ }
+ 
+ }  // namespace
+ 
+-PYBIND11_MODULE(_stablehlo, m) {
++NB_MODULE(_stablehlo, m) {
+   m.doc() = "stablehlo main python extension";
+ 
+   //
+@@ -61,7 +64,7 @@
+           mlirDialectHandleLoadDialect(dialect, context);
+         }
+       },
+-      py::arg("context"), py::arg("load") = true);
++      nb::arg("context"), nb::arg("load") = true);
+ 
+   //
+   // Passes.
+@@ -74,14 +77,14 @@
+   // Types.
+   //
+ 
+-  mlir::python::adaptors::mlir_type_subclass(m, "TokenType",
+-                                             stablehloTypeIsAToken)
+-      .def_classmethod(
+-          "get",
+-          [](py::object cls, MlirContext ctx) {
++  mlir::python::nanobind_adaptors::mlir_type_subclass(m, "TokenType",
++                                                      stablehloTypeIsAToken)
++      .def_classmethod(
++          "get",
++          [](nb::object cls, MlirContext ctx) {
+             return cls(stablehloTokenTypeGet(ctx));
+           },
+-          py::arg("cls"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("context").none() = nb::none(),
+           "Creates a Token type.");
+ 
+   //
+@@ -94,12 +97,12 @@
+         stablehloScatterDimensionNumbersGetScatteredDimsToOperandDimsElem);
+   };
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ScatterDimensionNumbers",
+       stablehloAttributeIsAScatterDimensionNumbers)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::vector<int64_t> &updateWindowDims,
++          [](nb::object cls, const std::vector<int64_t> &updateWindowDims,
+              const std::vector<int64_t> &insertedWindowDims,
+              const std::vector<int64_t> &inputBatchingDims,
+              const std::vector<int64_t> &scatterIndicesBatchingDims,
+@@ -114,11 +117,11 @@
+                 scatteredDimsToOperandDims.size(),
+                 scatteredDimsToOperandDims.data(), indexVectorDim));
+           },
+-          py::arg("cls"), py::arg("update_window_dims"),
+-          py::arg("inserted_window_dims"), py::arg("input_batching_dims"),
+-          py::arg("scatter_indices_batching_dims"),
+-          py::arg("scattered_dims_to_operand_dims"),
+-          py::arg("index_vector_dim"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("update_window_dims"),
++          nb::arg("inserted_window_dims"), nb::arg("input_batching_dims"),
++          nb::arg("scatter_indices_batching_dims"),
++          nb::arg("scattered_dims_to_operand_dims"),
++          nb::arg("index_vector_dim"), nb::arg("context").none() = nb::none(),
+           "Creates a ScatterDimensionNumbers with the given dimension "
+           "configuration.")
+       .def_property_readonly(
+@@ -156,11 +159,11 @@
+         return stablehloDimensionNumbersGetIndexVectorDim(self);
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "GatherDimensionNumbers", stablehloAttributeIsAGatherDimensionNumbers)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::vector<int64_t> &offsetDims,
++          [](nb::object cls, const std::vector<int64_t> &offsetDims,
+              const std::vector<int64_t> &collapsedSliceDims,
+              const std::vector<int64_t> &operandBatchingDims,
+              const std::vector<int64_t> &startIndicesBatchingDims,
+@@ -174,10 +177,10 @@
+                 startIndicesBatchingDims.data(), startIndexMap.size(),
+                 startIndexMap.data(), indexVectorDim));
+           },
+-          py::arg("cls"), py::arg("offset_dims"),
+-          py::arg("collapsed_slice_dims"), py::arg("operand_batching_dims"),
+-          py::arg("start_indices_batching_dims"), py::arg("start_index_map"),
+-          py::arg("index_vector_dim"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("offset_dims"),
++          nb::arg("collapsed_slice_dims"), nb::arg("operand_batching_dims"),
++          nb::arg("start_indices_batching_dims"), nb::arg("start_index_map"),
++          nb::arg("index_vector_dim"), nb::arg("context").none() = nb::none(),
+           "Creates a GatherDimensionNumbers attribute with the given dimension "
+           "configuration.")
+       .def_property_readonly(
+@@ -220,11 +223,11 @@
+         return stablehloGatherDimensionNumbersGetIndexVectorDim(self);
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "DotAlgorithm", stablehloAttributeIsADotAlgorithm)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, MlirType lhsPrecisionType,
++          [](nb::object cls, MlirType lhsPrecisionType,
+              MlirType rhsPrecisionType, MlirType accumulationType,
+              int64_t lhsComponentCount, int64_t rhsComponentCount,
+              int64_t numPrimitiveOperations, bool allowImpreciseAccumulation,
+@@ -234,11 +237,12 @@
+                 lhsComponentCount, rhsComponentCount, numPrimitiveOperations,
+                 allowImpreciseAccumulation));
+           },
+-          py::arg("cls"), py::arg("lhs_precision_type"),
+-          py::arg("rhs_precision_type"), py::arg("accumulation_type"),
+-          py::arg("lhs_component_count"), py::arg("rhs_component_count"),
+-          py::arg("num_primitive_operations"),
+-          py::arg("allow_imprecise_accumulation"), py::arg("ctx") = py::none(),
++          nb::arg("cls"), nb::arg("lhs_precision_type"),
++          nb::arg("rhs_precision_type"), nb::arg("accumulation_type"),
++          nb::arg("lhs_component_count"), nb::arg("rhs_component_count"),
++          nb::arg("num_primitive_operations"),
++          nb::arg("allow_imprecise_accumulation"),
++          nb::arg("ctx").none() = nb::none(),
+           "Creates a DotAlgorithm attribute with the given dimension "
+           "configuration.")
+       .def_property_readonly(
+@@ -276,11 +280,11 @@
+             return stablehloDotAlgorithmGetAllowImpreciseAccumulation(self);
+           });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "DotDimensionNumbers", stablehloAttributeIsADotDimensionNumbers)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::vector<int64_t> &lhsBatchingDims,
++          [](nb::object cls, const std::vector<int64_t> &lhsBatchingDims,
+              const std::vector<int64_t> &rhsBatchingDims,
+              const std::vector<int64_t> &lhsContractingDims,
+              const std::vector<int64_t> &rhsContractingDims, MlirContext ctx) {
+@@ -290,11 +294,11 @@
+                 lhsContractingDims.size(), lhsContractingDims.data(),
+                 rhsContractingDims.size(), rhsContractingDims.data()));
+           },
+-          py::arg("cls"), py::arg("lhs_batching_dimensions"),
+-          py::arg("rhs_batching_dimensions"),
+-          py::arg("lhs_contracting_dimensions"),
+-          py::arg("rhs_contracting_dimensions"),
+-          py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("lhs_batching_dimensions"),
++          nb::arg("rhs_batching_dimensions"),
++          nb::arg("lhs_contracting_dimensions"),
++          nb::arg("rhs_contracting_dimensions"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a DotDimensionNumbers attribute with the given dimension "
+           "configuration.")
+       .def_property_readonly(
+@@ -327,11 +331,11 @@
+                 stablehloDotDimensionNumbersGetRhsContractingDimensionsElem);
+           });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ConvDimensionNumbers", stablehloAttributeIsAConvDimensionNumbers)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, int64_t inputBatchDimension,
++          [](nb::object cls, int64_t inputBatchDimension,
+              int64_t inputFeatureDimension,
+              const std::vector<int64_t> inputSpatialDimensions,
+              int64_t kernelInputFeatureDimension,
+@@ -349,15 +353,16 @@
+                 outputSpatialDimensions.size(),
+                 outputSpatialDimensions.data()));
+           },
+-          py::arg("cls"), py::arg("input_batch_dimension"),
+-          py::arg("input_feature_dimension"),
+-          py::arg("input_spatial_dimensions"),
+-          py::arg("kernel_input_feature_dimension"),
+-          py::arg("kernel_output_feature_dimension"),
+-          py::arg("kernel_spatial_dimensions"),
+-          py::arg("output_batch_dimension"),
+-          py::arg("output_feature_dimension"),
+-          py::arg("output_spatial_dimensions"), py::arg("ctx") = py::none(),
++          nb::arg("cls"), nb::arg("input_batch_dimension"),
++          nb::arg("input_feature_dimension"),
++          nb::arg("input_spatial_dimensions"),
++          nb::arg("kernel_input_feature_dimension"),
++          nb::arg("kernel_output_feature_dimension"),
++          nb::arg("kernel_spatial_dimensions"),
++          nb::arg("output_batch_dimension"),
++          nb::arg("output_feature_dimension"),
++          nb::arg("output_spatial_dimensions"),
++          nb::arg("ctx").none() = nb::none(),
+           "Creates a ConvDimensionNumbers attribute with the given dimension "
+           "configuration.")
+       .def_property_readonly(
+@@ -416,11 +421,11 @@
+                 stablehloConvDimensionNumbersGetOutputSpatialDimensionsElem);
+           });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "OutputOperandAlias", stablehloAttributeIsAOutputOperandAlias)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::vector<int64_t> outputTupleIndices,
++          [](nb::object cls, const std::vector<int64_t> outputTupleIndices,
+              int64_t operandIndex,
+              const std::vector<int64_t> operandTupleIndices, MlirContext ctx) {
+             return cls(stablehloOutputOperandAliasGet(
+@@ -428,9 +433,9 @@
+                 operandIndex, operandTupleIndices.size(),
+                 operandTupleIndices.data()));
+           },
+-          py::arg("cls"), py::arg("output_tuple_indices"),
+-          py::arg("operand_index"), py::arg("operand_tuple_indices"),
+-          py::arg("ctx") = py::none(),
++          nb::arg("cls"), nb::arg("output_tuple_indices"),
++          nb::arg("operand_index"), nb::arg("operand_tuple_indices"),
++          nb::arg("ctx").none() = nb::none(),
+           "Creates a OutputOperandAlias attribute with the given tuple index.")
+       .def_property_readonly(
+           "output_tuple_indices",
+@@ -450,114 +455,122 @@
+             stablehloOutputOperandAliasGetOperandTupleIndicesElem);
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ComparisonDirectionAttr",
+       stablehloAttributeIsAComparisonDirectionAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloComparisonDirectionAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a ComparisonDirection attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloComparisonDirectionAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ComparisonTypeAttr", stablehloAttributeIsAComparisonTypeAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloComparisonTypeAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a ComparisonType attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloComparisonTypeAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "PrecisionAttr", stablehloAttributeIsAPrecisionAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloPrecisionAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a Precision attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloPrecisionAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "FftTypeAttr", stablehloAttributeIsAFftTypeAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloFftTypeAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a FftType attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloFftTypeAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "TransposeAttr", stablehloAttributeIsATransposeAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloTransposeAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a Transpose attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloTransposeAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "RngDistributionAttr", stablehloAttributeIsARngDistributionAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloRngDistributionAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a RngDistribution attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloRngDistributionAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "RngAlgorithmAttr", stablehloAttributeIsARngAlgorithmAttr)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::string &value, MlirContext ctx) {
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
+             return cls(stablehloRngAlgorithmAttrGet(
+                 ctx, mlirStringRefCreate(value.c_str(), value.size())));
+           },
+-          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a RngAlgorithm attribute with the given value.")
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(stablehloRngAlgorithmAttrGetValue(self));
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "ChannelHandle", stablehloAttributeIsChannelHandle)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, int64_t handle, int64_t type, MlirContext ctx) {
++          [](nb::object cls, int64_t handle, int64_t type, MlirContext ctx) {
+             return cls(stablehloChannelHandleGet(ctx, handle, type));
+           },
+-          py::arg("cls"), py::arg("handle"), py::arg("type"),
+-          py::arg("context") = py::none(), "Creates a ChannelHandle attribute.")
++          nb::arg("cls"), nb::arg("handle"), nb::arg("type"),
++          nb::arg("context").none() = nb::none(),
++          "Creates a ChannelHandle attribute.")
+       .def_property_readonly("handle",
+                              [](MlirAttribute self) {
+                                return stablehloChannelHandleGetHandle(self);
+@@ -568,16 +581,17 @@
+         return stablehloChannelHandleGetType(self);
+       });
+ 
+-  mlir::python::adaptors::mlir_attribute_subclass(
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+       m, "TypeExtensions", stablehloAttributeIsTypeExtensions)
+       .def_classmethod(
+           "get",
+-          [](py::object cls, const std::vector<int64_t> &bounds,
++          [](nb::object cls, const std::vector<int64_t> &bounds,
+              MlirContext ctx) {
+             return cls(
+                 stablehloTypeExtensionsGet(ctx, bounds.size(), bounds.data()));
+           },
+-          py::arg("cls"), py::arg("bounds"), py::arg("context") = py::none(),
++          nb::arg("cls"), nb::arg("bounds"),
++          nb::arg("context").none() = nb::none(),
+           "Creates a TypeExtensions with the given bounds.")
+       .def_property_readonly("bounds", [](MlirAttribute self) {
+         return attributePropertyVector(self,
+diff --ruN a/stablehlo/stablehlo/integrations/python/VhloModule.cpp b/stablehlo/stablehlo/integrations/python/VhloModule.cpp
+--- stablehlo/stablehlo/integrations/python/VhloModule.cpp
++++ stablehlo/stablehlo/integrations/python/VhloModule.cpp
+@@ -11,12 +11,13 @@
+ ==============================================================================*/
+ 
+ #include "mlir-c/IR.h"
+-#include "mlir/Bindings/Python/PybindAdaptors.h"
++#include "mlir/Bindings/Python/NanobindAdaptors.h"
++#include "nanobind/nanobind.h"
+ #include "stablehlo/integrations/c/VhloDialect.h"
+ 
+-namespace py = pybind11;
++namespace nb = nanobind;
+ 
+-PYBIND11_MODULE(_vhlo, m) {
++NB_MODULE(_vhlo, m) {
+   m.doc() = "vhlo main python extension";
+ 
+   //
+@@ -32,5 +33,5 @@
+           mlirDialectHandleLoadDialect(dialect, context);
+         }
+       },
+-      py::arg("context"), py::arg("load") = true);
++      nb::arg("context"), nb::arg("load") = true);
+ }
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir

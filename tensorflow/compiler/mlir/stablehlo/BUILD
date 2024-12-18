@@ -43,7 +43,7 @@ tsl_pybind_extension(
         "@llvm-project//mlir:CAPIIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
-        "@pybind11",
+        "@nanobind",
         "@stablehlo//:stablehlo_capi",
     ],
 )
