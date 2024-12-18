@@ -1119,6 +1119,7 @@ cc_test(
     deps = [
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
+        ":embedded_validator_runner_entrypoint",
         ":mini_benchmark_test_helper",
         ":nnapi_sl_fake_impl_client",
         ":status_codes",
