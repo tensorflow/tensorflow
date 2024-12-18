@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SIGNATURE_RUNNER_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SIGNATURE_RUNNER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
