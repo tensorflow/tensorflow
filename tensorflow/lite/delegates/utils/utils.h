@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
