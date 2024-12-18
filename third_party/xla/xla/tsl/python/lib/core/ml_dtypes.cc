@@ -61,6 +61,8 @@ struct MlDtypesInitInfo {
 
       numpy_dtypes.bfloat16 =
           py::dtype::from_args(ml_dtypes.attr("bfloat16")).num();
+      numpy_dtypes.float4_e2m1fn =
+          py::dtype::from_args(ml_dtypes.attr("float4_e2m1fn")).num();
       numpy_dtypes.float8_e3m4 =
           py::dtype::from_args(ml_dtypes.attr("float8_e3m4")).num();
       numpy_dtypes.float8_e4m3 =
@@ -75,6 +77,8 @@ struct MlDtypesInitInfo {
           py::dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz")).num();
       numpy_dtypes.float8_e5m2fnuz =
           py::dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz")).num();
+      numpy_dtypes.float8_e8m0fnu =
+          py::dtype::from_args(ml_dtypes.attr("float8_e8m0fnu")).num();
       numpy_dtypes.int4 = py::dtype::from_args(ml_dtypes.attr("int4")).num();
       numpy_dtypes.uint4 = py::dtype::from_args(ml_dtypes.attr("uint4")).num();
     } catch (const std::exception& e) {
@@ -85,6 +89,7 @@ struct MlDtypesInitInfo {
 
     // Verify all types were successfully loaded.
     if (numpy_dtypes.bfloat16 == NPY_NOTYPE ||
+        numpy_dtypes.float4_e2m1fn == NPY_NOTYPE ||
         numpy_dtypes.float8_e3m4 == NPY_NOTYPE ||
         numpy_dtypes.float8_e4m3 == NPY_NOTYPE ||
         numpy_dtypes.float8_e4m3fn == NPY_NOTYPE ||
@@ -92,6 +97,7 @@ struct MlDtypesInitInfo {
         numpy_dtypes.float8_e4m3b11fnuz == NPY_NOTYPE ||
         numpy_dtypes.float8_e5m2 == NPY_NOTYPE ||
         numpy_dtypes.float8_e5m2fnuz == NPY_NOTYPE ||
+        numpy_dtypes.float8_e8m0fnu == NPY_NOTYPE ||
         numpy_dtypes.int4 == NPY_NOTYPE || numpy_dtypes.uint4 == NPY_NOTYPE) {
       init_valid = false;
     }
