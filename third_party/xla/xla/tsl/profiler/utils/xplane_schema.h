@@ -364,6 +364,7 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleActionInputs,
   kMegaScaleTransferSource,
   kMegaScaleTransferDestinations,
+  kMegaScaleTransferDcnTopologyLevel,
   kMegaScaleBufferSizes,
   kMegaScaleComputeOperation,
   kMegaScaleChunk,
