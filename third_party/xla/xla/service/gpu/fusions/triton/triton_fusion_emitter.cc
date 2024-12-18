@@ -108,6 +108,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -1073,7 +1074,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context) {
+    mlir::MLIRContext& mlir_context, TmaMetadata& tma_metadata) {
   LoadMlirDialectsForTriton(mlir_context);
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
@@ -1131,7 +1132,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   if (fusion_kind == kTritonGemmFusionKind) {
     TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
-                                  block_level_parameters));
+                                  block_level_parameters, tma_metadata));
   } else if (fusion_kind == kTritonFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
@@ -1200,9 +1201,11 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto triton_module,
-                      CreateTritonModule(fn_name, fusion, device_info,
-                                         block_level_parameters, mlir_context));
+  TmaMetadata tma_metadata;
+  TF_ASSIGN_OR_RETURN(
+      auto triton_module,
+      CreateTritonModule(fn_name, fusion, device_info, block_level_parameters,
+                         mlir_context, tma_metadata));
 
   VLOG(3) << fusion->ToString(HloPrintOptions::ShortParsable());
   VLOG(3) << fusion->fused_instructions_computation()->ToString(
@@ -1210,9 +1213,13 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
   // Compile Triton kernel to LLVM.
   const HloModule* hlo_module = fusion->GetModule();
-  return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
-                             device_info, block_level_parameters,
-                             triton_module.get(), llvm_module, mlir_context);
+  TF_ASSIGN_OR_RETURN(
+      auto result,
+      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), device_info,
+                          block_level_parameters, triton_module.get(),
+                          llvm_module, mlir_context));
+  result.tma_metadata = tma_metadata;
+  return result;
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(

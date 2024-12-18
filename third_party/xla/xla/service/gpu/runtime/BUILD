@@ -645,6 +645,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":thunk",
+        ":tma_metadata",
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -664,7 +665,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -1230,5 +1231,33 @@ cc_library(
     hdrs = ["custom_call_target.h"],
     deps = [
         "//xla/service:custom_call_status",
+    ],
+)
+
+cc_library(
+    name = "tma_metadata",
+    srcs = ["tma_metadata.cc"],
+    hdrs = ["tma_metadata.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_test(
+    name = "tma_metadata_test",
+    srcs = ["tma_metadata_test.cc"],
+    deps = [
+        ":tma_metadata",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
