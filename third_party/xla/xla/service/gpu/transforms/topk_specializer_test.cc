@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/topk_rewriter.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -62,6 +63,13 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
   TopkTest()
       : HloTestBase(*PlatformUtil::GetPlatform("gpu"),
                     *PlatformUtil::GetPlatform("gpu"), true, true, {}) {}
+
+  const se::GpuComputeCapability& GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
 
  protected:
   absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k,
@@ -134,7 +142,8 @@ void ToSortAndSlice(HloModule* module) {
 }
 
 TEST_P(TopkTest, ProducesCorrectResult) {
-  if(IsRocm()) {
+  const auto& gpu_desc = GetGpuComputeCapability();
+  if (std::holds_alternative<se::RocmComputeCapability>(gpu_desc)) {
     // TODO(rocm): weekly sync 24-12-10
     GTEST_SKIP() << "Currently failing on ROCm!";
   }
