@@ -852,7 +852,7 @@ module attributes {} {
 // CHECK-SAME: (tensor<2x?x?xi8>, tensor<2x?x?xi8>) -> tensor<2x?x?xi32>
 
 // CHECK: %[[arg0_shape:.*]] = "tf.Shape"(%[[arg0_broad]]
-// CHECK: %[[shape_zp_contribute:.*]] = "tf.Slice"(%[[arg0_shape]]
+// CHECK: %[[shape_zp_contribute:.*]] = "tf.StridedSlice"(%[[arg0_shape]]
 // CHECK: %[[shape_zp_contribute_cast:.*]] = "tf.Cast"(%[[shape_zp_contribute]]
 // CHECK: %[[shape_zp_contribute_mul:.*]] = "tf.Mul"(%[[shape_zp_contribute_cast]]
 // CHECK: %[[zp:.*]] = "tf.Sub"({{.*}}, %[[shape_zp_contribute_mul]])

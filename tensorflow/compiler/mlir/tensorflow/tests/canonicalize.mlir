@@ -1885,7 +1885,7 @@ func.func @testUnfoldedStridedSliceShape(%arg0: tensor<?x1x2x?xf32>) -> (tensor<
   %3 = "tf.Shape"(%arg0) : (tensor<?x1x2x?xf32>) -> tensor<4xi32>
   %4 = "tf.StridedSlice"(%3, %0, %1, %2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   func.return %4 : tensor<2xi32>
-  // CHECK: %[[SLICE:.*]] = "tf.Slice"
+  // CHECK: %[[SLICE:.*]] = "tf.StridedSlice"
   // CHECK: return %[[SLICE]]
 }
 
@@ -1993,27 +1993,6 @@ func.func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -
   func.return %4 : tensor<0xi32>
   // CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<> : tensor<0xi32>}> : () -> tensor<0xi32>
   // CHECK: return %[[CST]]
-}
-
-// CHECK-LABEL: testStridedSliceToSlice
-func.func @testStridedSliceToSlice(%561: tensor<1x16384x3xf32>) -> tensor<1x16384x2xf32> {
-  %cst_818 = "tf.Const"() <{value = dense<1> : tensor<3xi32>}> {device = ""} : () -> tensor<3xi32>
-  %cst_819 = "tf.Const"() <{value = dense<[0, 0, 2]> : tensor<3xi32>}> {device = ""} : () -> tensor<3xi32>
-  %cst_820 = "tf.Const"() <{value = dense<0> : tensor<3xi32>}> {device = ""} : () -> tensor<3xi32>
-  %562 = "tf.StridedSlice"(%561, %cst_820, %cst_819, %cst_818) <{begin_mask = 7 : i64, ellipsis_mask = 0 : i64, end_mask = 3 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> {device = ""} : (tensor<1x16384x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x16384x2xf32>
-  return %562 : tensor<1x16384x2xf32>
-  // CHECK-DAG: "tf.Const"() <{value = dense<0> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK-DAG: "tf.Const"() <{value = dense<[1, 16384, 2]> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK: "tf.Slice"(%arg0, %cst, %cst_0) : (tensor<1x16384x3xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x16384x2xf32>
-}
-
-// CHECK-LABEL: testDoNotConvertNonUnitStridedSlice
-func.func @testDoNotConvertNonUnitStridedSlice(%655: tensor<32x2400x2xf32>) -> tensor<32x1200x2xf32> {
-  %cst_36 = "tf.Const"() <{value = dense<[1, 2]> : tensor<2xi32>}> : () -> tensor<2xi32>
-  %cst_44 = "tf.Const"() <{value = dense<0> : tensor<2xi32>}> : () -> tensor<2xi32>
-  %656 = "tf.StridedSlice"(%655, %cst_44, %cst_44, %cst_36) <{begin_mask = 3 : i64, ellipsis_mask = 0 : i64, end_mask = 3 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<32x2400x2xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<32x1200x2xf32>
-  return %656 : tensor<32x1200x2xf32>
-  // CHECK: "tf.StridedSlice"
 }
 
 // CHECK-LABEL: testFoldEnsureShapeOp
