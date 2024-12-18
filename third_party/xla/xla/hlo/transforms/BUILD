@@ -1754,9 +1754,12 @@ cc_library(
         "//xla/service:host_memory_offload_annotations_hdr",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1771,6 +1774,7 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:host_memory_offload_annotations_hdr",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
