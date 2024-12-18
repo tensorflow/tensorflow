@@ -1,345 +1,148 @@
-diff --ruN a/stablehlo/stablehlo/dialect/ChloEnums.td b/stablehlo/stablehlo/dialect/ChloEnums.td
---- stablehlo/stablehlo/dialect/ChloEnums.td
-+++ stablehlo/stablehlo/dialect/ChloEnums.td
-@@ -70,4 +70,29 @@
- 
- def CHLO_ComparisonTypeAttr : EnumAttr<CHLO_Dialect, CHLO_ComparisonType, "comparison_type">;
- 
-+//===----------------------------------------------------------------------===//
-+// Ragged dot op definitions.
-+//===----------------------------------------------------------------------===//
-+
-+// These mirror the XLA PrecisionConfig proto enum.
-+def CHLO_PRECISION_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
-+def CHLO_PRECISION_HIGH    : I32EnumAttrCase<"HIGH", 1>;
-+def CHLO_PRECISION_HIGHEST : I32EnumAttrCase<"HIGHEST", 2>;
-+
-+def CHLO_Precision : I32EnumAttr<"Precision",
-+    "XLA precision for an operand. Has backend specific meaning.",
-+    [
-+      CHLO_PRECISION_DEFAULT,
-+      CHLO_PRECISION_HIGH,
-+      CHLO_PRECISION_HIGHEST
-+    ]> {
-+  let genSpecializedAttr = 0;
-+  let cppNamespace = "::mlir::chlo";
-+}
-+
-+def CHLO_PrecisionAttr : EnumAttr<CHLO_Dialect, CHLO_Precision, "precision">;
-+
-+def CHLO_PrecisionConfigAttr:
-+  TypedArrayAttrBase<CHLO_PrecisionAttr, "Precision Config attribute">;
-+
- #endif // STABLEHLO_DIALECT_CHLO_ENUMS
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -42,6 +42,7 @@
- #include "mlir/Support/LogicalResult.h"
- #include "mlir/Support/TypeID.h"
- #include "mlir/Transforms/InliningUtils.h"
-+#include "stablehlo/dialect/AssemblyFormat.h"
- #include "stablehlo/dialect/Base.h"
- #include "stablehlo/dialect/BroadcastUtils.h"
- #include "stablehlo/dialect/ChloBytecode.h"
-@@ -416,6 +417,242 @@
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+@@ -72,78 +72,6 @@
+     Type type = mlir::parseType(shape, context);
+     if (!type) return module->emitOpError("Invalid type string: ") << shape;
+     refinedTypes.push_back(type);
+-  }
+-  return success();
+-}
+-
+-LogicalResult refinementError(func::FuncOp func, int64_t idx, Type argType,
+-                              Type refinedType, StringRef msg) {
+-  return func.emitOpError()
+-         << "invalid refinement for argument " << idx << ", refinement " << msg
+-         << " in " << mlir::debugString(argType) << " -> "
+-         << mlir::debugString(refinedType);
+-}
+-
+-// Validates refinement types:
+-//   - A type refinement must be specified for each operand
+-//   - Refinement types that match operand types are skipped
+-//   - Refinement types that do not match operands must be refining tensors
+-//   - Refined tensor types must be ranked, operand type can be unranked
+-//   - Refined tensor types must match operand type for all static dimensions
+-//
+-LogicalResult validateRefinedTypes(func::FuncOp func, TypeRange refinedTypes) {
+-  // Validate refined shapes
+-  if (func.getNumArguments() != refinedTypes.size()) {
+-    return func.emitOpError(
+-               "number of refinements must match number of function operands ")
+-           << refinedTypes.size() << " vs " << func.getNumArguments();
+-  }
+-
+-  // Validate that refinements are valid
+-  auto argTypes = func.getArgumentTypes();
+-  for (int64_t i = 0; i < func.getNumArguments(); ++i) {
+-    Type type = argTypes[i];
+-    Type refinedType = refinedTypes[i];
+-
+-    // Always allow skipping refinement
+-    if (type == refinedType) continue;
+-
+-    // If mismatched, must be tensor types
+-    auto tensorType = dyn_cast<TensorType>(type);
+-    auto refinedTensorType = dyn_cast<TensorType>(refinedType);
+-    if (!tensorType || !refinedTensorType) {
+-      return refinementError(func, i, type, refinedType, "must be a tensor");
+-    }
+-
+-    // Check that element types match
+-    if (tensorType.getElementType() != refinedTensorType.getElementType()) {
+-      return refinementError(func, i, type, refinedType,
+-                             "element types must match");
+-    }
+-
+-    // Refined rank cannot be unranked if mismatch
+-    if (isa<UnrankedTensorType>(refinedType)) {
+-      return refinementError(func, i, type, refinedType, "must be ranked");
+-    }
+-
+-    // Unranked operands can be refined to anything
+-    if (!tensorType.hasRank()) continue;
+-
+-    // Validate ranks match if ranked (must allow unranked tensorType)
+-    if (tensorType.getRank() != refinedTensorType.getRank()) {
+-      return refinementError(func, i, type, refinedType,
+-                             "rank must match operand rank");
+-    }
+-
+-    // Validate static dimension sizes match
+-    for (auto [dimSize, refinedDimSize] :
+-         llvm::zip(tensorType.getShape(), refinedTensorType.getShape())) {
+-      if (!ShapedType::isDynamic(dimSize) && dimSize != refinedDimSize) {
+-        return refinementError(
+-            func, i, type, refinedType,
+-            "dimension sizes must match for static dimensions");
+-      }
+-    }
+   }
+   return success();
  }
- 
- //===----------------------------------------------------------------------===//
-+// RaggedDotOp
-+//===----------------------------------------------------------------------===//
+@@ -219,9 +147,74 @@
+
+ }  // namespace
+
++LogicalResult refinementError(Operation* op, int64_t idx, Type argType,
++                              Type refinedType, StringRef msg) {
++  return op->emitOpError()
++         << "invalid refinement for argument " << idx << ", refinement " << msg
++         << " in " << mlir::debugString(argType) << " -> "
++         << mlir::debugString(refinedType);
++}
 +
-+namespace {
-+
-+// RaggedDot has three general modes, based on the kind of the ragged dimension.
-+// Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
-+//   lhs : [b, m, k]
-+//   rhs : [g, b, k, n]
-+//   group_sizes : [g]
-+//   result : [b, m, n]
-+// Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
-+//   lhs : [b, m, k]
-+//   rhs : [b, k, n]
-+//   group_sizes : [g]
-+//   result : [g, b, m, n]
-+// Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
-+//   lhs : [b, m, k]
-+//   rhs : [b, k, n]
-+//   group_sizes : [g]
-+//   result : [b, m, n]
-+// As with dot_general, the lhs and rhs can have arbitrary batching,
-+// contracting and non-contracting dimensions.
-+// Additionally:
-+//   - In all modes, the lhs must have exactly one ragged dimension.
-+//   - In mode 1, the rhs must have exactly one group dimension.
-+LogicalResult checkRaggedDotConstraints(
-+    std::optional<Location> location, RankedTensorType rankedLhsType,
-+    RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
-+    ArrayRef<int64_t> lhsBatchingDimensions,
-+    ArrayRef<int64_t> rhsBatchingDimensions,
-+    ArrayRef<int64_t> lhsContractingDimensions,
-+    ArrayRef<int64_t> rhsContractingDimensions,
-+    ArrayRef<int64_t> lhsRaggedDimensions,
-+    ArrayRef<int64_t> rhsGroupDimensions) {
-+  // Check that the group sizes has rank=1.
-+  if (rankedGroupSizesType.getRank() != 1) {
-+    return emitOptionalError(
-+        location, "expected rank of group_sizes of ragged dot to be 1, got ",
-+        rankedGroupSizesType.getRank());
-+  }
-+  auto numGroups = rankedGroupSizesType.getDimSize(0);
-+
-+  // Check that there is exactly one lhs ragged dimension.
-+  if (lhsRaggedDimensions.size() != 1) {
-+    return emitOptionalError(
-+        location, "There must be exactly one ragged dimension in the lhs.");
-+  }
-+  const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
-+
-+  // Check that the lhs ragged dimension is in range.
-+  if (failed(hlo::checkDimInBounds(location, lhsRaggedDim,
-+                                   rankedLhsType.getRank(), "lhs_ragged_dim",
-+                                   "lhs_rank"))) {
-+    return failure();
++LogicalResult validateRefinedTypes(Operation* op, TypeRange argTypes, TypeRange refinedTypes) {
++  // Validate refined shapes
++  if (argTypes.size() != refinedTypes.size()) {
++    return op->emitOpError(
++               "number of refinements must match number of op operands ")
++           << refinedTypes.size() << " vs " << argTypes.size();
 +  }
 +
-+  // Validate basic properties of the rhs group dimension(s).
-+  for (auto rhsGroupDim : rhsGroupDimensions) {
-+    if (failed(hlo::checkDimInBounds(location, rhsGroupDim,
-+                                     rankedRhsType.getRank(), "rhs_group_dim",
-+                                     "rhs_rank"))) {
-+      return failure();
++  // Validate that refinements are valid
++  for (int64_t i = 0; i < argTypes.size(); ++i) {
++    Type type = argTypes[i];
++    Type refinedType = refinedTypes[i];
++
++    // Always allow skipping refinement
++    if (type == refinedType) continue;
++
++    // If mismatched, must be tensor types
++    auto tensorType = dyn_cast<TensorType>(type);
++    auto refinedTensorType = dyn_cast<TensorType>(refinedType);
++    if (!tensorType || !refinedTensorType) {
++      return refinementError(op, i, type, refinedType, "must be a tensor");
 +    }
-+  }
-+  if (failed(hlo::checkDimsDistinct(
-+          location, rhsGroupDimensions, rhsBatchingDimensions,
-+          "rhs_group_dimensions", "rhs_batching_dimensions")) ||
-+      failed(hlo::checkDimsDistinct(
-+          location, rhsGroupDimensions, rhsContractingDimensions,
-+          "rhs_group_dimensions", "rhs_contracting_dimensions"))) {
-+    return failure();
-+  }
 +
-+  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
-+      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
-+    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
-+    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
-+    if (!rhsGroupDimensions.empty()) {
-+      return emitOptionalError(
-+          location,
-+          "There must be zero group dimensions in the rhs when the "
-+          "ragged dimension is batch or contracting.");
++    // Check that element types match
++    if (tensorType.getElementType() != refinedTensorType.getElementType()) {
++      return refinementError(op, i, type, refinedType,
++                             "element types must match");
 +    }
-+  } else {
-+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
-+    if (rhsGroupDimensions.size() != 1) {
-+      return emitOptionalError(
-+          location,
-+          "There must be exactly one group dimension in the rhs when the lhs "
-+          "ragged dimension is non-contracting.");
++
++    // Refined rank cannot be unranked if mismatch
++    if (isa<UnrankedTensorType>(refinedType)) {
++      return refinementError(op, i, type, refinedType, "must be ranked");
 +    }
-+    // Compare the group dimension size with the number of groups.
-+    const int64_t rhsGroupDim = rhsGroupDimensions[0];
-+    if (!hlo::verifyCompatibleDims(numGroups,
-+                                   rankedRhsType.getDimSize(rhsGroupDim))) {
-+      return emitOptionalError(
-+          location, "group_sizes is expected to have shape=[",
-+          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
++
++    // Unranked operands can be refined to anything
++    if (!tensorType.hasRank()) continue;
++
++    // Validate ranks match if ranked (must allow unranked tensorType)
++    if (tensorType.getRank() != refinedTensorType.getRank()) {
++      return refinementError(op, i, type, refinedType,
++                             "rank must match operand rank");
 +    }
-+  }
-+  return success();
-+}
 +
-+SmallVector<int64_t> inferRaggedDotOutputDimensions(
-+    RankedTensorType rankedLhsType, RankedTensorType rankedRhsType,
-+    RankedTensorType rankedGroupSizesType,
-+    ArrayRef<int64_t> lhsBatchingDimensions,
-+    ArrayRef<int64_t> rhsBatchingDimensions,
-+    ArrayRef<int64_t> lhsContractingDimensions,
-+    ArrayRef<int64_t> rhsContractingDimensions,
-+    ArrayRef<int64_t> lhsRaggedDimensions,
-+    ArrayRef<int64_t> rhsGroupDimensions) {
-+  // Must have already checked that group_sizes is 1-D.
-+  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
-+  // Must have already checked that there is exactly one lhs ragged dim.
-+  const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
-+
-+  SmallVector<int64_t> dimensions;
-+  // Add the group dimension to the result shape in case of ragged contracting.
-+  if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
-+    dimensions.push_back(numGroups);
-+  }
-+  auto lhsShape = rankedLhsType.getShape();
-+  auto rhsShape = rankedRhsType.getShape();
-+  for (const int64_t lhsBatchingDim : lhsBatchingDimensions)
-+    dimensions.push_back(lhsShape[lhsBatchingDim]);
-+  for (int64_t i = 0; i < rankedLhsType.getRank(); i++)
-+    if (!llvm::is_contained(lhsBatchingDimensions, i) &&
-+        !llvm::is_contained(lhsContractingDimensions, i))
-+      dimensions.push_back(lhsShape[i]);
-+  for (int64_t i = 0; i < rankedRhsType.getRank(); i++)
-+    if (!llvm::is_contained(rhsBatchingDimensions, i) &&
-+        !llvm::is_contained(rhsContractingDimensions, i) &&
-+        !llvm::is_contained(rhsGroupDimensions, i))
-+      dimensions.push_back(rhsShape[i]);
-+  return dimensions;
-+}
-+
-+LogicalResult inferRaggedDotOp(
-+    std::optional<Location> location, Value lhs, Value rhs, Value groupSizes,
-+    ArrayRef<int64_t> lhsBatchingDimensions,
-+    ArrayRef<int64_t> rhsBatchingDimensions,
-+    ArrayRef<int64_t> lhsContractingDimensions,
-+    ArrayRef<int64_t> rhsContractingDimensions,
-+    ArrayRef<int64_t> lhsRaggedDimensions, ArrayRef<int64_t> rhsGroupDimensions,
-+    std::optional<ArrayAttr> precisionConfig,
-+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-+  if (failed(hlo::verifyPrecisionConfig(location, precisionConfig))) {
-+    return failure();
-+  }
-+
-+  // Validate basic properties of dot dimension numbers.
-+  if (failed(hlo::checkDotGeneralConstraints(
-+          location, lhs.getType(), rhs.getType(), lhsBatchingDimensions,
-+          rhsBatchingDimensions, lhsContractingDimensions,
-+          rhsContractingDimensions, precisionConfig))) {
-+    return failure();
-+  }
-+
-+  // Validate ragged dot constraints.
-+  auto rankedLhsType = cast<RankedTensorType>(lhs.getType());
-+  auto rankedRhsType = cast<RankedTensorType>(rhs.getType());
-+  auto rankedGroupSizesType = cast<RankedTensorType>(groupSizes.getType());
-+  if (failed(checkRaggedDotConstraints(
-+          location, rankedLhsType, rankedRhsType, rankedGroupSizesType,
-+          lhsBatchingDimensions, rhsBatchingDimensions,
-+          lhsContractingDimensions, rhsContractingDimensions,
-+          lhsRaggedDimensions, rhsGroupDimensions))) {
-+    return failure();
-+  }
-+
-+  // Infer the output dimensions of the ragged dot operation.
-+  inferredReturnShapes.emplace_back(inferRaggedDotOutputDimensions(
-+      rankedLhsType, rankedRhsType, rankedGroupSizesType, lhsBatchingDimensions,
-+      rhsBatchingDimensions, lhsContractingDimensions, rhsContractingDimensions,
-+      lhsRaggedDimensions, rhsGroupDimensions));
-+  return success();
-+}
-+
-+}  // namespace
-+
-+LogicalResult RaggedDotOp::verify() {
-+  auto location = getLoc();
-+  auto raggedDotDimNums = getRaggedDotDimensionNumbers();
-+
-+  SmallVector<ShapedTypeComponents> inferredReturnShapes;
-+  if (failed(inferRaggedDotOp(location, getLhs(), getRhs(), getGroupSizes(),
-+                              raggedDotDimNums.getLhsBatchingDimensions(),
-+                              raggedDotDimNums.getRhsBatchingDimensions(),
-+                              raggedDotDimNums.getLhsContractingDimensions(),
-+                              raggedDotDimNums.getRhsContractingDimensions(),
-+                              raggedDotDimNums.getLhsRaggedDimensions(),
-+                              raggedDotDimNums.getRhsGroupDimensions(),
-+                              getPrecisionConfig(), inferredReturnShapes)))
-+    return failure();
-+  auto inferredShape = inferredReturnShapes[0];
-+
-+  auto resultType = cast<ShapedType>(getResult().getType());
-+  if (failed(verifyCompatibleShape(inferredShape.getDims(),
-+                                   resultType.getShape()))) {
-+    return emitOptionalError(
-+        location, "inferred shape '",
-+        hlo::dimSizesToString(inferredShape.getDims()), "' ",
-+        "is incompatible with return type of operation ", resultType, "");
-+  }
-+
-+  return success();
-+}
-+
-+LogicalResult RaggedDotOp::inferReturnTypes(
-+    MLIRContext*, std::optional<Location>, ValueRange operands,
-+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
-+    SmallVectorImpl<Type>& inferredReturnTypes) {
-+  RaggedDotOp::Adaptor op(operands, attributes, properties, regions);
-+
-+  auto rankedLhsType = cast<RankedTensorType>(op.getLhs().getType());
-+  auto rankedRhsType = cast<RankedTensorType>(op.getRhs().getType());
-+  auto rankedGroupSizesType =
-+      cast<RankedTensorType>(op.getGroupSizes().getType());
-+  auto raggedDotDimNums = op.getRaggedDotDimensionNumbers();
-+
-+  inferredReturnTypes.push_back(RankedTensorType::get(
-+      inferRaggedDotOutputDimensions(
-+          rankedLhsType, rankedRhsType, rankedGroupSizesType,
-+          raggedDotDimNums.getLhsBatchingDimensions(),
-+          raggedDotDimNums.getRhsBatchingDimensions(),
-+          raggedDotDimNums.getLhsContractingDimensions(),
-+          raggedDotDimNums.getRhsContractingDimensions(),
-+          raggedDotDimNums.getLhsRaggedDimensions(),
-+          raggedDotDimNums.getRhsGroupDimensions()),
-+      rankedLhsType.getElementType()));
-+  return success();
-+}
-+
-+//===----------------------------------------------------------------------===//
- // TopKOp
- //===----------------------------------------------------------------------===//
- 
-@@ -523,5 +760,140 @@
-   assert(succeeded(result));
- }
- 
-+/// Helpers for attributes parsing.
-+
-+static ParseResult parseDims(AsmParser& parser,
-+                             SmallVector<int64_t>& dimSizes) {
-+  dimSizes.clear();
-+  auto failOrDims = hlo::parseDimSizes(parser);
-+  if (failed(failOrDims)) return failure();
-+  dimSizes = std::move(*failOrDims);
-+  return success();
-+}
-+
-+/// Parse a custom attribute that resembles a struct of the form
-+/// <
-+///   foo = something_parsed_by_custom_parser,
-+///   bar = something_parsed_by_different_custom_parser,
-+///   baz something_parsed_by_another_custom_parser
-+/// >
-+/// The optional argument `parse_equal` array can be used to denote if
-+/// '=' follows the keyword (see baz in the example above) for a field. If
-+/// not provided, all fields must be followed by a '='.
-+static ParseResult parseStruct(
-+    AsmParser& parser, ArrayRef<StringRef> keywords,
-+    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs,
-+    ArrayRef<bool> parseEqual = {}) {
-+  assert(keywords.size() == parseFuncs.size());
-+  assert(parseEqual.empty() || parseEqual.size() == keywords.size());
-+  SmallVector<bool> seen(keywords.size(), false);
-+  while (failed(parser.parseOptionalGreater())) {
-+    bool foundOne = false;
-+    for (const auto& it : llvm::enumerate(keywords)) {
-+      size_t index = it.index();
-+      StringRef keyword = it.value();
-+      if (failed(parser.parseOptionalKeyword(keyword))) continue;
-+      if (seen[index])
-+        return parser.emitError(parser.getCurrentLocation())
-+               << "duplicated `" << keyword << "` entry";
-+      if (parseEqual.empty() || parseEqual[index]) {
-+        if (failed(parser.parseEqual())) return failure();
++    // Validate static dimension sizes match
++    for (auto [dimSize, refinedDimSize] :
++         llvm::zip(tensorType.getShape(), refinedTensorType.getShape())) {
++      if (!ShapedType::isDynamic(dimSize) && dimSize != refinedDimSize) {
++        return refinementError(
++            op, i, type, refinedType,
++            "dimension sizes must match for static dimensions");
 +      }
-+      if (failed(parseFuncs[index]())) return failure();
-+      if (failed(parser.parseOptionalComma())) return parser.parseGreater();
-+      seen[index] = true;
-+      foundOne = true;
-+    }
-+    if (!foundOne) {
-+      auto parseError = parser.emitError(parser.getCurrentLocation())
-+                        << "expected one of: ";
-+      llvm::interleaveComma(keywords, parseError, [&](StringRef kw) {
-+        parseError << '`' << kw << '`';
-+      });
-+      return parseError;
 +    }
 +  }
 +  return success();
@@ -431,7 +234,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
 +++ stablehlo/stablehlo/dialect/ChloOps.td
 @@ -834,6 +834,67 @@
  }
- 
+
  //===----------------------------------------------------------------------===//
 +// Ragged dot op
 +//===----------------------------------------------------------------------===//
@@ -496,26 +299,26 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
 +//===----------------------------------------------------------------------===//
  // Miscellaneous ops
  //===----------------------------------------------------------------------===//
- 
+
 diff --ruN a/stablehlo/stablehlo/integrations/python/CheckModule.cpp b/stablehlo/stablehlo/integrations/python/CheckModule.cpp
 --- stablehlo/stablehlo/integrations/python/CheckModule.cpp
 +++ stablehlo/stablehlo/integrations/python/CheckModule.cpp
 @@ -11,12 +11,13 @@
  ==============================================================================*/
- 
+
  #include "mlir-c/IR.h"
 -#include "mlir/Bindings/Python/PybindAdaptors.h"
 +#include "mlir/Bindings/Python/NanobindAdaptors.h"
 +#include "nanobind/nanobind.h"
  #include "stablehlo/integrations/c/CheckDialect.h"
- 
+
 -namespace py = pybind11;
 +namespace nb = nanobind;
- 
+
 -PYBIND11_MODULE(_check, m) {
 +NB_MODULE(_check, m) {
    m.doc() = "check main python extension";
- 
+
    //
 @@ -32,5 +33,5 @@
            mlirDialectHandleLoadDialect(dialect, context);
@@ -529,7 +332,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/
 +++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
 @@ -12,21 +12,23 @@
  ==============================================================================*/
- 
+
  #include "mlir-c/IR.h"
 -#include "mlir/Bindings/Python/PybindAdaptors.h"
 +#include "mlir/Bindings/Python/NanobindAdaptors.h"
@@ -537,23 +340,23 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/
 +#include "nanobind/stl/string_view.h"
  #include "stablehlo/integrations/c/ChloAttributes.h"
  #include "stablehlo/integrations/c/ChloDialect.h"
- 
+
 -namespace py = pybind11;
 +namespace nb = nanobind;
- 
+
  namespace {
- 
+
  auto toPyString(MlirStringRef mlirStringRef) {
 -  return py::str(mlirStringRef.data, mlirStringRef.length);
 +  return nb::str(mlirStringRef.data, mlirStringRef.length);
  }
- 
+
  }  // namespace
- 
+
 -PYBIND11_MODULE(_chlo, m) {
 +NB_MODULE(_chlo, m) {
    m.doc() = "chlo main python extension";
- 
+
    //
 @@ -42,35 +44,37 @@
            mlirDialectHandleLoadDialect(dialect, context);
@@ -561,11 +364,11 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/
        },
 -      py::arg("context"), py::arg("load") = true);
 +      nb::arg("context"), nb::arg("load") = true);
- 
+
    //
    // Attributes.
    //
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ComparisonDirectionAttr", chloAttributeIsAComparisonDirectionAttr)
@@ -584,7 +387,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(chloComparisonDirectionAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ComparisonTypeAttr", chloAttributeIsAComparisonTypeAttr)
@@ -606,13 +409,13 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 --- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
 +++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
 @@ -15,6 +15,7 @@
- 
+
  #include "stablehlo/integrations/python/StablehloApi.h"
- 
+
 +#include <stdexcept>
  #include <string>
  #include <string_view>
- 
+
 @@ -22,10 +23,14 @@
  #include "mlir-c/BuiltinAttributes.h"
  #include "mlir-c/IR.h"
@@ -624,16 +427,16 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +#include "nanobind/stl/string_view.h"
 +#include "nanobind/stl/vector.h"
  #include "stablehlo/integrations/c/StablehloApi.h"
- 
+
 -namespace py = pybind11;
 +namespace nb = nanobind;
- 
+
  namespace mlir {
  namespace stablehlo {
 @@ -63,14 +68,18 @@
    return mlirStringRefCreate(s.data(), s.size());
  }
- 
+
 -void AddStablehloApi(py::module &m) {
 +static MlirStringRef toMlirStringRef(const nb::bytes &s) {
 +  return mlirStringRefCreate(static_cast<const char *>(s.data()), s.size());
@@ -642,7 +445,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +void AddStablehloApi(nb::module_ &m) {
    // Portable API is a subset of StableHLO API
    AddPortableApi(m);
- 
+
    //
    // Utility APIs.
    //
@@ -652,7 +455,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
        .value("NONE", MlirStablehloCompatibilityRequirement::NONE)
        .value("WEEK_4", MlirStablehloCompatibilityRequirement::WEEK_4)
 @@ -79,34 +88,34 @@
- 
+
    m.def(
        "get_version_from_compatibility_requirement",
 -      [](MlirStablehloCompatibilityRequirement requirement) -> py::str {
@@ -665,7 +468,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
        },
 -      py::arg("requirement"));
 +      nb::arg("requirement"));
- 
+
    //
    // Serialization APIs.
    //
@@ -693,7 +496,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +        return nb::bytes(serialized.data(), serialized.size());
 +      },
 +      nb::arg("module"), nb::arg("target"));
- 
+
    m.def(
        "deserialize_portable_artifact",
 @@ -114,13 +123,22 @@
@@ -733,16 +536,16 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +            throw nb::value_error("input args must be DenseElementsAttr");
            }
          }
- 
+
 @@ -141,8 +157,7 @@
              stablehloEvalModule(module, args.size(), args.data(), &errorCode);
- 
+
          if (errorCode != 0) {
 -          PyErr_SetString(PyExc_ValueError, "interpreter failed");
 -          return {};
 +          throw nb::value_error("interpreter failed");
          }
- 
+
          std::vector<MlirAttribute> pyResults;
 @@ -151,10 +166,10 @@
          }
@@ -760,7 +563,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
    // Utility APIs.
    //
 @@ -162,28 +177,28 @@
- 
+
    m.def(
        "get_smaller_version",
 -      [](const std::string &version1, const std::string &version2) -> py::str {
@@ -790,7 +593,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
                                 accumulator.getUserData());
      return accumulator.toString();
    });
- 
+
 -  m.def("get_minimum_version", []() -> py::str {
 +  m.def("get_minimum_version", []() -> std::string {
      StringWriterHelper accumulator;
@@ -838,7 +641,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +        return nb::bytes(serialized.data(), serialized.size());
 +      },
 +      nb::arg("module_str"), nb::arg("target_version"));
- 
+
    m.def(
        "deserialize_portable_artifact_str",
 -      [](std::string_view artifact) -> py::bytes {
@@ -873,7 +676,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
 +      },
 +      nb::arg("artifact_str"));
  }
- 
+
  }  // namespace stablehlo
 diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.h b/stablehlo/stablehlo/integrations/python/StablehloApi.h
 --- stablehlo/stablehlo/integrations/python/StablehloApi.h
@@ -881,33 +684,33 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.h b/stablehlo/
 @@ -16,20 +16,20 @@
  #ifndef STABLEHLO_INTEGRATIONS_PYTHON_API_STABLEHLOAPI_H
  #define STABLEHLO_INTEGRATIONS_PYTHON_API_STABLEHLOAPI_H
- 
+
 -#include "pybind11/pybind11.h"
 +#include "nanobind/nanobind.h"
- 
+
  namespace mlir {
  namespace stablehlo {
- 
+
 -// Add StableHLO APIs to the pybind11 module.
 +// Add StableHLO APIs to the nanobind module.
  // Signatures of these APIs have no dependency on C++ MLIR types and all must
  // use C API passthrough.
 -void AddStablehloApi(pybind11::module& m);
 +void AddStablehloApi(nanobind::module_& m);
- 
+
  // Adds a subset of the StableHLO API that doesn't use MLIR in any definitions,
  // and is methods only, introducing no new objects / enums to avoid potential
  // redefinition issues in complex build environments.
 -void AddPortableApi(pybind11::module& m);
 +void AddPortableApi(nanobind::module_& m);
- 
+
  }  // namespace stablehlo
  }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
 --- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
 +++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
 @@ -15,14 +15,17 @@
- 
+
  #include "mlir-c/IR.h"
  #include "mlir-c/Support.h"
 -#include "mlir/Bindings/Python/PybindAdaptors.h"
@@ -920,26 +723,26 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
  #include "stablehlo/integrations/c/StablehloPasses.h"
  #include "stablehlo/integrations/c/StablehloTypes.h"
  #include "stablehlo/integrations/python/StablehloApi.h"
- 
+
 -namespace py = pybind11;
 +namespace nb = nanobind;
- 
+
  namespace {
  // Returns a vector containing integers extracted from an attribute using the
 @@ -40,12 +43,12 @@
  }
- 
+
  auto toPyString(MlirStringRef mlirStringRef) {
 -  return py::str(mlirStringRef.data, mlirStringRef.length);
 +  return nb::str(mlirStringRef.data, mlirStringRef.length);
  }
- 
+
  }  // namespace
- 
+
 -PYBIND11_MODULE(_stablehlo, m) {
 +NB_MODULE(_stablehlo, m) {
    m.doc() = "stablehlo main python extension";
- 
+
    //
 @@ -61,7 +64,7 @@
            mlirDialectHandleLoadDialect(dialect, context);
@@ -947,13 +750,13 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        },
 -      py::arg("context"), py::arg("load") = true);
 +      nb::arg("context"), nb::arg("load") = true);
- 
+
    //
    // Passes.
 @@ -74,14 +77,14 @@
    // Types.
    //
- 
+
 -  mlir::python::adaptors::mlir_type_subclass(m, "TokenType",
 -                                             stablehloTypeIsAToken)
 -      .def_classmethod(
@@ -969,12 +772,12 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 -          py::arg("cls"), py::arg("context") = py::none(),
 +          nb::arg("cls"), nb::arg("context").none() = nb::none(),
            "Creates a Token type.");
- 
+
    //
 @@ -94,12 +97,12 @@
          stablehloScatterDimensionNumbersGetScatteredDimsToOperandDimsElem);
    };
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ScatterDimensionNumbers",
@@ -1006,7 +809,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -156,11 +159,11 @@
          return stablehloDimensionNumbersGetIndexVectorDim(self);
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "GatherDimensionNumbers", stablehloAttributeIsAGatherDimensionNumbers)
@@ -1035,7 +838,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -220,11 +223,11 @@
          return stablehloGatherDimensionNumbersGetIndexVectorDim(self);
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "DotAlgorithm", stablehloAttributeIsADotAlgorithm)
@@ -1067,7 +870,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -276,11 +280,11 @@
              return stablehloDotAlgorithmGetAllowImpreciseAccumulation(self);
            });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "DotDimensionNumbers", stablehloAttributeIsADotDimensionNumbers)
@@ -1098,7 +901,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -327,11 +331,11 @@
                  stablehloDotDimensionNumbersGetRhsContractingDimensionsElem);
            });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ConvDimensionNumbers", stablehloAttributeIsAConvDimensionNumbers)
@@ -1138,7 +941,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -416,11 +421,11 @@
                  stablehloConvDimensionNumbersGetOutputSpatialDimensionsElem);
            });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "OutputOperandAlias", stablehloAttributeIsAOutputOperandAlias)
@@ -1165,7 +968,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -450,114 +455,122 @@
              stablehloOutputOperandAliasGetOperandTupleIndicesElem);
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ComparisonDirectionAttr",
@@ -1184,7 +987,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloComparisonDirectionAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ComparisonTypeAttr", stablehloAttributeIsAComparisonTypeAttr)
@@ -1202,7 +1005,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloComparisonTypeAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "PrecisionAttr", stablehloAttributeIsAPrecisionAttr)
@@ -1220,7 +1023,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloPrecisionAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "FftTypeAttr", stablehloAttributeIsAFftTypeAttr)
@@ -1238,7 +1041,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloFftTypeAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "TransposeAttr", stablehloAttributeIsATransposeAttr)
@@ -1256,7 +1059,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloTransposeAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "RngDistributionAttr", stablehloAttributeIsARngDistributionAttr)
@@ -1274,7 +1077,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloRngDistributionAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "RngAlgorithmAttr", stablehloAttributeIsARngAlgorithmAttr)
@@ -1292,7 +1095,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
        .def_property_readonly("value", [](MlirAttribute self) {
          return toPyString(stablehloRngAlgorithmAttrGetValue(self));
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "ChannelHandle", stablehloAttributeIsChannelHandle)
@@ -1313,7 +1116,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 @@ -568,16 +581,17 @@
          return stablehloChannelHandleGetType(self);
        });
- 
+
 -  mlir::python::adaptors::mlir_attribute_subclass(
 +  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
        m, "TypeExtensions", stablehloAttributeIsTypeExtensions)
@@ -1336,20 +1139,20 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/VhloModule.cpp b/stablehlo/
 +++ stablehlo/stablehlo/integrations/python/VhloModule.cpp
 @@ -11,12 +11,13 @@
  ==============================================================================*/
- 
+
  #include "mlir-c/IR.h"
 -#include "mlir/Bindings/Python/PybindAdaptors.h"
 +#include "mlir/Bindings/Python/NanobindAdaptors.h"
 +#include "nanobind/nanobind.h"
  #include "stablehlo/integrations/c/VhloDialect.h"
- 
+
 -namespace py = pybind11;
 +namespace nb = nanobind;
- 
+
 -PYBIND11_MODULE(_vhlo, m) {
 +NB_MODULE(_vhlo, m) {
    m.doc() = "vhlo main python extension";
- 
+
    //
 @@ -32,5 +33,5 @@
            mlirDialectHandleLoadDialect(dialect, context);
@@ -1362,9 +1165,9 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
 @@ -73,6 +73,222 @@
- 
+
  // -----
- 
+
 +// ragged_dot mode 1: [b,m,k], [g,b,k,n], [g] -> [b,m,n]
 +func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
 +  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -1587,85 +1390,28 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -369,6 +369,10 @@
- // Which correlates to <func, sym_int_values, arg_types>
- class RefineShapeState {
-  public:
-+  RefineShapeState(
-+      std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn)
-+      : additionalPatternsFn(additionalPatternsFn) {}
-+
-   enum class RefinementState {
-     NOT_ALREADY_REFINED,
-     ALREADY_REFINED,
-@@ -431,7 +435,14 @@
-     });
-   }
- 
-+  void addAdditionalPatterns(RewritePatternSet& patterns) {
-+    if (additionalPatternsFn.has_value())
-+      additionalPatternsFn.value()(&patterns);
-+  }
-+
-  private:
-+  std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn;
-+
-   // Maps refined functions to the refinement context: the values of dimension
-   // arguments and the types of non-global-constant arguments. A function is
-   // added here when we start refining it.
-@@ -1001,7 +1012,7 @@
- LogicalResult applyShapeRefinementPatterns(func::FuncOp func,
-                                            RefineShapeState& state) {
-   MLIRContext* context = func.getContext();
--  RewritePatternSet patterns(context);
-+  RewritePatternSet patterns(func->getContext());
-   GreedyRewriteConfig config;
- 
-   // The algorithm behind this pass consists of a single traversal of the
-@@ -1019,6 +1030,9 @@
-   populateStablehloRefineShapesPatterns(&patterns, context);
-   patterns.add<RefineCallOpPattern>(context, state);
- 
-+  // Populate additional patterns for StableHLO extensions.
-+  state.addAdditionalPatterns(patterns);
-+
-   // The folding patterns implement partial evaluation of shape computations
-   // which is a critical part of implementing type refinement for ops like
-   // dynamic_broadcast_in_dim, dynamic_iota and dynamic_reshape whose shape
-@@ -1103,14 +1117,22 @@
- 
-     // Start with empty state, and no dim args / token args.
-     MLIRContext* context = func.getContext();
--    RefineShapeState state;
--    RefinementKey key(func, 0, {}, llvm::to_vector(func.getArgumentTypes()));
--    if (failed(refineFunction(*context, state, key)))
--      return signalPassFailure();
-+    if (failed(refineEntryFunction(*context, func))) return signalPassFailure();
-   }
- };
- 
- }  // namespace
-+
-+LogicalResult refineEntryFunction(
-+    MLIRContext& context, func::FuncOp func,
-+    std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn) {
-+  // Start with empty state, and no dim args / token args.
-+  RefineShapeState state(additionalPatternsFn);
-+  RefinementKey key(func, 0, {}, llvm::to_vector(func.getArgumentTypes()));
-+  if (failed(refineFunction(context, state, key)))
-+    return func.emitError("Failed to refine entry function");
-+  return success();
-+}
- 
- func::FuncOp getStablehloRefineShapesTarget(ModuleOp module) {
-   // Only one function per module is supported at the moment to avoid the need
+@@ -109,7 +109,13 @@
+       // their operands and results. Any operand type in these ops can change
+       // within what's supported by `inferMostSpecificType` without breaking
+       // verification of the op.
+-      if (isa<chlo::ChloDialect, StablehloDialect>(user->getDialect()))
++      if (isa<chlo::ChloDialect, StablehloDialect>(
++              user->getDialect()))
++        continue;
++      // TODO(bartchr): Consider if the dialect allow-listing approach is too
++      // strict. In the meantime, allow some shape interop with the shardy
++      // dialect.
++      if (user->getDialect()->getNamespace() == "sdy")
+         continue;
+
+       // Simply changing operand type of `func.return` won't work because
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/stablehlo/transforms/StablehloRefineShapes.h
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.h
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.h
 @@ -101,6 +101,18 @@
    return refineReturnShape(rewriter, op, shape);
  }
- 
+
 +// Entrypoint for any pass adding extensibility to the StableHLO shape
 +// refinement pass. If program is inlined before shape refinement,
 +// populateShapeRefinementPatterns can be safely used, but if shape refinement
@@ -1678,7 +1424,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/
 +    std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn =
 +        std::nullopt);
 +
- // Custom call used to buffer operands for shape refinement
- // This is a temporary artifact that is introduced by StablehloRefineArguments
- // and is washed away during StablehloRefineShapes.
++// Emits an error message for invalid refinement.
++LogicalResult refinementError(Operation* op, int64_t idx, Type argType,
++                              Type refinedType, StringRef msg);
++
++// Validates refinement types:
++//   - A type refinement must be specified for each operand
++//   - Refinement types that match operand types are skipped
++//   - Refinement types that do not match operands must be refining tensors
++//   - Refined tensor types must be ranked, operand type can be unranked
++//   - Refined tensor types must match operand type for all static dimensions
++LogicalResult validateRefinedTypes(Operation* op, TypeRange argTypes,
++                                   TypeRange refinedTypes);
 
+ // Gets a FuncOp that --stablehlo-refine-shapes will run on.
+ // Returns a nullptr and emits appropriate errors if such a function cannot
