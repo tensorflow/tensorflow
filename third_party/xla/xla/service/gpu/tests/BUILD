@@ -324,7 +324,7 @@ xla_test(
         "gpu_v100",
         # "gpu_b100",  # TODO: Weekly sync 24-12-10 duplication
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
