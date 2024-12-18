@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
+#include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <memory>
