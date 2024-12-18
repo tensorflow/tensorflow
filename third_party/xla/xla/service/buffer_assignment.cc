@@ -656,7 +656,7 @@ void BufferAssignment::CombineTempAllocations(
         // size constraint.
         VLOG(1) << "Combined temp allocation for color " << color
                 << " is: " << temp_allocation;
-        combined_allocations.emplace_back(temp_allocation);
+        combined_allocations.push_back(temp_allocation);
         combined_allocation_map.emplace(color, &combined_allocations.back());
         continue;
       }
@@ -666,7 +666,7 @@ void BufferAssignment::CombineTempAllocations(
         // combined_it.
         VLOG(1) << "Due to size constraint, reset temp allocation for color "
                 << color << " to: " << temp_allocation;
-        combined_allocations.emplace_back(temp_allocation);
+        combined_allocations.push_back(temp_allocation);
         combined_allocation_map.emplace(color, &combined_allocations.back());
         continue;
       }
