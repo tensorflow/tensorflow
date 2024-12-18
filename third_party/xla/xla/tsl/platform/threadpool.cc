@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"

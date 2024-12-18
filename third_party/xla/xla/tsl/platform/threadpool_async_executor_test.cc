@@ -13,19 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/threadpool_async_executor.h"
 
-#include <sys/time.h>
-#include <time.h>
+#include "absl/synchronization/notification.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/threadpool.h"
 
-namespace tsl {
+namespace tsl::thread {
+namespace {
 
-/* static */
-uint64 EnvTime::NowNanos() {
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  return (static_cast<uint64>(ts.tv_sec) * kSecondsToNanos +
-          static_cast<uint64>(ts.tv_nsec));
+TEST(ThreadPoolAsyncExecutorTest, ExecuteTasks) {
+  ThreadPool thread_pool(Env::Default(), "test", 4);
+  ThreadPoolAsyncExecutor executor(&thread_pool);
+
+  absl::Notification notification;
+  executor.Execute([&] { notification.Notify(); });
+  notification.WaitForNotification();
 }
 
-}  // namespace tsl
+}  // namespace
+}  // namespace tsl::thread

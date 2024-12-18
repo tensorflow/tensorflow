@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_LOGGING_H_
 #define TENSORFLOW_TSL_PLATFORM_LOGGING_H_
 
-#include "tsl/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
-#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
-#endif
+#include "xla/tsl/platform/logging.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_LOGGING_H_

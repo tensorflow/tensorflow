@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 #include <sys/stat.h>
 
@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "tsl/platform/env_time.h"
+#include "xla/tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"

@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
-#define TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
+#ifndef XLA_TSL_PLATFORM_THREADPOOL_OPTIONS_H_
+#define XLA_TSL_PLATFORM_THREADPOOL_OPTIONS_H_
 
 #include "xla/tsl/platform/threadpool_interface.h"
 
-#endif  // TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
+namespace tsl {
+namespace thread {
+
+struct ThreadPoolOptions {
+  // If not null, use this threadpool to schedule inter-op operation
+  thread::ThreadPoolInterface* inter_op_threadpool = nullptr;
+
+  // If not null, use this threadpool to schedule intra-op operation
+  thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+};
+
+}  // namespace thread
+}  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_THREADPOOL_OPTIONS_H_

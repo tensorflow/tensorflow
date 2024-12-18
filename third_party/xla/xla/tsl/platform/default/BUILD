@@ -115,13 +115,17 @@ cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
-        "@local_tsl//tsl/platform:env.cc",
-        "@local_tsl//tsl/platform:file_system.cc",
-        "@local_tsl//tsl/platform:file_system_helper.cc",
-        "@local_tsl//tsl/platform:threadpool.cc",
+        "//xla/tsl/platform:env.cc",
+        "//xla/tsl/platform:file_system.cc",
+        "//xla/tsl/platform:file_system_helper.cc",
+        "//xla/tsl/platform:threadpool.cc",
     ],
     hdrs = [
         "posix_file_system.h",
+        "//xla/tsl/platform:env.h",
+        "//xla/tsl/platform:file_system.h",
+        "//xla/tsl/platform:file_system_helper.h",
+        "//xla/tsl/platform:threadpool.h",
         "@local_tsl//tsl/platform:env.h",
         "@local_tsl//tsl/platform:file_system.h",
         "@local_tsl//tsl/platform:file_system_helper.h",
@@ -195,7 +199,7 @@ cc_library(
 cc_library(
     name = "env_time",
     srcs = ["env_time.cc"],
-    hdrs = ["@local_tsl//tsl/platform:env_time.h"],
+    hdrs = ["//xla/tsl/platform:env_time.h"],
     tags = [
         "manual",
         "no_oss",
