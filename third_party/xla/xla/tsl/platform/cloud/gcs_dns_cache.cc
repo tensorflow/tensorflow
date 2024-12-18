@@ -197,7 +197,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
         LOG(ERROR) << "Error converting response to IP address for " << name
                    << ": " << strerror(errno);
       } else {
-        output.emplace_back(buf);
+        output.push_back(buf);
         VLOG(1) << "... address: " << buf;
       }
     }
