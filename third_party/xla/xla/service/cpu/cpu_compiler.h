@@ -99,6 +99,10 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   bool use_mlir_hlo_lowering_ = false;
 };
 
+// Contains the object file data created as a result of ahead-of-time
+// computation.
+using ObjectFileData = std::vector<char>;
+
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
