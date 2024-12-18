@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/primitive_util.h"
 
-#include <numeric>
 #include <string>
 
 #include "xla/test.h"
