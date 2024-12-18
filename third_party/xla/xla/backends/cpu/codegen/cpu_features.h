@@ -19,25 +19,25 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
 // Returns the earliest CPU generation that supports the instruction set.
-std::string_view CpuTargetFromMaxFeature(tsl::port::CPUFeature max_feature);
+absl::string_view CpuTargetFromMaxFeature(tsl::port::CPUFeature max_feature);
 
 // Converts a string representation of a CPU feature to a CPUFeature enum.
 // Returns std::nullopt if the string is not a valid CPU feature.
 std::optional<tsl::port::CPUFeature> CpuFeatureFromString(
-    std::string_view cpu_feature);
+    absl::string_view cpu_feature);
 
 // Returns true if `feature` can be enabled given the maximum allowed CPU
 // feature `max_feature`.
-bool ShouldEnableCpuFeature(std::string_view feature,
+bool ShouldEnableCpuFeature(absl::string_view feature,
                             tsl::port::CPUFeature max_feature);
 
 struct DetectedMachineAttributes {
