@@ -941,12 +941,47 @@ cc_library(
 )
 
 cc_library(
+    name = "sdy",
+    srcs = ["sdy.cc"],
+    hdrs = ["sdy.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@nanobind",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/mlir_hlo:all_passes",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:status_casters",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "refine_polymorphic_shapes",
     srcs = ["refine_polymorphic_shapes.cc"],
     hdrs = ["refine_polymorphic_shapes.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -960,6 +995,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
@@ -1275,6 +1311,7 @@ tsl_pybind_extension(
         ":python_ref_manager",
         ":pytree",
         ":refine_polymorphic_shapes",
+        ":sdy",
         ":traceback",
         ":types",
         ":util",
