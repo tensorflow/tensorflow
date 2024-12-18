@@ -92,10 +92,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_asm_compiler",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "@llvm-project//llvm:AMDGPUCodeGen",
-        "@llvm-project//llvm:AMDGPUAsmParser",
     ]),
 )
 
