@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -220,6 +221,7 @@ absl::Status SessionMgr::CreateSession(
     }
 
     auto graph_mgr = std::make_unique<GraphMgr>(worker_env_, device_mgr.get());
+    VLOG(1) << "Creating WorkerSession with owned DeviceMgr.";
     worker_session.reset(new WorkerSession(
         session, worker_name,
         std::unique_ptr<WorkerCacheInterface>(worker_cache),
@@ -244,6 +246,7 @@ absl::Status SessionMgr::CreateSession(
     // WorkerSession has been deleted.
     auto graph_mgr =
         std::make_unique<GraphMgr>(worker_env_, worker_env_->device_mgr);
+    VLOG(1) << "Creating WorkerSession with borrowed DeviceMgr.";
     worker_session = WorkerSession::CreateWithBorrowedDeviceMgr(
         session, worker_name,
         std::unique_ptr<WorkerCacheInterface>(worker_cache),
