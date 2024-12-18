@@ -485,6 +485,7 @@ PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
       "PJRT_Client_CreateBuffersForAsyncHostToDevice_Args",
       PJRT_Client_CreateBuffersForAsyncHostToDevice_Args_STRUCT_SIZE,
       args->struct_size));
+  std::vector<std::optional<xla::Layout>> device_layouts;
   absl::InlinedVector<xla::PjRtClient::ShapeSpec, 4> shape_specs;
   shape_specs.reserve(args->num_shape_specs);
   for (int i = 0; i < args->num_shape_specs; ++i) {
@@ -495,7 +496,6 @@ PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
   if (args->num_device_layouts == 0) {
     arg_device_layouts = std::nullopt;
   } else {
-    std::vector<std::optional<xla::Layout>> device_layouts;
     device_layouts.reserve(args->num_device_layouts);
     for (int i = 0; i < args->num_device_layouts; ++i) {
       std::optional<xla::Layout> optional_layout;
