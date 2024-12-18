@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PJRT_PJRT_DEVICE_DESCRIPTION_H_
 
 #include <string>
-#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -68,15 +67,15 @@ class PjRtDeviceDescription {
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.
-  virtual std::string_view device_kind() const = 0;
+  virtual absl::string_view device_kind() const = 0;
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
-  virtual std::string_view DebugString() const = 0;
+  virtual absl::string_view DebugString() const = 0;
 
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".
-  virtual std::string_view ToString() const = 0;
+  virtual absl::string_view ToString() const = 0;
 
   // Returns vendor specific attributes about the device. For example the model
   // number of a GPU, or the mesh coordinates of a TPU device. The returned

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 
 #include <list>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>

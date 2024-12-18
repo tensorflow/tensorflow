@@ -17,7 +17,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -486,7 +485,7 @@ ENTRY main.183 {
 
 TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
        ConvertOutputPinnedHostTest) {
-  constexpr std::string_view hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
   HloModule m, entry_computation_layout={(f32[2,2]{1,0:T(2,128)},f32[2,2]{1,0:T(2,128)})->f32[2,2]{1,0:T(2,128)S(5)}}
   ENTRY m {
     x = f32[2,2] parameter(0)

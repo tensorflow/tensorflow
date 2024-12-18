@@ -18,11 +18,13 @@ cc_library(
     hdrs = ["error_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

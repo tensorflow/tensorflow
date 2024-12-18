@@ -23,7 +23,6 @@ limitations under the License.
 #include <numeric>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -70,8 +69,8 @@ TEST(UtilTest, VectorString) {
   std::vector<float> float_vector = {5.5};
   EXPECT_EQ(VectorString(float_vector), "(5.5)");
 
-  std::set<std::string_view> string_set = {std::string_view("a"),
-                                           std::string_view("b")};
+  std::set<absl::string_view> string_set = {absl::string_view("a"),
+                                            absl::string_view("b")};
   EXPECT_EQ(VectorString(string_set), "(a, b)");
 
   EXPECT_EQ(VectorString({}), "()");

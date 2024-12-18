@@ -23,7 +23,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -673,8 +672,8 @@ class HloModule {
 
   // Describes a stack frame.
   struct StackFrame {
-    std::string_view file_name;
-    std::string_view function_name;
+    absl::string_view file_name;
+    absl::string_view function_name;
     int line = 0;
     int column = 0;
 

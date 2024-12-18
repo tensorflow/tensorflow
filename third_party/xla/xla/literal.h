@@ -1404,7 +1404,7 @@ class Literal : public MutableLiteralBase {
   static absl::StatusOr<Literal> Deserialize(InputIterator begin,
                                              InputIterator end);
 
-  static absl::StatusOr<Literal> DeserializeFromString(std::string_view data) {
+  static absl::StatusOr<Literal> DeserializeFromString(absl::string_view data) {
     return Deserialize(data.data(), data.data() + data.size());
   }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
