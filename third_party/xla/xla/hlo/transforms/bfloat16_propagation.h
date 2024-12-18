@@ -70,7 +70,8 @@ class BFloat16Propagation : public HloModulePass {
 
   ~BFloat16Propagation() override = default;
 
-  absl::string_view name() const override { return "bfloat16-propagation"; }
+  static constexpr absl::string_view kName = "bfloat16-propagation";
+  absl::string_view name() const override { return kName; }
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
