@@ -40,7 +40,7 @@ class JITCache : public tensorflow::ResourceBase {
 
   std::string DebugString() const override;
   ExecutionEngine* LookupOrCompile(
-      const std::string code,
+      std::string code,
       std::function<llvm::Expected<std::unique_ptr<ExecutionEngine>>()>
           compile_callback);
   size_t Size();
