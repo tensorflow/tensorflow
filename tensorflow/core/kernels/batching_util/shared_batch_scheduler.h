@@ -1218,7 +1218,7 @@ Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
           options_.low_priority_queue_options.max_execution_batch_size) {
     return absl::UnavailableError(absl::StrFormat(
         "The low priority task queue to which this task was submitted does not "
-        "have the capcity to handle this task; currently the low priority "
+        "have the capacity to handle this task; currently the low priority "
         "queue has %d tasks enqueued and the submitted task size is %d while "
         "max_enqueued_batches=%d and max_execution_batch_size=%d",
         low_priority_tasks_.size(), task.size(),
