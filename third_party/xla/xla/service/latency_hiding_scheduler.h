@@ -1051,6 +1051,8 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
+  bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation);
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
