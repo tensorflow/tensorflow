@@ -64,7 +64,7 @@ class SoftmaxRewriterTritonTest
                                          HloCostAnalysis::DefaultShapeSize};
 };
 
-TEST_F(SoftmaxRewriterTritonTest, CanFuseExactSoftmaxF32) {
+TEST_F(SoftmaxRewriterTritonTest, CanFuseSingleNormalizationF32) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -73,23 +73,17 @@ max_computation {
   ROOT maximum = f32[] maximum(arg_0, arg_1)
 }
 add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
 }
 ENTRY main {
   param_0 = f32[127,125]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
   reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f32[127,125]{1,0} exponential(subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
-}
-)";
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+})";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
@@ -103,7 +97,7 @@ ENTRY main {
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseSoftmaxLikeComputationWithNonF32DataType) {
+       CanFuseSignleNormalizationWithNonF32DataType) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -112,25 +106,17 @@ max_computation {
   ROOT maximum = f16[] maximum(arg_0, arg_1)
 }
 add_computation {
-  arg_0.1 = f16[] parameter(0)
-  arg_1.1 = f16[] parameter(1)
-  ROOT add = f16[] add(arg_0.1, arg_1.1)
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT add = f16[] add(arg_0, arg_1)
 }
 ENTRY main {
   param_0 = f16[127,125]{1,0} parameter(0)
   constant_neg_inf = f16[] constant(-inf)
   reduce = f16[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f16[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
-  exp = f16[127,125]{1,0} exponential(subtract)
-  constant_zero = f16[] constant(0)
-  second_reduce = f16[127]{0} reduce(exp, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f16[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  // Replace divide with multiply, because Triton doesn't support f16
-  // divisions.
-  ROOT multiply = f16[127,125]{1,0} multiply(exp, second_broadcast)
-}
-)";
+  ROOT subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
+})";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
@@ -345,107 +331,6 @@ ENTRY main {
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseSoftmaxWithIntermediateUnaryElementwise) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  abs = f32[127,125]{1,0} abs(subtract)
-  exponential = f32[127,125]{1,0} exponential(abs)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(subtract, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f32[127,125]{1,0} divide(subtract, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseDiamondWithTrailingUnaryElementwiseAtTheRoot) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  ROOT abs = f32[127,125]{1,0} abs(subtract)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
 TEST_F(SoftmaxRewriterTritonTest, CanFuseDiamondWithUnaryElementwisePrefix) {
   const std::string hlo_string = R"(
 HloModule softmax
@@ -600,153 +485,6 @@ ENTRY main {
 }
 
 TEST_F(SoftmaxRewriterTritonTest,
-       CanNotFuseTwoDiamondsWithDifferentReductionAxisSizeTogether) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,625]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,625]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,625]{1,0} subtract(param_0, broadcast)
-  bitcasted_subtract = f32[127,5,125] bitcast(subtract)
-  exponential = f32[127,5,125] exponential(bitcasted_subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127,5] reduce(exponential, constant_zero), dimensions={2}, to_apply=add_computation
-  second_broadcast = f32[127,5,125] broadcast(second_reduce), dimensions={0,1}
-  ROOT divide = f32[127,5,125] divide(exponential, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Bitcast(m::Fusion(m::Parameter())
-                                   .WithPredicate(HasBlockLevelFusionConfig)))
-              .WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanNotFuseTwoDiamondsWithExtraUsageForFirstDiamondRoot) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f32[127,125]{1,0} exponential(subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
-  ROOT tuple = (f32[127,125]{1,0}, f32[127,125]{1,0}) tuple(divide, subtract)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(
-          m::Fusion(m::Fusion()).WithPredicate(HasBlockLevelFusionConfig),
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig))));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanNotFuseTwoDiamondsWithExtraUsageForSecondDiamondProducer) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f32[127,125]{1,0} exponential(subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
-  ROOT tuple = (f32[127,125]{1,0}, f32[127,125]{1,0}) tuple(divide, exponential)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(
-          m::Fusion(m::Fusion()).WithPredicate(HasBlockLevelFusionConfig),
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig))));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseSoftmaxDiamondWithTritonIncompatibleProducer) {
-  const std::string hlo_string = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-
-ENTRY main {
-  param_0 = f16[127,125]{1,0} parameter(0)
-  round-nearest-even = f16[127,125] round-nearest-even(param_0)
-  convert = f32[127,125] convert(round-nearest-even)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(convert, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = f32[127,125]{1,0} subtract(convert, broadcast)
-})";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::RoundNearestEven(m::Parameter()))
-                             .WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
        CanNotFuseSoftmaxDiamondWithNonFusibleBitcastBetweenReduceAndProducer) {
   const std::string hlo_string = R"(
 HloModule softmax
@@ -771,8 +509,7 @@ ENTRY main {
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseSoftmaxDiamondWithBitcastProducerFollowedByBitcastsOnEachUse) {
+TEST_F(SoftmaxRewriterTritonTest, CanFuseSoftmaxDiamondWithBitcastsOnEachUse) {
   const std::string hlo_string = R"(
 HloModule softmax
 
@@ -783,10 +520,9 @@ max_computation {
 }
 
 ENTRY main {
-  param_0 = f32[1,1,127,125]{3,2,1,0} parameter(0)
-  bitcast_parent = f32[127,125]{1,0} bitcast(param_0)
-  bitcast_0 = f32[127,125]{1,0} bitcast(bitcast_parent)
-  bitcast_1 = f32[127,125]{1,0} bitcast(bitcast_parent)
+  param_0 = f32[127,125]{1,0} parameter(0)
+  bitcast_0 = f32[127,125]{1,0} bitcast(param_0)
+  bitcast_1 = f32[127,125]{1,0} bitcast(param_0)
   constant_neg_inf = f32[] constant(-inf)
   reduce = f32[127]{0} reduce(bitcast_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
@@ -858,32 +594,6 @@ ENTRY main {
                   .ok());
 }
 
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {
-  const std::string hlo_string = R"(
-HloModule fusible_diamond
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  multiply =  f32[127,125]{1,0} multiply(param_0, param_0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = f32[127,125]{1,0} subtract(multiply, broadcast)
-})";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
 TEST_F(
     SoftmaxRewriterTritonTest,
     CanFuseIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
@@ -901,74 +611,6 @@ ENTRY main {
   multiply =  f32[127]{0} multiply(reduce, reduce)
   broadcast = f32[127,125]{1,0} broadcast(multiply), dimensions={0}
   ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {
-  const std::string hlo_string = R"(
-HloModule fusible_diamonds
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  multiply = f32[127,125]{1,0} multiply(subtract, subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT subtract_second = f32[127,125]{1,0} subtract(multiply, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {
-  const std::string hlo_string = R"(
-HloModule fusible_diamond
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  ROOT multiply = f32[127,125]{1,0} multiply(subtract, subtract)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -1072,74 +714,6 @@ ENTRY main.30 {
 
 TEST_F(
     SoftmaxRewriterTritonTest,
-    CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
-  const std::string hlo_string = R"(
-HloModule fusible_diamonds
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  constant = f32[] constant(0.333333343)
-  broadcast_splat = f32[127,125]{1,0} broadcast(constant), dimensions={}
-  multiply = f32[127,125]{1,0} multiply(broadcast_splat, subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT second_subtract = f32[127,125]{1,0} subtract(multiply, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(
-    SoftmaxRewriterTritonTest,
-    CanFuseAndEmitBinaryElementwiseWhereTheSecondOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
-  const std::string hlo_string = R"(
-HloModule fusible_diamonds
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  constant = f32[] constant(0.333333343)
-  broadcast_splat = f32[127,125]{1,0} broadcast(constant), dimensions={}
-  multiply = f32[127,125]{1,0} multiply(subtract, broadcast_splat)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT second_subtract = f32[127,125]{1,0} subtract(multiply, second_broadcast)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
-
-TEST_F(
-    SoftmaxRewriterTritonTest,
     CanFuseBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {
   const std::string hlo_string = R"(
 HloModule fusible_diamond
@@ -1168,33 +742,6 @@ ENTRY main {
           m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
-TEST_F(SoftmaxRewriterTritonTest,
-       CanFuseBinaryElementwiseConsumerWhereTheFirstOperandIsASplatConstant) {
-  const std::string hlo_string = R"(
-HloModule fusible_diamond
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  constant = f32[] constant(0.333333343)
-  broadcast_splat = f32[127,125]{1,0} broadcast(constant), dimensions={}
-  ROOT multiply = f32[127,125]{1,0} multiply(broadcast_splat, subtract)
-})";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
-}
 
 TEST_F(SoftmaxRewriterTritonTest,
        CanFuseBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducer) {
@@ -1570,10 +1117,8 @@ ENTRY main {
   reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   add = f32[127]{0} add(broadcast_from_scalar, reduce)
   broadcast = f32[127,125]{1,0} broadcast(add), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  ROOT abs = f32[127,125]{1,0} abs(subtract)
-}
-)";
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+})";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
