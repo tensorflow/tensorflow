@@ -224,7 +224,13 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
+
+  auto cleanup = absl::MakeCleanup(
+      [saved_allow_reassociation = allow_reassociation_, this]() {
+        allow_reassociation_ = saved_allow_reassociation;
+      });
   allow_reassociation_ = allow_reassociation;
+
   num_dynamic_loop_bounds_ = 0;
   auto backend_config_or =
       computation->root_instruction()->backend_config<BackendConfig>();

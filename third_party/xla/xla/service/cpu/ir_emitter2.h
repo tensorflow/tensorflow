@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
@@ -227,6 +228,9 @@ class IrEmitter2 {
       llvm::IRBuilderBase& b, const HloInstruction* instr,
       const KernelPrototype& kernel_prototype,
       const llvm_ir::ElementGenerator& element_generator);
+
+  absl::Status EmitNestedComputation(const HloComputation& callee,
+                                     absl::string_view name, bool is_reducer);
 
   bool fast_min_max() const;
 

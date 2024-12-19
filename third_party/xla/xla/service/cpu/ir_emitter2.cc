@@ -99,10 +99,8 @@ KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
 class IrEmitter2::ElementalIrEmitter : public CpuElementalIrEmitter {
  public:
   ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
-                     const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
-                     bool fast_min_max)
+                     IrEmitter* nested_ir_emitter, bool fast_min_max)
       : CpuElementalIrEmitter(module, b, true, fast_min_max),
-        hlo_module_(hlo_module),
         nested_ir_emitter_(nested_ir_emitter),
         fast_min_max_(fast_min_max) {}
 
@@ -110,43 +108,8 @@ class IrEmitter2::ElementalIrEmitter : public CpuElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {
-    // Module must be scheduled to emit thread local computation.
-    if (!hlo_module_ || !hlo_module_->has_schedule()) {
-      return absl::InternalError(
-          "HLO module must be scheduled to emit thread local computation.");
-    }
-
-    // Create a nested function for thread local computation(s) if it is not
-    // already created. Nested functions are created with internal linkage.
-    auto emit_computation = [&](const HloComputation* computation) {
-      if (!nested_ir_emitter_->is_computation_emitted(*computation,
-                                                      is_reducer)) {
-        VLOG(2) << "Emit nested computation: " << computation->name();
-        TF_RETURN_IF_ERROR(
-            nested_ir_emitter_
-                ->EmitComputation(
-                    const_cast<HloComputation*>(computation), name, false,
-                    hlo_module_->schedule()
-                        .sequence(computation)
-                        .instructions(),
-                    /*allow_reassociation=*/is_reducer,
-                    /*function_attributes=*/{llvm::Attribute::AlwaysInline})
-                .status());
-      }
-      return absl::OkStatus();
-    };
-
-    // We emit all embedded computations reachable through the `callee` to
-    // support nested thread local call, i.e., nested map computations.
-    for (HloComputation* embedded : callee.MakeEmbeddedComputationsList()) {
-      if (embedded->IsFusionComputation()) continue;
-      TF_RETURN_IF_ERROR(emit_computation(embedded));
-    }
-    TF_RETURN_IF_ERROR(emit_computation(&callee));
-
     // Add a thread local call to the nested computation.
     VLOG(2) << "Emit thread local call to: " << callee.name();
-    nested_ir_emitter_->b()->SetInsertPoint(b()->GetInsertPoint());
     auto values = nested_ir_emitter_->EmitThreadLocalCall(
         callee, parameters, name, is_reducer, /*in_compute_function=*/false);
 
@@ -156,7 +119,6 @@ class IrEmitter2::ElementalIrEmitter : public CpuElementalIrEmitter {
   bool fast_min_max() override { return fast_min_max_; }
 
  private:
-  const HloModule* hlo_module_;
   IrEmitter* nested_ir_emitter_;
   bool fast_min_max_;
 };
@@ -195,6 +157,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
+  IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
+
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
@@ -203,8 +167,16 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     };
   }
 
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
-                                       nested_ir_emitter_, fast_min_max());
+  if (instr->has_to_apply()) {
+    HloComputation* nested_computation = instr->to_apply();
+    bool is_reducer = instr->opcode() == HloOpcode::kReduce ||
+                      instr->opcode() == HloOpcode::kReduceWindow;
+    TF_RETURN_IF_ERROR(EmitNestedComputation(
+        *nested_computation, llvm_ir::IrName(instr), is_reducer));
+  }
+
+  ElementalIrEmitter elemental_emitter(module_, &b, nested_ir_emitter_,
+                                       fast_min_max());
   llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
 
@@ -266,8 +238,14 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
-                                       nested_ir_emitter_, fast_min_max());
+  IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
+
+  HloComputation* nested_computation = fusion->fused_instructions_computation();
+  TF_RETURN_IF_ERROR(EmitNestedComputation(*nested_computation,
+                                           llvm_ir::IrName(fusion), false));
+
+  ElementalIrEmitter elemental_emitter(module_, &b, nested_ir_emitter_,
+                                       fast_min_max());
 
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion->operand_count(); i++) {
@@ -909,6 +887,43 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
   TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
   return se::ThreadDim();
+}
+
+absl::Status IrEmitter2::EmitNestedComputation(const HloComputation& callee,
+                                               absl::string_view name,
+                                               bool is_reducer) {
+  // Module must be scheduled to emit thread local computation.
+  if (!hlo_module_.has_schedule()) {
+    return absl::InternalError(
+        "HLO module must be scheduled to emit thread local computation.");
+  }
+
+  if (nested_ir_emitter_->is_computation_emitted(callee, is_reducer)) {
+    return absl::OkStatus();
+  }
+
+  for (HloInstruction* instr : callee.instructions()) {
+    bool nested_is_reducer = instr->opcode() == HloOpcode::kReduce ||
+                             instr->opcode() == HloOpcode::kReduceWindow;
+    for (HloComputation* called_computation : instr->called_computations()) {
+      // reassociation is transitive so we "or" the caller and the callee.
+      TF_RETURN_IF_ERROR(
+          EmitNestedComputation(*called_computation, llvm_ir::IrName(instr),
+                                is_reducer || nested_is_reducer));
+    }
+  }
+
+  if (callee.IsFusionComputation()) {
+    return absl::OkStatus();
+  }
+
+  VLOG(2) << "Emit nested computation: " << callee.name();
+  return nested_ir_emitter_
+      ->EmitComputation(const_cast<HloComputation*>(&callee), name, false,
+                        hlo_module_.schedule().sequence(&callee).instructions(),
+                        /*allow_reassociation=*/is_reducer,
+                        /*function_attributes=*/{llvm::Attribute::AlwaysInline})
+      .status();
 }
 
 // This is a convenience function taken from IrEmitter, it uses module_ class
