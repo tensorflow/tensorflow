@@ -2430,6 +2430,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla/service:computation_placer",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
@@ -2438,6 +2439,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
         "@ml_dtypes//:float8",
     ],
 )

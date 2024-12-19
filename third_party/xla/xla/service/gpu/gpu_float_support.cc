@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/stream_executor/device_description.h"
@@ -50,6 +52,10 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
 }
 
 bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
+  if (IsCollective(&hlo) &&
+      primitive_util::IsSubByteNonPredType(hlo.shape().element_type())) {
+    return false;
+  }
   switch (hlo.opcode()) {
     // Collective ops.
     case HloOpcode::kAllReduce:
