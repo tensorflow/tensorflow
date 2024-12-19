@@ -22,13 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct DiamondChainDescriptor {
+struct DiamondDescriptor {
   HloInstruction* root = nullptr;
   HloInstruction* producer = nullptr;
 };
@@ -66,21 +63,22 @@ class SoftmaxRewriterTriton : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // Finds and returns all the fusible diamond chains in the module. The
+  // Finds and returns all the fusible normalization diamonds in the module. The
   // resulting vector is sorted according to a post-order matching (i.e. within
   // the same computation, producer diamonds appear before consumer diamonds).
-  absl::StatusOr<std::vector<DiamondChainDescriptor>>
-  FindAllFusibleDiamondChains(
+  absl::StatusOr<std::vector<DiamondDescriptor>>
+  FindAllFusibleNormalizationDiamonds(
       HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  // Constructs a Softmax fusion containing all the instructions between the
-  // root and the producer of a diamond chain. The producer is excluded from the
+  // Constructs a normalization fusion containing all the instructions between
+  // the root and the producer of a diamond. The producer is excluded from the
   // fusion.
-  // Returns `true` if the diamond chain was successfully fused. Otherwise,
+  //
+  // Returns `true` if the diamond was successfully fused. Otherwise,
   // returns `false` if, for example, the resulting fusion cannot be tiled.
-  absl::StatusOr<bool> MaybeFuseDiamondChain(
-      const DiamondChainDescriptor& diamond_chain);
+  absl::StatusOr<bool> MaybeFuseNormalizationDiamond(
+      const DiamondDescriptor& diamond_chain);
 
   // Return the producer of the following pattern:
   //
