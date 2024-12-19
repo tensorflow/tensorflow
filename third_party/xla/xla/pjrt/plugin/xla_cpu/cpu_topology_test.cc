@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 
 #include <memory>
 
-#include "xla/pjrt/cpu/cpu_topology.pb.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
 

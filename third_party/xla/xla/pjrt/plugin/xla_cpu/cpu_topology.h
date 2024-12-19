@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_CPU_TOPOLOGY_H_
-#define XLA_PJRT_CPU_CPU_TOPOLOGY_H_
+#ifndef XLA_PJRT_PLUGIN_XLA_CPU_CPU_TOPOLOGY_H_
+#define XLA_PJRT_PLUGIN_XLA_CPU_CPU_TOPOLOGY_H_
 
 #include <memory>
 #include <string>
@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "xla/pjrt/cpu/cpu_topology.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 
 namespace xla {
 class CpuTopology {
@@ -71,4 +71,4 @@ inline int UnpackCpuProcessIndex(PjRtGlobalDeviceId global_device_id) {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_CPU_TOPOLOGY_H_
+#endif  // XLA_PJRT_PLUGIN_XLA_CPU_CPU_TOPOLOGY_H_
