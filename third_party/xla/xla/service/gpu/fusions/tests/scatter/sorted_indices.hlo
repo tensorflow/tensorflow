@@ -1,0 +1,29 @@
+// RUN: fusion_to_mlir %s   | emitters_opt -xla-gpu-test-optimize \
+// RUN: | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=scatter:2
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+scatter {
+  %operand = f32[100]  parameter(0)
+  %indices = s32[2000,1] parameter(1)
+  %update = f32[2000,32] parameter(2)
+
+  ROOT %scatter = f32[100] scatter(
+      f32[100] %operand,
+      s32[2000,1] %indices,
+      f32[2000,32] %update
+    ),
+    update_window_dims={1},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    indices_are_sorted=true,
+    unique_indices=false,
+    to_apply=add
+}
+// CHECK-LABEL: func.func @main
+// CHECK: arith.constant dense<0.000000e+00> : vector<1x1xf32>

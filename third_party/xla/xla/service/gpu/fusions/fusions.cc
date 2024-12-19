@@ -110,7 +110,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
       return CreateMlirReductionFusion(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      return std::make_unique<MlirScatterFusion>(analysis);
+      return CreateMlirScatterFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
       return std::make_unique<MlirTransposeFusion>(analysis);
