@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/c/tf_tensor.h"
