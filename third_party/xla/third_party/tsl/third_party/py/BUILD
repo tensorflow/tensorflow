@@ -61,6 +61,17 @@ bool_flag(
     visibility = ["//visibility:public"],
 )
 
+py_library(
+    name = "manylinux_compliance_utils",
+    srcs = [
+        "manylinux_compliance_utils.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pypi_auditwheel//:pkg",
+    ],
+)
+
 py_binary(
     name = "verify_manylinux_compliance",
     srcs = [
@@ -69,6 +80,12 @@ py_binary(
     main = "verify_manylinux_compliance.py",
     visibility = ["//visibility:public"],
     deps = [
-        "@pypi_auditwheel//:pkg",
+        ":manylinux_compliance_utils",
     ],
+)
+
+filegroup(
+    name = "manylinux_compliance_test",
+    srcs = ["manylinux_compliance_test.py"],
+    visibility = ["//visibility:public"],
 )
