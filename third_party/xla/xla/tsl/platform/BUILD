@@ -87,6 +87,7 @@ filegroup(
     name = "android_test_srcs",
     testonly = 1,
     srcs = [
+        "test.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
