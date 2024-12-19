@@ -36,17 +36,18 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
-static absl::Status DefineXnnSubgraph(xnn_subgraph_t subgraph,
-                                      const DotDimensionNumbers& dot_dimensions,
-                                      const DotShape& dot_shape) {
+static absl::Status DefineXnnSubgraph(
+    xnn_subgraph_t subgraph, const DotDimensionNumbers& dot_dimensions,
+    const DotSlices& dot_slices, const DotShape& dot_shape,
+    const DotCanonicalDims& dot_canonical_dims) {
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   uint32_t rhs_id = XNN_INVALID_VALUE_ID;
   uint32_t out_id = XNN_INVALID_VALUE_ID;
@@ -55,9 +56,9 @@ static absl::Status DefineXnnSubgraph(xnn_subgraph_t subgraph,
     return {dims.begin(), dims.end()};
   };
 
-  std::vector<size_t> lhs_dims = dims(dot_shape.lhs_matmul_shape.dimensions());
-  std::vector<size_t> rhs_dims = dims(dot_shape.rhs_matmul_shape.dimensions());
-  std::vector<size_t> out_dims = dims(dot_shape.out_matmul_shape.dimensions());
+  std::vector<size_t> lhs_dims = dims(dot_slices.lhs_shape.dimensions());
+  std::vector<size_t> rhs_dims = dims(dot_slices.rhs_shape.dimensions());
+  std::vector<size_t> out_dims = dims(dot_slices.out_shape.dimensions());
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph, xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(), nullptr,
@@ -71,11 +72,32 @@ static absl::Status DefineXnnSubgraph(xnn_subgraph_t subgraph,
       subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(), nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(subgraph, lhs_id, rhs_id,
-                                                       out_id,
-                                                       /*flags=*/0));
+  XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
+      subgraph, lhs_id, rhs_id, out_id,
+      /*flags=*/dot_canonical_dims.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<bool> XnnDotThunk::IsSupported(
+    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+    const Shape& rhs_shape, const Shape& out_shape) {
+  // TODO(ezhulenev): Support other element types.
+  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
+      out_shape.element_type() != F32) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                      rhs_shape, out_shape));
+
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+
+  // XNNPACK does not support transposing LHS or col-major layouts.
+  return dot_canonical_dims.lhs_canonical &&
+         !dot_canonical_dims.lhs_column_major &&
+         !dot_canonical_dims.rhs_column_major;
 }
 
 absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
@@ -88,21 +110,26 @@ absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
   TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                       rhs_shape, out_shape));
 
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+
   DotSlices dot_slices{lhs_buffer, std::move(lhs_shape),
                        rhs_buffer, std::move(rhs_shape),
                        out_buffer, std::move(out_shape)};
 
-  return absl::WrapUnique(new XnnDotThunk(info, std::move(dot_dimensions),
-                                          std::move(dot_slices),
-                                          std::move(dot_shape)));
+  return absl::WrapUnique(
+      new XnnDotThunk(info, std::move(dot_dimensions), std::move(dot_slices),
+                      std::move(dot_shape), std::move(dot_canonical_dims)));
 }
 
 XnnDotThunk::XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
-                         DotSlices dot_slices, DotShape dot_shape)
+                         DotSlices dot_slices, DotShape dot_shape,
+                         DotCanonicalDims dot_canonical_dims)
     : Thunk(Kind::kXnnDot, info),
       dot_dimensions_(std::move(dot_dimensions)),
       dot_slices_(std::move(dot_slices)),
-      dot_shape_(std::move(dot_shape)) {}
+      dot_shape_(std::move(dot_shape)),
+      dot_canonical_dims_(std::move(dot_canonical_dims)) {}
 
 tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::Execute(
     const ExecuteParams& params) {
@@ -144,11 +171,19 @@ tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::Execute(
       dot_shape_.rhs_matmul_shape.ToString(true),
       dot_shape_.out_matmul_shape.ToString(true));
 
+  VLOG(3) << absl::StreamFormat(
+      "  matmul dims: m=%d, k=%d, n=%d, lhs_column_major=%v, lhs_canonical=%v, "
+      "rhs_column_major=%v, rhs_canonical=%v",
+      dot_canonical_dims_.m, dot_canonical_dims_.k, dot_canonical_dims_.n,
+      dot_canonical_dims_.lhs_column_major, dot_canonical_dims_.lhs_canonical,
+      dot_canonical_dims_.rhs_column_major, dot_canonical_dims_.rhs_canonical);
+
   xnn_subgraph_t subgraph = nullptr;
   XNN_RETURN_IF_ERROR(
       xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph));
 
-  TF_RETURN_IF_ERROR(DefineXnnSubgraph(subgraph, dot_dimensions_, dot_shape_));
+  TF_RETURN_IF_ERROR(DefineXnnSubgraph(subgraph, dot_dimensions_, dot_slices_,
+                                       dot_shape_, dot_canonical_dims_));
 
   xnn_workspace_t workspace = nullptr;
   XNN_RETURN_IF_ERROR(xnn_create_workspace(&workspace));
