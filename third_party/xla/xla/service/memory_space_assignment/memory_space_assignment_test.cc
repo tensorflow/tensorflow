@@ -10295,6 +10295,75 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   EXPECT_TRUE(has_zero_offset_allocations);
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       CrossProgramPrefetchEndOfProgramPrefetchAndWhile) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  while_condition {
+    param1 = (f32[8,2]{1,0}, f32[8,2]{1,0}) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    param2 = (f32[8,2]{1,0}, f32[8,2]{1,0}) parameter(0)
+    gte2 = f32[8,2]{1,0} get-tuple-element(param2), index=0
+    gte3 = f32[8,2]{1,0} get-tuple-element(param2), index=1
+    add = f32[8,2]{1,0} add(gte2, gte3)
+    negate.2 = f32[8,2]{1,0} negate(add)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT tuple2 = (f32[8,2]{1,0}, f32[8,2]{1,0}) tuple(negate.8, gte3)
+  }
+
+  ENTRY CrossProgramPrefetch {
+    p0 = f32[8,8]{1,0} parameter(0)
+    p1 = f32[8,2]{1,0} parameter(1)
+    dot = f32[8,2]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot)
+    tuple = (f32[8,2]{1,0}, f32[8,2]{1,0}) tuple(negate.1, dot)
+    while = (f32[8,2]{1,0}, f32[8,2]{1,0}) while(tuple), condition=while_condition, body=while_body
+    ROOT gte0 = f32[8,2]{1,0} get-tuple-element(while), index=0
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpaceUsingCostAnalysis(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module));
+  LOG(ERROR) << "module: " << module->ToString();
+  const HloValue& cross_program_prefetched_value =
+      dataflow_analysis->GetValueDefinedAt(
+          module->entry_computation()->parameter_instruction(1), {});
+  // Expect that there are two prefetches that use this value, one is the
+  // cross-program prefetch, the other is the end-of-program prefetch.
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_cross_program_prefetch),
+            1);
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_end_of_program_prefetch),
+            1);
+}
+
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
