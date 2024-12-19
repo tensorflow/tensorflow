@@ -1270,6 +1270,7 @@ xla_test(
     ],
     deps = CONVOLUTION_TEST_DEPS + [
         "//xla:error_spec",
+        "//xla:window_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1339,6 +1340,7 @@ xla_test(
     ],
     deps = CONVOLUTION_TEST_DEPS + [
         "//xla:error_spec",
+        "//xla:window_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1373,6 +1375,7 @@ xla_test(
     shard_count = 25,
     deps = CONVOLUTION_TEST_DEPS + [
         "//xla:error_spec",
+        "//xla:window_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1408,6 +1411,7 @@ xla_test(
     ],
     deps = CONVOLUTION_TEST_DEPS + [
         "//xla:error_spec",
+        "//xla:window_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

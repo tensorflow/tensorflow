@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -2069,27 +2070,23 @@ class Transposed2DConvHloTest
     }
   }
 
-  std::string GetPaddingString(int kernel_x, int kernel_y) {
-    return absl::StrCat(GetPaddingValue(kernel_x, /*low=*/true), "_",
-                        GetPaddingValue(kernel_x, /*low=*/false), "x",
-                        GetPaddingValue(kernel_y, /*low=*/true), "_",
-                        GetPaddingValue(kernel_y, /*low=*/false));
-  }
+  auto GetWindow() {
+    Window window;
 
-  std::string GetWindowString() {
-    const auto padding_string = GetPaddingString(kernel_x_, kernel_y_);
-    const auto window_size_string = absl::StrCat(kernel_x_, "x", kernel_y_);
-    const auto lhs_dilation_string =
-        absl::StrCat(lhs_dilation_x_, "x", lhs_dilation_y_);
+    auto add_dim = [&](int size, int lhs_dilation) {
+      auto dim = window.add_dimensions();
+      dim->set_size(size);
+      dim->set_stride(1);
+      dim->set_padding_low(GetPaddingValue(size, /*low=*/true));
+      dim->set_padding_high(GetPaddingValue(size, /*low=*/false));
+      dim->set_window_dilation(1);
+      dim->set_base_dilation(lhs_dilation);
+    };
 
-    return absl::StrCat("{size=", window_size_string, " pad=", padding_string,
-                        " lhs_dilate=", lhs_dilation_string, "}");
-  }
+    add_dim(kernel_x_, lhs_dilation_x_);
+    add_dim(kernel_y_, lhs_dilation_y_);
 
-  int GetOutputShape(int input_size, int kernel_size, int lhs_dilation) {
-    return lhs_dilation * (input_size - 1) + kernel_size -
-           (kernel_size - GetPaddingValue(kernel_size, /*low=*/true) - 1) -
-           (kernel_size - GetPaddingValue(kernel_size, /*low=*/false) - 1);
+    return window;
   }
 
  public:
@@ -2107,27 +2104,23 @@ class Transposed2DConvHloTest
 };
 
 XLA_TEST_P(Transposed2DConvHloTest, Simple) {
-  const auto window = GetWindowString();
-
   const auto input_shape =
-      absl::StrCat(batch_, ",", input_channels_, ",", input_x_, ",", input_y_);
-  const auto kernel_shape = absl::StrCat(output_channels_, ",", input_channels_,
-                                         ",", kernel_x_, ",", kernel_y_);
-  const auto output_shape =
-      absl::StrCat(batch_, ",", output_channels_, ",",
-                   GetOutputShape(input_x_, kernel_x_, lhs_dilation_x_), ",",
-                   GetOutputShape(input_y_, kernel_y_, lhs_dilation_y_));
+      ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
+  const auto kernel_shape = ShapeUtil::MakeShape(
+      F32, {output_channels_, input_channels_, kernel_x_, kernel_y_});
+
+  const auto window = GetWindow();
 
   // clang-format off
   const std::string hlo = absl::StrCat(R"(
     HloModule TestModule
 
     ENTRY TestComputation {
-      input.1 = f32[)", input_shape, R"(]{3,2,1,0} parameter(0)
-      filter.2 = f32[)", kernel_shape, R"(]{3,2,1,0} parameter(1)
-      ROOT conv.3 = f32[)", output_shape, R"(]{3,2,1,0} convolution(
-        input.1, filter.2),
-        window=)", window, R"(, dim_labels=bf01_oi01->bf01
+      input.1 = )", input_shape.ToString(), R"( parameter(0)
+      filter.2 = )", kernel_shape.ToString(), R"( parameter(1)
+      ROOT conv.3 = convolution(input.1, filter.2),
+        window={)", window_util::ToString(window), R"(},
+        dim_labels=bf01_oi01->bf01
     }
   )");
   // clang-format on
