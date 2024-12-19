@@ -92,7 +92,6 @@ cc_library(
         "@triton//:TritonToTritonGPU",
         "@triton//:TritonTransforms",
     ]) + if_cuda_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
     ]) + if_rocm_is_configured([
