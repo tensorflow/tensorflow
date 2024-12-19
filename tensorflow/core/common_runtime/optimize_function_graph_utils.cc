@@ -812,11 +812,34 @@ PreprocessAndPartitionGraph(
                                  "before_partition", graph.get(),
                                  &input_optimized_graph.lib_def, VLOG_IS_ON(4));
 
+  // Ensure the global uniqueness of the tensor name
+  // to avoid rendezvous key conflicts.
+  static absl::Mutex tensor_name_map_mu(absl::kConstInit);
+  static absl::flat_hash_map<std::string, int> tensor_name_map
+      ABSL_GUARDED_BY(tensor_name_map_mu);
+
+  auto tensor_name_func = [&](const Edge* edge) -> std::string {
+    std::string tensor_name_attr =
+      absl::StrCat("edge_", edge->id(), "_", edge->src()->name());
+
+    absl::MutexLock lock(&tensor_name_map_mu);
+    auto it = tensor_name_map.find(tensor_name_attr);
+    if (it != tensor_name_map.end()) {
+      int current_id = it->second;
+      ++it->second;
+      tensor_name_attr = absl::StrCat(tensor_name_attr, "_", current_id);
+    } else {
+      tensor_name_map[tensor_name_attr] = 1;
+    }
+    return tensor_name_attr;
+  };
+    
   // Partition the graph.
   auto device_name_to_subgraphs =
       std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
   TF_RETURN_IF_ERROR(PartitionFunctionGraph(dev_set, std::move(graph),
-                                            device_name_to_subgraphs.get()));
+                                            device_name_to_subgraphs.get(),
+                                            tensor_name_func));
 
   // Dump graphs before post-partitioning passes.
   for (const auto& pair : *device_name_to_subgraphs) {
