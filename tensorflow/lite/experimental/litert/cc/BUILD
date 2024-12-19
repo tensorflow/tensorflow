@@ -36,6 +36,7 @@ cc_library(
         ":litert_expected",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

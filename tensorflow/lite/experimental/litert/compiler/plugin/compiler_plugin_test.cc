@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <array>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -23,7 +24,9 @@
 #include <gtest/gtest.h>
 #include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -200,7 +203,7 @@ TEST(ApplyTest, Simple) {
   ASSERT_TRUE(model_wrap);
   auto& model = *model_wrap.Get();
 
-  LITERT_ASSERT_STATUS_OK(Apply(plugins->front(), model));
+  ASSERT_TRUE(ApplyPlugin(plugins->front(), model));
   ASSERT_EQ(model.NumSubgraphs(), 1);
 
   auto& subgraph = *model.MainSubgraph();
@@ -221,7 +224,7 @@ TEST(ApplyTest, MultiSubgraph) {
   ASSERT_TRUE(model_wrap);
   auto& model = *model_wrap.Get();
 
-  LITERT_ASSERT_STATUS_OK(Apply(plugins->front(), model));
+  ASSERT_TRUE(ApplyPlugin(plugins->front(), model));
   ASSERT_EQ(model.NumSubgraphs(), 2);
 
   auto& subgraph = model.Subgraph(0);
@@ -238,6 +241,42 @@ TEST(ApplyTest, MultiSubgraph) {
 
   EXPECT_TRUE(model.FindMetadata(kByteCodeMetadataKey));
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
+}
+
+TEST(ApplyTest, ApplyPlugins) {
+  litert::Environment::Destroy();
+
+  auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap.Get();
+
+  const std::array environment_options = {
+      litert::Environment::Option{
+          /*.tag=*/litert::Environment::OptionTag::CompilerPluginLibraryPath,
+          /*.value=*/kTestPluginSearchPath,
+      },
+  };
+  ASSERT_TRUE(litert::Environment::Create(environment_options));
+
+  LiteRtHwAccelerators compilation_options = static_cast<LiteRtHwAccelerators>(
+      kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu | kLiteRtHwAccelatorNpu);
+  auto new_flatbuffer =
+      litert::internal::ApplyPlugins(&model, compilation_options);
+  ASSERT_TRUE(new_flatbuffer);
+
+  ASSERT_EQ(model.NumSubgraphs(), 1);
+
+  auto& subgraph = *model.MainSubgraph();
+  ASSERT_EQ(subgraph.Ops().size(), 1);
+
+  EXPECT_EQ(subgraph.Op(0).OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_THAT(subgraph.Op(0).CustomOptions().StrView(),
+              HasSubstr(kByteCodeMetadataKey));
+
+  EXPECT_TRUE(model.FindMetadata(kByteCodeMetadataKey));
+  EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
+
+  litert::Environment::Destroy();
 }
 
 }  // namespace

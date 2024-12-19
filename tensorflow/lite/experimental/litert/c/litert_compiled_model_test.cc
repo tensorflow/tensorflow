@@ -45,7 +45,7 @@ TEST(CompiledModelTest, Basic) {
 
   LiteRtCompiledModel compiled_model;
   ASSERT_EQ(
-      LiteRtCreateCompiledModel(model, kLiteRtHwAccelatorCpu, &compiled_model),
+      LiteRtCreateCompiledModel(model, kLiteRtHwAccelatorNone, &compiled_model),
       kLiteRtStatusOk);
 
   LiteRtSubgraph subgraph;

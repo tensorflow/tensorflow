@@ -51,12 +51,23 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputBuffers(
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         input_buffer_requirements.Error().Message());
     }
+
+    auto supported_types = input_buffer_requirements->SupportedTypes();
+    if (!supported_types) {
+      return supported_types.Error();
+    }
+    if (supported_types->empty()) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Input doesn't support any tensor buffer types");
+    }
+    // For simplicity we just pick the first supported tensor buffer type.
+    LiteRtTensorBufferType tensor_buffer_type = (*supported_types)[0];
+
     auto tensor_type = input_tensors[i].RankedTensorType();
     if (!tensor_type) {
       return tensor_type.Error();
     }
-    LiteRtTensorBufferType tensor_buffer_type =
-        (*(*input_buffer_requirements).SupportedTypes())[0];
+
     auto input_buffer = TensorBuffer::CreateManaged(
         tensor_buffer_type, *tensor_type,
         (*input_buffer_requirements).BufferSize().Value());
@@ -64,9 +75,11 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputBuffers(
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         input_buffer.Error().Message());
     }
+
     input_buffers.push_back(std::move(*input_buffer));
   }
-  return std::move(input_buffers);
+
+  return input_buffers;
 }
 
 Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
@@ -79,9 +92,12 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
-  std::vector<TensorBuffer> output_buffers;
+
   auto output_tensors = subgraph->Outputs();
+
+  std::vector<TensorBuffer> output_buffers;
   output_buffers.reserve(output_tensors.size());
+
   for (int i = 0; i < output_tensors.size(); ++i) {
     auto output_buffer_requirements =
         GetOutputBufferRequirements(signature_index, i);
@@ -89,12 +105,24 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         output_buffer_requirements.Error().Message());
     }
+
+    auto supported_types = output_buffer_requirements->SupportedTypes();
+    if (!supported_types) {
+      return supported_types.Error();
+    }
+    if (supported_types->empty()) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Output doesn't support any tensor buffer types");
+    }
+
+    // For simplicity we just pick the first supported tensor buffer type.
+    LiteRtTensorBufferType tensor_buffer_type = (*supported_types)[0];
+
     auto tensor_type = output_tensors[i].RankedTensorType();
     if (!tensor_type) {
       return tensor_type.Error();
     }
-    LiteRtTensorBufferType tensor_buffer_type =
-        (*(*output_buffer_requirements).SupportedTypes())[0];
+
     auto output_buffer = TensorBuffer::CreateManaged(
         tensor_buffer_type, *tensor_type,
         (*output_buffer_requirements).BufferSize().Value());
@@ -104,7 +132,8 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
     }
     output_buffers.push_back(std::move(*output_buffer));
   }
-  return std::move(output_buffers);
+
+  return output_buffers;
 }
 
 Expected<void> CompiledModel::Run(

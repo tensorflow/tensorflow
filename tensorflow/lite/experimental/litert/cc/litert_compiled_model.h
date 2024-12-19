@@ -69,7 +69,7 @@ class CompiledModel
   // returned object.
   static Expected<CompiledModel> Create(
       litert::Model& model,
-      LiteRtCompilationOptions compilation_options = kLiteRtHwAccelatorCpu) {
+      LiteRtCompilationOptions compilation_options = kLiteRtHwAccelatorNone) {
     LiteRtCompiledModel compiled_model;
     if (auto status = LiteRtCreateCompiledModel(
             model.Get(), compilation_options, &compiled_model);

@@ -104,13 +104,6 @@ class CompilerPlugin {
   static Expected<std::vector<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
 
-  // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
-  // the directories passed through "lib_search_paths" and return a compiler
-  // plugin instance for a given manufactured, if one is found.
-  static Expected<CompilerPlugin> LoadPlugin(
-      absl::Span<const absl::string_view> lib_search_paths,
-      absl::string_view soc_manufacturer);
-
   CompilerPlugin(CompilerPlugin&& other);
   CompilerPlugin& operator=(CompilerPlugin&& other);
   CompilerPlugin(const CompilerPlugin& other) = delete;
@@ -151,9 +144,16 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
 // byte_code will be internalized within the model for later serialization.
 // The serialization parameter refers to the strategy used to pack the byte code
 // during future serialization.
-LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                   absl::string_view soc_model = "",
-                   Serialization serialization = Serialization::kAppend);
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model = "",
+    Serialization serialization = Serialization::kAppend);
+
+// Apply all available plugins providing the selected HW accelerators to the
+// given model, modify the model accordingly, and return a new flatbuffer
+// backing the modified model.
+Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
+    LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators);
 
 }  // namespace litert::internal
 

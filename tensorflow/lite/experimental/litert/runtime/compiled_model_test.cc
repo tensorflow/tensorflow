@@ -137,7 +137,7 @@ TEST(CompiledModelTest, Basic) {
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
   auto res_compiled_model =
-      LiteRtCompiledModelT::Create(model, kLiteRtHwAccelatorCpu);
+      LiteRtCompiledModelT::Create(model, kLiteRtHwAccelatorNone);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel: "
                                   << res_compiled_model.Error().Message();
   auto& compiled_model = **res_compiled_model;
@@ -216,7 +216,7 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
   auto res_compiled_model =
-      LiteRtCompiledModelT::Create(model, kLiteRtHwAccelatorCpu);
+      LiteRtCompiledModelT::Create(model, kLiteRtHwAccelatorNone);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = **res_compiled_model;
 

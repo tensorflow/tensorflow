@@ -440,6 +440,12 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return litert::Subgraph(signature->Subgraph());
   }
 
+  size_t GetNumSignatures() const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    return num_signatures;
+  }
+
   // Returns the list of signatures defined in the model.
   Expected<std::vector<class Signature>> GetSignatures() const {
     LiteRtParamIndex num_signatures;

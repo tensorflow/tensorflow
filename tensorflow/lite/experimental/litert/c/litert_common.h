@@ -88,6 +88,7 @@ typedef enum {
 } LiteRtStatus;
 
 typedef enum : int {
+  kLiteRtHwAccelatorNone = 0,
   kLiteRtHwAccelatorCpu = 1 << 0,
   kLiteRtHwAccelatorGpu = 1 << 1,
   kLiteRtHwAccelatorNpu = 1 << 2,

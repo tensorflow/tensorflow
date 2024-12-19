@@ -18,6 +18,7 @@
 #include <any>
 #include <cstdint>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -94,13 +95,19 @@ inline Expected<LiteRtAny> ToLiteRtAny(const std::any& any) {
     result.str_value = std::any_cast<decltype(LiteRtAny::str_value)>(any);
     return result;
 
+  } else if (any.type() == typeid(absl::string_view)) {
+    result.type = kLiteRtAnyTypeString;
+    result.str_value = std::any_cast<absl::string_view>(any).data();
+    return result;
+
   } else if (any.type() == typeid(LiteRtAny::ptr_value)) {
     result.type = kLiteRtAnyTypeVoidPtr;
     result.ptr_value = std::any_cast<decltype(LiteRtAny::ptr_value)>(any);
     return result;
 
   } else {
-    return Error(kLiteRtStatusErrorInvalidArgument);
+    return Error(kLiteRtStatusErrorInvalidArgument,
+                 "Invalid argument for ToLiteRtAny");
   }
 }
 

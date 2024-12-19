@@ -18,17 +18,21 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/test_macros.h"
@@ -40,92 +44,63 @@
 
 constexpr const char* kCompilerPluginLibSearchPath = "/data/local/tmp";
 
+using testing::FloatNear;
+using testing::Pointwise;
+
 TEST(JitCompilation, Qualcomm) {
+  const std::array environment_options = {
+      litert::Environment::Option{
+          /*.tag=*/litert::Environment::OptionTag::CompilerPluginLibraryPath,
+          /*.value=*/kCompilerPluginLibSearchPath,
+      },
+  };
+  ASSERT_TRUE(litert::Environment::Create(environment_options));
+
   auto model_path = litert::testing::GetTestFilePath(kModelFileName);
   auto model = litert::Model::CreateFromFile(model_path);
   ASSERT_TRUE(model);
+
+  auto num_signatures = model->GetNumSignatures();
+  ASSERT_EQ(num_signatures, 1);
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
 
-  constexpr const std::array<const absl::string_view, 1>
-      compiler_plugin_lib_search_paths = {kCompilerPluginLibSearchPath};
-  auto compiler_plugin = litert::internal::CompilerPlugin::LoadPlugin(
-      compiler_plugin_lib_search_paths, "Qualcomm");
-  ASSERT_TRUE(compiler_plugin);
+  auto compiled_model =
+      litert::CompiledModel::Create(*model, kLiteRtHwAccelatorNpu);
+  ASSERT_TRUE(compiled_model);
 
-  auto api_version = compiler_plugin->ApiVersion();
-  ASSERT_TRUE(api_version);
+  auto input_buffers =
+      compiled_model->CreateInputBuffers(/*signature_index=*/0);
+  ASSERT_TRUE(input_buffers);
+  EXPECT_EQ(input_buffers->size(), 2);
 
-  ABSL_LOG(INFO) << "Found compiler plugin with version " << api_version->major
-                 << "." << api_version->minor << "." << api_version->patch;
+  auto output_buffers =
+      compiled_model->CreateOutputBuffers(/*signature_index=*/0);
+  ASSERT_TRUE(output_buffers);
+  EXPECT_EQ(output_buffers->size(), 1);
 
-  LITERT_ASSERT_STATUS_OK(
-      litert::internal::Apply(*compiler_plugin, *model->Get()));
-  auto serialized = litert::internal::SerializeModel(std::move(*model->Get()));
+  ASSERT_TRUE((*input_buffers)[0].Write<float>(
+      absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
+  ASSERT_TRUE((*input_buffers)[1].Write<float>(
+      absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
 
-  auto flatbuffer_model = tflite::FlatBufferModel::BuildFromBuffer(
-      serialized->StrData(), serialized->Size());
-
-  EXPECT_TRUE(flatbuffer_model != nullptr);
-
-  tflite::Interpreter::Ptr interpreter = nullptr;
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-  tflite::InterpreterBuilder(*flatbuffer_model, resolver)(&interpreter);
-  EXPECT_TRUE(interpreter != nullptr);
-
-  EXPECT_EQ(interpreter->nodes_size(), 1);
-  EXPECT_EQ(interpreter->inputs().size(), 2);
-  EXPECT_EQ(interpreter->outputs().size(), 1);
-  ASSERT_EQ(interpreter->execution_plan().size(), 1);
-
-  litert::internal::ExternalLiteRtBufferContext buffer_context;
-  interpreter->SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
-
-  auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
-  LiteRtDispatchDelegateAddAllocBaseOption(
-      dispatch_delegate_options.get(), flatbuffer_model->allocation()->base());
-  auto dispatch_delegate =
-      litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
-
-  ASSERT_EQ(interpreter->ModifyGraphWithDelegate(dispatch_delegate.get()),
-            kTfLiteOk);
-
-  // Get the list of signatures and check it.
-  auto signature_defs = interpreter->signature_keys();
-  ASSERT_EQ(signature_defs.size(), 1);
-
-  tflite::impl::SignatureRunner* runner = interpreter->GetSignatureRunner(
-      interpreter->signature_keys().front()->c_str());
-  ASSERT_NE(runner, nullptr);
-
-  EXPECT_EQ(runner->AllocateTensors(), kTfLiteOk);
-
-  // Fill model inputs.
-  ASSERT_STREQ(runner->input_names()[0], "arg0");
-  auto input_0_tensor = runner->input_tensor("arg0");
-  ASSERT_NE(input_0_tensor, nullptr);
-  auto* input_0 = input_0_tensor->data.f;
-  std::memcpy(input_0, kTestInput0Tensor, sizeof(kTestInput0Tensor));
-
-  ASSERT_STREQ(runner->input_names()[1], "arg1");
-  auto input_1_tensor = runner->input_tensor("arg1");
-  ASSERT_NE(input_1_tensor, nullptr);
-  auto* input_1 = input_1_tensor->data.f;
-  std::memcpy(input_1, kTestInput1Tensor, sizeof(kTestInput1Tensor));
-
-  EXPECT_EQ(runner->Invoke(), kTfLiteOk);
+  // Execute model.
+  compiled_model->Run(/*signature_index=*/0, *input_buffers, *output_buffers);
 
   // Check model output.
-  auto output_tensor = runner->output_tensor(runner->output_names()[0]);
-  ASSERT_NE(output_tensor, nullptr);
-  auto* output = output_tensor->data.f;
-  for (auto i = 0; i < kTestOutputSize; ++i) {
-    ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
+  {
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create<const float>(
+        (*output_buffers)[0]);
+    ASSERT_TRUE(lock_and_addr);
+    auto output = absl::MakeSpan(lock_and_addr->second, kTestOutputSize);
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
+    }
+    EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
   }
-  for (auto i = 0; i < kTestOutputSize; ++i) {
-    EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
-  }
+
+  litert::Environment::Destroy();
 }
