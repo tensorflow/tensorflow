@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -65,6 +66,14 @@ namespace xla::cpu {
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
+// Initialize LLVM the first time `JitCompiler` is created.
+static void InitializeLLVMTarget() {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+}
+
+absl::once_flag initialize_llvm_flag;
+
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 JitCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
@@ -81,6 +90,7 @@ JitCompiler::InferTargetMachine(
                               ? CpuTargetFromMaxFeature(*max_cpu_feature)
                               : absl::string_view(llvm::sys::getHostCPUName());
 
+  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -108,13 +118,7 @@ IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
 absl::StatusOr<JitCompiler> JitCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     TaskRunner task_runner) {
-  // Initialize LLVM the first time `JitCompiler` is created.
-  static bool llvm_initialized = [] {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-    return true;
-  }();
-  CHECK(llvm_initialized) << "LLVM must be initialized";
+  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
 
   // Infer target machine from the current host CPU.
   IrCompiler::TargetMachineBuilder target_machine_builder =

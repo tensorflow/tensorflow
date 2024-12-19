@@ -88,6 +88,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/service/cpu:orc_jit_memory_mapper",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
