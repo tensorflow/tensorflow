@@ -667,6 +667,10 @@ absl::Status CompileOptions::ApplyOptionFromString(
       }
       return absl::OkStatus();
     } else {
+      if (value.empty() && field->is_repeated()) {
+        reflection->ClearField(&debug_options, field);
+        return absl::OkStatus();
+      }
       auto enum_desc = field->enum_type()->FindValueByName(value);
       if (enum_desc != nullptr) {
         if (field->is_repeated()) {
