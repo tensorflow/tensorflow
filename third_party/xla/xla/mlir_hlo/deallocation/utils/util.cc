@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "deallocation/utils/util.h"
 
-#include <optional>
-
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
 namespace mlir {
