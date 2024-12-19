@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -161,6 +162,9 @@ class CostValue {
 
   // Suitable for logging analysis for debugging.
   std::string ToString() const;
+  friend std::ostream& operator<<(std::ostream& os, const CostValue& value) {
+    return os << value.ToString();
+  }
 
  private:
   enum class Type : std::uint8_t { kNotFound, kError, kOk };
