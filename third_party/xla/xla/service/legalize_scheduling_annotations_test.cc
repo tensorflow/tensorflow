@@ -20,12 +20,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/side_effect_util.h"
 #include "xla/test_helpers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,9 +48,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, MultipleAnnotations) {
@@ -69,9 +70,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MultipleAnnotations) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NegativeAnnotation) {
@@ -89,9 +90,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, NegativeAnnotation) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, CrossComputationAnnotation) {
@@ -129,9 +130,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, CrossComputationAnnotation) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps) {
@@ -153,9 +154,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps2) {
@@ -177,9 +178,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps2) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {
@@ -197,9 +198,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, MoveFusedOpAnnotationToCaller) {
@@ -220,8 +221,9 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MoveFusedOpAnnotationToCaller) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
-  EXPECT_IS_OK(LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+  LegalizeSchedulingAnnotations::Config config;
+  EXPECT_IS_OK(
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 
   HloInstruction* fusion = hlo_module->entry_computation()->root_instruction();
   const auto& attrs = fusion->frontend_attributes().map();
@@ -248,9 +250,35 @@ TEST_F(LegalizeSchedulingAnnotationsTest, FusedOpsWithDifferentAnnotationIds) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
+  LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
-      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromBitcast) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[256,1024]{1,0} parameter(0)
+    p1 = f32[16,64,256]{2,1,0} parameter(1)
+    ags0 = (f32[256,1024]{1,0}, f32[1024,1024]{1,0}) all-gather-start(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+    bitcast = f32[16,64,256]{2,1,0} bitcast(p1), frontend_attributes={_scheduling_group_id="0"}
+    agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="0"}
+    ROOT tuple = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(bitcast, agd0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() != HloOpcode::kBitcast;
+  };
+  EXPECT_IS_OK(
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+  HloInstruction* bitcast =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  EXPECT_FALSE(
+      bitcast->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr));
 }
 
 }  // namespace

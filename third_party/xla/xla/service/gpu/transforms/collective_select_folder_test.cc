@@ -423,7 +423,7 @@ TEST_F(CollectiveSelectFolderTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           RunAndCheckHloRewrite(kHlo, CollectiveSelectFolder(),
                                                 /*expect_change=*/true));
   const absl::string_view kExpected = R"(
@@ -443,6 +443,41 @@ TEST_F(CollectiveSelectFolderTest,
     // CHECK-SAME:       select({{.*}} %{{.*}}, {{.*}} %[[CP_BWD]],
     // CHECK-SAME:       %[[CP_FWD]])
     // CHECK:      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), kExpected));
+  EXPECT_TRUE(filecheck_result);
+}
+
+TEST_F(CollectiveSelectFolderTest, DtypeConvertedPartitionId) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+
+    ENTRY computation {
+      param = (f32[1,1,28672,2048]{3,2,1,0}, f32[1,1,28672,2048]{3,2,1,0})
+          parameter(0)
+      get-tuple-element-a = f32[1,1,28672,2048]{3,2,1,0}
+          get-tuple-element(param), index=0
+      get-tuple-element-b = f32[1,1,28672,2048]{3,2,1,0}
+          get-tuple-element(param), index=1
+      partition-id.1 = u32[] partition-id()
+      convert = s32[] convert(partition-id.1)
+      constant.148 = s32[] constant(3)
+      compare.83 = pred[] compare(convert, constant.148), direction=EQ
+      select.33 = f32[1,1,28672,2048]{3,2,1,0} select(compare.83,
+          get-tuple-element-a, get-tuple-element-b)
+      ROOT cp-a = f32[1,1,28672,2048]{3,2,1,0} collective-permute(select.33),
+          channel_id=1, source_target_pairs={{3,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          RunAndCheckHloRewrite(kHlo, CollectiveSelectFolder(),
+                                                /*expect_change=*/true));
+  const absl::string_view kExpected = R"(
+    // CHECK: %[[PARAM:.*]] = {{.*}} parameter(0)
+    // CHECK: %[[DATA_A:.*]] = {{.*}} get-tuple-element({{.*}} %[[PARAM]]), index=0
+    // CHECK: ROOT %[[DATA_A_:.*]] = {{.*}} collective-permute({{.*}} %[[DATA_A]])
   )";
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
                           RunFileCheck(module->ToString(), kExpected));

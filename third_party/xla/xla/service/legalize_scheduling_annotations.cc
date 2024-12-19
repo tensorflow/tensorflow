@@ -55,6 +55,27 @@ absl::StatusOr<int64_t> ExtractAnnotation(
   return annotation_id;
 }
 
+void DropSchedulingAnnotation(HloInstruction* instr) {
+  VLOG(2) << "Dropping annotation from " << instr->name();
+  FrontendAttributes frontend_attributes = instr->frontend_attributes();
+  frontend_attributes.mutable_map()->erase("_scheduling_group_id");
+  instr->set_frontend_attributes(frontend_attributes);
+}
+
+bool IsSupportedAsyncOp(HloInstruction* instr) {
+  return HloPredicateIsOp<
+      HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
+      HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
+      HloOpcode::kCollectivePermuteDone, HloOpcode::kCollectivePermuteStart,
+      HloOpcode::kAsyncDone, HloOpcode::kAsyncStart, HloOpcode::kSendDone,
+      HloOpcode::kSend, HloOpcode::kRecvDone, HloOpcode::kRecv>(instr);
+}
+
+bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
+    HloInstruction* instr) {
+  return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
+}
+
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -62,6 +83,18 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   absl::flat_hash_map<int64_t, HloComputation*> annotation_to_computation;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
       annotation_to_instructions;
+  // Filter the annotated ops (using config) to keep the annotations only in the
+  // desired sync ops. Annotations in all async ops are kept.
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (!instr->frontend_attributes().map().contains(
+              "_scheduling_group_id") ||
+          KeepSchedulingAnnotation(instr)) {
+        continue;
+      }
+      DropSchedulingAnnotation(instr);
+    }
+  }
   // Find the annotated instructions and save relevant information.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -94,6 +127,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   // there are some fused instructions with different annotations.
   for (HloComputation* computation : module->computations(execution_threads)) {
     if (!computation->IsFusionComputation() ||
+        !config_.keep_sync_annotation(computation->FusionInstruction()) ||
         annotation.contains(computation->FusionInstruction())) {
       continue;
     }
@@ -131,6 +165,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   if (annotation_to_computation.empty()) {
     return false;
   }
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> parent;
   for (const auto& [id, annotated_instructions] : annotation_to_instructions) {
     // First find the frontier nodes that are not annotated with id but use an
     // annotated instruction with id.
@@ -152,6 +187,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
         if (!visited.contains(user) &&
             (!annotation.contains(user) || annotation[user] != id)) {
           stack.push_back(user);
+          parent[user] = instr;
           visited.insert(user);
           VLOG(2) << "Annotation group: " << id
                   << ", frontier using a root: " << user->name();
@@ -168,6 +204,13 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
       stack.pop_back();
       for (HloInstruction* user : instr->users()) {
         if (annotation.contains(user) && annotation[user] == id) {
+          LOG(INFO) << "PATH: " << user->name();
+          HloInstruction* current = instr;
+          LOG(INFO) << "PATH: " << current->name();
+          while (parent.contains(current)) {
+            current = parent[current];
+            LOG(INFO) << "PATH: " << current->name();
+          }
           return absl::UnimplementedError(
               absl::StrCat("Support for annotation groups with gaps doesn't "
                            "exist yet, annotation: ",
@@ -179,6 +222,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
           continue;
         }
         stack.push_back(user);
+        parent[user] = instr;
         visited.insert(user);
       }
     }
