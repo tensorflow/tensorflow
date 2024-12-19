@@ -1101,7 +1101,12 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 360
+  // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
+  // This feature is still experimental and effective only
+  // xla_gpu_multi_streamed_windowed_einsum is set to true.
+  bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
+
+  // Next id: 361
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -778,7 +778,8 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
   void CollectiveOpsCompareWindowedNonWindowed(
-      absl::string_view hlo_text, bool disable_dot_merger = false) {
+      absl::string_view hlo_text, bool disable_dot_merger = false,
+      bool enable_a2a_rewrite = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
     SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
@@ -788,6 +789,8 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     auto opts = GetDebugOptionsForTest();
     opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
     opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    opts.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
+        enable_a2a_rewrite);
     opts.set_xla_gpu_graph_min_graph_size(200);
     opts.set_xla_gpu_enable_triton_gemm(false);
     if (disable_dot_merger) {
@@ -1061,7 +1064,9 @@ ENTRY main.9_spmd {
 }
 )";
 
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/false,
+                                          /*enable_a2a_rewrite=*/true);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -1077,7 +1082,9 @@ ENTRY main.9_spmd {
 }
 )";
 
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/false,
+                                          /*enable_a2a_rewrite=*/true);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -1098,7 +1105,9 @@ ENTRY main.9_spmd {
 }
 )";
 
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/false,
+                                          /*enable_a2a_rewrite=*/true);
 }
 
 TEST_F(CollectiveOpsTestE2E, CollectivePipelinerF8) {

@@ -959,6 +959,12 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     // Rewrites an all-to-all+gemm into multiple independent partial a2a+gemms
     // to minimize communication overhead. To do this, the original input will
     // be sliced into replica_group size and perform all-to-all+gemm.
+    if (!dot->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_alltoall_windowed_einsum()) {
+      return absl::OkStatus();
+    }
     HloInstruction* lhs;
     HloInstruction* rhs;
     std::vector<xla::ReplicaGroup> replica_groups;
@@ -1183,6 +1189,12 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleAllToAll(HloInstruction* inst) override {
     CHECK_EQ(inst->opcode(), HloOpcode::kAllToAll);
     HloComputation* comp = inst->parent();
+    if (!inst->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_alltoall_windowed_einsum()) {
+      return absl::OkStatus();
+    }
     // Rewrites a gemm+alltoall into multiple independent partial gemm+a2as
     // to minimize communication overhead.
     std::vector<xla::ReplicaGroup> replica_groups;
