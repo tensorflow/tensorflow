@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <utility>
