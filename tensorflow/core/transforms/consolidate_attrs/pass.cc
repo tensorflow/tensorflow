@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
