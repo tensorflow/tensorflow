@@ -45,7 +45,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
   virtual ~GrpcEagerServiceImpl() {}
 
   // Create a master context in eager service.
-  absl::Status CreateMasterContext(const tensorflow::uint64 context_id,
+  absl::Status CreateMasterContext(tensorflow::uint64 context_id,
                                    EagerContext* context);
 
   void HandleRPCsLoop() override;
