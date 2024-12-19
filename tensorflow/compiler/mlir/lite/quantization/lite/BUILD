@@ -30,6 +30,10 @@ cc_library(
     hdrs = [
         "quantize_model.h",
     ],
+    tags = [
+        "no_mac",
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",

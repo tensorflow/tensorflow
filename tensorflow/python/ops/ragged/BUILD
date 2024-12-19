@@ -1502,6 +1502,9 @@ py_strict_test(
     python_version = "PY3",
     shard_count = 8,
     srcs_version = "PY3",
+    tags = [
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         ":dynamic_ragged_shape",
         ":ragged",  # fixdeps: keep

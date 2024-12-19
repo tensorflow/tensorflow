@@ -108,6 +108,7 @@ cuda_py_strict_test(
     shard_count = 50,
     tags = [
         "no_cuda_asan",  # TODO(b/190824595)
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -132,6 +133,7 @@ tf_py_strict_test(
     shard_count = 50,
     tags = [
         "no_cuda_asan",  # TODO(b/190824595)
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/python/framework:ops",

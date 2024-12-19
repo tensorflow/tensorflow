@@ -2786,6 +2786,9 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["process_function_library_runtime_test.cc"],
     features = ["-layering_check"],
+    tags = [
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

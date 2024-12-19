@@ -78,6 +78,9 @@ py_strict_test(
         "api_test.py",
     ],
     python_version = "PY3",
+    tags = [
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
