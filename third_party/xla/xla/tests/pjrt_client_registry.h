@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 #define XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,6 +24,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {
