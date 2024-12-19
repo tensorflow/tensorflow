@@ -15,6 +15,7 @@ package(
     default_visibility = internal_visibility([
         "//tensorflow/core/platform:__pkg__",
         "@local_tsl//tsl/platform:__pkg__",
+        "//xla/tsl/platform:__pkg__",
     ]),
     licenses = ["notice"],
 )
