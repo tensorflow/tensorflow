@@ -195,6 +195,7 @@ cc_library(
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_runtime",
         "//xla/service/cpu:cpu_xfeed",
+        "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",

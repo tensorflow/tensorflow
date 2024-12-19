@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -743,6 +744,11 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
   static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
+
+  // RunHloPasses and RunBackend both look at the LLVM command line options.
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      hlo_module->config().debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   // Run Hlo Passes
   cpu::CpuCompiler compiler;
