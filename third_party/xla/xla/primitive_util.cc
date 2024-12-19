@@ -93,6 +93,18 @@ bool HasInfinity(PrimitiveType type) {
   return false;
 }
 
+bool HasNaN(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return std::numeric_limits<
+              NativeTypeOf<constant_type>>::has_quiet_NaN;
+        },
+        type);
+  }
+  return false;
+}
+
 bool HasNegativeZero(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
     return FloatingPointTypeSwitch<bool>(

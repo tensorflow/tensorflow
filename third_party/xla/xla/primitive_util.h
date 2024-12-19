@@ -69,6 +69,9 @@ int ExponentBias(PrimitiveType type);
 // Returns whether the type has a value for infinity.
 bool HasInfinity(PrimitiveType type);
 
+// Returns whether the type has a value for NaN.
+bool HasNaN(PrimitiveType type);
+
 // Returns whether the type has a value for negative zero.
 bool HasNegativeZero(PrimitiveType type);
 
@@ -186,6 +189,11 @@ constexpr PrimitiveType NativeToPrimitiveType<bfloat16>() {
 }
 
 template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float4_e2m1fn>() {
+  return F4E2M1FN;
+}
+
+template <>
 constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
   return F8E5M2;
 }
@@ -218,6 +226,11 @@ constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
 template <>
 constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e3m4>() {
   return F8E3M4;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e8m0fnu>() {
+  return F8E8M0FNU;
 }
 
 // Complex
@@ -335,6 +348,11 @@ struct PrimitiveTypeToNative<BF16> {
 };
 
 template <>
+struct PrimitiveTypeToNative<F4E2M1FN> {
+  using type = tsl::float4_e2m1fn;
+};
+
+template <>
 struct PrimitiveTypeToNative<F8E5M2> {
   using type = tsl::float8_e5m2;
 };
@@ -369,6 +387,11 @@ struct PrimitiveTypeToNative<F8E3M4> {
   using type = tsl::float8_e3m4;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E8M0FNU> {
+  using type = tsl::float8_e8m0fnu;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -401,6 +424,10 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
          primitive_type < PrimitiveType_ARRAYSIZE;
 }
 
+constexpr bool IsMXType(PrimitiveType type) {
+  return type == F4E2M1FN || type == F8E8M0FNU;
+}
+
 constexpr bool IsF8Type(PrimitiveType type) {
   return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
          type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
@@ -409,7 +436,7 @@ constexpr bool IsF8Type(PrimitiveType type) {
 
 constexpr bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16 ||
-         IsF8Type(type);
+         IsF8Type(type) || IsMXType(type);
 }
 
 constexpr bool IsComplexType(PrimitiveType type) {
@@ -473,6 +500,9 @@ template <typename R, typename F>
 constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
     switch (type) {
+      case F4E2M1FN:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F4E2M1FN>());
       case F8E3M4:
         return std::forward<F>(f)(
             PrimitiveTypeConstant<PrimitiveType::F8E3M4>());
@@ -494,6 +524,9 @@ constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
       case F8E5M2FNUZ:
         return std::forward<F>(f)(
             PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
+      case F8E8M0FNU:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E8M0FNU>());
       case F16:
         return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F16>());
       case BF16:
@@ -576,6 +609,9 @@ inline constexpr int PrimitiveTypeBitWidth() {
     }
     if constexpr (primitive_type == PRED) {
       return std::numeric_limits<NativeT>::digits;
+    }
+    if constexpr (IsMXType(primitive_type)) {
+      return NativeT::kBits;
     }
     if constexpr (IsFloatingPointType(primitive_type)) {
       return sizeof(NativeT) * std::numeric_limits<uint8_t>::digits;
@@ -715,6 +751,10 @@ inline bool CastPreservesValues(PrimitiveType from_type,
   if (from_type == to_type) {
     return true;
   }
+  // * -> F8E8M0FNU is not possible because zero cannot be represented.
+  if (to_type == F8E8M0FNU) {
+    return false;
+  }
   // PRED -> *
   if (from_type == PRED) {
     return true;
@@ -737,21 +777,33 @@ inline bool CastPreservesValues(PrimitiveType from_type,
     return false;
   }
   // F -> F is safe if the exponent/significand are preserved and `to_type`
-  // preserves infinities in `from_type.
+  // preserves infinities/nans/unsigned zero in `from_type`.
   if (primitive_util::IsFloatingPointType(from_type) &&
       primitive_util::IsFloatingPointType(to_type)) {
-    return (!primitive_util::HasInfinity(from_type) ||
-            primitive_util::HasInfinity(to_type)) &&
-           primitive_util::SignificandWidth(from_type) <=
-               primitive_util::SignificandWidth(to_type) &&
-           primitive_util::ExponentWidth(from_type) <=
-               primitive_util::ExponentWidth(to_type) &&
-           (primitive_util::UnderflowExponent(from_type) -
-            primitive_util::SignificandWidth(from_type)) >=
-               (primitive_util::UnderflowExponent(to_type) -
-                primitive_util::SignificandWidth(to_type)) &&
-           primitive_util::OverflowExponent(from_type) <=
-               primitive_util::OverflowExponent(to_type);
+    return
+        // Target mantissa should be large enough.
+        primitive_util::SignificandWidth(from_type) <=
+            primitive_util::SignificandWidth(to_type) &&
+        // Target exponent should be large enough.
+        primitive_util::ExponentWidth(from_type) <=
+            primitive_util::ExponentWidth(to_type) &&
+        // HasInfinity check.
+        (!primitive_util::HasInfinity(from_type) ||
+         primitive_util::HasInfinity(to_type)) &&
+        // HasNaN check.
+        (!primitive_util::HasNaN(from_type) ||
+         primitive_util::HasNaN(to_type)) &&
+        // HasNegativeZero check.
+        (!primitive_util::HasNegativeZero(from_type) ||
+         primitive_util::HasNegativeZero(to_type)) &&
+        // Minimum denormal should be representable by target type.
+        (primitive_util::UnderflowExponent(from_type) -
+         primitive_util::SignificandWidth(from_type)) >=
+            (primitive_util::UnderflowExponent(to_type) -
+             primitive_util::SignificandWidth(to_type)) &&
+        // Maximum exponent may be larger with custom bias (e.g. F8E4M3B11FNUZ).
+        primitive_util::OverflowExponent(from_type) <=
+            primitive_util::OverflowExponent(to_type);
   }
   // F -> I is not safe because it drops fractional numbers.
   if (!primitive_util::IsIntegralType(from_type)) {

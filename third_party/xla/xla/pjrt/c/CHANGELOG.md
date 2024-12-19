@@ -1,4 +1,7 @@
 # PJRT C API changelog
+## 0.62
+
+*   Added types F4E2M1FN and F8E8M0FNU.
 
 ## 0.61
 * Added ``PJRT_KeyValueTryGet`` to the KV store interface,
