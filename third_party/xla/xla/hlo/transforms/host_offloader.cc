@@ -855,7 +855,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
       // If instruction is MoveToHost, we will replace usage.
       if (instr_and_shape.instruction->IsCustomCall(
               host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
-        to_replace.emplace_back(instr_and_shape);
+        to_replace.push_back(instr_and_shape);
         continue;
       }
 
@@ -1014,7 +1014,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
             queue.push(successor);
             host_instrs_tree.mutable_element(output_shape_index)
-                ->emplace_back(successor);
+                ->push_back(successor);
           }
         }
 
