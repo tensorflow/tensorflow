@@ -67,7 +67,7 @@ struct BatchResourceOptions {
 class BatchResourceBase : public ResourceBase {
  public:
   // Given a BatchTask (from one op invocation) with 'num_outputs'== M and
-  // splitted into N sub tasks, TensorMatrix is a N X M matrix.
+  // split into N sub tasks, TensorMatrix is a N X M matrix.
   // Namely, TensorMatrix[i][j] indicates the i-th split tensor of j-th output;
   // concatenating tensors along the 2nd dimension gives a output tensor.
   typedef std::vector<std::vector<Tensor>> TensorMatrix;
