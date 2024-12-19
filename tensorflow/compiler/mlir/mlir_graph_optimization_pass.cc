@@ -239,7 +239,9 @@ absl::Status MlirFunctionOptimizationPass::Run(
       {kTfMlirCategory, "convert_graph_to_mlir"});
 
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      **graph, debug_info, *flib_def, import_config, &context);
+      **graph, debug_info, *flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, config_proto,
+      tensorflow::TF2XLABridgeVersion::kNominal);
   mlir_function_pass_graph_conversion_count
       ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
@@ -389,7 +391,9 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      **options.graph, debug_info, *options.flib_def, import_config, &context);
+      **options.graph, debug_info, *options.flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
+      tensorflow::TF2XLABridgeVersion::kV1Compat);
   if (!module_ref_status.ok()) {
     LOG(ERROR) << "Failed to convert graph to MLIR: "
                << module_ref_status.status();

@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/node_order.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
@@ -118,6 +119,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -2687,7 +2689,23 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
+    const ConfigProto& config_proto,
+    tensorflow::TF2XLABridgeVersion bridge_version) {
+  if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
+    bool has_unsupported_features_in_mlir_bridge =
+        GraphHasUnsupportedFeaturesInMlirBridge(
+            graph, &flib_def, config_proto,
+            tensorflow::TF2XLABridgeVersion::kNominal,
+            /*single_core_inference_mode=*/false);
+    if (has_unsupported_features_in_mlir_bridge) {
+      LOG(WARNING)
+          << "Graph contains unsupported features in MLIR bridge. "
+          << "Use MLIR bridge at your own risk or disable MLIR bridge, e.g., "
+          << "tf.config.experimental.disable_mlir_bridge.";
+    }
+  }
+
   // TODO(jpienaar): Remove need to const_cast.
   if (specs.upgrade_legacy) {
     NodeFilter node_filter = specs.restrict_functionalization_to_compiled_nodes

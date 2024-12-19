@@ -126,7 +126,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
