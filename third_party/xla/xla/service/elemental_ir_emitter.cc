@@ -315,6 +315,65 @@ llvm::Value* handle_halfway_points_F16ToF8(llvm::Value* f16_abs_bits,
   return f8_bits;
 }
 
+template <int f8_exponent_bits>
+llvm::Value* handle_halfway_points_F32ToF8(llvm::Value* f32_abs_bits,
+                                           llvm::Value* f8_bits,
+                                           llvm::IRBuilderBase* b) {
+  using llvm::APInt;
+  using llvm::Value;
+  static_assert(f8_exponent_bits == 4);
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  llvm::IntegerType* i32_type = b->getInt32Ty();
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+  auto i32_const = [i32_type](int val) {
+    return llvm::ConstantInt::get(i32_type, val);
+  };
+  // F32 values that are halfway between denormal F8 values. This is used to
+  // determine how to round to denormal F8 values.
+  const int halfway_points_e4[8] = {
+      0x3A800000,  // 0x1.0p-10 ; halfway between [0/8 * 2^-6, 1/8 * 2^-6]
+      0x3B400000,  // 0x1.8p-9 ; halfway between [1/8 * 2^-6, 2/8 * 2^-6]
+      0x3BA00000,  // 0x1.4p-8 ; halfway between [2/8 * 2^-6, 3/8 * 2^-6]
+      0x3BE00000,  // 0x1.Cp-8 ; halfway between [3/8 * 2^-6, 4/8 * 2^-6]
+      0x3C100000,  // 0x1.2p-7 ; halfway between [4/8 * 2^-6, 5/8 * 2^-6]
+      0x3C300000,  // 0x1.6p-7 ; halfway between [5/8 * 2^-6, 6/8 * 2^-6]
+      0x3C500000,  // 0x1.Ap-7 ; halfway between [6/8 * 2^-6, 7/8 * 2^-6]
+      0x3C700000,  // 0x1.Ep-7 ; halfway between [7/8 * 2^-6, 8/8 * 2^-6]
+  };
+
+  constexpr int arr_sz = 8;
+
+  // Handle case where output is denormal. If we're rounding to a denormal
+  // value, ignore the current value of f8_bits and set it to the correct
+  // denormal value. We emit the equivalent of the following:
+  //
+  //   if (f32_abs_bits <= halfway_points[0]) {
+  //     f8_bits = 0;
+  //   } else if (f32_abs_bits < halfway_points[1]) {
+  //     f8_bits = 1;
+  //   } else if (f32_abs_bits <= halfway_points[2]) {
+  //   ...  // More if-else statements. The comparisons alternate between <=
+  //   ...  // and < to handle round-to-even properly.
+  //   } else if (f32_abs_bits < halfway_points[7])  {
+  //     f8_bits = 7;
+  //   }
+  for (int i = arr_sz - 1; i >= 0; i--) {
+    Value* comparison;
+    if (i % 2 == 0) {
+      comparison =
+          b->CreateICmpULE(f32_abs_bits, i32_const(halfway_points_e4[i]));
+    } else {
+      comparison =
+          b->CreateICmpULT(f32_abs_bits, i32_const(halfway_points_e4[i]));
+    }
+    f8_bits = b->CreateSelect(comparison, i8_const(i), f8_bits);
+  }
+  return f8_bits;
+}
+
 absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
                                              llvm::IRBuilderBase* b) {
   TF_ASSIGN_OR_RETURN(
@@ -417,6 +476,93 @@ absl::StatusOr<llvm::Value*> EmitF16ToF8e(llvm::Value* f16_value,
   // Handle F16 values that are halfway between denormal F8 values.
   f8_bits =
       handle_halfway_points_F16ToF8<f8_exponent_bits>(f16_abs_bits, f8_bits, b);
+
+  // Set the sign bit.
+  //   f8_bits |= f8_sign
+  f8_bits = b->CreateOr(f8_bits, f8_sign);
+  return f8_bits;
+}
+
+template <int f8_exponent_bits>
+absl::StatusOr<llvm::Value*> EmitF32ToF8e(llvm::Value* f32_value,
+                                          llvm::IRBuilderBase* b) {
+  static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
+  constexpr int f8_mantissa_bits = 7 - f8_exponent_bits;
+  using llvm::APInt;
+  using llvm::Value;
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  llvm::IntegerType* i32_type = b->getInt32Ty();
+  auto i32_const = [i32_type](int val) {
+    return llvm::ConstantInt::get(i32_type, val);
+  };
+
+  // Cast the input value to an integer for bitwise manipulation. Get the
+  // absolute value of the input value.
+  //   f32_as_int = bitcast(f32_value, int)
+  //   f32_abs_bits = f32_as_int & 0x7FFFFFFF
+  Value* f32_as_int = b->CreateBitCast(f32_value, i32_type);
+  llvm::Value* f32_abs_bits = b->CreateAnd(f32_as_int, i32_const(0x7FFFFFFF));
+
+  // Get the sign.
+  //   f8_sign = (f32_as_int & 0x80000000) >> 24
+  Value* f32_sign = b->CreateAnd(f32_as_int, i32_const(0x80000000));
+  f32_sign = b->CreateLShr(f32_sign, i32_const(24));
+  Value* f8_sign = b->CreateTrunc(f32_sign, i8_type);
+
+  // Truncate the mantissa to f8 mantissa bits and exponent to f8 exponent bits
+  // Denormal values are not handled properly here and are
+  // dealt with later in this function.
+  absl::StatusOr<Value*> f32_reduced_statusor = EmitReducePrecisionIR(
+      /*src_ty=*/F32, f32_value,
+      /*dest_exponent_bits=*/f8_exponent_bits,
+      /*dest_mantissa_bits=*/f8_mantissa_bits,
+      /*quiet_nans=*/true, b);
+  CHECK_OK(f32_reduced_statusor.status());  // Crash OK
+  Value* f32_reduced = f32_reduced_statusor.value();
+  f32_reduced = b->CreateBitCast(f32_reduced, i32_type);
+
+  // Remove the sign bit.
+  //   f16_reduced = f16_reduced & 0x7FFF
+  f32_reduced = b->CreateAnd(f32_reduced, i32_const(0x7FFFFFFF));
+
+  // F32 inf in binary: 0 11111111 00000000000000000000000
+  constexpr int f32_inf_value = 0x7f800000;
+  constexpr int f8_bias = (1 << (f8_exponent_bits - 1)) - 1;
+  constexpr int exponent_bias_difference = 127 - f8_bias;
+  constexpr int f32_mantissa_bits = 23;  // regular float
+  constexpr int mantissa_bits_difference = f32_mantissa_bits - f8_mantissa_bits;
+  constexpr int min_normal_value = (exponent_bias_difference + 1)
+                                   << f32_mantissa_bits;
+
+  // Round values smaller than the smallest F8 normal value up to the smallest
+  // F8 normal value. The case where we round to a denormal value is handled
+  // later.
+  //    f32_reduced = max(f32_reduced, min_normal_value)
+  f32_reduced = b->CreateSelect(
+      b->CreateICmpULT(f32_reduced, i32_const(min_normal_value)),
+      i32_const(min_normal_value), f32_reduced);
+
+  // Adjust the exponent by subtracting the difference in exponent bias:
+  //   f32_reduced -= (exponent_bias_difference << f32_mantissa_bits)
+  // For infinity/NaN values, subtract twice the difference in exponent bias
+  // to ensure the leading exponent bit(s) of f32_reduced are set to zero.
+  f32_reduced = b->CreateSub(
+      f32_reduced,
+      b->CreateSelect(
+          b->CreateICmpULT(f32_reduced, i32_const(f32_inf_value)),
+          i32_const(exponent_bias_difference << f32_mantissa_bits),
+          i32_const(exponent_bias_difference << (f32_mantissa_bits + 1))));
+
+  // Shift to convert to F8.
+  //   f32_reduced = f32_reduced >> mantissa_bits_difference;
+  f32_reduced = b->CreateLShr(f32_reduced, i32_const(mantissa_bits_difference));
+
+  Value* f8_bits = b->CreateTrunc(f32_reduced, i8_type);
+
+  // Handle F32 values that are halfway between denormal F8 values.
+  f8_bits =
+      handle_halfway_points_F32ToF8<f8_exponent_bits>(f32_abs_bits, f8_bits, b);
 
   // Set the sign bit.
   //   f8_bits |= f8_sign
@@ -1158,13 +1304,22 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
         return EmitF16ToF8e5m2(operand_value, b_);
       }
       if (to_type == F8E4M3) {
-        // Cast to F16 first. Casts to F8E4M3 must be from F16.
-        if (from_type != F16) {
-          operand_value = b_->CreateFPCast(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
+        switch (from_type) {
+          case F16:
+            return EmitF16ToF8e<4>(operand_value, b_);
+          case F64:
+            // Cast to F32 first. Casts to F8E4M3 must be from F32.
+            operand_value = b_->CreateFPCast(
+                operand_value,
+                llvm_ir::PrimitiveTypeToIrType(F32, module_->getContext()));
+            [[fallthrough]];
+          case F32:
+            return EmitF32ToF8e<4>(operand_value, b_);
+          default:
+            return InvalidArgument("Unsupported conversion from %s to %s",
+                                   PrimitiveType_Name(from_type),
+                                   PrimitiveType_Name(to_type));
         }
-        return EmitF16ToF8e<4>(operand_value, b_);
       }
       if (to_type == F8E4M3FN) {
         // Cast to F16 first. Casts to F8E4M3FN must be from F16.
