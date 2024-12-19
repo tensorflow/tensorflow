@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_SERIALIZATION_H_
 #define TENSORFLOW_LITE_DELEGATES_SERIALIZATION_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <string>
