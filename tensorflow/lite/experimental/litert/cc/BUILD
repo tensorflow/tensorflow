@@ -16,6 +16,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # copybara:uncomment "//third_party/mediapipe/calculators/tensor:__subpackages__",
+        # copybara:uncomment "//third_party/odml/infra:__subpackages__",
         "//tensorflow/lite/experimental/litert:__subpackages__",
     ],
 )
