@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/profiler/utils/format_utils.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "xla/tsl/util/stats_calculator.h"

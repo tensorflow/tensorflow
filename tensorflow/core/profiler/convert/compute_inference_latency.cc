@@ -21,7 +21,6 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"

@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_MEMORY_PROFILE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_MEMORY_PROFILE_H_
 
+#include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
