@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"

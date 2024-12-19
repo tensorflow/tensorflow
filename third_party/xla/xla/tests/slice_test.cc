@@ -15,8 +15,12 @@ limitations under the License.
 
 // Tests that slice operations can be performed.
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
-#include <vector>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"

@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <functional>
+#include <numeric>
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
