@@ -607,6 +607,7 @@ class QueueBase:
     >>> q.close()
     >>> q.is_closed()
     <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
     Further calls to enqueue will raise `tf.errors.CancelledError`.
 
     Args:
