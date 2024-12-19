@@ -2578,8 +2578,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
     kv_callback_data = pjrt::ConvertToCKeyValueCallbacks(kv_store);
     init_args.kv_get_callback = kv_callback_data->c_kv_get;
     init_args.kv_get_user_arg = &kv_callback_data->kv_get_c_func;
-    init_args.kv_try_get_callback = kv_callback_data->c_kv_try_get;
-    init_args.kv_try_get_user_arg = &kv_callback_data->kv_try_get_c_func;
     init_args.kv_put_callback = kv_callback_data->c_kv_put;
     init_args.kv_put_user_arg = &kv_callback_data->kv_put_c_func;
   }

@@ -673,21 +673,6 @@ NB_MODULE(xla_extension, m) {
           },
           nb::arg("key"), nb::arg("timeout_in_ms"))
       .def(
-          "key_value_try_get",
-          [](DistributedRuntimeClient& client, std::string key) {
-            nb::gil_scoped_release gil_release;
-            return xla::ValueOrThrow(client.KeyValueTryGet(key));
-          },
-          nb::arg("key"))
-      .def(
-          "key_value_try_get_bytes",
-          [](DistributedRuntimeClient& client, std::string key) -> nb::bytes {
-            nb::gil_scoped_release gil_release;
-            std::string result = xla::ValueOrThrow(client.KeyValueTryGet(key));
-            return nb::bytes(result.data(), result.size());
-          },
-          nb::arg("key"))
-      .def(
           "wait_at_barrier",
           [](DistributedRuntimeClient& client, std::string barrier_id,
              int64_t timeout_in_ms,

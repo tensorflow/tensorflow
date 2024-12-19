@@ -1029,20 +1029,6 @@ TEST_F(ClientServerTest, KeyValueSet_Duplicate_Overwrites) {
   EXPECT_EQ(result.value(), "overwritten_value");
 }
 
-TEST_F(ClientServerTest, KeyValueTryGet) {
-  StartService(/*num_nodes=*/1);
-  auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-
-  ASSERT_THAT(client->KeyValueTryGet("test_key").status(),
-              StatusIs(absl::StatusCode::kNotFound));
-
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "value"));
-  auto result = client->KeyValueTryGet("test_key");
-  TF_ASSERT_OK(result.status());
-  EXPECT_EQ(result.value(), "value");
-}
-
 TEST_F(ClientServerTest, KeyValueDelete) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);

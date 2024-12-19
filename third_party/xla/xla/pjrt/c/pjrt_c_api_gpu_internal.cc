@@ -154,9 +154,9 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.num_nodes = num_nodes;
   options.allowed_devices = visible_devices;
   options.platform_name = platform_name;
-  options.kv_store = pjrt::ToCppKeyValueStore(
-      args->kv_get_callback, args->kv_get_user_arg, args->kv_try_get_callback,
-      args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
+  options.kv_store =
+      pjrt::ToCppKeyValueStore(args->kv_get_callback, args->kv_get_user_arg,
+                               args->kv_put_callback, args->kv_put_user_arg);
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,

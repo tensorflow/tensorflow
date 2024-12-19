@@ -38,17 +38,10 @@ class KeyValueStoreInterface {
   virtual ~KeyValueStoreInterface() = default;
 
   // Blocking Get().
-  // Useful for listening for a key-value pair that may be set later on.
   // There are no concurrency guarantees. To avoid a race / impose an ordering
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual absl::StatusOr<std::string> Get(absl::string_view key,
                                           absl::Duration timeout) = 0;
-
-  // Returns `NotFoundError` immediately if the key is not found.
-  // Useful for checking key existence.
-  // There are no concurrency guarantees. To avoid a race / impose an ordering
-  // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
-  virtual absl::StatusOr<std::string> TryGet(absl::string_view key) = 0;
 
   virtual absl::Status Set(absl::string_view key, absl::string_view value) = 0;
 };

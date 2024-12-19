@@ -21,9 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 
 namespace xla {
@@ -32,8 +30,6 @@ class InMemoryKeyValueStore : public KeyValueStoreInterface {
  public:
   absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override;
-
-  absl::StatusOr<std::string> TryGet(absl::string_view key) override;
 
   absl::Status Set(absl::string_view key, absl::string_view value) override;
 

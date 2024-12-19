@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
@@ -54,7 +53,6 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status Shutdown() override;
   absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) override;
-  absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) override;
   absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(absl::string_view key) override;
   absl::Status KeyValueSet(absl::string_view key,
@@ -146,12 +144,6 @@ DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
-absl::StatusOr<std::string>
-DistributedRuntimeCoordinationServiceClient::KeyValueTryGet(
-    absl::string_view key) {
-  return coord_agent_->TryGetKeyValue(key);
-}
-
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     absl::string_view key) {
@@ -222,10 +214,6 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
   absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override {
     return client_->BlockingKeyValueGet(absl::StrCat(prefix_, key), timeout);
-  }
-
-  absl::StatusOr<std::string> TryGet(absl::string_view key) override {
-    return client_->KeyValueTryGet(absl::StrCat(prefix_, key));
   }
 
   absl::Status Set(absl::string_view key, absl::string_view value) override {

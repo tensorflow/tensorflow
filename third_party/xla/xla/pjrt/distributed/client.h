@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
@@ -116,9 +115,6 @@ class DistributedRuntimeClient {
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) = 0;
-
-  // Returns `NotFoundError` immediately if the key is not found.
-  virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;
 
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
