@@ -1584,9 +1584,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     if ((cuda_cc != nullptr &&
          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
         rocm_cc != nullptr) {
-      // Triton compilation needs normalized operations on bf16 (i.e. converted
-      // to f32).
-      add_float_normalization(pipeline);
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
