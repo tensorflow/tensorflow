@@ -28,6 +28,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -38,6 +40,8 @@ namespace impl {
 
 class FlatBufferModel : public FlatBufferModelBase<FlatBufferModel> {
  public:
+   using Ptr = std::unique_ptr<FlatBufferModel>;
+
   // Use stderr_reporter as the default error reporter.
   static ErrorReporter* GetDefaultErrorReporter() {
     return DefaultErrorReporter();

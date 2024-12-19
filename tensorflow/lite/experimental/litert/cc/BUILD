@@ -44,6 +44,10 @@ cc_test(
     srcs = [
         "litert_any_test.cc",
     ],
+    linkopts = select({
+        "//tensorflow:android": ["-llog"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
