@@ -127,9 +127,11 @@ TEST_F(Tf2HloTest, Empty) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = {},
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -175,9 +177,12 @@ TEST_F(Tf2HloTest, Tuple) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
+
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -223,9 +228,11 @@ TEST_F(Tf2HloTest, Spmd) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -309,9 +316,11 @@ TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -420,9 +429,11 @@ TEST_F(Tf2HloTest, XlaCallHostCallback) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -470,9 +481,11 @@ TEST_F(Tf2HloTest, GpuCompile) {
       GetCompileMetadata(mlir_module.get(), mock_client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -526,9 +539,11 @@ TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg0{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -539,6 +554,7 @@ TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
   Tf2HloArg arg1{
       .module = mlir_module_clone.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -585,9 +601,11 @@ TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
   std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
 
+  std::vector<int> variable_arg_indices;
   Tf2HloArg arg0{
       .module = mlir_module.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
@@ -599,6 +617,7 @@ TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
   Tf2HloArg arg1{
       .module = mlir_module_clone.get(),
       .input_dtypes_and_shapes = dtype_and_shapes,
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
