@@ -30,8 +30,7 @@ namespace xla {
 // replaced by a multiply with the replica count.
 class AllReduceSimplifier : public HloModulePass {
  public:
-  static constexpr absl::string_view kName = "all-reduce-simplifier";
-  absl::string_view name() const override { return kName; }
+  absl::string_view name() const override { return "all-reduce-simp"; }
 
   // Run all-reduce simplification on the given computation. Returns whether the
   // computation was changed.
