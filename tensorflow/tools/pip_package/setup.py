@@ -112,6 +112,8 @@ REQUIRED_PACKAGES = [
     'tb-nightly ~= 2.19.0.a',
     'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
+    'numpy >= 1.26.0; python_version<="3.12"',
+    'numpy~=2.1.0; python_version>="3.13"',
     'h5py >= 3.11.0',
     'ml_dtypes >= 0.4.0, < 1.0.0',
 ]
