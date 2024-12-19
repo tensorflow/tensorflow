@@ -286,11 +286,11 @@ std::vector<MsaBufferInterval> FindCrossProgramPrefetchCandidates(
     interval.need_allocation = true;
     interval.colocations = {++buffer.values().begin(), buffer.values().end()};
     if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
-      candidates.emplace_back(interval);
+      candidates.push_back(interval);
     } else if (MemorySpaceAssignmentUtils::
                    DoesCrossProgramPrefetchBufferMatchAnyFilter(
                        options.msa_sort_order_overrides, interval)) {
-      candidates.emplace_back(interval);
+      candidates.push_back(interval);
     }
   }
 

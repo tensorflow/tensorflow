@@ -68,7 +68,7 @@ void UnboundedWorkQueue::Schedule(WorkFunction fn) {
         env_->StartThread({}, thread_name_, [this]() { PooledThreadFunc(); });
 
     absl::MutexLock l(&thread_pool_mu_);
-    thread_pool_.emplace_back(new_thread);
+    thread_pool_.push_back(new_thread);
   }
 }
 
