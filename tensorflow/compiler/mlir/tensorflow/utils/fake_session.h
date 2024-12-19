@@ -21,9 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {
