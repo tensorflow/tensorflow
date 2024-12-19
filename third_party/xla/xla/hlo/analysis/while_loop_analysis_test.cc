@@ -301,11 +301,11 @@ bool RangeEqualIgnoreBitwidth(const Range& range, int init, int limit,
                               : r.min().GetUnsignedValue();
   };
   auto range_max = [](const Range& r) {
-    return r.min().IsSigned() ? r.max().GetSignedValue()
-                              : r.max().GetUnsignedValue();
+    return r.max()->IsSigned() ? r.max()->GetSignedValue()
+                               : r.max()->GetUnsignedValue();
   };
   return range_min(range) == init && range_max(range) == limit &&
-         range.step().GetSignedValue() == step;
+         range.step()->GetSignedValue() == step;
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
