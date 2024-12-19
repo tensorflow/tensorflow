@@ -128,9 +128,6 @@ class CollectivePipeliner : public HloModulePass {
     }
   }
 
-  // TODO(zviki): find a better generic naming without leaving potential
-  // confusion which of `kName` or `name()` to use.
-  static constexpr absl::string_view kName = "collective-pipeliner";
   absl::string_view name() const override {
     if (config_.pipelining_direction == kForward) {
       return "collective-pipeliner-forward";
