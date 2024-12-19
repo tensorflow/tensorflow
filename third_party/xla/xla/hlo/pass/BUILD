@@ -58,7 +58,6 @@ cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:compilation_stats",
         "//xla/service:dump",

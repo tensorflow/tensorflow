@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
