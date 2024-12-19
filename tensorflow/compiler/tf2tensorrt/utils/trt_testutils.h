@@ -83,7 +83,7 @@ nvinfer1::Dims CreateDims(const std::vector<int>& d);
 // matches nvinfer1::Dims to initializer list or vector of ints
 // Example: EXPECT_THAT(my_dims, DimsAreArray({1, 2, 3}))
 MATCHER_P(DimsAreArrayHelper, array_value,
-          absl::StrFormat("%s [%s]", negation ? "are" : "are not",
+          absl::StrFormat("%s [%s]", negation ? "are not" : "are",
                           ::testing::PrintToString(array_value))) {
   if (arg.nbDims != array_value.size()) return false;
   for (int i = 0; i < arg.nbDims; ++i) {
@@ -100,7 +100,7 @@ using DimsAreArray = DimsAreArrayHelperMatcherP<std::vector<int>>;
 // Checks that layer names are equal to initializer list or vector of strings.
 // Example: EXPECT_THAT(my_network, LayerNamesAreArray({"conv1", "conv2"}))
 MATCHER_P(LayerNamesAreArrayHelper, array_value,
-          absl::StrFormat("layer names %s [%s]", negation ? "are" : "are not",
+          absl::StrFormat("layer names %s [%s]", negation ? "are not" : "are",
                           ::testing::PrintToString(array_value))) {
   if (array_value.size() != arg->getNbLayers()) return false;
   for (int i = 0; i < arg->getNbLayers(); ++i) {
