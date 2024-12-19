@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/math/math_util.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -47,16 +47,36 @@ static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
   return singleton->AsRef();
 }
 
-ParallelLoopRunner::ParallelLoopRunner(Eigen::ThreadPoolDevice* device)
+ParallelLoopRunner::ParallelLoopRunner(const Eigen::ThreadPoolDevice* device)
     : done_event_(OkDoneEventSingleton()), device_(device) {}
 
+tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::ResetDoneEvent() {
+  auto done_event = std::move(done_event_);
+  done_event_ = OkDoneEventSingleton();
+  return done_event;
+}
+
 size_t ParallelLoopRunner::num_threads() const {
-  return device_->numThreadsInPool();
+  return device_.load()->numThreadsInPool();
 }
 
 tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
     ParallelLoopRunner&& runner) {
   return std::move(runner.done_event_);
+}
+
+ParallelLoopRunner::ParallelTaskConfig
+ParallelLoopRunner::ComputeParallelTaskConfig(size_t num_tasks) const {
+  // We limit the number of parallel tasks per thread to avoid excessive task
+  // scheduling overheads at run time.
+  static constexpr size_t kMaxTasksPerThread = 4;
+
+  size_t parallel_task_size =
+      tsl::MathUtil::CeilOfRatio(num_tasks, kMaxTasksPerThread * num_threads());
+  size_t num_parallel_tasks =
+      tsl::MathUtil::CeilOfRatio(num_tasks, parallel_task_size);
+
+  return {num_tasks, parallel_task_size, num_parallel_tasks};
 }
 
 void ParallelLoopRunner::Parallelize(
@@ -65,8 +85,8 @@ void ParallelLoopRunner::Parallelize(
   CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
   while (end_index - start_index > 1) {
     uint64_t mid_index = (start_index + end_index) / 2;
-    device_->enqueueNoNotification([this, mid_index, end_index, parallel_task,
-                                    count_down] {
+    device_.load()->enqueueNoNotification([this, mid_index, end_index,
+                                           parallel_task, count_down] {
       Parallelize(std::move(count_down), mid_index, end_index, parallel_task);
     });
     end_index = mid_index;
@@ -125,6 +145,13 @@ struct Task3DTile2DIndex {
 };
 
 }  // namespace
+
+auto ParallelLoopRunner::ParallelTaskConfig::ParallelTaskRange(
+    size_t parallel_task_index) const -> TaskRange {
+  size_t begin = parallel_task_index * parallel_task_size;
+  size_t end = std::min(num_tasks, begin + parallel_task_size);
+  return {begin, end};
+}
 
 static Task1DTile1DIndex Delinearize(size_t task_index, size_t range,
                                      size_t tile) {
@@ -226,15 +253,19 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
     return;
   }
 
-  // Schedule `num_tasks` into the underlying thread pool when done event
-  // becomes available.
-  auto parallel_task = [range, tile,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range, tile);
-    task(x.offset, x.extent);
+  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
+  // pool when done event becomes available.
+  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
+  auto parallel_task = [range, tile, parallel_config,
+                        task = std::move(task)](size_t parallel_task_index) {
+    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
+    for (size_t i = begin; i < end; ++i) {
+      auto x = Delinearize(i, range, tile);
+      task(x.offset, x.extent);
+    }
   };
 
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
 }
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
@@ -257,15 +288,19 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  // Schedule `num_tasks` into the underlying thread pool when done event
-  // becomes available.
-  auto parallel_task = [range_i, range_j, tile_j,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range_i, range_j, tile_j);
-    task(x.i, x.offset_j, x.extent_j);
+  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
+  // pool when done event becomes available.
+  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
+  auto parallel_task = [range_i, range_j, tile_j, parallel_config,
+                        task = std::move(task)](size_t parallel_task_index) {
+    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
+    for (size_t i = begin; i < end; ++i) {
+      auto x = Delinearize(i, range_i, range_j, tile_j);
+      task(x.i, x.offset_j, x.extent_j);
+    }
   };
 
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
 }
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
@@ -292,15 +327,20 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  // Schedule `num_tasks` into the underlying thread pool when done event
-  // becomes available.
+  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
+  // pool when done event becomes available.
+  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
   auto parallel_task = [range_i, range_j, range_k, tile_j, tile_k,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range_i, range_j, range_k, tile_j, tile_k);
-    task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
+                        parallel_config,
+                        task = std::move(task)](size_t parallel_task_index) {
+    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
+    for (size_t i = begin; i < end; ++i) {
+      auto x = Delinearize(i, range_i, range_j, range_k, tile_j, tile_k);
+      task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
+    }
   };
 
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
 }
 
 }  // namespace xla::cpu
