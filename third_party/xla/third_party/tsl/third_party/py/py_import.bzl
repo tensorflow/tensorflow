@@ -2,11 +2,7 @@
 
 def _unpacked_wheel_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.label.name)
-    wheel = None
-    for w in ctx.files.wheel_rule_outputs:
-        if w.basename.endswith(".whl"):
-            wheel = w
-            break
+    wheel = ctx.file.wheel
     script = """
     {zipper} x {wheel} -d {output}
     for wheel_dep in {wheel_deps}; do
@@ -22,7 +18,7 @@ def _unpacked_wheel_impl(ctx):
         ]),
     )
     ctx.actions.run_shell(
-        inputs = ctx.files.wheel_rule_outputs + ctx.files.wheel_deps,
+        inputs = ctx.files.wheel + ctx.files.wheel_deps,
         command = script,
         outputs = [output_dir],
         tools = [ctx.executable.zipper],
@@ -35,7 +31,7 @@ def _unpacked_wheel_impl(ctx):
 _unpacked_wheel = rule(
     implementation = _unpacked_wheel_impl,
     attrs = {
-        "wheel_rule_outputs": attr.label(mandatory = True, allow_files = True),
+        "wheel": attr.label(mandatory = True, allow_single_file = True),
         "zipper": attr.label(
             default = Label("@bazel_tools//tools/zip:zipper"),
             cfg = "exec",
@@ -53,7 +49,7 @@ def py_import(
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
-        wheel_rule_outputs = wheel,
+        wheel = wheel,
         wheel_deps = wheel_deps,
     )
     native.py_library(

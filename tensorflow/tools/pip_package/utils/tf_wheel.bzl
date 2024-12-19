@@ -74,7 +74,6 @@ def _tf_wheel_impl(ctx):
              " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
-    verify_manylinux = ctx.attr.verify_manylinux[BuildSettingInfo].value
     full_wheel_name = _get_full_wheel_name(
         platform_name = ctx.attr.platform_name,
         platform_tag = ctx.attr.platform_tag,
@@ -120,23 +119,7 @@ def _tf_wheel_impl(ctx):
         outputs = [output_file],
         executable = executable,
     )
-    auditwheel_show_log = None
-    if ctx.attr.platform_name == "linux":
-        auditwheel_show_log = ctx.actions.declare_file("auditwheel_show.log")
-        args = ctx.actions.args()
-        args.add("--wheel_path", output_file.path)
-        if verify_manylinux:
-            args.add("--compliance-tag", ctx.attr.manylinux_compliance_tag)
-        args.add("--auditwheel-show-log-path", auditwheel_show_log.path)
-        ctx.actions.run(
-            arguments = [args],
-            inputs = [output_file],
-            outputs = [auditwheel_show_log],
-            executable = ctx.executable.verify_manylinux_compliance_binary,
-        )
-
-    auditwheel_show_output = [auditwheel_show_log] if auditwheel_show_log else []
-    return [DefaultInfo(files = depset(direct = [output_file] + auditwheel_show_output))]
+    return [DefaultInfo(files = depset(direct = [output_file]))]
 
 tf_wheel = rule(
     attrs = {
@@ -153,13 +136,6 @@ tf_wheel = rule(
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
-        "verify_manylinux_compliance_binary": attr.label(
-            default = Label("@local_tsl//third_party/py:verify_manylinux_compliance"),
-            executable = True,
-            cfg = "exec",
-        ),
-        "verify_manylinux": attr.label(default = Label("@local_tsl//third_party/py:verify_manylinux")),
-        "manylinux_compliance_tag": attr.string(mandatory = True),
     },
     implementation = _tf_wheel_impl,
 )

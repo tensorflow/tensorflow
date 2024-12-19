@@ -33,8 +33,6 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
   cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
 fi
 
-# TODO(ybaturina): add --@local_tsl//third_party/py:verify_manylinux=true when
-# hermetic CC toolchain is ready.
 tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
 tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
 tfrun mkdir ./dist
