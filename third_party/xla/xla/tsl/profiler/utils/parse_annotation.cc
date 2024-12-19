@@ -31,7 +31,7 @@ std::vector<absl::string_view> SplitNameAndMetadata(
     absl::string_view annotation) {
   std::vector<absl::string_view> parts;
   if (!HasMetadata(annotation)) {
-    parts.emplace_back(annotation);
+    parts.push_back(annotation);
   } else {
     annotation.remove_suffix(1);
     parts = absl::StrSplit(annotation, '#');
