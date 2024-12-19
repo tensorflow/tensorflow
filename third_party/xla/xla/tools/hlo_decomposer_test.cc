@@ -157,5 +157,20 @@ CHECK-THEN: ROOT %e.1
 )");
 }
 
+TEST_F(HloDecomposerTest, ExtractComputationIntoNewModule) {
+  std::unique_ptr<HloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = s8[10,10] parameter(0)
+  p1 = s8[10,10] parameter(1)
+  ROOT r = s8[10,10] add(p0, p1)
+})")
+                                          .value();
+  auto new_module =
+      ExtractComputationIntoNewModule(*module->entry_computation());
+  EXPECT_EQ(new_module->name(), module->entry_computation()->name());
+}
+
 }  // namespace
 }  // namespace xla
