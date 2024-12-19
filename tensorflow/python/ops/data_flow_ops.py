@@ -816,8 +816,9 @@ class FIFOQueue(QueueBase):
         the given name across multiple sessions.
       name: Optional name for the queue operation.
 
-    >>> tf.queue.FIFOQueue(capacity=10, dtypes=tf.int32)
-    <tensorflow.python.ops.data_flow_ops.FIFOQueue at 0x7b98d25dee30>
+    >>> q = tf.queue.FIFOQueue(capacity=10, dtypes=tf.int32)
+    >>> q.size()
+    <tf.Tensor: shape=(), dtype=int32, numpy=0>
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
