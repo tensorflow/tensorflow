@@ -154,18 +154,18 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "3306f4178c8594b689165d385e644f03a3154c3be044f6ae36dd170fbf182cf5",
-        strip_prefix = "XNNPACK-983d013300f19fd3f4e33220b6401408e97a8d12",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/983d013300f19fd3f4e33220b6401408e97a8d12.zip"),
+        sha256 = "2a33eb922e6a4b55dfe9332ac61c8d4d128ae8f9e24e873e756a474e983d50a1",
+        strip_prefix = "XNNPACK-02764b305b430aec42c3df85ba32b9a3f8d6e3d4",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/02764b305b430aec42c3df85ba32b9a3f8d6e3d4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "ad37707084a6d4ff41be10cbe8540c75bea057ba79d0de6c367c1bfac6ba0852",
-        strip_prefix = "kleidiai-40a926833857fb64786e02f97703e42b1537cb57",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/40a926833857fb64786e02f97703e42b1537cb57/kleidiai-40a926833857fb64786e02f97703e42b1537cb57.zip"),
+        sha256 = "dd8297b76e641282bb32964a9781619251257192b95d10fbe620d16e4adfe30c",
+        strip_prefix = "kleidiai-2d160cf675d6df7068a17da07ec6218fd9478541",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/2d160cf675d6df7068a17da07ec6218fd9478541/kleidiai-2d160cf675d6df7068a17da07ec6218fd9478541.zip"),
     )
 
     tf_http_archive(
