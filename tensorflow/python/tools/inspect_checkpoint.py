@@ -66,7 +66,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
     tensor_name: Name of the tensor in the checkpoint file to print.
     all_tensors: Boolean indicating whether to print all tensors.
     all_tensor_names: Boolean indicating whether to print all tensor names.
-    count_exclude_pattern: Regex string, pattern to exclude tensors when counted.
+    count_exclude_pattern: Regex string, pattern to exclude tensors from count.
   """
   try:
     reader = py_checkpoint_reader.NewCheckpointReader(file_name)
