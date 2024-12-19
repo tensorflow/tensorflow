@@ -28,9 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -67,10 +65,10 @@ absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
 absl::Status NcclGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
   // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
   // async_streams is therefore guaranteed to be non-null and to have enough
   // elements to index by the AsyncStreamKind enum.
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
   se::Stream* async_stream =
       params.collective_params->async_streams.at(async_stream_idx);
   TF_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
