@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/service/gpu/fusions/triton/xla_triton_passes.h"
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
@@ -131,12 +130,6 @@ absl::Status CreateTritonPipeline(
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
 
   return absl::OkStatus();
-}
-
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
-                             const se::DeviceDescription& device_info) {
-  return nvptx::LibDevicePath(
-      hlo_config.debug_options().xla_gpu_cuda_data_dir());
 }
 
 }  // namespace gpu
