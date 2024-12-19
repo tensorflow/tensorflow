@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -562,37 +563,12 @@ TEST_F(PjrtCApiTest, DeviceDescriptionAndMemoryDescriptionss) {
   PJRT_Error* error = api_->PJRT_Device_GetDescription(&get_description);
   EXPECT_EQ(error, nullptr);
 
-  PJRT_DeviceDescription_MemoryDescriptions_Args memory_descriptions =
-      PJRT_DeviceDescription_MemoryDescriptions_Args{
-          .struct_size =
-              PJRT_DeviceDescription_MemoryDescriptions_Args_STRUCT_SIZE,
-          .extension_start = nullptr,
-          .device_description = get_description.device_description,
-      };
+  std::vector<xla::PjRtMemorySpaceDescription> memory_descriptions =
+      GetMemorySpaceDescriptions(get_description.device_description, api_);
 
-  const PJRT_MemoryDescriptions_Extension* extension =
-      FindExtension<PJRT_MemoryDescriptions_Extension>(
-          api_, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
-
-  if (extension != nullptr) {
-    error = extension->PJRT_DeviceDescription_MemoryDescriptions(
-        &memory_descriptions);
-    EXPECT_EQ(error, nullptr);
-
-    for (int i = 0; i < memory_descriptions.num_memory_descriptions; i++) {
-      PJRT_MemoryDescription_Kind_Args memory_description =
-          PJRT_MemoryDescription_Kind_Args{
-              .struct_size =
-                  PJRT_DeviceDescription_MemoryDescriptions_Args_STRUCT_SIZE,
-              .extension_start = nullptr,
-              .memory_description = memory_descriptions.memory_descriptions[i],
-          };
-      error = extension->PJRT_MemoryDescription_Kind(&memory_description);
-      EXPECT_EQ(error, nullptr);
-      EXPECT_NE(memory_description.kind, nullptr);
-      EXPECT_GT(memory_description.kind_size, 0);
-      EXPECT_GE(memory_description.kind_id, 0);
-    }
+  for (int i = 0; i < memory_descriptions.size(); i++) {
+    EXPECT_NE(memory_descriptions[i].kind().size(), 0);
+    EXPECT_GE(memory_descriptions[i].kind_id(), 0);
   }
 }
 
