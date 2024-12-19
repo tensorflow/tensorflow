@@ -8,5 +8,6 @@ IMPORTANT: This is a temporary hack while we are figuring out the proper way to 
 
 extensions_files_patch_list = [
     "//third_party/triton:xla_extensions/sparse_wgmma_op.patch",  # Sparsity internal patch
+    "//third_party/triton:xla_extensions/sparse_fenceinsertion_pass.patch",  # Sparse internal patch
     # Add new patches just above this line
 ]
