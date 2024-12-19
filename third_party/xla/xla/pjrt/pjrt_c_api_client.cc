@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
@@ -167,7 +168,6 @@ void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   }
 
   // Initialize addressable memory spaces.
-  // TODO(yueshengys): Initialize global memory spaces when supported.
   PJRT_Client_AddressableMemories_Args memory_args;
   memory_args.struct_size = PJRT_Client_AddressableMemories_Args_STRUCT_SIZE;
   memory_args.extension_start = nullptr;
@@ -900,7 +900,7 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
-// --------------------------------- Devices -----------------------------------
+// --------------------------------- Device Descriptions -----------------------
 
 PjRtCApiDeviceDescription::PjRtCApiDeviceDescription(
     const PJRT_Api* c_api, PJRT_DeviceDescription* device_description)
@@ -1012,6 +1012,46 @@ absl::string_view PjRtCApiDeviceDescription::ToString() const {
   absl::string_view to_string(args.to_string, args.to_string_size);
   return to_string;
 }
+
+absl::Span<const PjRtMemorySpaceDescription* const>
+PjRtCApiDeviceDescription::memory_spaces() const {
+  const PJRT_MemoryDescriptions_Extension* extension =
+      pjrt::FindExtension<PJRT_MemoryDescriptions_Extension>(
+          c_api_, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
+  if (!extension) return {};
+
+  if (memory_space_description_pointers_.empty()) {
+    PJRT_DeviceDescription_MemoryDescriptions_Args memory_descriptions;
+    memory_descriptions.struct_size =
+        PJRT_DeviceDescription_MemoryDescriptions_Args_STRUCT_SIZE,
+    memory_descriptions.extension_start = nullptr,
+    memory_descriptions.device_description = device_description_,
+    pjrt::LogFatalIfPjrtError(
+        extension->PJRT_DeviceDescription_MemoryDescriptions(
+            &memory_descriptions),
+        c_api_);
+
+    for (int i = 0; i < memory_descriptions.num_memory_descriptions; i++) {
+      PJRT_MemoryDescription_Kind_Args memory_description;
+      memory_description.struct_size =
+          PJRT_DeviceDescription_MemoryDescriptions_Args_STRUCT_SIZE,
+      memory_description.extension_start = nullptr,
+      memory_description.memory_description =
+          memory_descriptions.memory_descriptions[i],
+      pjrt::LogFatalIfPjrtError(
+          extension->PJRT_MemoryDescription_Kind(&memory_description), c_api_);
+      PjRtMemorySpaceDescription description(
+          std::string(memory_description.kind, memory_description.kind_size),
+          memory_description.kind_id);
+      memory_space_descriptions_.push_back(description);
+      memory_space_description_pointers_.push_back(
+          &memory_space_descriptions_[i]);
+    }
+  }
+  return memory_space_description_pointers_;
+}
+
+// ------------------------------- Devices -------------------------------------
 
 PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client),
