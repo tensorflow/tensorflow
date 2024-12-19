@@ -36,7 +36,7 @@ class LlvmIrKernelSpec final : public xla::KernelSpec {
                    std::unique_ptr<LlvmIrKernelSource> kernel_source);
 
   LlvmIrKernelSpec(LlvmIrKernelSpec&& other) = default;
-  LlvmIrKernelSpec& operator=(LlvmIrKernelSpec&& other) = default;
+  LlvmIrKernelSpec& operator=(LlvmIrKernelSpec&& other) noexcept = default;
 
   LlvmIrKernelSource& kernel_source() override { return *kernel_source_; }
 
