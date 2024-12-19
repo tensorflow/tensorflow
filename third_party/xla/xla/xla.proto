@@ -101,6 +101,9 @@ message DebugOptions {
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // When true, XLA:CPU uses XNNPACK to execute supported operations.
+  bool xla_cpu_use_xnnpack = 359;
+
   // Enabling this will enable optimizations that ignore the possibility of NaN.
   bool xla_enable_fast_math = 335;
 
@@ -1098,7 +1101,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 359
+  // Next id: 360
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
