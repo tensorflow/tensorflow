@@ -48,6 +48,8 @@ absl::Status CreateTritonPipeline(
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
+  pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
+
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm->addPass(mlir::createInlinerPass());

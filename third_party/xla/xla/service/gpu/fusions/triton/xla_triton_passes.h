@@ -36,6 +36,7 @@ std::unique_ptr<mlir::Pass> CreateSparseLocalLoadToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseDotOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseWGMMAOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass();
+std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.
