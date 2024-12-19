@@ -80,12 +80,18 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override;
 
+  absl::Span<const PjRtMemorySpaceDescription* const> memory_spaces()
+      const override;
+
  private:
   const PJRT_Api* c_api_;
   // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_DeviceDescription* device_description_;
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+  mutable std::vector<PjRtMemorySpaceDescription> memory_space_descriptions_;
+  mutable std::vector<PjRtMemorySpaceDescription*>
+      memory_space_description_pointers_;
 
   // Initializes device specific attributes.
   void InitAttributes();
@@ -458,8 +464,6 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<PjRtDevice*> addressable_devices_;
   absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
   std::vector<std::unique_ptr<PjRtCApiMemorySpace>> owned_memory_spaces_;
-  // TODO(yueshengys): Add a `memory_spaces_` member when global memories are
-  // supported.
   std::vector<PjRtMemorySpace*> addressable_memory_spaces_;
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
   // There may be an error fetching the topology desc via the C API
