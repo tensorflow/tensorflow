@@ -240,6 +240,12 @@ class ForwardAccumulator():
 
   Consider a simple linear regression:
 
+  >>> pip install tf_keras
+  >>> import os
+  >>> import numpy as np
+  >>> import tensorflow as tf
+  >>> os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
   >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
