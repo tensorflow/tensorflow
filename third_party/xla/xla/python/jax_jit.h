@@ -19,6 +19,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>

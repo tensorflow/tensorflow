@@ -605,6 +605,7 @@ cc_library(
     srcs = ["inspect_sharding.cc"],
     hdrs = ["inspect_sharding.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
@@ -703,6 +704,7 @@ cc_library(
         "//xla/hlo/builder/lib:sorting",
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
+        "//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -1021,6 +1023,9 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 

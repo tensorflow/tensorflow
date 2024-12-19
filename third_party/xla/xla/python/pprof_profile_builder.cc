@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace xla {
 

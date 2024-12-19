@@ -42,6 +42,9 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 

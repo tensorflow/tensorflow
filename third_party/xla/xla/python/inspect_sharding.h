@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_INSPECT_SHARDING_H_
 #define XLA_PYTHON_INSPECT_SHARDING_H_
 
+#include <cstddef>
 #include <optional>
 #include <string>
 
