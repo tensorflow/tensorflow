@@ -36,7 +36,7 @@ class PjRtMemorySpaceDescription {
 
   // A platform-dependent string that uniquely identifies the kind of the
   // memory space.
-  absl::string_view kind() const { return kind_; }
+  absl::string_view kind() const { return absl::string_view(kind_); }
 
   // An ID uniquely identifies the kind of the memory space among those attached
   // to the same `PjRtClient`. The IDs assigned to a kind is implementation
@@ -44,7 +44,7 @@ class PjRtMemorySpaceDescription {
   int kind_id() const { return kind_id_; }
 
  private:
-  absl::string_view kind_;
+  std::string kind_;
   int kind_id_;
 };
 

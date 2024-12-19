@@ -1030,6 +1030,7 @@ PjRtCApiDeviceDescription::memory_spaces() const {
         extension->PJRT_DeviceDescription_MemoryDescriptions(&mem_desc_args),
         c_api_);
 
+    memory_space_descriptions_.reserve(mem_desc_args.num_memory_descriptions);
     for (int i = 0; i < mem_desc_args.num_memory_descriptions; i++) {
       PJRT_MemoryDescription_Kind_Args kind_args;
       kind_args.struct_size = PJRT_MemoryDescription_Kind_Args_STRUCT_SIZE,
