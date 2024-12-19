@@ -438,10 +438,9 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":xla_internal_test_main",
+        "//xla:shape_util",
         "//xla:test",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "@com_google_absl//absl/status:statusor",

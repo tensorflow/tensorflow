@@ -525,6 +525,7 @@ xla_cc_test(
         ":test",
         ":test_helpers",
         ":xla_data_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
