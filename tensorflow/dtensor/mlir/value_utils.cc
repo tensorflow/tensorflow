@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APInt.h"
