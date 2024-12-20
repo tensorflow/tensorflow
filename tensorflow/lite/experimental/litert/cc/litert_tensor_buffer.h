@@ -24,6 +24,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -140,6 +142,37 @@ class TensorBuffer
       return Unexpected(status, "Failed to get tensor offset");
     }
     return offset;
+  }
+
+  bool HasEvent() const {
+    bool has_event;
+    internal::AssertOk(LiteRtHasTensorBufferEvent, Get(), &has_event);
+    return has_event;
+  }
+
+  Expected<Event> GetEvent() const {
+    LiteRtEvent event;
+    if (auto status = LiteRtGetTensorBufferEvent(Get(), &event);
+        status != kLiteRtStatusOk) {
+      return Error(status, "Failed to get tensor buffer event");
+    }
+    return Event(event, /*owned=*/false);
+  }
+
+  Expected<void> SetEvent(Event e) {
+    if (auto status = LiteRtSetTensorBufferEvent(Get(), e.Get());
+        status != kLiteRtStatusOk) {
+      return Error(status, "Failed to set tensor buffer event");
+    }
+    return {};
+  }
+
+  Expected<void> ClearEvent() {
+    if (auto status = LiteRtClearTensorBufferEvent(Get());
+        status != kLiteRtStatusOk) {
+      return Error(status, "Failed to clear tensor buffer event");
+    }
+    return {};
   }
 
   Expected<void*> Lock(LiteRtEvent event = nullptr) {

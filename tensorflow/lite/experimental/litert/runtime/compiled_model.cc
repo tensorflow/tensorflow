@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
+
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
 #endif
@@ -52,6 +54,7 @@
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
+using litert::Error;
 using litert::Expected;
 using litert::OwningBufferRef;
 using litert::TensorBuffer;
@@ -331,6 +334,32 @@ Expected<void> LiteRtCompiledModelT::Run(
   if (num_outputs != runner->output_names().size()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Output buffer size mismatch");
+  }
+
+  // In general output buffer events are assigned by the runtime and not the
+  // caller; here we check for any violation of that condition.
+  for (auto litert_output_buffer : output_buffers) {
+    if (litert_output_buffer->HasEvent()) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Output buffers cannot have events attached");
+    }
+  }
+
+  // TODO: If input buffers have events, we wait on them before we launch the
+  // inference. This is inefficient when using HW acceleration, since in that
+  // case it would be best to make the HW accelerator wait for those events as
+  // opposed to blocking the CPU here.
+  for (auto input_buffer : input_buffers) {
+    if (input_buffer->HasEvent()) {
+      auto litert_event = input_buffer->GetEvent();
+      if (!litert_event) {
+        return litert_event.Error();
+      }
+      litert::Event event(*litert_event, /*owned=*/false);
+      if (auto status = event.Wait(/*timeout_in_ms=*/-1); !status) {
+        return status.Error();
+      }
+    }
   }
 
   std::vector<TensorBufferScopedLock> scoped_locks;

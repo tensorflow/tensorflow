@@ -1525,31 +1525,45 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("is_tiled", &xla::HloSharding::IsTiled)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
-      .def("tuple_elements",
-           [](const xla::HloSharding& self) { return self.tuple_elements(); })
-      .def("num_devices",
-           [](const xla::HloSharding& self) {
-             return self.tile_assignment().num_elements();
-           })
-      .def("num_dimensions",
-           [](const xla::HloSharding& self) {
-             return self.tile_assignment().num_dimensions();
-           })
-      .def("tile_assignment_dimensions",
-           [](const xla::HloSharding& self) {
-             absl::Span<int64_t const> span =
-                 self.tile_assignment().dimensions();
-             CHECK(span.data());
-             return span;
-           })
-      .def("tile_assignment_devices",
-           [](const xla::HloSharding& self) {
-             auto span =
-                 absl::MakeConstSpan(self.tile_assignment().array().data(),
-                                     self.tile_assignment().num_elements());
-             CHECK(span.data());
-             return span;
-           })
+      // tile_assignment.array() is computed using an internal cache,
+      // which is why nb::lock_self() is required. It may be preferable to move
+      // this locking into the TileAssignment class if we find it to race with
+      // non-Python users of that class.
+      .def(
+          "tuple_elements",
+          [](const xla::HloSharding& self) { return self.tuple_elements(); },
+          nb::lock_self())
+      .def(
+          "num_devices",
+          [](const xla::HloSharding& self) {
+            return self.tile_assignment().num_elements();
+          },
+          nb::lock_self())
+      .def(
+          "num_dimensions",
+          [](const xla::HloSharding& self) {
+            return self.tile_assignment().num_dimensions();
+          },
+          nb::lock_self())
+      .def(
+          "tile_assignment_dimensions",
+          [](const xla::HloSharding& self) {
+            absl::Span<int64_t const> span =
+                self.tile_assignment().dimensions();
+            CHECK(span.data());
+            return span;
+          },
+          nb::lock_self())
+      .def(
+          "tile_assignment_devices",
+          [](const xla::HloSharding& self) {
+            auto span =
+                absl::MakeConstSpan(self.tile_assignment().array().data(),
+                                    self.tile_assignment().num_elements());
+            CHECK(span.data());
+            return span;
+          },
+          nb::lock_self())
       .def("replicate_on_last_tile_dim",
            &xla::HloSharding::ReplicateOnLastTileDim)
       .def("subgroup_types", &xla::HloSharding::subgroup_types)

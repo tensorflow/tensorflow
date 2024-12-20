@@ -277,6 +277,46 @@ LiteRtStatus LiteRtGetTensorBufferHostMemory(LiteRtTensorBuffer tensor_buffer,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtHasTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
+                                        bool* has_event) {
+  if (!tensor_buffer || !has_event) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *has_event = tensor_buffer->HasEvent();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
+                                        LiteRtEvent* event) {
+  if (!tensor_buffer || !event) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto result = tensor_buffer->GetEvent();
+  if (!result) {
+    LITERT_LOG(LITERT_ERROR, "%s", result.Error().Message().data());
+    return result.Error().Status();
+  }
+  *event = *result;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtSetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
+                                        LiteRtEvent event) {
+  if (!tensor_buffer || !event) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  tensor_buffer->SetEvent(event);
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtClearTensorBufferEvent(LiteRtTensorBuffer tensor_buffer) {
+  if (!tensor_buffer) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  tensor_buffer->ClearEvent();
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtLockTensorBuffer(LiteRtTensorBuffer tensor_buffer,
                                     void** host_mem_addr, LiteRtEvent event) {
   if (!tensor_buffer || !host_mem_addr) {

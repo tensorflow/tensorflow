@@ -151,19 +151,29 @@ cc_test(
 )
 
 cc_library(
+    name = "litert_event",
+    srcs = ["litert_event.cc"],
+    hdrs = ["litert_event.h"],
+    deps = [
+        ":litert_common",
+        ":litert_logging",
+        "//tensorflow/lite/experimental/litert/runtime:event",
+    ],
+)
+
+cc_library(
     name = "litert_tensor_buffer",
     srcs = [
-        "litert_event.cc",
         "litert_tensor_buffer.cc",
         "litert_tensor_buffer_requirements.cc",
     ],
     hdrs = [
-        "litert_event.h",
         "litert_tensor_buffer.h",
         "litert_tensor_buffer_requirements.h",
     ],
     deps = [
         ":litert_common",
+        ":litert_event",
         ":litert_logging",
         ":litert_model",
         "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
@@ -297,6 +307,7 @@ cc_test(
         ":litert_compiled_model",
         ":litert_compiled_model_options",
         ":litert_dispatch_delegate",
+        ":litert_event",
         ":litert_layout",
         ":litert_logging",
         ":litert_model",

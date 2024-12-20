@@ -1313,6 +1313,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "profile_time_breakdown",
+    srcs = ["profile_time_breakdown.cc"],
+    hdrs = ["profile_time_breakdown.h"],
+    visibility = ["@local_xla//xla/tsl/profiler:friends"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
 tf_cc_test(
     name = "compute_inference_latency_test",
     srcs = ["compute_inference_latency_test.cc"],
