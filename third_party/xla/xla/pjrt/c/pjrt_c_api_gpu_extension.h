@@ -35,8 +35,9 @@ struct PJRT_Gpu_Register_Custom_Call_Args {
   void* handler_prepare;
   void* handler_initialize;
   void* handler_execute;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Register_Custom_Call_Args, handler_execute);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Register_Custom_Call_Args);
 
 // Registers a custom call.
 typedef PJRT_Error* PJRT_Gpu_Register_Custom_Call(
@@ -47,8 +48,9 @@ typedef struct PJRT_Gpu_Custom_Call {
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
   PJRT_Gpu_Register_Custom_Call* custom_call;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_Gpu_Custom_Call;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Custom_Call, custom_call);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Custom_Call);
 
 #ifdef __cplusplus
 }

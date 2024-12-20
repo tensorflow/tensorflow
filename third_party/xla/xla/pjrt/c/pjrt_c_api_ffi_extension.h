@@ -40,8 +40,9 @@ struct PJRT_FFI_TypeID_Register_Args {
   const char* type_name;
   size_t type_name_size;
   int64_t type_id;  // out
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_TypeID_Register_Args, type_id);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_TypeID_Register_Args);
 
 // Registers external type in a static type registry.
 typedef PJRT_Error* PJRT_FFI_TypeID_Register(
@@ -61,8 +62,9 @@ struct PJRT_FFI_UserData_Add_Args {
 
   PJRT_ExecuteContext* context;
   PJRT_FFI_UserData user_data;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_UserData_Add_Args, user_data);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_UserData_Add_Args);
 
 // Adds a user data to the execute context.
 typedef PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args);
@@ -73,8 +75,9 @@ typedef struct PJRT_FFI_Extension {
   PJRT_Extension_Base* next;
   PJRT_FFI_TypeID_Register* type_id_register;
   PJRT_FFI_UserData_Add* user_data_add;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_FFI;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension, user_data_add);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension);
 
 #ifdef __cplusplus
 }
