@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/run_handler_util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <vector>
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/str_util.h"
