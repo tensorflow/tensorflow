@@ -39,6 +39,7 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/lru_cache.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace nb = nanobind;
 
@@ -215,6 +216,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
           if (cache == nullptr) {
             return;
           }
+          // Set up PyCriticalSection for cache python associated object;
+          auto py_cache = nb::find(cache);
+          // This should never happen as python cache should always be found
+          CHECK(py_cache.ptr() != nullptr);
+          nb::ft_object_guard lock(py_cache);
+
           // The object the reference referred to is now in the process of being
           // destroyed, so we cannot refer to its contents. Python weakref
           // objects compare based on identity if the object they refer to is
@@ -367,10 +374,10 @@ void BuildWeakrefLRUCacheAPI(nb::module_& m) {
       nb::class_<WeakrefLRUCache>(m, "WeakrefLRUCache",
                                   nb::is_weak_referenceable(),
                                   nb::type_slots(WeakrefLRUCache::slots_))
-          .def("__call__", &WeakrefLRUCache::Call)
-          .def("cache_keys", &WeakrefLRUCache::GetKeys)
-          .def("cache_info", &WeakrefLRUCache::GetCacheInfo)
-          .def("cache_clear", &WeakrefLRUCache::Clear);
+          .def("__call__", &WeakrefLRUCache::Call, nb::lock_self())
+          .def("cache_keys", &WeakrefLRUCache::GetKeys, nb::lock_self())
+          .def("cache_info", &WeakrefLRUCache::GetCacheInfo, nb::lock_self())
+          .def("cache_clear", &WeakrefLRUCache::Clear, nb::lock_self());
   nb::class_<WeakrefLRUCache::CacheInfo>(weakref_lru_cache,
                                          "WeakrefLRUCacheInfo")
       .def_ro("hits", &WeakrefLRUCache::CacheInfo::hits)

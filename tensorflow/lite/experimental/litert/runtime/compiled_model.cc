@@ -92,7 +92,8 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
 
   std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
   // TODO: b/379317134 - Support other delegates with compilation options.
-  if (compilation_options != kLiteRtHwAccelatorNone) {
+  if (compilation_options != kLiteRtHwAccelatorNone &&
+      compilation_options != kLiteRtHwAccelatorCpu) {
     LITERT_LOG(LITERT_INFO, "Applying compiler plugins");
     if (auto flatbuffer =
             litert::internal::ApplyPlugins(model, compilation_options);
