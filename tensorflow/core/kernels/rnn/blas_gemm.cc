@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
