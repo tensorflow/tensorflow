@@ -174,6 +174,9 @@ enum class CuptiTracerEventType {
   HostRegister = 13,
   HostUnregister = 14,
   CudaGraph = 15,
+  ThreadMarkerRange = 16,
+  ThreadMarkerStart = 17,
+  ThreadMarkerEnd = 18,
   Generic = 100,
 };
 
