@@ -1,1025 +1,1439 @@
-diff --git a/shardy/integrations/c/attributes.cc b/shardy/integrations/c/attributes.cc
-index da256d9..2e275a0 100644
---- a/shardy/integrations/c/attributes.cc
-+++ b/shardy/integrations/c/attributes.cc
-@@ -358,24 +358,23 @@ MlirAttribute sdyOpShardingRuleAttrGetResultMappingsElem(MlirAttribute attr,
-       unwrapAttr<sdy::OpShardingRuleAttr>(attr).getResultMappings()[pos]);
- }
+diff --git a/docs/sdy_dialect.md b/docs/sdy_dialect.md
+index c4e456d..6eb56b8 100755
+--- a/docs/sdy_dialect.md
++++ b/docs/sdy_dialect.md
+@@ -46,7 +46,7 @@ Interfaces: `InferTypeOpInterface`
  
--intptr_t sdyOpShardingRuleAttrGetReductionFactorsSize(MlirAttribute attr) {
-+int64_t sdyOpShardingRuleAttrGetReductionFactorsSize(MlirAttribute attr) {
-   return unwrapAttr<sdy::OpShardingRuleAttr>(attr).getReductionFactors().size();
- }
+ <table>
+ <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+-<tr><td><code>gatheringAxes</code></td><td>::mlir::sdy::ListOfAxisRefListsAttr</td><td>List of axis ref lists</td></tr>
++<tr><td><code>gatheringAxes</code></td><td>::mlir::sdy::ListOfAxisRefListsAttr</td><td></td></tr>
+ <tr><td><code>outSharding</code></td><td>::mlir::sdy::TensorShardingAttr</td><td>Tensor sharding</td></tr>
+ </table>
  
--int64_t sdyOpShardingRuleAttrGetReductionFactorsElem(MlirAttribute attr,
--                                                     intptr_t pos) {
-+intptr_t sdyOpShardingRuleAttrGetReductionFactorsElem(MlirAttribute attr,
-+                                                      intptr_t pos) {
-   return unwrapAttr<sdy::OpShardingRuleAttr>(attr).getReductionFactors()[pos];
- }
+@@ -228,7 +228,7 @@ Interfaces: `ShardableDataFlowOpInterface`
+ <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+ <tr><td><code>in_shardings</code></td><td>::mlir::sdy::TensorShardingPerValueAttr</td><td>Tensor sharding per operand/result of an op</td></tr>
+ <tr><td><code>out_shardings</code></td><td>::mlir::sdy::TensorShardingPerValueAttr</td><td>Tensor sharding per operand/result of an op</td></tr>
+-<tr><td><code>manual_axes</code></td><td>::mlir::sdy::ManualAxesAttr</td><td>A list of axes that a ManualComputationOp is manual on</td></tr>
++<tr><td><code>manual_axes</code></td><td>::mlir::sdy::ManualAxesAttr</td><td></td></tr>
+ </table>
  
--intptr_t sdyOpShardingRuleAttrGetNeedReplicationFactorsSize(
--    MlirAttribute attr) {
-+int64_t sdyOpShardingRuleAttrGetNeedReplicationFactorsSize(MlirAttribute attr) {
-   return unwrapAttr<sdy::OpShardingRuleAttr>(attr)
-       .getNeedReplicationFactors()
-       .size();
- }
+ #### Operands:
+@@ -570,12 +570,12 @@ Syntax:
  
--int64_t sdyOpShardingRuleAttrGetNeedReplicationFactorsElem(MlirAttribute attr,
--                                                           intptr_t pos) {
-+intptr_t sdyOpShardingRuleAttrGetNeedReplicationFactorsElem(MlirAttribute attr,
-+                                                            intptr_t pos) {
-   return unwrapAttr<sdy::OpShardingRuleAttr>(attr)
-       .getNeedReplicationFactors()[pos];
- }
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| name | `::llvm::StringRef` | the name of this axis |
+-| sub_axis_info | `SubAxisInfoAttr` | additional info if this is a sub axis |
++| name | `::llvm::StringRef` | name |
++| sub_axis_info | `SubAxisInfoAttr` |  |
+ 
+ ### AxisRefListAttr
+ 
+-List of axis refs
++
+ 
+ Syntax:
+ 
+@@ -605,7 +605,7 @@ i.e. the dimension isn't mapped to any factors.
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| factor_indices | `::llvm::ArrayRef<int64_t>` | factors this dimension is mapped to |
++| factor_indices | `::llvm::ArrayRef<int64_t>` |  |
+ 
+ ### DimensionShardingAttr
+ 
+@@ -622,13 +622,13 @@ highest priority is assumed when the priority is missing in the annotation.
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| axes | `::llvm::ArrayRef<AxisRefAttr>` | axis refs |
+-| is_closed | `bool` | if false, this dimension can be further sharded |
+-| priority | `std::optional<int64_t>` | the priority used during user priority based propagation |
++| axes | `::llvm::ArrayRef<AxisRefAttr>` | list of axis refs |
++| is_closed | `bool` |  |
++| priority | `std::optional<int64_t>` |  |
+ 
+ ### ListOfAxisRefListsAttr
+ 
+-List of axis ref lists
++
+ 
+ Syntax:
+ 
+@@ -648,7 +648,7 @@ Syntax:
+ 
+ ### ManualAxesAttr
+ 
+-A list of axes that a ManualComputationOp is manual on
++
+ 
+ Syntax:
+ 
+@@ -709,8 +709,8 @@ Here are some examples of meshes:
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| axes | `::llvm::ArrayRef<MeshAxisAttr>` | mesh axes |
+-| device_ids | `::llvm::ArrayRef<int64_t>` | explicit device ordering or maximal device id |
++| axes | `::llvm::ArrayRef<MeshAxisAttr>` |  |
++| device_ids | `::llvm::ArrayRef<int64_t>` |  |
+ 
+ ### MeshAxisAttr
+ 
+@@ -732,7 +732,7 @@ Syntax:
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+ | name | `::llvm::StringRef` | name |
+-| size | `int64_t` | size of this axis |
++| size | `int64_t` |  |
+ 
+ ### OpShardingRuleAttr
+ 
+@@ -790,12 +790,12 @@ for `stablehlo.custom_call` ops.
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| factor_sizes | `::llvm::ArrayRef<int64_t>` | sizes of all factors in this rule |
+-| operand_mappings | `::llvm::ArrayRef<TensorMappingAttr>` | operand mappings |
+-| result_mappings | `::llvm::ArrayRef<TensorMappingAttr>` | result mappings |
+-| reduction_factors | `::llvm::ArrayRef<int64_t>` | indices of factors requiring reduction |
+-| need_replication_factors | `::llvm::ArrayRef<int64_t>` | indices of factors requiring full replication |
+-| is_custom_rule | `bool` | whether the rule is for a stablehlo.custom_call |
++| factor_sizes | `::llvm::ArrayRef<int64_t>` |  |
++| operand_mappings | `::llvm::ArrayRef<TensorMappingAttr>` |  |
++| result_mappings | `::llvm::ArrayRef<TensorMappingAttr>` |  |
++| reduction_factors | `::llvm::ArrayRef<int64_t>` |  |
++| need_replication_factors | `::llvm::ArrayRef<int64_t>` |  |
++| is_custom_rule | `bool` |  |
+ 
+ ### SubAxisInfoAttr
+ 
+@@ -820,8 +820,8 @@ denoted as follows: `(m)k` for pre-size m and size k.
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| pre_size | `int64_t` | the product of sub-axis sizes to the left of this sub-axis |
+-| size | `int64_t` | size of this sub-axis |
++| pre_size | `int64_t` |  |
++| size | `int64_t` |  |
+ 
+ ### TensorMappingAttr
+ 
+@@ -841,7 +841,7 @@ Syntax:
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| dim_mappings | `::llvm::ArrayRef<DimMappingAttr>` | dimension mappings |
++| dim_mappings | `::llvm::ArrayRef<DimMappingAttr>` |  |
+ 
+ ### TensorShardingAttr
+ 
+@@ -871,8 +871,8 @@ name, referencing a corresponding `MeshOp` symbol, or an inlined `MeshAttr`.
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+ | mesh_or_ref | `::mlir::Attribute` | mesh attr or flat mesh symbol reference attr |
+-| dim_shardings | `::llvm::ArrayRef<DimensionShardingAttr>` | dimension shardings |
+-| replicated_axes | `::llvm::ArrayRef<AxisRefAttr>` | axis refs |
++| dim_shardings | `::llvm::ArrayRef<DimensionShardingAttr>` |  |
++| replicated_axes | `::llvm::ArrayRef<AxisRefAttr>` | list of axis refs |
+ 
+ ### TensorShardingPerValueAttr
+ 
+@@ -892,7 +892,7 @@ Syntax:
+ 
+ | Parameter | C++ type | Description |
+ | :-------: | :-------: | ----------- |
+-| shardings | `::llvm::ArrayRef<TensorShardingAttr>` | shardings per value |
++| shardings | `::llvm::ArrayRef<TensorShardingAttr>` |  |
+ 
+ ## Enums
+ 
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index b1fe52b..e2db28a 100644
+index e2db28a..40a8f07 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,28 +1,87 @@
+@@ -1,956 +1,312 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
----- a/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
--+++ b/llvm/lib/CodeGen/MLRegAllocEvictAdvisor.cpp
--@@ -654,8 +654,10 @@
--       // There is a potential that the model could be adversarial and
--       // continually evict live ranges over and over again, leading to a
--       // large amount of compile time being spent in regalloc. If we hit the
---      // threshold, prevent the range from being evicted.
---      if (IntfCascade >= MaxCascade)
--+      // threshold, prevent the range from being evicted. We still let the
--+      // range through if it is urgent as we are required to produce an
--+      // eviction if the candidate is not spillable.
--+      if (IntfCascade >= MaxCascade && !Urgent)
--         return false;
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/attr-counted-by.c b/clang/test/CodeGen/attr-counted-by.c
+---- a/clang/test/CodeGen/attr-counted-by.c
+-+++ b/clang/test/CodeGen/attr-counted-by.c
+-@@ -1043,7 +1043,7 @@
+- // NO-SANITIZE-WITH-ATTR-NEXT:    call void @llvm.lifetime.start.p0(i64 24, ptr nonnull [[BAZ]]) #[[ATTR11:[0-9]+]]
+- // NO-SANITIZE-WITH-ATTR-NEXT:    call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 4 dereferenceable(24) [[BAZ]], ptr noundef nonnull align 4 dereferenceable(24) @test12_bar, i64 24, i1 false), !tbaa.struct [[TBAA_STRUCT7:![0-9]+]]
+- // NO-SANITIZE-WITH-ATTR-NEXT:    [[IDXPROM:%.*]] = sext i32 [[INDEX]] to i64
+--// NO-SANITIZE-WITH-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
+-+// NO-SANITIZE-WITH-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
+- // NO-SANITIZE-WITH-ATTR-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
+- // NO-SANITIZE-WITH-ATTR-NEXT:    store i32 [[TMP0]], ptr @test12_b, align 4, !tbaa [[TBAA2]]
+- // NO-SANITIZE-WITH-ATTR-NEXT:    [[TMP1:%.*]] = load i32, ptr getelementptr inbounds nuw (i8, ptr @test12_foo, i64 4), align 4, !tbaa [[TBAA2]]
+-@@ -1085,7 +1085,7 @@
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    call void @llvm.lifetime.start.p0(i64 24, ptr nonnull [[BAZ]]) #[[ATTR9:[0-9]+]]
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 4 dereferenceable(24) [[BAZ]], ptr noundef nonnull align 4 dereferenceable(24) @test12_bar, i64 24, i1 false), !tbaa.struct [[TBAA_STRUCT7:![0-9]+]]
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[IDXPROM:%.*]] = sext i32 [[INDEX]] to i64
+--// NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
+-+// NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    store i32 [[TMP0]], ptr @test12_b, align 4, !tbaa [[TBAA2]]
+- // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[TMP1:%.*]] = load i32, ptr getelementptr inbounds nuw (i8, ptr @test12_foo, i64 4), align 4, !tbaa [[TBAA2]]
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/union-tbaa1.c b/clang/test/CodeGen/union-tbaa1.c
+---- a/clang/test/CodeGen/union-tbaa1.c
+-+++ b/clang/test/CodeGen/union-tbaa1.c
+-@@ -16,17 +16,17 @@
+- // CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [2 x i32], ptr [[ARR]], i32 [[TMP0]]
+- // CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
+- // CHECK-NEXT:    [[MUL:%.*]] = mul i32 [[TMP1]], [[NUM]]
+--// CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]]
+-+// CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]]
+- // CHECK-NEXT:    store i32 [[MUL]], ptr [[ARRAYIDX2]], align 8, !tbaa [[TBAA6:![0-9]+]]
+- // CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [2 x i32], ptr [[ARR]], i32 [[TMP0]], i32 1
+- // CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr [[ARRAYIDX5]], align 4, !tbaa [[TBAA2]]
+- // CHECK-NEXT:    [[MUL6:%.*]] = mul i32 [[TMP2]], [[NUM]]
+--// CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]], i32 1
+-+// CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]], i32 1
+- // CHECK-NEXT:    store i32 [[MUL6]], ptr [[ARRAYIDX8]], align 4, !tbaa [[TBAA6]]
+- // CHECK-NEXT:    [[TMP3:%.*]] = lshr i32 [[MUL]], 16
+- // CHECK-NEXT:    store i32 [[TMP3]], ptr [[VEC]], align 4, !tbaa [[TBAA2]]
+- // CHECK-NEXT:    [[TMP4:%.*]] = load i32, ptr [[INDEX]], align 4, !tbaa [[TBAA2]]
+--// CHECK-NEXT:    [[ARRAYIDX14:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP4]], i32 1
+-+// CHECK-NEXT:    [[ARRAYIDX14:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP4]], i32 1
+- // CHECK-NEXT:    [[ARRAYIDX15:%.*]] = getelementptr inbounds nuw i8, ptr [[ARRAYIDX14]], i32 2
+- // CHECK-NEXT:    [[TMP5:%.*]] = load i16, ptr [[ARRAYIDX15]], align 2, !tbaa [[TBAA6]]
+- // CHECK-NEXT:    [[CONV16:%.*]] = zext i16 [[TMP5]] to i32
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp b/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
+---- a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
+-+++ b/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
+-@@ -3131,26 +3131,6 @@
+-     }
+-   }
 - 
--       // Only evict older cascades or live ranges without a cascade.
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/attr-counted-by.c b/clang/test/CodeGen/attr-counted-by.c
-+--- a/clang/test/CodeGen/attr-counted-by.c
-++++ b/clang/test/CodeGen/attr-counted-by.c
-+@@ -1043,7 +1043,7 @@
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    call void @llvm.lifetime.start.p0(i64 24, ptr nonnull [[BAZ]]) #[[ATTR11:[0-9]+]]
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 4 dereferenceable(24) [[BAZ]], ptr noundef nonnull align 4 dereferenceable(24) @test12_bar, i64 24, i1 false), !tbaa.struct [[TBAA_STRUCT7:![0-9]+]]
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    [[IDXPROM:%.*]] = sext i32 [[INDEX]] to i64
-+-// NO-SANITIZE-WITH-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
-++// NO-SANITIZE-WITH-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    store i32 [[TMP0]], ptr @test12_b, align 4, !tbaa [[TBAA2]]
-+ // NO-SANITIZE-WITH-ATTR-NEXT:    [[TMP1:%.*]] = load i32, ptr getelementptr inbounds nuw (i8, ptr @test12_foo, i64 4), align 4, !tbaa [[TBAA2]]
-+@@ -1085,7 +1085,7 @@
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    call void @llvm.lifetime.start.p0(i64 24, ptr nonnull [[BAZ]]) #[[ATTR9:[0-9]+]]
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 4 dereferenceable(24) [[BAZ]], ptr noundef nonnull align 4 dereferenceable(24) @test12_bar, i64 24, i1 false), !tbaa.struct [[TBAA_STRUCT7:![0-9]+]]
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[IDXPROM:%.*]] = sext i32 [[INDEX]] to i64
-+-// NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
-++// NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [6 x i32], ptr [[BAZ]], i64 0, i64 [[IDXPROM]]
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    store i32 [[TMP0]], ptr @test12_b, align 4, !tbaa [[TBAA2]]
-+ // NO-SANITIZE-WITHOUT-ATTR-NEXT:    [[TMP1:%.*]] = load i32, ptr getelementptr inbounds nuw (i8, ptr @test12_foo, i64 4), align 4, !tbaa [[TBAA2]]
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/union-tbaa1.c b/clang/test/CodeGen/union-tbaa1.c
-+--- a/clang/test/CodeGen/union-tbaa1.c
-++++ b/clang/test/CodeGen/union-tbaa1.c
-+@@ -16,17 +16,17 @@
-+ // CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [2 x i32], ptr [[ARR]], i32 [[TMP0]]
-+ // CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA2]]
-+ // CHECK-NEXT:    [[MUL:%.*]] = mul i32 [[TMP1]], [[NUM]]
-+-// CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]]
-++// CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]]
-+ // CHECK-NEXT:    store i32 [[MUL]], ptr [[ARRAYIDX2]], align 8, !tbaa [[TBAA6:![0-9]+]]
-+ // CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [2 x i32], ptr [[ARR]], i32 [[TMP0]], i32 1
-+ // CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr [[ARRAYIDX5]], align 4, !tbaa [[TBAA2]]
-+ // CHECK-NEXT:    [[MUL6:%.*]] = mul i32 [[TMP2]], [[NUM]]
-+-// CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]], i32 1
-++// CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP0]], i32 1
-+ // CHECK-NEXT:    store i32 [[MUL6]], ptr [[ARRAYIDX8]], align 4, !tbaa [[TBAA6]]
-+ // CHECK-NEXT:    [[TMP3:%.*]] = lshr i32 [[MUL]], 16
-+ // CHECK-NEXT:    store i32 [[TMP3]], ptr [[VEC]], align 4, !tbaa [[TBAA2]]
-+ // CHECK-NEXT:    [[TMP4:%.*]] = load i32, ptr [[INDEX]], align 4, !tbaa [[TBAA2]]
-+-// CHECK-NEXT:    [[ARRAYIDX14:%.*]] = getelementptr inbounds nuw [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP4]], i32 1
-++// CHECK-NEXT:    [[ARRAYIDX14:%.*]] = getelementptr inbounds [4 x [2 x %union.vect32]], ptr [[TMP]], i32 0, i32 [[TMP4]], i32 1
-+ // CHECK-NEXT:    [[ARRAYIDX15:%.*]] = getelementptr inbounds nuw i8, ptr [[ARRAYIDX14]], i32 2
-+ // CHECK-NEXT:    [[TMP5:%.*]] = load i16, ptr [[ARRAYIDX15]], align 2, !tbaa [[TBAA6]]
-+ // CHECK-NEXT:    [[CONV16:%.*]] = zext i16 [[TMP5]] to i32
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp b/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
-+--- a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
-++++ b/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
-+@@ -3131,26 +3131,6 @@
-+     }
-+   }
+--  // The single (non-zero) index of an inbounds GEP of a base object cannot
+--  // be negative.
+--  auto HasOneNonZeroIndex = [&]() {
+--    bool FoundNonZero = false;
+--    for (Value *Idx : GEP.indices()) {
+--      auto *C = dyn_cast<Constant>(Idx);
+--      if (C && C->isNullValue())
+--        continue;
+--      if (FoundNonZero)
+--        return false;
+--      FoundNonZero = true;
+--    }
+--    return true;
+--  };
+--  if (GEP.isInBounds() && !GEP.hasNoUnsignedWrap() && isBaseOfObject(PtrOp) &&
+--      HasOneNonZeroIndex()) {
+--    GEP.setNoWrapFlags(GEP.getNoWrapFlags() | GEPNoWrapFlags::noUnsignedWrap());
+--    return &GEP;
+--  }
++diff -ruN --strip-trailing-cr a/libcxx/src/include/overridable_function.h b/libcxx/src/include/overridable_function.h
++--- a/libcxx/src/include/overridable_function.h
+++++ b/libcxx/src/include/overridable_function.h
++@@ -29,81 +29,106 @@
++ // This is a low-level utility which does not work on all platforms, since it needs
++ // to make assumptions about the object file format in use. Furthermore, it requires
++ // the "base definition" of the function (the one we want to check whether it has been
++-// overridden) to be defined using the _LIBCPP_OVERRIDABLE_FUNCTION macro.
+++// overridden) to be annotated with the _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE macro.
++ //
++ // This currently works with Mach-O files (used on Darwin) and with ELF files (used on Linux
++ // and others). On platforms where we know how to implement this detection, the macro
++ // _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION is defined to 1, and it is defined to 0 on
++-// other platforms. The _LIBCPP_OVERRIDABLE_FUNCTION macro expands to regular function
++-// definition on unsupported platforms so that it can be used to decorate functions
++-// regardless of whether detection is actually supported.
+++// other platforms. The _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE macro is defined to
+++// nothing on unsupported platforms so that it can be used to decorate functions regardless
+++// of whether detection is actually supported.
++ //
++ // How does this work?
++ // -------------------
++ //
++ // Let's say we want to check whether a weak function `f` has been overridden by the user.
++-// The general mechanism works by defining a symbol `f_impl__` and a weak alias `f` via the
++-// _LIBCPP_OVERRIDABLE_FUNCTION macro.
+++// The general mechanism works by placing `f`'s definition (in the libc++ built library)
+++// inside a special section, which we do using the `__section__` attribute via the
+++// _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE macro.
++ //
++ // Then, when comes the time to check whether the function has been overridden, we take
++-// the address of the function `f` and we check whether it is different from `f_impl__`.
++-// If so it means the function was overriden by the user.
+++// the address of the function and we check whether it falls inside the special function
+++// we created. This can be done by finding pointers to the start and the end of the section
+++// (which is done differently for ELF and Mach-O), and then checking whether `f` falls
+++// within those bounds. If it falls within those bounds, then `f` is still inside the
+++// special section and so it is the version we defined in the libc++ built library, i.e.
+++// it was not overridden. Otherwise, it was overridden by the user because it falls
+++// outside of the section.
++ //
++ // Important note
++ // --------------
++ //
++-// This mechanism should never be used outside of the libc++ built library. Functions defined
++-// with this macro must be defined at global scope.
+++// This mechanism should never be used outside of the libc++ built library. In particular,
+++// attempting to use this within the libc++ headers will not work at all because we don't
+++// want to be defining special sections inside user's executables which use our headers.
++ //
 + 
-+-  // The single (non-zero) index of an inbounds GEP of a base object cannot
-+-  // be negative.
-+-  auto HasOneNonZeroIndex = [&]() {
-+-    bool FoundNonZero = false;
-+-    for (Value *Idx : GEP.indices()) {
-+-      auto *C = dyn_cast<Constant>(Idx);
-+-      if (C && C->isNullValue())
-+-        continue;
-+-      if (FoundNonZero)
-+-        return false;
-+-      FoundNonZero = true;
-+-    }
-+-    return true;
-+-  };
-+-  if (GEP.isInBounds() && !GEP.hasNoUnsignedWrap() && isBaseOfObject(PtrOp) &&
-+-      HasOneNonZeroIndex()) {
-+-    GEP.setNoWrapFlags(GEP.getNoWrapFlags() | GEPNoWrapFlags::noUnsignedWrap());
-+-    return &GEP;
-+-  }
++ #if defined(_LIBCPP_OBJECT_FORMAT_MACHO)
++ 
++-_LIBCPP_BEGIN_NAMESPACE_STD
+ -
+-   // nusw + nneg -> nuw
+-   if (GEP.hasNoUnsignedSignedWrap() && !GEP.hasNoUnsignedWrap() &&
+-       all_of(GEP.indices(), [&](Value *Idx) {
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+---- a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+-+++ b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
+-@@ -1,5 +1,5 @@
+--; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | FileCheck %s
+--; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | %ptxas-verify %}
+-+; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_60 | FileCheck %s
+-+; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_60 | %ptxas-verify %}
+- 
+- target triple = "nvptx-unknown-nvcl"
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-write.ll b/llvm/test/CodeGen/NVPTX/surf-write.ll
+---- a/llvm/test/CodeGen/NVPTX/surf-write.ll
+-+++ b/llvm/test/CodeGen/NVPTX/surf-write.ll
+-@@ -1,5 +1,5 @@
+- ; RUN: llc < %s -mcpu=sm_20 -verify-machineinstrs | FileCheck %s
+--; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -verify-machineinstrs | %ptxas-verify %}
+-+; RUN: %if ptxas %{ llc < %s -mcpu=sm_20 -mtriple=nvptx64-nvcl -verify-machineinstrs | %ptxas-verify %}
+- 
+- target triple = "nvptx-unknown-nvcl"
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll b/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
+---- a/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
+-+++ b/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
+-@@ -53,7 +53,7 @@
+- ; CHECK-LABEL: @memcpy_constant_arg_ptr_to_alloca_load_atomic(
+- ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i64], align 8, addrspace(5)
+- ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 8 dereferenceable(256) [[ALLOCA]], ptr addrspace(4) noundef align 8 dereferenceable(256) [[ARG:%.*]], i64 256, i1 false)
+--; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i64], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+-+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i64], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+- ; CHECK-NEXT:    [[LOAD:%.*]] = load atomic i64, ptr addrspace(5) [[GEP]] syncscope("somescope") acquire, align 8
+- ; CHECK-NEXT:    ret i64 [[LOAD]]
+- ;
+-@@ -101,7 +101,7 @@
+- ; CHECK-LABEL: @memcpy_constant_byref_arg_ptr_to_alloca_too_many_bytes(
+- ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i8], align 4, addrspace(5)
+- ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 4 dereferenceable(31) [[ALLOCA]], ptr addrspace(4) noundef align 4 dereferenceable(31) [[ARG:%.*]], i64 31, i1 false)
+--; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+-+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+- ; CHECK-NEXT:    [[LOAD:%.*]] = load i8, ptr addrspace(5) [[GEP]], align 1
+- ; CHECK-NEXT:    store i8 [[LOAD]], ptr addrspace(1) [[OUT:%.*]], align 1
+- ; CHECK-NEXT:    ret void
+-@@ -120,7 +120,7 @@
+- ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i8], align 4, addrspace(5)
+- ; CHECK-NEXT:    [[KERNARG_SEGMENT_PTR:%.*]] = call align 16 dereferenceable(32) ptr addrspace(4) @llvm.amdgcn.kernarg.segment.ptr()
+- ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 4 dereferenceable(32) [[ALLOCA]], ptr addrspace(4) noundef align 16 dereferenceable(32) [[KERNARG_SEGMENT_PTR]], i64 32, i1 false)
+--; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+-+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
+- ; CHECK-NEXT:    [[LOAD:%.*]] = load i8, ptr addrspace(5) [[GEP]], align 1
+- ; CHECK-NEXT:    store i8 [[LOAD]], ptr addrspace(1) [[OUT:%.*]], align 1
+- ; CHECK-NEXT:    ret void
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/cast_phi.ll b/llvm/test/Transforms/InstCombine/cast_phi.ll
+---- a/llvm/test/Transforms/InstCombine/cast_phi.ll
+-+++ b/llvm/test/Transforms/InstCombine/cast_phi.ll
+-@@ -31,8 +31,8 @@
+- ; CHECK-NEXT:    [[TMP3:%.*]] = icmp ugt i32 [[I12_06]], [[BASE:%.*]]
+- ; CHECK-NEXT:    [[ADD:%.*]] = add nuw i32 [[I12_06]], 1
+- ; CHECK-NEXT:    [[CONV_I9:%.*]] = sext i32 [[ADD]] to i64
+--; CHECK-NEXT:    [[ARRAYIDX20:%.*]] = getelementptr inbounds nuw [258 x float], ptr [[CALLA]], i64 0, i64 [[CONV_I9]]
+--; CHECK-NEXT:    [[ARRAYIDX24:%.*]] = getelementptr inbounds nuw [258 x float], ptr [[CALLB]], i64 0, i64 [[CONV_I9]]
+-+; CHECK-NEXT:    [[ARRAYIDX20:%.*]] = getelementptr inbounds [258 x float], ptr [[CALLA]], i64 0, i64 [[CONV_I9]]
+-+; CHECK-NEXT:    [[ARRAYIDX24:%.*]] = getelementptr inbounds [258 x float], ptr [[CALLB]], i64 0, i64 [[CONV_I9]]
+- ; CHECK-NEXT:    [[CMP40:%.*]] = icmp ult i32 [[I12_06]], [[BASE]]
+- ; CHECK-NEXT:    br i1 [[TMP3]], label [[DOTBB4:%.*]], label [[DOTBB5:%.*]]
+- ; CHECK:       .bb4:
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/load-cmp.ll b/llvm/test/Transforms/InstCombine/load-cmp.ll
+---- a/llvm/test/Transforms/InstCombine/load-cmp.ll
+-+++ b/llvm/test/Transforms/InstCombine/load-cmp.ll
+-@@ -339,7 +339,7 @@
+- define i1 @pr93017(i64 %idx) {
+- ; CHECK-LABEL: @pr93017(
+- ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i64 [[IDX:%.*]] to i32
+--; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [2 x ptr], ptr @table, i32 0, i32 [[TMP1]]
+-+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [2 x ptr], ptr @table, i32 0, i32 [[TMP1]]
+- ; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[GEP]], align 4
+- ; CHECK-NEXT:    [[CMP:%.*]] = icmp ne ptr [[V]], null
+- ; CHECK-NEXT:    ret i1 [[CMP]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll b/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
+---- a/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
+-+++ b/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
+-@@ -6,7 +6,7 @@
+- define void @test_load(ptr addrspace(1) %out, i64 %x) {
+- ; CHECK-LABEL: @test_load(
+- ; CHECK-NEXT:  entry:
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr addrspace(2) @test.data, i64 0, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr addrspace(2) @test.data, i64 0, i64 [[X:%.*]]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(2) [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+-@@ -45,7 +45,7 @@
+- define void @test_load_bitcast_chain(ptr addrspace(1) %out, i64 %x) {
+- ; CHECK-LABEL: @test_load_bitcast_chain(
+- ; CHECK-NEXT:  entry:
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw i32, ptr addrspace(2) @test.data, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr addrspace(2) @test.data, i64 [[X:%.*]]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(2) [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+-@@ -66,7 +66,7 @@
+- ; CHECK-NEXT:  entry:
+- ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+-@@ -87,8 +87,8 @@
+- ; CHECK-NEXT:  entry:
+- ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+--; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr [[ARRAYIDX]])
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+- ; CHECK-NEXT:    ret void
+-@@ -108,7 +108,7 @@
+- ; CHECK-NEXT:  entry:
+- ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+-@@ -135,11 +135,11 @@
+- ; CHECK-NEXT:  entry:
+- ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
+- ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
+--; CHECK-NEXT:    [[TMP1:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
+-+; CHECK-NEXT:    [[TMP1:%.*]] = call i32 @foo(ptr [[ARRAYIDX]])
+- ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT]], i64 [[Y:%.*]]
+- ; CHECK-NEXT:    store i32 [[TMP1]], ptr addrspace(1) [[ARRAYIDX2]], align 4
+- ; CHECK-NEXT:    ret void
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/memcpy-from-global.ll b/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
+---- a/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
+-+++ b/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
+-@@ -322,7 +322,7 @@
+- ; CHECK-NEXT:    [[A:%.*]] = alloca [4 x float], align 4
+- ; CHECK-NEXT:    call void @llvm.lifetime.start.p0(i64 16, ptr nonnull [[A]])
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p1.i64(ptr align 4 [[A]], ptr addrspace(1) align 4 @I, i64 16, i1 true)
+--; CHECK-NEXT:    [[G:%.*]] = getelementptr inbounds nuw [4 x float], ptr [[A]], i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[G:%.*]] = getelementptr inbounds [4 x float], ptr [[A]], i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[R:%.*]] = load float, ptr [[G]], align 4
+- ; CHECK-NEXT:    ret float [[R]]
+- ;
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/stpcpy-1.ll b/llvm/test/Transforms/InstCombine/stpcpy-1.ll
+---- a/llvm/test/Transforms/InstCombine/stpcpy-1.ll
+-+++ b/llvm/test/Transforms/InstCombine/stpcpy-1.ll
+-@@ -25,7 +25,7 @@
+- define ptr @test_simplify2() {
+- ; CHECK-LABEL: @test_simplify2(
+- ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
+--; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
+-+; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
+- ; CHECK-NEXT:    ret ptr [[RET]]
+- ;
+-   %ret = call ptr @stpcpy(ptr @a, ptr @a)
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll b/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
+---- a/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
+-+++ b/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
+-@@ -93,7 +93,7 @@
+- define ptr @test_simplify6() {
+- ; CHECK-LABEL: @test_simplify6(
+- ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
+--; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
+-+; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
+- ; CHECK-NEXT:    ret ptr [[RET]]
+- ;
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strlen-1.ll b/llvm/test/Transforms/InstCombine/strlen-1.ll
+---- a/llvm/test/Transforms/InstCombine/strlen-1.ll
+-+++ b/llvm/test/Transforms/InstCombine/strlen-1.ll
+-@@ -155,7 +155,7 @@
+- 
+- define i32 @test_no_simplify2(i32 %x) {
+- ; CHECK-LABEL: @test_no_simplify2(
+--; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
+-+; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
+- ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) [[HELLO_P]])
+- ; CHECK-NEXT:    ret i32 [[HELLO_L]]
+- ;
+-@@ -166,8 +166,8 @@
+- 
+- define i32 @test_no_simplify2_no_null_opt(i32 %x) #0 {
+- ; CHECK-LABEL: @test_no_simplify2_no_null_opt(
+--; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
+--; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) [[HELLO_P]])
+-+; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
+-+; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef [[HELLO_P]])
+- ; CHECK-NEXT:    ret i32 [[HELLO_L]]
+- ;
+-   %hello_p = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 %x
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strlen-4.ll b/llvm/test/Transforms/InstCombine/strlen-4.ll
+---- a/llvm/test/Transforms/InstCombine/strlen-4.ll
+-+++ b/llvm/test/Transforms/InstCombine/strlen-4.ll
+-@@ -18,7 +18,7 @@
+- 
+- define i64 @fold_strlen_s3_pi_s5(i1 %X, i64 %I) {
+- ; CHECK-LABEL: @fold_strlen_s3_pi_s5(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr [[PS3_PI]], ptr @s5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -40,7 +40,7 @@
+- ; XFAIL-CHECK-NEXT:    [[SEL:%.*]] = select i1 %0, i64 [[DIF_I]], i64 5
+- ; XFAIL-CHECK-NEXT:    ret i64 [[SEL]]
+- ; CHECK-LABEL: @fold_strlen_s3_pi_p1_s5(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[PS3_PI_P1:%.*]] = getelementptr i8, ptr [[PS3_PI]], i64 1
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI_P1]], ptr @s5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+-@@ -61,7 +61,7 @@
+- 
+- define i64 @call_strlen_s5_3_pi_s5(i1 %0, i64 %1) {
+- ; CHECK-LABEL: @call_strlen_s5_3_pi_s5(
+--; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS5_3_PI]], ptr @s5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -78,7 +78,7 @@
+- 
+- define i64 @call_strlen_s5_3_s5_pj(i1 %X, i64 %J) {
+- ; CHECK-LABEL: @call_strlen_s5_3_s5_pj(
+--; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+-+; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr @s5_3, ptr [[PS5]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -95,7 +95,7 @@
+- 
+- define i64 @fold_strlen_s3_s5_pj(i1 %X, i64 %J) {
+- ; CHECK-LABEL: @fold_strlen_s3_s5_pj(
+--; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+-+; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr @s3, ptr [[PS5_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -114,7 +114,7 @@
+- 
+- define i64 @call_strlen_s3_s5_3_pj(i1 %0, i64 %1) {
+- ; CHECK-LABEL: @call_strlen_s3_s5_3_pj(
+--; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @s3, ptr [[PS5_3_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -131,8 +131,8 @@
+- 
+- define i64 @fold_strlen_s3_pi_s5_pj(i1 %X, i64 %I, i64 %J) {
+- ; CHECK-LABEL: @fold_strlen_s3_pi_s5_pj(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+--; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr [[PS3_PI]], ptr [[PS5_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strncat-2.ll b/llvm/test/Transforms/InstCombine/strncat-2.ll
+---- a/llvm/test/Transforms/InstCombine/strncat-2.ll
+-+++ b/llvm/test/Transforms/InstCombine/strncat-2.ll
+-@@ -13,7 +13,7 @@
+- define void @test_simplify1() {
+- ; CHECK-LABEL: @test_simplify1(
+- ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
+--; CHECK-NEXT:    [[ENDPTR:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
+-+; CHECK-NEXT:    [[ENDPTR:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
+- ; CHECK-NEXT:    call void @llvm.memcpy.p0.p0.i32(ptr noundef nonnull align 1 dereferenceable(6) [[ENDPTR]], ptr noundef nonnull align 1 dereferenceable(6) @hello, i32 6, i1 false)
+- ; CHECK-NEXT:    ret void
+- ;
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-3.ll b/llvm/test/Transforms/InstCombine/strnlen-3.ll
+---- a/llvm/test/Transforms/InstCombine/strnlen-3.ll
+-+++ b/llvm/test/Transforms/InstCombine/strnlen-3.ll
+-@@ -31,7 +31,7 @@
+- 
+- define i64 @call_strnlen_sx_pi_n(i64 %i, i64 %n) {
+- ; CHECK-LABEL: @call_strnlen_sx_pi_n(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [0 x i8], ptr @sx, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [0 x i8], ptr @sx, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -46,7 +46,7 @@
+- 
+- define i64 @call_strnlen_a3_pi_2(i64 %i) {
+- ; CHECK-LABEL: @call_strnlen_a3_pi_2(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -61,7 +61,7 @@
+- 
+- define i64 @call_strnlen_a3_pi_3(i64 %i) {
+- ; CHECK-LABEL: @call_strnlen_a3_pi_3(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 3)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -111,7 +111,7 @@
+- 
+- define i64 @call_strnlen_s5_3_pi_n(i64 zeroext %i, i64 %n) {
+- ; CHECK-LABEL: @call_strnlen_s5_3_pi_n(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -151,7 +151,7 @@
+- 
+- define i64 @fold_strnlen_a3_pi_2(i64 %i) {
+- ; CHECK-LABEL: @fold_strnlen_a3_pi_2(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -166,7 +166,7 @@
+- 
+- define i64 @fold_strnlen_s3_pi_2(i64 %i) {
+- ; CHECK-LABEL: @fold_strnlen_s3_pi_2(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -181,7 +181,7 @@
+- 
+- define i64 @fold_strnlen_s3_pi_3(i64 %i) {
+- ; CHECK-LABEL: @fold_strnlen_s3_pi_3(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 3)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -196,7 +196,7 @@
+- 
+- define i64 @fold_strnlen_s3_pi_n(i64 %i, i64 %n) {
+- ; CHECK-LABEL: @fold_strnlen_s3_pi_n(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-@@ -212,7 +212,7 @@
+- 
+- define i64 @call_strnlen_s5_3_pi_2(i64 %i) {
+- ; CHECK-LABEL: @call_strnlen_s5_3_pi_2(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+- ;
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-4.ll b/llvm/test/Transforms/InstCombine/strnlen-4.ll
+---- a/llvm/test/Transforms/InstCombine/strnlen-4.ll
+-+++ b/llvm/test/Transforms/InstCombine/strnlen-4.ll
+-@@ -17,7 +17,7 @@
+- 
+- define i64 @fold_strnlen_s3_pi_s5_n(i1 %C, i64 %i, i64 %n) {
+- ; CHECK-LABEL: @fold_strnlen_s3_pi_s5_n(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[C:%.*]], ptr [[PTR]], ptr @s5
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[SEL]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -57,7 +57,7 @@
+- 
+- define i64 @call_strnlen_s3_pi_sx_n(i1 %C, i64 %i, i64 %n) {
+- ; CHECK-LABEL: @call_strnlen_s3_pi_sx_n(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[C:%.*]], ptr [[PTR]], ptr @sx
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[SEL]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-5.ll b/llvm/test/Transforms/InstCombine/strnlen-5.ll
+---- a/llvm/test/Transforms/InstCombine/strnlen-5.ll
+-+++ b/llvm/test/Transforms/InstCombine/strnlen-5.ll
+-@@ -164,7 +164,7 @@
+- 
+- define i1 @fold_strnlen_a5_pi_nz_eqz(i64 %i, i64 %n) {
+- ; CHECK-LABEL: @fold_strnlen_a5_pi_nz_eqz(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [5 x i8], ptr @a5, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [5 x i8], ptr @a5, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[CHAR0:%.*]] = load i8, ptr [[PTR]], align 1
+- ; CHECK-NEXT:    [[EQZ:%.*]] = icmp eq i8 [[CHAR0]], 0
+- ; CHECK-NEXT:    ret i1 [[EQZ]]
+-@@ -200,7 +200,7 @@
+- 
+- define i1 @call_strnlen_s5_pi_n_eqz(i64 %i, i64 %n) {
+- ; CHECK-LABEL: @call_strnlen_s5_pi_n_eqz(
+--; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[I:%.*]]
+-+; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[I:%.*]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
+- ; CHECK-NEXT:    [[EQZ:%.*]] = icmp eq i64 [[LEN]], 0
+- ; CHECK-NEXT:    ret i1 [[EQZ]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/sub-gep.ll b/llvm/test/Transforms/InstCombine/sub-gep.ll
+---- a/llvm/test/Transforms/InstCombine/sub-gep.ll
+-+++ b/llvm/test/Transforms/InstCombine/sub-gep.ll
+-@@ -305,7 +305,7 @@
+- 
+- define i64 @test24b(ptr %P, i64 %A){
+- ; CHECK-LABEL: @test24b(
+--; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i64 [[A:%.*]], 1
+-+; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i64 [[A:%.*]], 1
+- ; CHECK-NEXT:    ret i64 [[B_IDX]]
+- ;
+-   %B = getelementptr inbounds [42 x i16], ptr @Arr, i64 0, i64 %A
+-@@ -316,7 +316,7 @@
+- 
+- define i64 @test25(ptr %P, i64 %A){
+- ; CHECK-LABEL: @test25(
+--; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i64 [[A:%.*]], 1
+-+; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i64 [[A:%.*]], 1
+- ; CHECK-NEXT:    [[GEPDIFF:%.*]] = add nsw i64 [[B_IDX]], -84
+- ; CHECK-NEXT:    ret i64 [[GEPDIFF]]
+- ;
+-@@ -395,7 +395,7 @@
+- define i16 @test25_as1(ptr addrspace(1) %P, i64 %A) {
+- ; CHECK-LABEL: @test25_as1(
+- ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i64 [[A:%.*]] to i16
+--; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i16 [[TMP1]], 1
+-+; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i16 [[TMP1]], 1
+- ; CHECK-NEXT:    [[GEPDIFF:%.*]] = add nsw i16 [[B_IDX]], -84
+- ; CHECK-NEXT:    ret i16 [[GEPDIFF]]
+- ;
+-@@ -409,7 +409,7 @@
+- 
+- define i64 @ptrtoint_sub_zext_ptrtoint_as2_inbounds(i32 %offset) {
+- ; CHECK-LABEL: @ptrtoint_sub_zext_ptrtoint_as2_inbounds(
+--; CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds nuw bfloat, ptr addrspace(2) @Arr_as2, i32 [[OFFSET:%.*]]
+-+; CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds bfloat, ptr addrspace(2) @Arr_as2, i32 [[OFFSET:%.*]]
+- ; CHECK-NEXT:    [[B:%.*]] = ptrtoint ptr addrspace(2) [[A]] to i32
+- ; CHECK-NEXT:    [[C:%.*]] = zext i32 [[B]] to i64
+- ; CHECK-NEXT:    [[D:%.*]] = sub nsw i64 ptrtoint (ptr addrspace(2) @Arr_as2 to i64), [[C]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-1.ll b/llvm/test/Transforms/InstCombine/wcslen-1.ll
+---- a/llvm/test/Transforms/InstCombine/wcslen-1.ll
+-+++ b/llvm/test/Transforms/InstCombine/wcslen-1.ll
+-@@ -149,7 +149,7 @@
+- define i64 @test_no_simplify2(i32 %x) {
+- ; CHECK-LABEL: @test_no_simplify2(
+- ; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[X:%.*]] to i64
+--; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
+-+; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
+- ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
+- ; CHECK-NEXT:    ret i64 [[HELLO_L]]
+- ;
+-@@ -161,8 +161,8 @@
+- define i64 @test_no_simplify2_no_null_opt(i32 %x) #0 {
+- ; CHECK-LABEL: @test_no_simplify2_no_null_opt(
+- ; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[X:%.*]] to i64
+--; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
+--; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
+-+; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
+-+; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr [[HELLO_P]])
+- ; CHECK-NEXT:    ret i64 [[HELLO_L]]
+- ;
+-   %hello_p = getelementptr inbounds [7 x i32], ptr @null_hello, i32 0, i32 %x
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-3.ll b/llvm/test/Transforms/InstCombine/wcslen-3.ll
+---- a/llvm/test/Transforms/InstCombine/wcslen-3.ll
+-+++ b/llvm/test/Transforms/InstCombine/wcslen-3.ll
+-@@ -150,7 +150,7 @@
+- define i64 @test_no_simplify2(i16 %x) {
+- ; CHECK-LABEL: @test_no_simplify2(
+- ; CHECK-NEXT:    [[TMP1:%.*]] = sext i16 [[X:%.*]] to i64
+--; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i16], ptr @null_hello, i64 0, i64 [[TMP1]]
+-+; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i16], ptr @null_hello, i64 0, i64 [[TMP1]]
+- ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
+- ; CHECK-NEXT:    ret i64 [[HELLO_L]]
+- ;
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-5.ll b/llvm/test/Transforms/InstCombine/wcslen-5.ll
+---- a/llvm/test/Transforms/InstCombine/wcslen-5.ll
+-+++ b/llvm/test/Transforms/InstCombine/wcslen-5.ll
+-@@ -19,7 +19,7 @@
+- 
+- define dso_local i64 @fold_wcslen_s3_pi_s5(i1 zeroext %0, i64 %1) {
+- ; CHECK-LABEL: @fold_wcslen_s3_pi_s5(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI]], ptr @ws5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -41,7 +41,7 @@
+- ; XFAIL-CHECK-NEXT:    [[SEL:%.*]] = select i1 %0, i64 [[DIF_I]], i64 5
+- ; XFAIL-CHECK-NEXT:    ret i64 [[SEL]]
+- ; CHECK-LABEL: @fold_wcslen_s3_pi_p1_s5(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[PS3_PI_P1:%.*]] = getelementptr inbounds nuw i8, ptr [[PS3_PI]], i64 4
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI_P1]], ptr @ws5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+-@@ -62,7 +62,7 @@
+- 
+- define dso_local i64 @call_wcslen_s5_3_pi_s5(i1 zeroext %0, i64 %1) {
+- ; CHECK-LABEL: @call_wcslen_s5_3_pi_s5(
+--; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds nuw [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS5_3_PI]], ptr @ws5
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -79,7 +79,7 @@
+- 
+- define dso_local i64 @call_wcslen_s5_3_s5_pj(i1 zeroext %0, i64 %1) {
+- ; CHECK-LABEL: @call_wcslen_s5_3_s5_pj(
+--; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws5_3, ptr [[PS5]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -96,7 +96,7 @@
+- 
+- define dso_local i64 @fold_wcslen_s3_s5_pj(i1 zeroext %0, i64 %1) {
+- ; CHECK-LABEL: @fold_wcslen_s3_s5_pj(
+--; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws3, ptr [[PS5_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -115,7 +115,7 @@
+- 
+- define dso_local i64 @call_wcslen_s3_s5_3_pj(i1 zeroext %0, i64 %1) {
+- ; CHECK-LABEL: @call_wcslen_s3_s5_3_pj(
+--; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds nuw [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws3, ptr [[PS5_3_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-@@ -132,8 +132,8 @@
+- 
+- define dso_local i64 @fold_wcslen_s3_pi_s5_pj(i1 zeroext %0, i64 %1, i64 %2) {
+- ; CHECK-LABEL: @fold_wcslen_s3_pi_s5_pj(
+--; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+--; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP2:%.*]]
+-+; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
+-+; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP2:%.*]]
+- ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI]], ptr [[PS5_PJ]]
+- ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
+- ; CHECK-NEXT:    ret i64 [[LEN]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll b/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
+---- a/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
+-@@ -557,7 +557,7 @@
+- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @idx_array, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [1048576 x i32], ptr @idx_array, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <vscale x 4 x i32>, ptr [[TMP5]], align 4
+- ; CHECK-NEXT:    [[TMP14:%.*]] = sext <vscale x 4 x i32> [[WIDE_LOAD1]] to <vscale x 4 x i64>
+- ; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds [1048576 x i32], ptr @data_array, i64 0, <vscale x 4 x i64> [[TMP14]]
+-@@ -573,10 +573,10 @@
+- ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
+- ; CHECK:       for.body:
+- ; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ [[BC_RESUME_VAL]], [[SCALAR_PH]] ], [ [[IV_NEXT:%.*]], [[FOR_BODY]] ]
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @idx_array, i64 0, i64 [[IV]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [1048576 x i32], ptr @idx_array, i64 0, i64 [[IV]]
+- ; CHECK-NEXT:    [[TMP9:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[IDXPROM5:%.*]] = sext i32 [[TMP9]] to i64
+--; CHECK-NEXT:    [[ARRAYIDX6:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @data_array, i64 0, i64 [[IDXPROM5]]
+-+; CHECK-NEXT:    [[ARRAYIDX6:%.*]] = getelementptr inbounds [1048576 x i32], ptr @data_array, i64 0, i64 [[IDXPROM5]]
+- ; CHECK-NEXT:    [[TMP10:%.*]] = load i32, ptr [[ARRAYIDX6]], align 4
+- ; CHECK-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP10]], 1
+- ; CHECK-NEXT:    store i32 [[INC]], ptr [[ARRAYIDX6]], align 4
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll b/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
+---- a/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
+-@@ -36,14 +36,14 @@
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+- ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <vscale x 8 x i32>, ptr [[TMP2]], align 4
+- ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i32> } @llvm.vector.deinterleave2.nxv8i32(<vscale x 8 x i32> [[WIDE_VEC]])
+- ; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 0
+- ; CHECK-NEXT:    [[TMP4:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 1
+- ; CHECK-NEXT:    [[TMP6:%.*]] = add nsw <vscale x 4 x i32> [[TMP3]], [[BROADCAST_SPLAT]]
+- ; CHECK-NEXT:    [[TMP7:%.*]] = mul nsw <vscale x 4 x i32> [[TMP4]], [[BROADCAST_SPLAT2]]
+--; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = call <vscale x 8 x i32> @llvm.vector.interleave2.nxv8i32(<vscale x 4 x i32> [[TMP6]], <vscale x 4 x i32> [[TMP7]])
+- ; CHECK-NEXT:    store <vscale x 8 x i32> [[INTERLEAVED_VEC]], ptr [[TMP8]], align 4
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP1]]
+-@@ -127,7 +127,7 @@
+- ; CHECK-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 4 x i16> @llvm.masked.gather.nxv4i16.nxv4p0(<vscale x 4 x ptr> [[TMP8]], i32 2, <vscale x 4 x i1> splat (i1 true), <vscale x 4 x i16> poison)
+- ; CHECK-NEXT:    [[TMP9:%.*]] = sext <vscale x 4 x i16> [[WIDE_MASKED_GATHER]] to <vscale x 4 x i32>
+- ; CHECK-NEXT:    [[TMP10:%.*]] = add nsw <vscale x 4 x i32> [[BROADCAST_SPLAT]], [[TMP9]]
+--; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[TMP11:%.*]] = sext <vscale x 4 x i16> [[WIDE_MASKED_GATHER1]] to <vscale x 4 x i32>
+- ; CHECK-NEXT:    [[TMP12:%.*]] = mul nsw <vscale x 4 x i32> [[BROADCAST_SPLAT3]], [[TMP11]]
+- ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = call <vscale x 8 x i32> @llvm.vector.interleave2.nxv8i32(<vscale x 4 x i32> [[TMP10]], <vscale x 4 x i32> [[TMP12]])
+-@@ -209,7 +209,7 @@
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+- ; CHECK-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 4 x i64> [ [[TMP3]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+- ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
+--; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <vscale x 8 x i32>, ptr [[TMP6]], align 4
+- ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i32> } @llvm.vector.deinterleave2.nxv8i32(<vscale x 8 x i32> [[WIDE_VEC]])
+- ; CHECK-NEXT:    [[TMP7:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 0
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll b/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
+---- a/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
+-@@ -34,13 +34,13 @@
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+- ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
+--; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <8 x i32>, ptr [[TMP0]], align 4
+- ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = shufflevector <8 x i32> [[WIDE_VEC]], <8 x i32> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
+- ; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = shufflevector <8 x i32> [[WIDE_VEC]], <8 x i32> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+- ; CHECK-NEXT:    [[TMP2:%.*]] = add nsw <4 x i32> [[STRIDED_VEC]], [[BROADCAST_SPLAT]]
+- ; CHECK-NEXT:    [[TMP3:%.*]] = mul nsw <4 x i32> [[STRIDED_VEC1]], [[BROADCAST_SPLAT3]]
+--; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <8 x i32> <i32 0, i32 4, i32 1, i32 5, i32 2, i32 6, i32 3, i32 7>
+- ; CHECK-NEXT:    store <8 x i32> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 4
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+-@@ -113,7 +113,7 @@
+- ; CHECK-NEXT:    [[STRIDED_VEC2:%.*]] = shufflevector <12 x i32> [[WIDE_VEC]], <12 x i32> poison, <4 x i32> <i32 1, i32 4, i32 7, i32 10>
+- ; CHECK-NEXT:    [[STRIDED_VEC3:%.*]] = shufflevector <12 x i32> [[WIDE_VEC]], <12 x i32> poison, <4 x i32> <i32 2, i32 5, i32 8, i32 11>
+- ; CHECK-NEXT:    [[TMP0:%.*]] = add nsw <4 x i32> [[STRIDED_VEC]], splat (i32 1)
+--; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw [1024 x %struct.ST3], ptr @S, i64 0, i64 [[INDEX]], i32 0
+-+; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [1024 x %struct.ST3], ptr @S, i64 0, i64 [[INDEX]], i32 0
+- ; CHECK-NEXT:    [[TMP1:%.*]] = add nsw <4 x i32> [[STRIDED_VEC2]], splat (i32 2)
+- ; CHECK-NEXT:    [[TMP2:%.*]] = add nsw <4 x i32> [[STRIDED_VEC3]], splat (i32 3)
+- ; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> [[TMP1]], <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll b/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
+---- a/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
+-@@ -24,10 +24,10 @@
+- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [40000 x i8], ptr addrspace(1) @Y, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [40000 x i8], ptr addrspace(1) @Y, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr addrspace(1) [[TMP0]], align 1
+- ; CHECK-NEXT:    [[TMP1:%.*]] = add <4 x i8> [[WIDE_LOAD]], splat (i8 1)
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [40000 x i8], ptr @X, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [40000 x i8], ptr @X, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    store <4 x i8> [[TMP1]], ptr [[TMP2]], align 1
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+- ; CHECK-NEXT:    [[TMP3:%.*]] = icmp eq i64 [[INDEX_NEXT]], 40000
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/non-const-n.ll b/llvm/test/Transforms/LoopVectorize/non-const-n.ll
+---- a/llvm/test/Transforms/LoopVectorize/non-const-n.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/non-const-n.ll
+-@@ -19,12 +19,12 @@
+- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP2]], align 4
+--; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i32>, ptr [[TMP3]], align 4
+- ; CHECK-NEXT:    [[TMP4:%.*]] = add nsw <4 x i32> [[WIDE_LOAD1]], [[WIDE_LOAD]]
+--; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    store <4 x i32> [[TMP4]], ptr [[TMP5]], align 4
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+- ; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX]], [[TMP1]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/small-size.ll b/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
+---- a/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
+-@@ -28,12 +28,12 @@
+- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP1]], align 4
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i32>, ptr [[TMP2]], align 4
+- ; CHECK-NEXT:    [[TMP3:%.*]] = add nsw <4 x i32> [[WIDE_LOAD1]], [[WIDE_LOAD]]
+--; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    store <4 x i32> [[TMP3]], ptr [[TMP4]], align 4
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+- ; CHECK-NEXT:    [[TMP5:%.*]] = icmp eq i64 [[INDEX_NEXT]], 256
+-@@ -89,7 +89,7 @@
+- ; CHECK-NEXT:    [[TMP4:%.*]] = extractelement <4 x i1> [[TMP3]], i64 0
+- ; CHECK-NEXT:    br i1 [[TMP4]], label [[PRED_STORE_IF:%.*]], label [[PRED_STORE_CONTINUE:%.*]]
+- ; CHECK:       pred.store.if:
+--; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    store i32 [[X:%.*]], ptr [[TMP5]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE]]
+- ; CHECK:       pred.store.continue:
+-@@ -97,7 +97,7 @@
+- ; CHECK-NEXT:    br i1 [[TMP6]], label [[PRED_STORE_IF1:%.*]], label [[PRED_STORE_CONTINUE2:%.*]]
+- ; CHECK:       pred.store.if1:
+- ; CHECK-NEXT:    [[TMP7:%.*]] = or disjoint i64 [[INDEX]], 1
+--; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP7]]
+-+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP7]]
+- ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP8]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE2]]
+- ; CHECK:       pred.store.continue2:
+-@@ -105,7 +105,7 @@
+- ; CHECK-NEXT:    br i1 [[TMP9]], label [[PRED_STORE_IF3:%.*]], label [[PRED_STORE_CONTINUE4:%.*]]
+- ; CHECK:       pred.store.if3:
+- ; CHECK-NEXT:    [[TMP10:%.*]] = or disjoint i64 [[INDEX]], 2
+--; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP10]]
+-+; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP10]]
+- ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP11]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE4]]
+- ; CHECK:       pred.store.continue4:
+-@@ -113,7 +113,7 @@
+- ; CHECK-NEXT:    br i1 [[TMP12]], label [[PRED_STORE_IF5:%.*]], label [[PRED_STORE_CONTINUE6]]
+- ; CHECK:       pred.store.if5:
+- ; CHECK-NEXT:    [[TMP13:%.*]] = or disjoint i64 [[INDEX]], 3
+--; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP13]]
+-+; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP13]]
+- ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP14]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE6]]
+- ; CHECK:       pred.store.continue6:
+-@@ -152,11 +152,11 @@
+- ; CHECK-NEXT:    [[TMP19:%.*]] = extractelement <4 x i1> [[TMP18]], i64 0
+- ; CHECK-NEXT:    br i1 [[TMP19]], label [[PRED_STORE_IF21:%.*]], label [[PRED_STORE_CONTINUE22:%.*]]
+- ; CHECK:       pred.store.if21:
+--; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[TMP21:%.*]] = load i32, ptr [[TMP20]], align 4
+--; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[TMP23:%.*]] = load i32, ptr [[TMP22]], align 4
+--; CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[OFFSET_IDX]]
+-+; CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[OFFSET_IDX]]
+- ; CHECK-NEXT:    [[TMP25:%.*]] = and i32 [[TMP23]], [[TMP21]]
+- ; CHECK-NEXT:    store i32 [[TMP25]], ptr [[TMP24]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE22]]
+-@@ -165,11 +165,11 @@
+- ; CHECK-NEXT:    br i1 [[TMP26]], label [[PRED_STORE_IF23:%.*]], label [[PRED_STORE_CONTINUE24:%.*]]
+- ; CHECK:       pred.store.if23:
+- ; CHECK-NEXT:    [[TMP27:%.*]] = add i64 [[OFFSET_IDX]], 1
+--; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP27]]
+-+; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP27]]
+- ; CHECK-NEXT:    [[TMP29:%.*]] = load i32, ptr [[TMP28]], align 4
+--; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP27]]
+-+; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP27]]
+- ; CHECK-NEXT:    [[TMP31:%.*]] = load i32, ptr [[TMP30]], align 4
+--; CHECK-NEXT:    [[TMP32:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP27]]
+-+; CHECK-NEXT:    [[TMP32:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP27]]
+- ; CHECK-NEXT:    [[TMP33:%.*]] = and i32 [[TMP31]], [[TMP29]]
+- ; CHECK-NEXT:    store i32 [[TMP33]], ptr [[TMP32]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE24]]
+-@@ -178,11 +178,11 @@
+- ; CHECK-NEXT:    br i1 [[TMP34]], label [[PRED_STORE_IF25:%.*]], label [[PRED_STORE_CONTINUE26:%.*]]
+- ; CHECK:       pred.store.if25:
+- ; CHECK-NEXT:    [[TMP35:%.*]] = add i64 [[OFFSET_IDX]], 2
+--; CHECK-NEXT:    [[TMP36:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP35]]
+-+; CHECK-NEXT:    [[TMP36:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP35]]
+- ; CHECK-NEXT:    [[TMP37:%.*]] = load i32, ptr [[TMP36]], align 4
+--; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP35]]
+-+; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP35]]
+- ; CHECK-NEXT:    [[TMP39:%.*]] = load i32, ptr [[TMP38]], align 4
+--; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP35]]
+-+; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP35]]
+- ; CHECK-NEXT:    [[TMP41:%.*]] = and i32 [[TMP39]], [[TMP37]]
+- ; CHECK-NEXT:    store i32 [[TMP41]], ptr [[TMP40]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE26]]
+-@@ -191,11 +191,11 @@
+- ; CHECK-NEXT:    br i1 [[TMP42]], label [[PRED_STORE_IF27:%.*]], label [[PRED_STORE_CONTINUE28]]
+- ; CHECK:       pred.store.if27:
+- ; CHECK-NEXT:    [[TMP43:%.*]] = add i64 [[OFFSET_IDX]], 3
+--; CHECK-NEXT:    [[TMP44:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP43]]
+-+; CHECK-NEXT:    [[TMP44:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP43]]
+- ; CHECK-NEXT:    [[TMP45:%.*]] = load i32, ptr [[TMP44]], align 4
+--; CHECK-NEXT:    [[TMP46:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP43]]
+-+; CHECK-NEXT:    [[TMP46:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP43]]
+- ; CHECK-NEXT:    [[TMP47:%.*]] = load i32, ptr [[TMP46]], align 4
+--; CHECK-NEXT:    [[TMP48:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP43]]
+-+; CHECK-NEXT:    [[TMP48:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP43]]
+- ; CHECK-NEXT:    [[TMP49:%.*]] = and i32 [[TMP47]], [[TMP45]]
+- ; CHECK-NEXT:    store i32 [[TMP49]], ptr [[TMP48]], align 4
+- ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE28]]
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll b/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
+---- a/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
+-@@ -14,8 +14,8 @@
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[ENTRY:%.*]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+- ; CHECK-NEXT:    [[TMP0:%.*]] = or disjoint i64 [[INDEX]], 1
+--; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw [1024 x x86_fp80], ptr @x, i64 0, i64 [[INDEX]]
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [1024 x x86_fp80], ptr @x, i64 0, i64 [[TMP0]]
+-+; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds [1024 x x86_fp80], ptr @x, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [1024 x x86_fp80], ptr @x, i64 0, i64 [[TMP0]]
+- ; CHECK-NEXT:    store x86_fp80 0xK3FFF8000000000000000, ptr [[TMP1]], align 16
+- ; CHECK-NEXT:    store x86_fp80 0xK3FFF8000000000000000, ptr [[TMP2]], align 16
+- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll b/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
+---- a/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
+-+++ b/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
+-@@ -179,17 +179,17 @@
+- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; CHECK:       vector.body:
+- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [58 x double], ptr @b, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [58 x double], ptr @b, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP0]], i64 16
+- ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x double>, ptr [[TMP0]], align 16
+- ; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <2 x double>, ptr [[TMP1]], align 16
+--; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [58 x double], ptr @c, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [58 x double], ptr @c, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP2]], i64 16
+- ; CHECK-NEXT:    [[WIDE_LOAD5:%.*]] = load <2 x double>, ptr [[TMP2]], align 16
+- ; CHECK-NEXT:    [[WIDE_LOAD6:%.*]] = load <2 x double>, ptr [[TMP3]], align 16
+- ; CHECK-NEXT:    [[TMP4:%.*]] = fadd <2 x double> [[WIDE_LOAD]], [[WIDE_LOAD5]]
+- ; CHECK-NEXT:    [[TMP5:%.*]] = fadd <2 x double> [[WIDE_LOAD4]], [[WIDE_LOAD6]]
+--; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw [58 x double], ptr @a, i64 0, i64 [[INDEX]]
+-+; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds [58 x double], ptr @a, i64 0, i64 [[INDEX]]
+- ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP6]], i64 16
+- ; CHECK-NEXT:    store <2 x double> [[TMP4]], ptr [[TMP6]], align 16
+- ; CHECK-NEXT:    store <2 x double> [[TMP5]], ptr [[TMP7]], align 16
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll b/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
+-@@ -349,12 +349,12 @@
+- ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY3]] ]
+- ; CHECK-NEXT:    [[TMP2:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+- ; CHECK-NEXT:    [[TMP3:%.*]] = add i32 [[TMP2]], 1
+--; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
+-+; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
+- ; CHECK-NEXT:    [[TMP4:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+--; CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
+-+; CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
+- ; CHECK-NEXT:    [[TMP5:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+- ; CHECK-NEXT:    [[TMP6:%.*]] = add i32 [[TMP5]], 4
+--; CHECK-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
+-+; CHECK-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
+- ; CHECK-NEXT:    [[TMP7:%.*]] = load float, ptr [[ARRAYIDX31]], align 4
+- ; CHECK-NEXT:    [[TMP8:%.*]] = load <4 x float>, ptr [[ARRAYIDX]], align 4
+- ; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <4 x float> [[TMP8]], <4 x float> poison, <4 x i32> <i32 poison, i32 0, i32 1, i32 2>
+-@@ -363,7 +363,7 @@
+- ; CHECK-NEXT:    store <4 x float> [[TMP11]], ptr [[ARRAYIDX5]], align 4
+- ; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 5
+- ; CHECK-NEXT:    [[TMP12:%.*]] = trunc i64 [[INDVARS_IV_NEXT]] to i32
+--; CHECK-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
+-+; CHECK-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
+- ; CHECK-NEXT:    [[TMP13]] = load float, ptr [[ARRAYIDX41]], align 4
+- ; CHECK-NEXT:    [[MUL45:%.*]] = fmul float [[TMP13]], [[TMP7]]
+- ; CHECK-NEXT:    store float [[MUL45]], ptr [[ARRAYIDX31]], align 4
+-@@ -384,12 +384,12 @@
+- ; SSE2-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY3]] ]
+- ; SSE2-NEXT:    [[TMP2:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+- ; SSE2-NEXT:    [[TMP3:%.*]] = add i32 [[TMP2]], 1
+--; SSE2-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
+-+; SSE2-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
+- ; SSE2-NEXT:    [[TMP4:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+--; SSE2-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
+-+; SSE2-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
+- ; SSE2-NEXT:    [[TMP5:%.*]] = trunc i64 [[INDVARS_IV]] to i32
+- ; SSE2-NEXT:    [[TMP6:%.*]] = add i32 [[TMP5]], 4
+--; SSE2-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
+-+; SSE2-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
+- ; SSE2-NEXT:    [[TMP7:%.*]] = load float, ptr [[ARRAYIDX31]], align 4
+- ; SSE2-NEXT:    [[TMP8:%.*]] = load <4 x float>, ptr [[ARRAYIDX]], align 4
+- ; SSE2-NEXT:    [[TMP9:%.*]] = shufflevector <4 x float> [[TMP8]], <4 x float> poison, <4 x i32> <i32 poison, i32 0, i32 1, i32 2>
+-@@ -398,7 +398,7 @@
+- ; SSE2-NEXT:    store <4 x float> [[TMP11]], ptr [[ARRAYIDX5]], align 4
+- ; SSE2-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 5
+- ; SSE2-NEXT:    [[TMP12:%.*]] = trunc i64 [[INDVARS_IV_NEXT]] to i32
+--; SSE2-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
+-+; SSE2-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
+- ; SSE2-NEXT:    [[TMP13]] = load float, ptr [[ARRAYIDX41]], align 4
+- ; SSE2-NEXT:    [[MUL45:%.*]] = fmul float [[TMP13]], [[TMP7]]
+- ; SSE2-NEXT:    store float [[MUL45]], ptr [[ARRAYIDX31]], align 4
++-template <auto _Func>
++-_LIBCPP_HIDE_FROM_ABI constexpr bool __is_function_overridden();
+++#  define _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION 1
+++#  define _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE                                                                 \
+++    __attribute__((__section__("__TEXT,__lcxx_override,regular,pure_instructions")))
++ 
+++_LIBCPP_BEGIN_NAMESPACE_STD
+++template <class _Ret, class... _Args>
+++_LIBCPP_HIDE_FROM_ABI bool __is_function_overridden(_Ret (*__fptr)(_Args...)) noexcept {
+++  // Declare two dummy bytes and give them these special `__asm` values. These values are
+++  // defined by the linker, which means that referring to `&__lcxx_override_start` will
+++  // effectively refer to the address where the section starts (and same for the end).
+++  extern char __lcxx_override_start __asm("section$start$__TEXT$__lcxx_override");
+++  extern char __lcxx_override_end __asm("section$end$__TEXT$__lcxx_override");
+++
+++  // Now get a uintptr_t out of these locations, and out of the function pointer.
+++  uintptr_t __start = reinterpret_cast<uintptr_t>(&__lcxx_override_start);
+++  uintptr_t __end   = reinterpret_cast<uintptr_t>(&__lcxx_override_end);
+++  uintptr_t __ptr   = reinterpret_cast<uintptr_t>(__fptr);
+++
+++#  if __has_feature(ptrauth_calls)
+++  // We must pass a void* to ptrauth_strip since it only accepts a pointer type. Also, in particular,
+++  // we must NOT pass a function pointer, otherwise we will strip the function pointer, and then attempt
+++  // to authenticate and re-sign it when casting it to a uintptr_t again, which will fail because we just
+++  // stripped the function pointer. See rdar://122927845.
+++  __ptr = reinterpret_cast<uintptr_t>(ptrauth_strip(reinterpret_cast<void*>(__ptr), ptrauth_key_function_pointer));
+++#  endif
+++
+++  // Finally, the function was overridden if it falls outside of the section's bounds.
+++  return __ptr < __start || __ptr > __end;
+++}
++ _LIBCPP_END_NAMESPACE_STD
++ 
+++// The NVPTX linker cannot create '__start/__stop' sections.
+++#elif defined(_LIBCPP_OBJECT_FORMAT_ELF) && !defined(__NVPTX__)
+++
++ #  define _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION 1
++-#  define _LIBCPP_OVERRIDABLE_FUNCTION(symbol, type, name, arglist)                                                    \
++-    static type symbol##_impl__ arglist __asm__("_" _LIBCPP_TOSTRING(symbol));                                         \
++-    __asm__(".globl _" _LIBCPP_TOSTRING(symbol));                                                                      \
++-    __asm__(".weak_definition _" _LIBCPP_TOSTRING(symbol));                                                            \
++-    extern __typeof(symbol##_impl__) name __attribute__((weak_import));                                                \
++-    _LIBCPP_BEGIN_NAMESPACE_STD                                                                                        \
++-    template <>                                                                                                        \
++-    bool __is_function_overridden<static_cast<type(*) arglist>(name)>() {                                              \
++-      return static_cast<type(*) arglist>(name) != symbol##_impl__;                                                    \
++-    }                                                                                                                  \
++-    _LIBCPP_END_NAMESPACE_STD                                                                                          \
++-    static type symbol##_impl__ arglist
+++#  define _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE __attribute__((__section__("__lcxx_override")))
++ 
++-#elif defined(_LIBCPP_OBJECT_FORMAT_ELF)
+++// This is very similar to what we do for Mach-O above. The ELF linker will implicitly define
+++// variables with those names corresponding to the start and the end of the section.
+++//
+++// See https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
+++extern char __start___lcxx_override;
+++extern char __stop___lcxx_override;
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
+++template <class _Ret, class... _Args>
+++_LIBCPP_HIDE_FROM_ABI bool __is_function_overridden(_Ret (*__fptr)(_Args...)) noexcept {
+++  uintptr_t __start = reinterpret_cast<uintptr_t>(&__start___lcxx_override);
+++  uintptr_t __end   = reinterpret_cast<uintptr_t>(&__stop___lcxx_override);
+++  uintptr_t __ptr   = reinterpret_cast<uintptr_t>(__fptr);
+++
+++#  if __has_feature(ptrauth_calls)
+++  // We must pass a void* to ptrauth_strip since it only accepts a pointer type. See full explanation above.
+++  __ptr = reinterpret_cast<uintptr_t>(ptrauth_strip(reinterpret_cast<void*>(__ptr), ptrauth_key_function_pointer));
+++#  endif
++ 
++-template <auto _Func>
++-_LIBCPP_HIDE_FROM_ABI constexpr bool __is_function_overridden();
 +-
-+   // nusw + nneg -> nuw
-+   if (GEP.hasNoUnsignedSignedWrap() && !GEP.hasNoUnsignedWrap() &&
-+       all_of(GEP.indices(), [&](Value *Idx) {
- diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
- --- a/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
- +++ b/llvm/test/CodeGen/NVPTX/nvcl-param-align.ll
- @@ -1,5 +1,5 @@
---; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_20 | FileCheck %s
---; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64 -mcpu=sm_20 | %ptxas-verify %}
--+; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | FileCheck %s
--+; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | %ptxas-verify %}
-+-; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | FileCheck %s
-+-; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_20 | %ptxas-verify %}
-++; RUN: llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_60 | FileCheck %s
-++; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-nvcl -mcpu=sm_60 | %ptxas-verify %}
-  
-  target triple = "nvptx-unknown-nvcl"
-  
-@@ -36,3 +95,862 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-write.ll b/llvm/tes
-  
-  target triple = "nvptx-unknown-nvcl"
-  
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll b/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
-+--- a/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
-++++ b/llvm/test/Transforms/InstCombine/AMDGPU/memcpy-from-constant.ll
-+@@ -53,7 +53,7 @@
-+ ; CHECK-LABEL: @memcpy_constant_arg_ptr_to_alloca_load_atomic(
-+ ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i64], align 8, addrspace(5)
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 8 dereferenceable(256) [[ALLOCA]], ptr addrspace(4) noundef align 8 dereferenceable(256) [[ARG:%.*]], i64 256, i1 false)
-+-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i64], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i64], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-+ ; CHECK-NEXT:    [[LOAD:%.*]] = load atomic i64, ptr addrspace(5) [[GEP]] syncscope("somescope") acquire, align 8
-+ ; CHECK-NEXT:    ret i64 [[LOAD]]
-+ ;
-+@@ -101,7 +101,7 @@
-+ ; CHECK-LABEL: @memcpy_constant_byref_arg_ptr_to_alloca_too_many_bytes(
-+ ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i8], align 4, addrspace(5)
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 4 dereferenceable(31) [[ALLOCA]], ptr addrspace(4) noundef align 4 dereferenceable(31) [[ARG:%.*]], i64 31, i1 false)
-+-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-+ ; CHECK-NEXT:    [[LOAD:%.*]] = load i8, ptr addrspace(5) [[GEP]], align 1
-+ ; CHECK-NEXT:    store i8 [[LOAD]], ptr addrspace(1) [[OUT:%.*]], align 1
-+ ; CHECK-NEXT:    ret void
-+@@ -120,7 +120,7 @@
-+ ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca [32 x i8], align 4, addrspace(5)
-+ ; CHECK-NEXT:    [[KERNARG_SEGMENT_PTR:%.*]] = call align 16 dereferenceable(32) ptr addrspace(4) @llvm.amdgcn.kernarg.segment.ptr()
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p5.p4.i64(ptr addrspace(5) noundef align 4 dereferenceable(32) [[ALLOCA]], ptr addrspace(4) noundef align 16 dereferenceable(32) [[KERNARG_SEGMENT_PTR]], i64 32, i1 false)
-+-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [32 x i8], ptr addrspace(5) [[ALLOCA]], i32 0, i32 [[IDX:%.*]]
-+ ; CHECK-NEXT:    [[LOAD:%.*]] = load i8, ptr addrspace(5) [[GEP]], align 1
-+ ; CHECK-NEXT:    store i8 [[LOAD]], ptr addrspace(1) [[OUT:%.*]], align 1
-+ ; CHECK-NEXT:    ret void
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/cast_phi.ll b/llvm/test/Transforms/InstCombine/cast_phi.ll
-+--- a/llvm/test/Transforms/InstCombine/cast_phi.ll
-++++ b/llvm/test/Transforms/InstCombine/cast_phi.ll
-+@@ -31,8 +31,8 @@
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = icmp ugt i32 [[I12_06]], [[BASE:%.*]]
-+ ; CHECK-NEXT:    [[ADD:%.*]] = add nuw i32 [[I12_06]], 1
-+ ; CHECK-NEXT:    [[CONV_I9:%.*]] = sext i32 [[ADD]] to i64
-+-; CHECK-NEXT:    [[ARRAYIDX20:%.*]] = getelementptr inbounds nuw [258 x float], ptr [[CALLA]], i64 0, i64 [[CONV_I9]]
-+-; CHECK-NEXT:    [[ARRAYIDX24:%.*]] = getelementptr inbounds nuw [258 x float], ptr [[CALLB]], i64 0, i64 [[CONV_I9]]
-++; CHECK-NEXT:    [[ARRAYIDX20:%.*]] = getelementptr inbounds [258 x float], ptr [[CALLA]], i64 0, i64 [[CONV_I9]]
-++; CHECK-NEXT:    [[ARRAYIDX24:%.*]] = getelementptr inbounds [258 x float], ptr [[CALLB]], i64 0, i64 [[CONV_I9]]
-+ ; CHECK-NEXT:    [[CMP40:%.*]] = icmp ult i32 [[I12_06]], [[BASE]]
-+ ; CHECK-NEXT:    br i1 [[TMP3]], label [[DOTBB4:%.*]], label [[DOTBB5:%.*]]
-+ ; CHECK:       .bb4:
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/load-cmp.ll b/llvm/test/Transforms/InstCombine/load-cmp.ll
-+--- a/llvm/test/Transforms/InstCombine/load-cmp.ll
-++++ b/llvm/test/Transforms/InstCombine/load-cmp.ll
-+@@ -339,7 +339,7 @@
-+ define i1 @pr93017(i64 %idx) {
-+ ; CHECK-LABEL: @pr93017(
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i64 [[IDX:%.*]] to i32
-+-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds nuw [2 x ptr], ptr @table, i32 0, i32 [[TMP1]]
-++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [2 x ptr], ptr @table, i32 0, i32 [[TMP1]]
-+ ; CHECK-NEXT:    [[V:%.*]] = load ptr, ptr [[GEP]], align 4
-+ ; CHECK-NEXT:    [[CMP:%.*]] = icmp ne ptr [[V]], null
-+ ; CHECK-NEXT:    ret i1 [[CMP]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll b/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
-+--- a/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
-++++ b/llvm/test/Transforms/InstCombine/memcpy-addrspace.ll
-+@@ -6,7 +6,7 @@
-+ define void @test_load(ptr addrspace(1) %out, i64 %x) {
-+ ; CHECK-LABEL: @test_load(
-+ ; CHECK-NEXT:  entry:
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr addrspace(2) @test.data, i64 0, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr addrspace(2) @test.data, i64 0, i64 [[X:%.*]]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(2) [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+@@ -45,7 +45,7 @@
-+ define void @test_load_bitcast_chain(ptr addrspace(1) %out, i64 %x) {
-+ ; CHECK-LABEL: @test_load_bitcast_chain(
-+ ; CHECK-NEXT:  entry:
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw i32, ptr addrspace(2) @test.data, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr addrspace(2) @test.data, i64 [[X:%.*]]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(2) [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+@@ -66,7 +66,7 @@
-+ ; CHECK-NEXT:  entry:
-+ ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+@@ -87,8 +87,8 @@
-+ ; CHECK-NEXT:  entry:
-+ ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-+-; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[TMP0:%.*]] = call i32 @foo(ptr [[ARRAYIDX]])
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+ ; CHECK-NEXT:    ret void
-+@@ -108,7 +108,7 @@
-+ ; CHECK-NEXT:  entry:
-+ ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+@@ -135,11 +135,11 @@
-+ ; CHECK-NEXT:  entry:
-+ ; CHECK-NEXT:    [[DATA:%.*]] = alloca [8 x i32], align 4
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p2.i64(ptr noundef nonnull align 4 dereferenceable(32) [[DATA]], ptr addrspace(2) noundef align 4 dereferenceable(32) @test.data, i64 32, i1 false)
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [8 x i32], ptr [[DATA]], i64 0, i64 [[X:%.*]]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT:%.*]], i64 [[X]]
-+ ; CHECK-NEXT:    store i32 [[TMP0]], ptr addrspace(1) [[ARRAYIDX1]], align 4
-+-; CHECK-NEXT:    [[TMP1:%.*]] = call i32 @foo(ptr nonnull [[ARRAYIDX]])
-++; CHECK-NEXT:    [[TMP1:%.*]] = call i32 @foo(ptr [[ARRAYIDX]])
-+ ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr addrspace(1) [[OUT]], i64 [[Y:%.*]]
-+ ; CHECK-NEXT:    store i32 [[TMP1]], ptr addrspace(1) [[ARRAYIDX2]], align 4
-+ ; CHECK-NEXT:    ret void
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/memcpy-from-global.ll b/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
-+--- a/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
-++++ b/llvm/test/Transforms/InstCombine/memcpy-from-global.ll
-+@@ -322,7 +322,7 @@
-+ ; CHECK-NEXT:    [[A:%.*]] = alloca [4 x float], align 4
-+ ; CHECK-NEXT:    call void @llvm.lifetime.start.p0(i64 16, ptr nonnull [[A]])
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p1.i64(ptr align 4 [[A]], ptr addrspace(1) align 4 @I, i64 16, i1 true)
-+-; CHECK-NEXT:    [[G:%.*]] = getelementptr inbounds nuw [4 x float], ptr [[A]], i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[G:%.*]] = getelementptr inbounds [4 x float], ptr [[A]], i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[R:%.*]] = load float, ptr [[G]], align 4
-+ ; CHECK-NEXT:    ret float [[R]]
-+ ;
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/stpcpy-1.ll b/llvm/test/Transforms/InstCombine/stpcpy-1.ll
-+--- a/llvm/test/Transforms/InstCombine/stpcpy-1.ll
-++++ b/llvm/test/Transforms/InstCombine/stpcpy-1.ll
-+@@ -25,7 +25,7 @@
-+ define ptr @test_simplify2() {
-+ ; CHECK-LABEL: @test_simplify2(
-+ ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
-+-; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
-++; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
-+ ; CHECK-NEXT:    ret ptr [[RET]]
-+ ;
-+   %ret = call ptr @stpcpy(ptr @a, ptr @a)
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll b/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
-+--- a/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
-++++ b/llvm/test/Transforms/InstCombine/stpcpy_chk-1.ll
-+@@ -93,7 +93,7 @@
-+ define ptr @test_simplify6() {
-+ ; CHECK-LABEL: @test_simplify6(
-+ ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
-+-; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
-++; CHECK-NEXT:    [[RET:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
-+ ; CHECK-NEXT:    ret ptr [[RET]]
-+ ;
+++  return __ptr < __start || __ptr > __end;
+++}
++ _LIBCPP_END_NAMESPACE_STD
 + 
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strlen-1.ll b/llvm/test/Transforms/InstCombine/strlen-1.ll
-+--- a/llvm/test/Transforms/InstCombine/strlen-1.ll
-++++ b/llvm/test/Transforms/InstCombine/strlen-1.ll
-+@@ -155,7 +155,7 @@
++-#  define _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION 1
++-#  define _LIBCPP_OVERRIDABLE_FUNCTION(symbol, type, name, arglist)                                                    \
++-    static type symbol##_impl__ arglist __asm__(_LIBCPP_TOSTRING(symbol##_impl__));                                    \
++-    [[gnu::weak, gnu::alias(_LIBCPP_TOSTRING(symbol##_impl__))]] type name arglist;                                    \
++-    _LIBCPP_BEGIN_NAMESPACE_STD                                                                                        \
++-    template <>                                                                                                        \
++-    bool __is_function_overridden<static_cast<type(*) arglist>(name)>() {                                              \
++-      return static_cast<type(*) arglist>(name) != symbol##_impl__;                                                    \
++-    }                                                                                                                  \
++-    _LIBCPP_END_NAMESPACE_STD                                                                                          \
++-    static type symbol##_impl__ arglist
++-
++ #else
 + 
-+ define i32 @test_no_simplify2(i32 %x) {
-+ ; CHECK-LABEL: @test_no_simplify2(
-+-; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
-++; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
-+ ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) [[HELLO_P]])
-+ ; CHECK-NEXT:    ret i32 [[HELLO_L]]
-+ ;
-+@@ -166,8 +166,8 @@
++ #  define _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION 0
++-#  define _LIBCPP_OVERRIDABLE_FUNCTION(symbol, type, name, arglist) _LIBCPP_WEAK type name arglist
+++#  define _LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE /* nothing */
 + 
-+ define i32 @test_no_simplify2_no_null_opt(i32 %x) #0 {
-+ ; CHECK-LABEL: @test_no_simplify2_no_null_opt(
-+-; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
-+-; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) [[HELLO_P]])
-++; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 [[X:%.*]]
-++; CHECK-NEXT:    [[HELLO_L:%.*]] = call i32 @strlen(ptr noundef [[HELLO_P]])
-+ ; CHECK-NEXT:    ret i32 [[HELLO_L]]
-+ ;
-+   %hello_p = getelementptr inbounds [7 x i8], ptr @null_hello, i32 0, i32 %x
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strlen-4.ll b/llvm/test/Transforms/InstCombine/strlen-4.ll
-+--- a/llvm/test/Transforms/InstCombine/strlen-4.ll
-++++ b/llvm/test/Transforms/InstCombine/strlen-4.ll
-+@@ -18,7 +18,7 @@
++ #endif
 + 
-+ define i64 @fold_strlen_s3_pi_s5(i1 %X, i64 %I) {
-+ ; CHECK-LABEL: @fold_strlen_s3_pi_s5(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr [[PS3_PI]], ptr @s5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -40,7 +40,7 @@
-+ ; XFAIL-CHECK-NEXT:    [[SEL:%.*]] = select i1 %0, i64 [[DIF_I]], i64 5
-+ ; XFAIL-CHECK-NEXT:    ret i64 [[SEL]]
-+ ; CHECK-LABEL: @fold_strlen_s3_pi_p1_s5(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[PS3_PI_P1:%.*]] = getelementptr i8, ptr [[PS3_PI]], i64 1
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI_P1]], ptr @s5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+@@ -61,7 +61,7 @@
++diff -ruN --strip-trailing-cr a/libcxx/src/new.cpp b/libcxx/src/new.cpp
++--- a/libcxx/src/new.cpp
+++++ b/libcxx/src/new.cpp
++@@ -43,7 +43,7 @@
++   return p;
++ }
 + 
-+ define i64 @call_strlen_s5_3_pi_s5(i1 %0, i64 %1) {
-+ ; CHECK-LABEL: @call_strlen_s5_3_pi_s5(
-+-; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS5_3_PI]], ptr @s5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -78,7 +78,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_Znwm, void*, operator new, (std::size_t size)) _THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void* operator new(std::size_t size) _THROW_BAD_ALLOC {
++   void* p = operator_new_impl(size);
++   if (p == nullptr)
++     __throw_bad_alloc_shim();
++@@ -54,7 +54,7 @@
++ #  if !_LIBCPP_HAS_EXCEPTIONS
++ #    if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t)>(&operator new)>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t)>(&operator new)),
++       "libc++ was configured with exceptions disabled and `operator new(size_t)` has been overridden, "
++       "but `operator new(size_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new(size_t, nothrow_t)` must call `operator new(size_t)`, which will terminate in case "
++@@ -74,7 +74,7 @@
++ #  endif
++ }
 + 
-+ define i64 @call_strlen_s5_3_s5_pj(i1 %X, i64 %J) {
-+ ; CHECK-LABEL: @call_strlen_s5_3_s5_pj(
-+-; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-++; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr @s5_3, ptr [[PS5]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -95,7 +95,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_Znam, void*, operator new[], (size_t size)) _THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void* operator new[](size_t size) _THROW_BAD_ALLOC {
++   return ::operator new(size);
++ }
 + 
-+ define i64 @fold_strlen_s3_s5_pj(i1 %X, i64 %J) {
-+ ; CHECK-LABEL: @fold_strlen_s3_s5_pj(
-+-; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-++; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr @s3, ptr [[PS5_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -114,7 +114,7 @@
++@@ -82,7 +82,7 @@
++ #  if !_LIBCPP_HAS_EXCEPTIONS
++ #    if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t)>(&operator new[])>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t)>(&operator new[])),
++       "libc++ was configured with exceptions disabled and `operator new[](size_t)` has been overridden, "
++       "but `operator new[](size_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new[](size_t, nothrow_t)` must call `operator new[](size_t)`, which will terminate in case "
++@@ -136,8 +136,8 @@
++   return p;
++ }
 + 
-+ define i64 @call_strlen_s3_s5_3_pj(i1 %0, i64 %1) {
-+ ; CHECK-LABEL: @call_strlen_s3_s5_3_pj(
-+-; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @s3, ptr [[PS5_3_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -131,8 +131,8 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_ZnwmSt11align_val_t, void*, operator new, (std::size_t size, std::align_val_t alignment))
++-_THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void*
+++operator new(std::size_t size, std::align_val_t alignment) _THROW_BAD_ALLOC {
++   void* p = operator_new_aligned_impl(size, alignment);
++   if (p == nullptr)
++     __throw_bad_alloc_shim();
++@@ -148,7 +148,7 @@
++ #    if !_LIBCPP_HAS_EXCEPTIONS
++ #      if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new)>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new)),
++       "libc++ was configured with exceptions disabled and `operator new(size_t, align_val_t)` has been overridden, "
++       "but `operator new(size_t, align_val_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new(size_t, align_val_t, nothrow_t)` must call `operator new(size_t, align_val_t)`, which will "
++@@ -168,14 +168,16 @@
++ #    endif
++ }
 + 
-+ define i64 @fold_strlen_s3_pi_s5_pj(i1 %X, i64 %I, i64 %J) {
-+ ; CHECK-LABEL: @fold_strlen_s3_pi_s5_pj(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+-; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[J:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[X:%.*]], ptr [[PS3_PI]], ptr [[PS5_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @strlen(ptr noundef nonnull dereferenceable(1) [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strncat-2.ll b/llvm/test/Transforms/InstCombine/strncat-2.ll
-+--- a/llvm/test/Transforms/InstCombine/strncat-2.ll
-++++ b/llvm/test/Transforms/InstCombine/strncat-2.ll
-+@@ -13,7 +13,7 @@
-+ define void @test_simplify1() {
-+ ; CHECK-LABEL: @test_simplify1(
-+ ; CHECK-NEXT:    [[STRLEN:%.*]] = call i32 @strlen(ptr noundef nonnull dereferenceable(1) @a)
-+-; CHECK-NEXT:    [[ENDPTR:%.*]] = getelementptr inbounds nuw i8, ptr @a, i32 [[STRLEN]]
-++; CHECK-NEXT:    [[ENDPTR:%.*]] = getelementptr inbounds i8, ptr @a, i32 [[STRLEN]]
-+ ; CHECK-NEXT:    call void @llvm.memcpy.p0.p0.i32(ptr noundef nonnull align 1 dereferenceable(6) [[ENDPTR]], ptr noundef nonnull align 1 dereferenceable(6) @hello, i32 6, i1 false)
-+ ; CHECK-NEXT:    ret void
-+ ;
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-3.ll b/llvm/test/Transforms/InstCombine/strnlen-3.ll
-+--- a/llvm/test/Transforms/InstCombine/strnlen-3.ll
-++++ b/llvm/test/Transforms/InstCombine/strnlen-3.ll
-+@@ -31,7 +31,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_ZnamSt11align_val_t, void*, operator new[], (size_t size, std::align_val_t alignment))
++-_THROW_BAD_ALLOC { return ::operator new(size, alignment); }
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void*
+++operator new[](size_t size, std::align_val_t alignment) _THROW_BAD_ALLOC {
+++  return ::operator new(size, alignment);
+++}
 + 
-+ define i64 @call_strnlen_sx_pi_n(i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @call_strnlen_sx_pi_n(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [0 x i8], ptr @sx, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [0 x i8], ptr @sx, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -46,7 +46,7 @@
++ _LIBCPP_WEAK void* operator new[](size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept {
++ #    if !_LIBCPP_HAS_EXCEPTIONS
++ #      if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new[])>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new[])),
++       "libc++ was configured with exceptions disabled and `operator new[](size_t, align_val_t)` has been overridden, "
++       "but `operator new[](size_t, align_val_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new[](size_t, align_val_t, nothrow_t)` must call `operator new[](size_t, align_val_t)`, which will "
++diff -ruN --strip-trailing-cr a/libcxxabi/src/stdlib_new_delete.cpp b/libcxxabi/src/stdlib_new_delete.cpp
++--- a/libcxxabi/src/stdlib_new_delete.cpp
+++++ b/libcxxabi/src/stdlib_new_delete.cpp
++@@ -63,7 +63,7 @@
++   return p;
++ }
 + 
-+ define i64 @call_strnlen_a3_pi_2(i64 %i) {
-+ ; CHECK-LABEL: @call_strnlen_a3_pi_2(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -61,7 +61,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_Znwm, void*, operator new, (std::size_t size)) _THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void* operator new(std::size_t size) _THROW_BAD_ALLOC {
++   void* p = operator_new_impl(size);
++   if (p == nullptr)
++     __throw_bad_alloc_shim();
++@@ -74,7 +74,7 @@
++ #if !_LIBCPP_HAS_EXCEPTIONS
++ #  if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t)>(&operator new)>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t)>(&operator new)),
++       "libc++ was configured with exceptions disabled and `operator new(size_t)` has been overridden, "
++       "but `operator new(size_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new(size_t, nothrow_t)` must call `operator new(size_t)`, which will terminate in case "
++@@ -94,7 +94,7 @@
++ #endif
++ }
 + 
-+ define i64 @call_strnlen_a3_pi_3(i64 %i) {
-+ ; CHECK-LABEL: @call_strnlen_a3_pi_3(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 3)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -111,7 +111,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_Znam, void*, operator new[], (size_t size)) _THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void* operator new[](size_t size) _THROW_BAD_ALLOC {
++   return ::operator new(size);
++ }
 + 
-+ define i64 @call_strnlen_s5_3_pi_n(i64 zeroext %i, i64 %n) {
-+ ; CHECK-LABEL: @call_strnlen_s5_3_pi_n(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -151,7 +151,7 @@
++@@ -102,7 +102,7 @@
++ #if !_LIBCPP_HAS_EXCEPTIONS
++ #  if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t)>(&operator new[])>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t)>(&operator new[])),
++       "libc++ was configured with exceptions disabled and `operator new[](size_t)` has been overridden, "
++       "but `operator new[](size_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new[](size_t, nothrow_t)` must call `operator new[](size_t)`, which will terminate in case "
++@@ -156,8 +156,8 @@
++   return p;
++ }
 + 
-+ define i64 @fold_strnlen_a3_pi_2(i64 %i) {
-+ ; CHECK-LABEL: @fold_strnlen_a3_pi_2(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [3 x i8], ptr @a3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -166,7 +166,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_ZnwmSt11align_val_t, void*, operator new, (std::size_t size, std::align_val_t alignment))
++-_THROW_BAD_ALLOC {
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void*
+++operator new(std::size_t size, std::align_val_t alignment) _THROW_BAD_ALLOC {
++   void* p = operator_new_aligned_impl(size, alignment);
++   if (p == nullptr)
++     __throw_bad_alloc_shim();
++@@ -168,7 +168,7 @@
++ #  if !_LIBCPP_HAS_EXCEPTIONS
++ #    if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new)>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new)),
++       "libc++ was configured with exceptions disabled and `operator new(size_t, align_val_t)` has been overridden, "
++       "but `operator new(size_t, align_val_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new(size_t, align_val_t, nothrow_t)` must call `operator new(size_t, align_val_t)`, which will "
++@@ -188,14 +188,16 @@
++ #  endif
++ }
 + 
-+ define i64 @fold_strnlen_s3_pi_2(i64 %i) {
-+ ; CHECK-LABEL: @fold_strnlen_s3_pi_2(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -181,7 +181,7 @@
++-_LIBCPP_OVERRIDABLE_FUNCTION(_ZnamSt11align_val_t, void*, operator new[], (size_t size, std::align_val_t alignment))
++-_THROW_BAD_ALLOC { return ::operator new(size, alignment); }
+++_LIBCPP_MAKE_OVERRIDABLE_FUNCTION_DETECTABLE _LIBCPP_WEAK void*
+++operator new[](size_t size, std::align_val_t alignment) _THROW_BAD_ALLOC {
+++  return ::operator new(size, alignment);
+++}
 + 
-+ define i64 @fold_strnlen_s3_pi_3(i64 %i) {
-+ ; CHECK-LABEL: @fold_strnlen_s3_pi_3(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 3)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -196,7 +196,7 @@
-+ 
-+ define i64 @fold_strnlen_s3_pi_n(i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @fold_strnlen_s3_pi_n(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+@@ -212,7 +212,7 @@
-+ 
-+ define i64 @call_strnlen_s5_3_pi_2(i64 %i) {
-+ ; CHECK-LABEL: @call_strnlen_s5_3_pi_2(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [10 x i8], ptr @s5_3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr noundef nonnull dereferenceable(1) [[PTR]], i64 2)
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+ ;
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-4.ll b/llvm/test/Transforms/InstCombine/strnlen-4.ll
-+--- a/llvm/test/Transforms/InstCombine/strnlen-4.ll
-++++ b/llvm/test/Transforms/InstCombine/strnlen-4.ll
-+@@ -17,7 +17,7 @@
-+ 
-+ define i64 @fold_strnlen_s3_pi_s5_n(i1 %C, i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @fold_strnlen_s3_pi_s5_n(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[C:%.*]], ptr [[PTR]], ptr @s5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[SEL]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -57,7 +57,7 @@
-+ 
-+ define i64 @call_strnlen_s3_pi_sx_n(i1 %C, i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @call_strnlen_s3_pi_sx_n(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [4 x i8], ptr @s3, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[C:%.*]], ptr [[PTR]], ptr @sx
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[SEL]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/strnlen-5.ll b/llvm/test/Transforms/InstCombine/strnlen-5.ll
-+--- a/llvm/test/Transforms/InstCombine/strnlen-5.ll
-++++ b/llvm/test/Transforms/InstCombine/strnlen-5.ll
-+@@ -164,7 +164,7 @@
-+ 
-+ define i1 @fold_strnlen_a5_pi_nz_eqz(i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @fold_strnlen_a5_pi_nz_eqz(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [5 x i8], ptr @a5, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [5 x i8], ptr @a5, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[CHAR0:%.*]] = load i8, ptr [[PTR]], align 1
-+ ; CHECK-NEXT:    [[EQZ:%.*]] = icmp eq i8 [[CHAR0]], 0
-+ ; CHECK-NEXT:    ret i1 [[EQZ]]
-+@@ -200,7 +200,7 @@
-+ 
-+ define i1 @call_strnlen_s5_pi_n_eqz(i64 %i, i64 %n) {
-+ ; CHECK-LABEL: @call_strnlen_s5_pi_n_eqz(
-+-; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds nuw [6 x i8], ptr @s5, i64 0, i64 [[I:%.*]]
-++; CHECK-NEXT:    [[PTR:%.*]] = getelementptr inbounds [6 x i8], ptr @s5, i64 0, i64 [[I:%.*]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = call i64 @strnlen(ptr nonnull [[PTR]], i64 [[N:%.*]])
-+ ; CHECK-NEXT:    [[EQZ:%.*]] = icmp eq i64 [[LEN]], 0
-+ ; CHECK-NEXT:    ret i1 [[EQZ]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/sub-gep.ll b/llvm/test/Transforms/InstCombine/sub-gep.ll
-+--- a/llvm/test/Transforms/InstCombine/sub-gep.ll
-++++ b/llvm/test/Transforms/InstCombine/sub-gep.ll
-+@@ -305,7 +305,7 @@
-+ 
-+ define i64 @test24b(ptr %P, i64 %A){
-+ ; CHECK-LABEL: @test24b(
-+-; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i64 [[A:%.*]], 1
-++; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i64 [[A:%.*]], 1
-+ ; CHECK-NEXT:    ret i64 [[B_IDX]]
-+ ;
-+   %B = getelementptr inbounds [42 x i16], ptr @Arr, i64 0, i64 %A
-+@@ -316,7 +316,7 @@
-+ 
-+ define i64 @test25(ptr %P, i64 %A){
-+ ; CHECK-LABEL: @test25(
-+-; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i64 [[A:%.*]], 1
-++; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i64 [[A:%.*]], 1
-+ ; CHECK-NEXT:    [[GEPDIFF:%.*]] = add nsw i64 [[B_IDX]], -84
-+ ; CHECK-NEXT:    ret i64 [[GEPDIFF]]
-+ ;
-+@@ -395,7 +395,7 @@
-+ define i16 @test25_as1(ptr addrspace(1) %P, i64 %A) {
-+ ; CHECK-LABEL: @test25_as1(
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i64 [[A:%.*]] to i16
-+-; CHECK-NEXT:    [[B_IDX:%.*]] = shl nuw nsw i16 [[TMP1]], 1
-++; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i16 [[TMP1]], 1
-+ ; CHECK-NEXT:    [[GEPDIFF:%.*]] = add nsw i16 [[B_IDX]], -84
-+ ; CHECK-NEXT:    ret i16 [[GEPDIFF]]
-+ ;
-+@@ -409,7 +409,7 @@
-+ 
-+ define i64 @ptrtoint_sub_zext_ptrtoint_as2_inbounds(i32 %offset) {
-+ ; CHECK-LABEL: @ptrtoint_sub_zext_ptrtoint_as2_inbounds(
-+-; CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds nuw bfloat, ptr addrspace(2) @Arr_as2, i32 [[OFFSET:%.*]]
-++; CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds bfloat, ptr addrspace(2) @Arr_as2, i32 [[OFFSET:%.*]]
-+ ; CHECK-NEXT:    [[B:%.*]] = ptrtoint ptr addrspace(2) [[A]] to i32
-+ ; CHECK-NEXT:    [[C:%.*]] = zext i32 [[B]] to i64
-+ ; CHECK-NEXT:    [[D:%.*]] = sub nsw i64 ptrtoint (ptr addrspace(2) @Arr_as2 to i64), [[C]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-1.ll b/llvm/test/Transforms/InstCombine/wcslen-1.ll
-+--- a/llvm/test/Transforms/InstCombine/wcslen-1.ll
-++++ b/llvm/test/Transforms/InstCombine/wcslen-1.ll
-+@@ -149,7 +149,7 @@
-+ define i64 @test_no_simplify2(i32 %x) {
-+ ; CHECK-LABEL: @test_no_simplify2(
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[X:%.*]] to i64
-+-; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
-++; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
-+ ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
-+ ; CHECK-NEXT:    ret i64 [[HELLO_L]]
-+ ;
-+@@ -161,8 +161,8 @@
-+ define i64 @test_no_simplify2_no_null_opt(i32 %x) #0 {
-+ ; CHECK-LABEL: @test_no_simplify2_no_null_opt(
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[X:%.*]] to i64
-+-; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
-+-; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
-++; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i32], ptr @null_hello, i64 0, i64 [[TMP1]]
-++; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr [[HELLO_P]])
-+ ; CHECK-NEXT:    ret i64 [[HELLO_L]]
-+ ;
-+   %hello_p = getelementptr inbounds [7 x i32], ptr @null_hello, i32 0, i32 %x
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-3.ll b/llvm/test/Transforms/InstCombine/wcslen-3.ll
-+--- a/llvm/test/Transforms/InstCombine/wcslen-3.ll
-++++ b/llvm/test/Transforms/InstCombine/wcslen-3.ll
-+@@ -150,7 +150,7 @@
-+ define i64 @test_no_simplify2(i16 %x) {
-+ ; CHECK-LABEL: @test_no_simplify2(
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = sext i16 [[X:%.*]] to i64
-+-; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds nuw [7 x i16], ptr @null_hello, i64 0, i64 [[TMP1]]
-++; CHECK-NEXT:    [[HELLO_P:%.*]] = getelementptr inbounds [7 x i16], ptr @null_hello, i64 0, i64 [[TMP1]]
-+ ; CHECK-NEXT:    [[HELLO_L:%.*]] = call i64 @wcslen(ptr nonnull [[HELLO_P]])
-+ ; CHECK-NEXT:    ret i64 [[HELLO_L]]
-+ ;
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/wcslen-5.ll b/llvm/test/Transforms/InstCombine/wcslen-5.ll
-+--- a/llvm/test/Transforms/InstCombine/wcslen-5.ll
-++++ b/llvm/test/Transforms/InstCombine/wcslen-5.ll
-+@@ -19,7 +19,7 @@
-+ 
-+ define dso_local i64 @fold_wcslen_s3_pi_s5(i1 zeroext %0, i64 %1) {
-+ ; CHECK-LABEL: @fold_wcslen_s3_pi_s5(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI]], ptr @ws5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -41,7 +41,7 @@
-+ ; XFAIL-CHECK-NEXT:    [[SEL:%.*]] = select i1 %0, i64 [[DIF_I]], i64 5
-+ ; XFAIL-CHECK-NEXT:    ret i64 [[SEL]]
-+ ; CHECK-LABEL: @fold_wcslen_s3_pi_p1_s5(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[PS3_PI_P1:%.*]] = getelementptr inbounds nuw i8, ptr [[PS3_PI]], i64 4
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI_P1]], ptr @ws5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+@@ -62,7 +62,7 @@
-+ 
-+ define dso_local i64 @call_wcslen_s5_3_pi_s5(i1 zeroext %0, i64 %1) {
-+ ; CHECK-LABEL: @call_wcslen_s5_3_pi_s5(
-+-; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds nuw [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_3_PI:%.*]] = getelementptr inbounds [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS5_3_PI]], ptr @ws5
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -79,7 +79,7 @@
-+ 
-+ define dso_local i64 @call_wcslen_s5_3_s5_pj(i1 zeroext %0, i64 %1) {
-+ ; CHECK-LABEL: @call_wcslen_s5_3_s5_pj(
-+-; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws5_3, ptr [[PS5]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -96,7 +96,7 @@
-+ 
-+ define dso_local i64 @fold_wcslen_s3_s5_pj(i1 zeroext %0, i64 %1) {
-+ ; CHECK-LABEL: @fold_wcslen_s3_s5_pj(
-+-; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws3, ptr [[PS5_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -115,7 +115,7 @@
-+ 
-+ define dso_local i64 @call_wcslen_s3_s5_3_pj(i1 zeroext %0, i64 %1) {
-+ ; CHECK-LABEL: @call_wcslen_s3_s5_3_pj(
-+-; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds nuw [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_3_PJ:%.*]] = getelementptr inbounds [10 x i32], ptr @ws5_3, i64 0, i64 [[TMP1:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr @ws3, ptr [[PS5_3_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+@@ -132,8 +132,8 @@
-+ 
-+ define dso_local i64 @fold_wcslen_s3_pi_s5_pj(i1 zeroext %0, i64 %1, i64 %2) {
-+ ; CHECK-LABEL: @fold_wcslen_s3_pi_s5_pj(
-+-; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds nuw [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-+-; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds nuw [6 x i32], ptr @ws5, i64 0, i64 [[TMP2:%.*]]
-++; CHECK-NEXT:    [[PS3_PI:%.*]] = getelementptr inbounds [4 x i32], ptr @ws3, i64 0, i64 [[TMP1:%.*]]
-++; CHECK-NEXT:    [[PS5_PJ:%.*]] = getelementptr inbounds [6 x i32], ptr @ws5, i64 0, i64 [[TMP2:%.*]]
-+ ; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[TMP0:%.*]], ptr [[PS3_PI]], ptr [[PS5_PJ]]
-+ ; CHECK-NEXT:    [[LEN:%.*]] = tail call i64 @wcslen(ptr nonnull [[SEL]])
-+ ; CHECK-NEXT:    ret i64 [[LEN]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll b/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
-+--- a/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
-++++ b/llvm/test/Transforms/LoopVectorize/AArch64/sve2-histcnt.ll
-+@@ -557,7 +557,7 @@
-+ ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @idx_array, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [1048576 x i32], ptr @idx_array, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <vscale x 4 x i32>, ptr [[TMP5]], align 4
-+ ; CHECK-NEXT:    [[TMP14:%.*]] = sext <vscale x 4 x i32> [[WIDE_LOAD1]] to <vscale x 4 x i64>
-+ ; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds [1048576 x i32], ptr @data_array, i64 0, <vscale x 4 x i64> [[TMP14]]
-+@@ -573,10 +573,10 @@
-+ ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
-+ ; CHECK:       for.body:
-+ ; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ [[BC_RESUME_VAL]], [[SCALAR_PH]] ], [ [[IV_NEXT:%.*]], [[FOR_BODY]] ]
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @idx_array, i64 0, i64 [[IV]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [1048576 x i32], ptr @idx_array, i64 0, i64 [[IV]]
-+ ; CHECK-NEXT:    [[TMP9:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[IDXPROM5:%.*]] = sext i32 [[TMP9]] to i64
-+-; CHECK-NEXT:    [[ARRAYIDX6:%.*]] = getelementptr inbounds nuw [1048576 x i32], ptr @data_array, i64 0, i64 [[IDXPROM5]]
-++; CHECK-NEXT:    [[ARRAYIDX6:%.*]] = getelementptr inbounds [1048576 x i32], ptr @data_array, i64 0, i64 [[IDXPROM5]]
-+ ; CHECK-NEXT:    [[TMP10:%.*]] = load i32, ptr [[ARRAYIDX6]], align 4
-+ ; CHECK-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP10]], 1
-+ ; CHECK-NEXT:    store i32 [[INC]], ptr [[ARRAYIDX6]], align 4
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll b/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
-+--- a/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
-++++ b/llvm/test/Transforms/LoopVectorize/AArch64/sve-interleaved-accesses.ll
-+@@ -36,14 +36,14 @@
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+ ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <vscale x 8 x i32>, ptr [[TMP2]], align 4
-+ ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i32> } @llvm.vector.deinterleave2.nxv8i32(<vscale x 8 x i32> [[WIDE_VEC]])
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 0
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 1
-+ ; CHECK-NEXT:    [[TMP6:%.*]] = add nsw <vscale x 4 x i32> [[TMP3]], [[BROADCAST_SPLAT]]
-+ ; CHECK-NEXT:    [[TMP7:%.*]] = mul nsw <vscale x 4 x i32> [[TMP4]], [[BROADCAST_SPLAT2]]
-+-; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = call <vscale x 8 x i32> @llvm.vector.interleave2.nxv8i32(<vscale x 4 x i32> [[TMP6]], <vscale x 4 x i32> [[TMP7]])
-+ ; CHECK-NEXT:    store <vscale x 8 x i32> [[INTERLEAVED_VEC]], ptr [[TMP8]], align 4
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP1]]
-+@@ -127,7 +127,7 @@
-+ ; CHECK-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 4 x i16> @llvm.masked.gather.nxv4i16.nxv4p0(<vscale x 4 x ptr> [[TMP8]], i32 2, <vscale x 4 x i1> splat (i1 true), <vscale x 4 x i16> poison)
-+ ; CHECK-NEXT:    [[TMP9:%.*]] = sext <vscale x 4 x i16> [[WIDE_MASKED_GATHER]] to <vscale x 4 x i32>
-+ ; CHECK-NEXT:    [[TMP10:%.*]] = add nsw <vscale x 4 x i32> [[BROADCAST_SPLAT]], [[TMP9]]
-+-; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[TMP11:%.*]] = sext <vscale x 4 x i16> [[WIDE_MASKED_GATHER1]] to <vscale x 4 x i32>
-+ ; CHECK-NEXT:    [[TMP12:%.*]] = mul nsw <vscale x 4 x i32> [[BROADCAST_SPLAT3]], [[TMP11]]
-+ ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = call <vscale x 8 x i32> @llvm.vector.interleave2.nxv8i32(<vscale x 4 x i32> [[TMP10]], <vscale x 4 x i32> [[TMP12]])
-+@@ -209,7 +209,7 @@
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+ ; CHECK-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 4 x i64> [ [[TMP3]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-+ ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
-+-; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <vscale x 8 x i32>, ptr [[TMP6]], align 4
-+ ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i32> } @llvm.vector.deinterleave2.nxv8i32(<vscale x 8 x i32> [[WIDE_VEC]])
-+ ; CHECK-NEXT:    [[TMP7:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i32> } [[STRIDED_VEC]], 0
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll b/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
-+--- a/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
-++++ b/llvm/test/Transforms/LoopVectorize/interleaved-accesses.ll
-+@@ -34,13 +34,13 @@
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+ ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
-+-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [1024 x i32], ptr @AB, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <8 x i32>, ptr [[TMP0]], align 4
-+ ; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = shufflevector <8 x i32> [[WIDE_VEC]], <8 x i32> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-+ ; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = shufflevector <8 x i32> [[WIDE_VEC]], <8 x i32> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
-+ ; CHECK-NEXT:    [[TMP2:%.*]] = add nsw <4 x i32> [[STRIDED_VEC]], [[BROADCAST_SPLAT]]
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = mul nsw <4 x i32> [[STRIDED_VEC1]], [[BROADCAST_SPLAT3]]
-+-; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds nuw [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [1024 x i32], ptr @CD, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <8 x i32> <i32 0, i32 4, i32 1, i32 5, i32 2, i32 6, i32 3, i32 7>
-+ ; CHECK-NEXT:    store <8 x i32> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 4
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
-+@@ -113,7 +113,7 @@
-+ ; CHECK-NEXT:    [[STRIDED_VEC2:%.*]] = shufflevector <12 x i32> [[WIDE_VEC]], <12 x i32> poison, <4 x i32> <i32 1, i32 4, i32 7, i32 10>
-+ ; CHECK-NEXT:    [[STRIDED_VEC3:%.*]] = shufflevector <12 x i32> [[WIDE_VEC]], <12 x i32> poison, <4 x i32> <i32 2, i32 5, i32 8, i32 11>
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = add nsw <4 x i32> [[STRIDED_VEC]], splat (i32 1)
-+-; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw [1024 x %struct.ST3], ptr @S, i64 0, i64 [[INDEX]], i32 0
-++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [1024 x %struct.ST3], ptr @S, i64 0, i64 [[INDEX]], i32 0
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = add nsw <4 x i32> [[STRIDED_VEC2]], splat (i32 2)
-+ ; CHECK-NEXT:    [[TMP2:%.*]] = add nsw <4 x i32> [[STRIDED_VEC3]], splat (i32 3)
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> [[TMP1]], <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll b/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
-+--- a/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
-++++ b/llvm/test/Transforms/LoopVectorize/multiple-address-spaces.ll
-+@@ -24,10 +24,10 @@
-+ ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [40000 x i8], ptr addrspace(1) @Y, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [40000 x i8], ptr addrspace(1) @Y, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr addrspace(1) [[TMP0]], align 1
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = add <4 x i8> [[WIDE_LOAD]], splat (i8 1)
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [40000 x i8], ptr @X, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [40000 x i8], ptr @X, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    store <4 x i8> [[TMP1]], ptr [[TMP2]], align 1
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = icmp eq i64 [[INDEX_NEXT]], 40000
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/non-const-n.ll b/llvm/test/Transforms/LoopVectorize/non-const-n.ll
-+--- a/llvm/test/Transforms/LoopVectorize/non-const-n.ll
-++++ b/llvm/test/Transforms/LoopVectorize/non-const-n.ll
-+@@ -19,12 +19,12 @@
-+ ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP2]], align 4
-+-; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i32>, ptr [[TMP3]], align 4
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = add nsw <4 x i32> [[WIDE_LOAD1]], [[WIDE_LOAD]]
-+-; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    store <4 x i32> [[TMP4]], ptr [[TMP5]], align 4
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
-+ ; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX]], [[TMP1]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/small-size.ll b/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
-+--- a/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
-++++ b/llvm/test/Transforms/LoopVectorize/X86/small-size.ll
-+@@ -28,12 +28,12 @@
-+ ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP1]], align 4
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i32>, ptr [[TMP2]], align 4
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = add nsw <4 x i32> [[WIDE_LOAD1]], [[WIDE_LOAD]]
-+-; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    store <4 x i32> [[TMP3]], ptr [[TMP4]], align 4
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
-+ ; CHECK-NEXT:    [[TMP5:%.*]] = icmp eq i64 [[INDEX_NEXT]], 256
-+@@ -89,7 +89,7 @@
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = extractelement <4 x i1> [[TMP3]], i64 0
-+ ; CHECK-NEXT:    br i1 [[TMP4]], label [[PRED_STORE_IF:%.*]], label [[PRED_STORE_CONTINUE:%.*]]
-+ ; CHECK:       pred.store.if:
-+-; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    store i32 [[X:%.*]], ptr [[TMP5]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE]]
-+ ; CHECK:       pred.store.continue:
-+@@ -97,7 +97,7 @@
-+ ; CHECK-NEXT:    br i1 [[TMP6]], label [[PRED_STORE_IF1:%.*]], label [[PRED_STORE_CONTINUE2:%.*]]
-+ ; CHECK:       pred.store.if1:
-+ ; CHECK-NEXT:    [[TMP7:%.*]] = or disjoint i64 [[INDEX]], 1
-+-; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP7]]
-++; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP7]]
-+ ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP8]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE2]]
-+ ; CHECK:       pred.store.continue2:
-+@@ -105,7 +105,7 @@
-+ ; CHECK-NEXT:    br i1 [[TMP9]], label [[PRED_STORE_IF3:%.*]], label [[PRED_STORE_CONTINUE4:%.*]]
-+ ; CHECK:       pred.store.if3:
-+ ; CHECK-NEXT:    [[TMP10:%.*]] = or disjoint i64 [[INDEX]], 2
-+-; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP10]]
-++; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP10]]
-+ ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP11]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE4]]
-+ ; CHECK:       pred.store.continue4:
-+@@ -113,7 +113,7 @@
-+ ; CHECK-NEXT:    br i1 [[TMP12]], label [[PRED_STORE_IF5:%.*]], label [[PRED_STORE_CONTINUE6]]
-+ ; CHECK:       pred.store.if5:
-+ ; CHECK-NEXT:    [[TMP13:%.*]] = or disjoint i64 [[INDEX]], 3
-+-; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP13]]
-++; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP13]]
-+ ; CHECK-NEXT:    store i32 [[X]], ptr [[TMP14]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE6]]
-+ ; CHECK:       pred.store.continue6:
-+@@ -152,11 +152,11 @@
-+ ; CHECK-NEXT:    [[TMP19:%.*]] = extractelement <4 x i1> [[TMP18]], i64 0
-+ ; CHECK-NEXT:    br i1 [[TMP19]], label [[PRED_STORE_IF21:%.*]], label [[PRED_STORE_CONTINUE22:%.*]]
-+ ; CHECK:       pred.store.if21:
-+-; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[TMP21:%.*]] = load i32, ptr [[TMP20]], align 4
-+-; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[TMP23:%.*]] = load i32, ptr [[TMP22]], align 4
-+-; CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[OFFSET_IDX]]
-++; CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[OFFSET_IDX]]
-+ ; CHECK-NEXT:    [[TMP25:%.*]] = and i32 [[TMP23]], [[TMP21]]
-+ ; CHECK-NEXT:    store i32 [[TMP25]], ptr [[TMP24]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE22]]
-+@@ -165,11 +165,11 @@
-+ ; CHECK-NEXT:    br i1 [[TMP26]], label [[PRED_STORE_IF23:%.*]], label [[PRED_STORE_CONTINUE24:%.*]]
-+ ; CHECK:       pred.store.if23:
-+ ; CHECK-NEXT:    [[TMP27:%.*]] = add i64 [[OFFSET_IDX]], 1
-+-; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP27]]
-++; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP27]]
-+ ; CHECK-NEXT:    [[TMP29:%.*]] = load i32, ptr [[TMP28]], align 4
-+-; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP27]]
-++; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP27]]
-+ ; CHECK-NEXT:    [[TMP31:%.*]] = load i32, ptr [[TMP30]], align 4
-+-; CHECK-NEXT:    [[TMP32:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP27]]
-++; CHECK-NEXT:    [[TMP32:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP27]]
-+ ; CHECK-NEXT:    [[TMP33:%.*]] = and i32 [[TMP31]], [[TMP29]]
-+ ; CHECK-NEXT:    store i32 [[TMP33]], ptr [[TMP32]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE24]]
-+@@ -178,11 +178,11 @@
-+ ; CHECK-NEXT:    br i1 [[TMP34]], label [[PRED_STORE_IF25:%.*]], label [[PRED_STORE_CONTINUE26:%.*]]
-+ ; CHECK:       pred.store.if25:
-+ ; CHECK-NEXT:    [[TMP35:%.*]] = add i64 [[OFFSET_IDX]], 2
-+-; CHECK-NEXT:    [[TMP36:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP35]]
-++; CHECK-NEXT:    [[TMP36:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP35]]
-+ ; CHECK-NEXT:    [[TMP37:%.*]] = load i32, ptr [[TMP36]], align 4
-+-; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP35]]
-++; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP35]]
-+ ; CHECK-NEXT:    [[TMP39:%.*]] = load i32, ptr [[TMP38]], align 4
-+-; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP35]]
-++; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP35]]
-+ ; CHECK-NEXT:    [[TMP41:%.*]] = and i32 [[TMP39]], [[TMP37]]
-+ ; CHECK-NEXT:    store i32 [[TMP41]], ptr [[TMP40]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE26]]
-+@@ -191,11 +191,11 @@
-+ ; CHECK-NEXT:    br i1 [[TMP42]], label [[PRED_STORE_IF27:%.*]], label [[PRED_STORE_CONTINUE28]]
-+ ; CHECK:       pred.store.if27:
-+ ; CHECK-NEXT:    [[TMP43:%.*]] = add i64 [[OFFSET_IDX]], 3
-+-; CHECK-NEXT:    [[TMP44:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @b, i64 0, i64 [[TMP43]]
-++; CHECK-NEXT:    [[TMP44:%.*]] = getelementptr inbounds [2048 x i32], ptr @b, i64 0, i64 [[TMP43]]
-+ ; CHECK-NEXT:    [[TMP45:%.*]] = load i32, ptr [[TMP44]], align 4
-+-; CHECK-NEXT:    [[TMP46:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @c, i64 0, i64 [[TMP43]]
-++; CHECK-NEXT:    [[TMP46:%.*]] = getelementptr inbounds [2048 x i32], ptr @c, i64 0, i64 [[TMP43]]
-+ ; CHECK-NEXT:    [[TMP47:%.*]] = load i32, ptr [[TMP46]], align 4
-+-; CHECK-NEXT:    [[TMP48:%.*]] = getelementptr inbounds nuw [2048 x i32], ptr @a, i64 0, i64 [[TMP43]]
-++; CHECK-NEXT:    [[TMP48:%.*]] = getelementptr inbounds [2048 x i32], ptr @a, i64 0, i64 [[TMP43]]
-+ ; CHECK-NEXT:    [[TMP49:%.*]] = and i32 [[TMP47]], [[TMP45]]
-+ ; CHECK-NEXT:    store i32 [[TMP49]], ptr [[TMP48]], align 4
-+ ; CHECK-NEXT:    br label [[PRED_STORE_CONTINUE28]]
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll b/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
-+--- a/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
-++++ b/llvm/test/Transforms/LoopVectorize/X86/x86_fp80-vector-store.ll
-+@@ -14,8 +14,8 @@
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[ENTRY:%.*]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+ ; CHECK-NEXT:    [[TMP0:%.*]] = or disjoint i64 [[INDEX]], 1
-+-; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw [1024 x x86_fp80], ptr @x, i64 0, i64 [[INDEX]]
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [1024 x x86_fp80], ptr @x, i64 0, i64 [[TMP0]]
-++; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds [1024 x x86_fp80], ptr @x, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [1024 x x86_fp80], ptr @x, i64 0, i64 [[TMP0]]
-+ ; CHECK-NEXT:    store x86_fp80 0xK3FFF8000000000000000, ptr [[TMP1]], align 16
-+ ; CHECK-NEXT:    store x86_fp80 0xK3FFF8000000000000000, ptr [[TMP2]], align 16
-+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll b/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
-+--- a/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
-++++ b/llvm/test/Transforms/PhaseOrdering/X86/excessive-unrolling.ll
-+@@ -179,17 +179,17 @@
-+ ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; CHECK:       vector.body:
-+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [58 x double], ptr @b, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds [58 x double], ptr @b, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP0]], i64 16
-+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x double>, ptr [[TMP0]], align 16
-+ ; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <2 x double>, ptr [[TMP1]], align 16
-+-; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw [58 x double], ptr @c, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [58 x double], ptr @c, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP2]], i64 16
-+ ; CHECK-NEXT:    [[WIDE_LOAD5:%.*]] = load <2 x double>, ptr [[TMP2]], align 16
-+ ; CHECK-NEXT:    [[WIDE_LOAD6:%.*]] = load <2 x double>, ptr [[TMP3]], align 16
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = fadd <2 x double> [[WIDE_LOAD]], [[WIDE_LOAD5]]
-+ ; CHECK-NEXT:    [[TMP5:%.*]] = fadd <2 x double> [[WIDE_LOAD4]], [[WIDE_LOAD6]]
-+-; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw [58 x double], ptr @a, i64 0, i64 [[INDEX]]
-++; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds [58 x double], ptr @a, i64 0, i64 [[INDEX]]
-+ ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP6]], i64 16
-+ ; CHECK-NEXT:    store <2 x double> [[TMP4]], ptr [[TMP6]], align 16
-+ ; CHECK-NEXT:    store <2 x double> [[TMP5]], ptr [[TMP7]], align 16
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll b/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/operandorder.ll
-+@@ -349,12 +349,12 @@
-+ ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY3]] ]
-+ ; CHECK-NEXT:    [[TMP2:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+ ; CHECK-NEXT:    [[TMP3:%.*]] = add i32 [[TMP2]], 1
-+-; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
-+ ; CHECK-NEXT:    [[TMP4:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+-; CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
-++; CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
-+ ; CHECK-NEXT:    [[TMP5:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+ ; CHECK-NEXT:    [[TMP6:%.*]] = add i32 [[TMP5]], 4
-+-; CHECK-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
-++; CHECK-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
-+ ; CHECK-NEXT:    [[TMP7:%.*]] = load float, ptr [[ARRAYIDX31]], align 4
-+ ; CHECK-NEXT:    [[TMP8:%.*]] = load <4 x float>, ptr [[ARRAYIDX]], align 4
-+ ; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <4 x float> [[TMP8]], <4 x float> poison, <4 x i32> <i32 poison, i32 0, i32 1, i32 2>
-+@@ -363,7 +363,7 @@
-+ ; CHECK-NEXT:    store <4 x float> [[TMP11]], ptr [[ARRAYIDX5]], align 4
-+ ; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 5
-+ ; CHECK-NEXT:    [[TMP12:%.*]] = trunc i64 [[INDVARS_IV_NEXT]] to i32
-+-; CHECK-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
-++; CHECK-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
-+ ; CHECK-NEXT:    [[TMP13]] = load float, ptr [[ARRAYIDX41]], align 4
-+ ; CHECK-NEXT:    [[MUL45:%.*]] = fmul float [[TMP13]], [[TMP7]]
-+ ; CHECK-NEXT:    store float [[MUL45]], ptr [[ARRAYIDX31]], align 4
-+@@ -384,12 +384,12 @@
-+ ; SSE2-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[FOR_COND1_PREHEADER]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY3]] ]
-+ ; SSE2-NEXT:    [[TMP2:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+ ; SSE2-NEXT:    [[TMP3:%.*]] = add i32 [[TMP2]], 1
-+-; SSE2-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
-++; SSE2-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP3]]
-+ ; SSE2-NEXT:    [[TMP4:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+-; SSE2-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
-++; SSE2-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP4]]
-+ ; SSE2-NEXT:    [[TMP5:%.*]] = trunc i64 [[INDVARS_IV]] to i32
-+ ; SSE2-NEXT:    [[TMP6:%.*]] = add i32 [[TMP5]], 4
-+-; SSE2-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
-++; SSE2-NEXT:    [[ARRAYIDX31:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP6]]
-+ ; SSE2-NEXT:    [[TMP7:%.*]] = load float, ptr [[ARRAYIDX31]], align 4
-+ ; SSE2-NEXT:    [[TMP8:%.*]] = load <4 x float>, ptr [[ARRAYIDX]], align 4
-+ ; SSE2-NEXT:    [[TMP9:%.*]] = shufflevector <4 x float> [[TMP8]], <4 x float> poison, <4 x i32> <i32 poison, i32 0, i32 1, i32 2>
-+@@ -398,7 +398,7 @@
-+ ; SSE2-NEXT:    store <4 x float> [[TMP11]], ptr [[ARRAYIDX5]], align 4
-+ ; SSE2-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 5
-+ ; SSE2-NEXT:    [[TMP12:%.*]] = trunc i64 [[INDVARS_IV_NEXT]] to i32
-+-; SSE2-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds nuw [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
-++; SSE2-NEXT:    [[ARRAYIDX41:%.*]] = getelementptr inbounds [32000 x float], ptr @a, i32 0, i32 [[TMP12]]
-+ ; SSE2-NEXT:    [[TMP13]] = load float, ptr [[ARRAYIDX41]], align 4
-+ ; SSE2-NEXT:    [[MUL45:%.*]] = fmul float [[TMP13]], [[TMP7]]
-+ ; SSE2-NEXT:    store float [[MUL45]], ptr [[ARRAYIDX31]], align 4
++ _LIBCPP_WEAK void* operator new[](size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept {
++ #  if !_LIBCPP_HAS_EXCEPTIONS
++ #    if _LIBCPP_CAN_DETECT_OVERRIDDEN_FUNCTION
++   _LIBCPP_ASSERT_SHIM(
++-      !std::__is_function_overridden<static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new[])>(),
+++      !std::__is_function_overridden(static_cast<void* (*)(std::size_t, std::align_val_t)>(&operator new[])),
++       "libc++ was configured with exceptions disabled and `operator new[](size_t, align_val_t)` has been overridden, "
++       "but `operator new[](size_t, align_val_t, nothrow_t)` has not been overridden. This is problematic because "
++       "`operator new[](size_t, align_val_t, nothrow_t)` must call `operator new[](size_t, align_val_t)`, which will "
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index d9050b7..780da28 100644
+index 780da28..3d3bbb9 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "e86910337f98e57f5b9253f7d80d5b916eb1d97e"
--    LLVM_SHA256 = "4ca0eff0ca86ed6f2fdb7682354fdf4c85151d90ac9fb6e55a868e4191359e9f"
-+    LLVM_COMMIT = "59890c13343af9e308281b3c76bac425087f4f8a"
-+    LLVM_SHA256 = "bd80d5cbc94225c4ac944bc22df7772d2eb6b1df3e123d992b331a1b097847d4"
+-    LLVM_COMMIT = "59890c13343af9e308281b3c76bac425087f4f8a"
+-    LLVM_SHA256 = "bd80d5cbc94225c4ac944bc22df7772d2eb6b1df3e123d992b331a1b097847d4"
++    LLVM_COMMIT = "b5d02786be31f45ca5919b3b73e99d8958330f78"
++    LLVM_SHA256 = "65bb0a7026399b53e69928872320dfc81102fc3bbb4941910b38f4643fd9a130"
  
      tf_http_archive(
          name = name,
