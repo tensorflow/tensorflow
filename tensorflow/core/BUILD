@@ -248,7 +248,6 @@ cc_library(
         "@local_tsl//tsl/platform:lib_proto_parsing_hdrs",
     ],
     copts = tf_copts(),
-    visibility = ["//visibility:public"],
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
         "//tensorflow/core/lib/core:errors",
@@ -1512,7 +1511,6 @@ alias(
 alias(
     name = "jpeg_internal",
     actual = "//tensorflow/core/lib/jpeg:jpeg_internal",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
