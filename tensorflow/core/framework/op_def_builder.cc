@@ -620,6 +620,11 @@ OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication() {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::SetAllowsSharedKernel() {
+  op_def()->set_allows_shared_kernel(true);
+  return *this;
+}
+
 OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
