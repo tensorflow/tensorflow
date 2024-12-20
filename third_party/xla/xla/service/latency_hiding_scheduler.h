@@ -1119,7 +1119,7 @@ class LatencyHidingScheduler : public HloModulePass {
         async_tracker_(std::move(async_tracker)),
         scheduler_core_(std::move(scheduler_core)),
         shape_size_bytes_(shape_size_bytes) {}
-  static constexpr absl::string_view kName = "latency-hiding-scheduler";
+  constexpr static absl::string_view kName = "latency-hiding-scheduler";
   absl::string_view name() const override { return kName; }
 
   // Returns some printable statistics about the latency hiding for
