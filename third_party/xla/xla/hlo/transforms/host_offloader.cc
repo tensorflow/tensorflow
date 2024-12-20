@@ -283,10 +283,21 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       buffers_to_set_to_host_memory, kHostMemorySpaceColor);
   changed = changed || set_buffers_changed;
 
+  const bool create_maybe_unsafe_allocate_buffer = false;
   for (HloInstruction* dus : dynamic_update_slices) {
-    // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
-    // will update-slice into.
-    TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
+    if (create_maybe_unsafe_allocate_buffer) {
+      // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
+      // will update-slice into.
+      TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
+    } else {
+      // Simply copy operand 0 of the dynamic update slice to the host.
+      HloInstruction* data_to_copy = dus->mutable_operand(0);
+      HloInstruction* copy_to_host =
+          data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
+              data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
+      SetMemorySpace(copy_to_host->mutable_shape(), kHostMemorySpaceColor);
+      TF_RETURN_IF_ERROR(dus->ReplaceOperandWith(0, copy_to_host));
+    }
     changed = true;
   }
 
