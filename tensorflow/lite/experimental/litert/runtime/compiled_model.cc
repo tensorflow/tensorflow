@@ -28,6 +28,7 @@
 #include <android/hardware_buffer.h>
 #endif
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
@@ -294,7 +295,8 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
       auto lock_and_addr = TensorBufferScopedLock::Create(buffer);
       if (!lock_and_addr) {
         return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          "Failed to lock input tensor buffer");
+                          absl::StrCat("Failed to lock input tensor buffer: ",
+                                       lock_and_addr.Error().Message()));
       }
       scoped_locks.push_back(std::move(lock_and_addr->first));
       TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
@@ -372,7 +374,8 @@ Expected<void> LiteRtCompiledModelT::Run(
                        /*is_input=*/true, scoped_locks);
     if (!res) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to register input tensor buffer");
+                        absl::StrCat("Failed to register input tensor buffer: ",
+                                     res.Error().Message()));
     }
   }
 
@@ -383,8 +386,10 @@ Expected<void> LiteRtCompiledModelT::Run(
         RegisterBuffer(runner, output_tensor, output_name, output_buffers[i],
                        /*is_input=*/false, scoped_locks);
     if (!res) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to register output tensor buffer");
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          absl::StrCat("Failed to register output tensor buffer: ",
+                       res.Error().Message()));
     }
   }
 
