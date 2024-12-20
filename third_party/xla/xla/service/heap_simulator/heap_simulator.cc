@@ -2334,7 +2334,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   VLOG(1) << "result heap_size: " << result_.heap_size;
   Result result;
   result.heap_size = result_.heap_size;
-  result.heap_results.emplace_back(result_);
+  result.heap_results.push_back(result_);
   return result;
 }
 
