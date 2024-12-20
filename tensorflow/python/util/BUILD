@@ -839,7 +839,13 @@ py_strict_library(
 py_strict_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
@@ -1065,7 +1071,13 @@ py_strict_library(
 py_strict_library(
     name = "dispatch",
     srcs = ["dispatch.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":tf_decorator_py",
         ":tf_inspect",
