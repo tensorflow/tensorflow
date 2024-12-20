@@ -35,6 +35,11 @@ std::optional<HloSharding> CustomCallShardingHelper::InferShardingFromOperands(
     const HloInstruction* instruction) const {
   return std::nullopt;
 }
+std::optional<HloSharding>
+CustomCallShardingHelper::InferOperandShardingFromOtherOperands(
+    const HloInstruction* instruction, const HloInstruction* operand) const {
+  return std::nullopt;
+}
 bool CustomCallShardingHelper::IsCustomCallShardable(
     const HloInstruction* instruction) const {
   return false;
