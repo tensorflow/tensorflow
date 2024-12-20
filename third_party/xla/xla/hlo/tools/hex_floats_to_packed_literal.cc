@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
