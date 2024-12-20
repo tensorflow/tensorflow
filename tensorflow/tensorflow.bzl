@@ -1,4 +1,4 @@
-"""Provides build configuration for TensorFlow."""
+"""Provides build configuration for TensorFlow. Test."""
 
 load("@rules_java//java:defs.bzl", "java_test")
 load(
