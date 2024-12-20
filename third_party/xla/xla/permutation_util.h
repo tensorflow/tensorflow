@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef XLA_PERMUTATION_UTIL_H_
 #define XLA_PERMUTATION_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/types/span.h"
