@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
