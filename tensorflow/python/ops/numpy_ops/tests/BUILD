@@ -240,6 +240,7 @@ py_strict_test(
     # TODO(b/164245103): Re-enable GPU once tf.tensor_strided_slice_update's segfault is fixed.
     tags = [
         "no_pip",
+        "no_windows",  # TODO(b/381495196): fix test.
         #     "gpu",
         #     "requires-gpu-nvidia",
     ],
