@@ -1091,6 +1091,7 @@ cc_library(
         "@nanobind",
         "@local_config_python//:python_headers",
         "//xla/pjrt:lru_cache",
+        "//xla/tsl/platform:logging",
     ],
 )
 
