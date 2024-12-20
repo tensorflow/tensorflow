@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
