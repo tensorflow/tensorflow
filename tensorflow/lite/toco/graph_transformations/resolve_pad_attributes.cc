@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolvePadAttributes::Run(Model* model,
-                                               std::size_t op_index,
-                                               bool* modified) {
+absl::Status ResolvePadAttributes::Run(Model* model, std::size_t op_index,
+                                       bool* modified) {
   *modified = false;
   const auto pad_it = model->operators.begin() + op_index;
   auto* pad_op = pad_it->get();
