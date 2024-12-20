@@ -350,6 +350,9 @@ int64_t GetTracemeContextId(InputType* args) {
   return traceme_context_id;
 }
 
+std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api);
+
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_C_PJRT_C_API_HELPERS_H_

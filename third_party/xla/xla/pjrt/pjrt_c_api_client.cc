@@ -1021,27 +1021,10 @@ PjRtCApiDeviceDescription::memory_spaces() const {
   if (!extension) return {};
 
   if (memory_space_description_pointers_.empty()) {
-    PJRT_DeviceDescription_MemoryDescriptions_Args mem_desc_args;
-    mem_desc_args.struct_size =
-        PJRT_DeviceDescription_MemoryDescriptions_Args_STRUCT_SIZE,
-    mem_desc_args.extension_start = nullptr,
-    mem_desc_args.device_description = device_description_,
-    pjrt::LogFatalIfPjrtError(
-        extension->PJRT_DeviceDescription_MemoryDescriptions(&mem_desc_args),
-        c_api_);
-
-    for (int i = 0; i < mem_desc_args.num_memory_descriptions; i++) {
-      PJRT_MemoryDescription_Kind_Args kind_args;
-      kind_args.struct_size = PJRT_MemoryDescription_Kind_Args_STRUCT_SIZE,
-      kind_args.extension_start = nullptr,
-      kind_args.memory_description = mem_desc_args.memory_descriptions[i],
-      pjrt::LogFatalIfPjrtError(
-          extension->PJRT_MemoryDescription_Kind(&kind_args), c_api_);
-      PjRtMemorySpaceDescription description(
-          std::string(kind_args.kind, kind_args.kind_size), kind_args.kind_id);
-      memory_space_descriptions_.push_back(description);
-      memory_space_description_pointers_.push_back(
-          &memory_space_descriptions_[i]);
+    memory_space_descriptions_ =
+        pjrt::GetMemorySpaceDescriptions(device_description_, c_api_);
+    for (int i = 0; i < memory_space_descriptions_.size(); i++) {
+      memory_space_description_pointers_[i] = &memory_space_descriptions_[i];
     }
   }
   return memory_space_description_pointers_;
