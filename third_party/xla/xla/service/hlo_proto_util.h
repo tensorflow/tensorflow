@@ -50,11 +50,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto);
 
-// Returns the shape of the output of the entry computation. The shape pointer
-// refers to the output shape inside of the given HloProto.
-absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
-    const HloProto& hlo_proto);
-
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_PROTO_UTIL_H_
