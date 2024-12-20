@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 
+#include <cassert>
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
