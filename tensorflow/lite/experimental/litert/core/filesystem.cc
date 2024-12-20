@@ -77,7 +77,7 @@ bool Exists(absl::string_view path) { return StdExists(MakeStdPath(path)); }
 Expected<size_t> Size(absl::string_view path) {
   auto std_path = MakeStdPath(path);
   if (!StdExists(std_path)) {
-    return Error(kLiteRtStatusErrorNotFound);
+    return Error(kLiteRtStatusErrorNotFound, "File not found");
   }
   return StdSize(std_path);
 }
@@ -86,7 +86,7 @@ Expected<OwningBufferRef<uint8_t>> LoadBinaryFile(absl::string_view path) {
   auto std_path = MakeStdPath(path);
 
   if (!StdExists(std_path)) {
-    return Error(kLiteRtStatusErrorFileIO);
+    return Error(kLiteRtStatusErrorFileIO, "File not found");
   }
 
   OwningBufferRef<uint8_t> buf(StdSize(std_path));
