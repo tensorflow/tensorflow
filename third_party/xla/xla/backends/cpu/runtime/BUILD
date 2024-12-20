@@ -203,6 +203,8 @@ cc_library(
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
@@ -215,7 +217,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
