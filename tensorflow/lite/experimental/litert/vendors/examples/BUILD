@@ -72,12 +72,12 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/c:litert_options",
-        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_element_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/vendors/cc:backend_ir",
         "//tensorflow/lite/experimental/litert/vendors/cc:conversion",
+        "//tensorflow/lite/experimental/litert/vendors/cc:ir_types",
     ],
 )
 
@@ -109,6 +109,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/vendors/cc:backend_ir",
+        "//tensorflow/lite/experimental/litert/vendors/cc:ir_types",
     ],
 )
 

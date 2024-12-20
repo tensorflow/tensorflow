@@ -53,4 +53,11 @@ TensorConverter<ExampleTensor> MakeTensorConverter(
   };
 }
 
+ExampleTypes::Legalizations MakeAllLegalizations() {
+  ExampleTypes::Legalizations legalizations;
+  legalizations.push_back(ExampleLegalizeMul::Make());
+  legalizations.push_back(ExampleLegalizeAdd::Make());
+  return legalizations;
+}
+
 }  // namespace litert::example

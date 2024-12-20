@@ -15,14 +15,12 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_CC_PARTITION_WITH_CAPABILITIES_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_CC_PARTITION_WITH_CAPABILITIES_H_
 
-#include <functional>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/vendors/cc/backend_ir.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/conversion.h"
 
 namespace litert {
@@ -31,10 +29,6 @@ namespace litert {
 // conversions. This method selects ops for partitioning via a callback that
 // checks if an op is supported by the backend.
 
-// User-defined hook that calls backend to determine if an op is supported.
-template <class BackendOp>
-using Capability = std::function<bool(const BackendOp* op)>;
-
 // Selects ops for partitioning from given subgraph based on given Capability
 // check. Returns all ops in the given supbgraph that are supported by the
 // backend. Suitable for use in implementing LiteRtCompilerPluginPartition. Any
@@ -42,17 +36,17 @@ using Capability = std::function<bool(const BackendOp* op)>;
 // allocators.
 // NOTE: A missing legalization or any legalization failure will result in
 // an op not being supported, rather than a failure of this function.
-template <class BackendOp, class BackendTensor>
+template <class Ir>
 Expected<std::vector<LiteRtOp>> PartitionWithCapabilities(
-    const Legalizations<BackendOp, BackendTensor>& legalizations,
-    Capability<BackendOp> capability,
-    TensorConverterFactory<BackendTensor> convert_tensor_fact,
-    TensorAllocator<BackendTensor> tensor_allocator,
-    OpAllocator<BackendOp> op_allocator, const Subgraph& litert_subgraph) {
+    const typename Ir::Legalizations& legalizations,
+    typename Ir::Capability capability,
+    typename Ir::TensorConverterFactory convert_tensor_fact,
+    typename Ir::TensorAllocator tensor_allocator,
+    typename Ir::OpAllocator op_allocator, const Subgraph& litert_subgraph) {
   std::vector<LiteRtOp> results;
 
   // Build map for legalization lookup by op code.
-  auto map = MakeLegalizationMap<BackendOp, BackendTensor>(legalizations);
+  auto map = Ir::MakeLegalizationMap(legalizations);
 
   // Convert all ops from the given subgraph and check backend support.
   for (const auto& litert_op : litert_subgraph.Ops()) {

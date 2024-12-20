@@ -28,11 +28,12 @@
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_plugin_common.h"
 
 using ::litert::PartitionWithCapabilities;
-using ::litert::example::ExampleLegalizeMul;
-using ::litert::example::ExampleOp;
+using ::litert::example::ExampleGraphBuilder;
 using ::litert::example::ExampleOpAllocator;
-using ::litert::example::ExampleTensor;
+using ::litert::example::ExampleOpType;
 using ::litert::example::ExampleTensorAllocator;
+using ::litert::example::ExampleTypes;
+using ::litert::example::MakeAllLegalizations;
 using ::litert::example::MakeTensorConverter;
 
 // Example plugin implementations that leverage the pluggable conversion
@@ -43,25 +44,24 @@ using ::litert::example::MakeTensorConverter;
 // between the partition and compile phases.
 // TODO: Update with graph conversion function.
 
-using ExampleLegalizations = ::litert::Legalizations<ExampleOp, ExampleTensor>;
-
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {
-  ExampleLegalizations legalizations;
+  ExampleTypes::Legalizations legalizations;
 };
 
 namespace {
 
-bool MulCapability(const ExampleOp* op) {
-  return op->op_code == litert::example::ExampleOpType::MUL;
+bool MulCapability(const ExampleTypes::Op* op) {
+  return op->op_code == ExampleOpType::MUL;
 }
 
 }  // namespace
 
 // Initialize example plugin and register legalizations.
 LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin) {
-  *compiler_plugin = new LiteRtCompilerPluginT;
-  (*compiler_plugin)->legalizations.push_back(ExampleLegalizeMul::Make());
+  auto* plugin = new LiteRtCompilerPluginT;
+  plugin->legalizations = MakeAllLegalizations();
+  *compiler_plugin = plugin;
   return kLiteRtStatusOk;
 }
 
@@ -77,7 +77,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  auto ops = PartitionWithCapabilities<ExampleOp, ExampleTensor>(
+  auto ops = PartitionWithCapabilities<ExampleTypes>(
       compiler_plugin->legalizations, MulCapability, MakeTensorConverter,
       tensor_alloc, op_alloc, ::litert::Subgraph(subgraph));
   if (!ops) {
@@ -94,10 +94,10 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 namespace {
 
 // TODO: Pull common graph conversion stuff into public function.
-LiteRtStatus CompileSinglePartition(const ExampleLegalizations& legalizations,
-                                    std::string name, LiteRtSubgraph subgraph,
-                                    LiteRtCompiledResultT& result) {
-  litert::example::ExampleGraphBuilder builder;
+LiteRtStatus CompileSinglePartition(
+    const ExampleTypes::Legalizations& legalizations, std::string name,
+    LiteRtSubgraph subgraph, LiteRtCompiledResultT& result) {
+  ExampleGraphBuilder builder;
 
   // Wrap tensor converters so legaizations can hook into the graph builder.
   auto make_tensor_converter = [&builder](auto alloc) {
@@ -115,8 +115,7 @@ LiteRtStatus CompileSinglePartition(const ExampleLegalizations& legalizations,
   builder.InitGraph(name);
 
   const litert::Subgraph sg(subgraph);
-  auto map =
-      litert::MakeLegalizationMap<ExampleOp, ExampleTensor>(legalizations);
+  auto map = ExampleTypes::MakeLegalizationMap(legalizations);
 
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;

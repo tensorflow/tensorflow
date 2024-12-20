@@ -28,6 +28,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -147,6 +148,15 @@ template <class BackendTensor>
 using TensorConverterFactory = std::function<TensorConverter<BackendTensor>(
     TensorAllocator<BackendTensor> alloc)>;
 
+// Mapping from LiteRt tensor to backend tensor, used during iterative graph
+// conversions to store current scope.
+template <class BackendTensor>
+using TensorMap = absl::flat_hash_map<LiteRtTensor, BackendTensor*>;
+
+// User-defined hook that calls backend to determine if an op is supported.
+template <class BackendOp>
+using Capability = std::function<bool(const BackendOp* op)>;
+
 // Legalization
 //===---------------------------------------------------------------------------
 
@@ -235,6 +245,8 @@ using LegalizationMap =
                         const Legalization<BackendOp, BackendTensor>*>;
 
 // Construct a LegalizationMap from a collection of legalizations.
+// TODO: Consider wrapping the legalization map in a class to avoid
+// re-constructing it & better syntax.
 template <class BackendOp, class BackendTensor>
 LegalizationMap<BackendOp, BackendTensor> MakeLegalizationMap(
     const Legalizations<BackendOp, BackendTensor>& legalizations) {

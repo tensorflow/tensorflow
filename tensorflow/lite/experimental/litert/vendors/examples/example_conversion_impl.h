@@ -23,14 +23,15 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/backend_ir.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/conversion.h"
+#include "tensorflow/lite/experimental/litert/vendors/cc/ir_types.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_ir.h"
 
 namespace litert::example {
 
 // Conversion type implementations for the fictional "example" backend.
 
-TensorConverter<ExampleTensor> MakeTensorConverter(
-    TensorAllocator<ExampleTensor> alloc);
+ExampleTypes::TensorConverter MakeTensorConverter(
+    ExampleTypes::TensorAllocator alloc);
 
 // Example legalization for simple binary ops.
 template <ExampleOpType BackendOpType, LiteRtOpCode LiteRtOpType>
@@ -39,9 +40,6 @@ class ExampleBinOpLegalization : public Legalization<ExampleOp, ExampleTensor> {
   using Self = ExampleBinOpLegalization<BackendOpType, LiteRtOpType>;
 
  public:
-  using Base = Legalization<ExampleOp, ExampleTensor>;
-  using Result = typename Base::Result;
-  using GenResult = GeneralConversionResult<ExampleOp, ExampleTensor>;
   using Ptr = std::unique_ptr<Self>;
 
   static Ptr Make() { return std::make_unique<Self>(); }
@@ -64,10 +62,10 @@ class ExampleBinOpLegalization : public Legalization<ExampleOp, ExampleTensor> {
 
   // Transforms LiteRtAdd op into example op definition using the tensor
   // converter to map tensors within.
-  Expected<Result> LegalizeImpl(const Op& litert_op, const Tensors& inputs,
-                                const Tensors& outputs,
-                                TensorAllocator tensor_allocator,
-                                OpAllocator op_allocator) const override {
+  ExampleTypes::ConversionResult LegalizeImpl(
+      const Op& litert_op, const Tensors& inputs, const Tensors& outputs,
+      ExampleTypes::TensorAllocator tensor_allocator,
+      ExampleTypes::OpAllocator op_allocator) const override {
     ABSL_DCHECK_EQ(litert_op.Code(), LiteRtOpType);
 
     auto& bin_op = *op_allocator();
@@ -97,12 +95,12 @@ class ExampleBinOpLegalization : public Legalization<ExampleOp, ExampleTensor> {
     relu.inputs.push_back(bin_output->id);
     relu.outputs.push_back(output_tensor.id);
 
-    GenResult result;
+    ExampleTypes::GeneralConversionResult result;
     result.ops.push_back(&bin_op);
     result.ops.push_back(&relu);
     result.intermediate_tensors.push_back(bin_output);
 
-    return Expected<Result>(result);
+    return ExampleTypes::ConversionResult(result);
   }
 };
 
@@ -110,6 +108,8 @@ using ExampleLegalizeAdd =
     ExampleBinOpLegalization<ExampleOpType::ADD, kLiteRtOpCodeTflAdd>;
 using ExampleLegalizeMul =
     ExampleBinOpLegalization<ExampleOpType::MUL, kLiteRtOpCodeTflMul>;
+
+ExampleTypes::Legalizations MakeAllLegalizations();
 
 }  // namespace litert::example
 

@@ -31,7 +31,6 @@
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
-#include "tensorflow/lite/experimental/litert/vendors/cc/conversion.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_conversion_impl.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_ir.h"
 
@@ -40,22 +39,19 @@ namespace {
 
 using ::litert::example::ExampleLegalizeAdd;
 using ::litert::example::ExampleLegalizeMul;
-using ::litert::example::ExampleOp;
 using ::litert::example::ExampleOpAllocator;
 using ::litert::example::ExampleOpType;
-using ::litert::example::ExampleTensor;
 using ::litert::example::ExampleTensorAllocator;
+using ::litert::example::ExampleTypes;
 using ::litert::example::MakeTensorConverter;
 
-bool ExampleCapability(const ExampleOp* op) {
+bool ExampleCapability(const ExampleTypes::Op* op) {
   return op->op_code == ExampleOpType::ADD ||
          op->op_code == ExampleOpType::RELU;
 }
 
-using TestLegalizations = Legalizations<ExampleOp, ExampleTensor>;
-
 TEST(PartitionWithCapabilitiesTest, EmptyGraph) {
-  TestLegalizations legalizations;
+  ExampleTypes::Legalizations legalizations;
   legalizations.push_back(ExampleLegalizeAdd::Make());
 
   LiteRtSubgraphT subgraph;
@@ -64,7 +60,7 @@ TEST(PartitionWithCapabilitiesTest, EmptyGraph) {
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  auto ops = PartitionWithCapabilities<ExampleOp, ExampleTensor>(
+  auto ops = PartitionWithCapabilities<ExampleTypes>(
       legalizations, ExampleCapability, MakeTensorConverter, tensor_alloc,
       op_alloc, litert_subgraph);
   ASSERT_TRUE(ops);
@@ -74,7 +70,7 @@ TEST(PartitionWithCapabilitiesTest, EmptyGraph) {
 TEST(PartitionWithCapabilitiesTest, SingleSelectedOp) {
   static constexpr std::array kDims = {2, 2};
 
-  TestLegalizations legalizations;
+  ExampleTypes::Legalizations legalizations;
   legalizations.push_back(ExampleLegalizeAdd::Make());
 
   LiteRtSubgraphT subgraph;
@@ -102,7 +98,7 @@ TEST(PartitionWithCapabilitiesTest, SingleSelectedOp) {
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  auto ops = PartitionWithCapabilities<ExampleOp, ExampleTensor>(
+  auto ops = PartitionWithCapabilities<ExampleTypes>(
       legalizations, ExampleCapability, MakeTensorConverter, tensor_alloc,
       op_alloc, litert_subgraph);
 
@@ -113,7 +109,7 @@ TEST(PartitionWithCapabilitiesTest, SingleSelectedOp) {
 TEST(PartitionWithCapabilitiesTest, MultiSelectedOp) {
   static constexpr std::array kDims = {2, 2};
 
-  TestLegalizations legalizations;
+  ExampleTypes::Legalizations legalizations;
   legalizations.push_back(ExampleLegalizeAdd::Make());
 
   LiteRtSubgraphT subgraph;
@@ -153,7 +149,7 @@ TEST(PartitionWithCapabilitiesTest, MultiSelectedOp) {
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  auto ops = PartitionWithCapabilities<ExampleOp, ExampleTensor>(
+  auto ops = PartitionWithCapabilities<ExampleTypes>(
       legalizations, ExampleCapability, MakeTensorConverter, tensor_alloc,
       op_alloc, litert_subgraph);
 
@@ -167,7 +163,7 @@ TEST(PartitionWithCapabilitiesTest, MultiSelectedOp) {
 TEST(PartitionWithCapabilitiesTest, WithGeneralResult) {
   static constexpr std::array kDims = {2, 2};
 
-  TestLegalizations legalizations;
+  ExampleTypes::Legalizations legalizations;
   legalizations.push_back(ExampleLegalizeAdd::Make());
 
   LiteRtSubgraphT subgraph;
@@ -196,7 +192,7 @@ TEST(PartitionWithCapabilitiesTest, WithGeneralResult) {
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  auto ops = PartitionWithCapabilities<ExampleOp, ExampleTensor>(
+  auto ops = PartitionWithCapabilities<ExampleTypes>(
       legalizations, ExampleCapability, MakeTensorConverter, tensor_alloc,
       op_alloc, litert_subgraph);
 
