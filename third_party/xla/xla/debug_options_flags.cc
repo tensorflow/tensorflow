@@ -88,6 +88,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_thunk_runtime(true);
+  opts.set_xla_cpu_use_xnnpack(false);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
@@ -922,6 +923,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
                 debug_options->xla_cpu_use_thunk_runtime(),
                 "Use Thunk-based runtime for the CPU backend."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_use_xnnpack",
+                bool_setter_for(&DebugOptions::set_xla_cpu_use_xnnpack),
+                debug_options->xla_cpu_use_xnnpack(),
+                "Use XNNPACK for supported operations."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),

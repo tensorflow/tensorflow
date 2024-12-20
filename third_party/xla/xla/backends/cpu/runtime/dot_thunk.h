@@ -52,7 +52,7 @@ class DotThunk final : public Thunk {
 
  private:
   DotThunk(Info info, DotDimensionNumbers dot_dimensions, DotSlices dot_slices,
-           DotShape dot_shape);
+           DotShape dot_shape, DotCanonicalDims dot_canonical_dims);
 
   using DoneCallback = absl::AnyInvocable<void()>;
 
@@ -72,6 +72,7 @@ class DotThunk final : public Thunk {
   DotDimensionNumbers dot_dimensions_;
   DotSlices dot_slices_;
   DotShape dot_shape_;
+  DotCanonicalDims dot_canonical_dims_;
 
   // Contracting dimensions of the LHS and RHS matmul shapes.
   absl::InlinedVector<int64_t, 2> lhs_matmul_contracting_dims_;

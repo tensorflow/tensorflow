@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -813,9 +814,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
 
-      return ThunkSequence::Of<DotThunk>(
-          ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
-          rhs->shape(), out_slice, instruction->shape());
+      // Decide whether to use XNNPACK or Eigen.
+      bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
+      if (use_xnn) {
+        TF_ASSIGN_OR_RETURN(
+            use_xnn, XnnDotThunk::IsSupported(dnums, lhs->shape(), rhs->shape(),
+                                              instruction->shape()));
+      }
+
+      if (use_xnn) {
+        return ThunkSequence::Of<XnnDotThunk>(
+            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+            rhs->shape(), out_slice, instruction->shape());
+      } else {
+        return ThunkSequence::Of<DotThunk>(
+            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+            rhs->shape(), out_slice, instruction->shape());
+      }
     }
   }
 }

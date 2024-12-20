@@ -155,6 +155,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@local_tsl//:LICENSE",
         "@local_xla//:LICENSE",
+        "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -198,6 +199,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@local_tsl//:LICENSE",
         "@local_xla//:LICENSE",
+        "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
