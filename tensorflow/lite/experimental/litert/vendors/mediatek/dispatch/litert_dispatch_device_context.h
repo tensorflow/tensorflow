@@ -15,7 +15,9 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
