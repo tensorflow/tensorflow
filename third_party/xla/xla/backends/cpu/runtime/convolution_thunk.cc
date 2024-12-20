@@ -349,7 +349,11 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
   };
 
   if (options_.multi_threaded) {
-    tsl::CountDownAsyncValueRef<ExecuteEvent> state(feature_group_count_);
+    auto num_tasks = internal::GetEigenConv2DNumTasks(
+        *params.intra_op_threadpool, input_batch_, strides_.x, strides_.y,
+        base_dilation_.x, base_dilation_.y, window_dilation_.x,
+        window_dilation_.y, feature_group_count_);
+    tsl::CountDownAsyncValueRef<ExecuteEvent> state(num_tasks);
     auto done_callback = [state]() mutable { state.CountDown(); };
     if (input_shape_.element_type() == PrimitiveType::F16) {
       dispatch(Eigen::half{}, *params.intra_op_threadpool, done_callback);

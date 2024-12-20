@@ -2033,14 +2033,15 @@ enum class PaddingMode {
 class Transposed2DConvHloTest
     : public ConvolutionHloTest,
       public ::testing::WithParamInterface<
-          std::tuple<int, int, int, PaddingMode, bool>> {
+          std::tuple<int, int, int, int, PaddingMode, bool>> {
  public:
   Transposed2DConvHloTest()
       : batch_(std::get<0>(GetParam())),
         input_channels_(std::get<1>(GetParam())),
         output_channels_(std::get<2>(GetParam())),
-        padding_mode_(std::get<3>(GetParam())),
-        asymmetric_shapes_(std::get<4>(GetParam())),
+        feature_group_count_(std::get<3>(GetParam())),
+        padding_mode_(std::get<4>(GetParam())),
+        asymmetric_shapes_(std::get<5>(GetParam())),
         input_x_(5),
         input_y_(asymmetric_shapes_ ? input_x_ + 1 : input_x_),
         kernel_x_(3),
@@ -2096,6 +2097,7 @@ class Transposed2DConvHloTest
   int batch_;
   int input_channels_;
   int output_channels_;
+  int feature_group_count_;
   PaddingMode padding_mode_;
   bool asymmetric_shapes_;
   int input_x_;
@@ -2107,11 +2109,26 @@ class Transposed2DConvHloTest
 };
 
 XLA_TEST_P(Transposed2DConvHloTest, Simple) {
+  if (feature_group_count_ > 1) {
+    if (input_channels_ == 1 || output_channels_ == 1) {
+      GTEST_SKIP() << "Cannot test grouped convolution with a single input "
+                      "channel or single output channel.";
+    }
+
+    // Group count must be a common denominator of input and output channels.
+    ASSERT_EQ(input_channels_ % feature_group_count_, 0);
+    ASSERT_EQ(output_channels_ % feature_group_count_, 0);
+  }
+
+  // Derive filter channels from input channels and feature group count.
+  auto kernel_channels = input_channels_ / feature_group_count_;
+  // std::cerr << "kernel_channels: " << kernel_channels << "\n";
+
   const auto window = GetWindowString();
 
   const auto input_shape =
       absl::StrCat(batch_, ",", input_channels_, ",", input_x_, ",", input_y_);
-  const auto kernel_shape = absl::StrCat(output_channels_, ",", input_channels_,
+  const auto kernel_shape = absl::StrCat(output_channels_, ",", kernel_channels,
                                          ",", kernel_x_, ",", kernel_y_);
   const auto output_shape =
       absl::StrCat(batch_, ",", output_channels_, ",",
@@ -2127,7 +2144,8 @@ XLA_TEST_P(Transposed2DConvHloTest, Simple) {
       filter.2 = f32[)", kernel_shape, R"(]{3,2,1,0} parameter(1)
       ROOT conv.3 = f32[)", output_shape, R"(]{3,2,1,0} convolution(
         input.1, filter.2),
-        window=)", window, R"(, dim_labels=bf01_oi01->bf01
+        window=)", window, R"(, dim_labels=bf01_oi01->bf01,
+        feature_group_count=)", feature_group_count_, R"(
     }
   )");
   // clang-format on
@@ -2136,14 +2154,21 @@ XLA_TEST_P(Transposed2DConvHloTest, Simple) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Transposed2DConvHloTest, Transposed2DConvHloTest,
-    ::testing::Combine(::testing::Values(1, 2),  // Batch size
-                       ::testing::Values(1, 3),  // Input channels
-                       ::testing::Values(1, 5),  // Output channels
+    CombinedShapes, Transposed2DConvHloTest,
+    ::testing::Combine(::testing::Values(1, 5),   // Batch size
+                       ::testing::Values(1, 6),   // Input channels
+                       ::testing::Values(1, 21),  // Output channels
+                       ::testing::Values(1, 3),   // Feature group count
                        ::testing::Values(PaddingMode::kFull, PaddingMode::kNo,
                                          PaddingMode::kHalf),  // Padding mode
                        ::testing::Bool()  // Asymmetric shapes
                        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    CustomShapes, Transposed2DConvHloTest,
+    ::testing::Values(
+        std::make_tuple(2, 1024, 1024, 1024, PaddingMode::kHalf, true),
+        std::make_tuple(2, 128, 128, 16, PaddingMode::kHalf, true)));
 
 }  // namespace
 }  // namespace xla
