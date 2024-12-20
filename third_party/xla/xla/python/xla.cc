@@ -470,7 +470,7 @@ NB_MODULE(xla_extension, m) {
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
-  jax::RegisterDeviceList(m);
+  jax::PyDeviceList::Register(m);
   jax::RegisterSharding(m);
 
   nb::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")

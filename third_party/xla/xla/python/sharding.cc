@@ -52,7 +52,7 @@ nb::object CheckAndCanonicalizeMemoryKind(
   if (!memory_kind.is_none()) {
     // If memory kind is not None, check if it's supported by the devices
     // mentioned in the Sharding.
-    auto supported_memory_kinds = device_list->MemoryKinds();
+    auto supported_memory_kinds = PyDeviceList::MemoryKinds(device_list);
     if (!supported_memory_kinds.ok()) {
       supported_memory_kinds = nb::tuple();
     }
@@ -86,7 +86,7 @@ nb::object CheckAndCanonicalizeMemoryKind(
   }
   // If memory kind is None, canonicalize to default memory.
   absl::StatusOr<nb::object> default_memory_kind =
-      device_list->DefaultMemoryKind();
+      PyDeviceList::DefaultMemoryKind(device_list);
   if (!default_memory_kind.ok()) {
     return nb::none();
   }
