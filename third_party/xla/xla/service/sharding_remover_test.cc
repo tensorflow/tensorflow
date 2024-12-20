@@ -52,7 +52,7 @@ ENTRY entry {
   EXPECT_EQ(parameter->user_count(), 2);
   bool replaced = false;
   for (HloInstruction* user : parameter->users()) {
-    if (user->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(user)) {
       replaced = true;
       EXPECT_THAT(user, op::Copy(op::Parameter()));
       break;
