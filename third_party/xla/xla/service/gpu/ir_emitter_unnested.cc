@@ -190,8 +190,7 @@ IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
-  return std::unique_ptr<IrEmitterUnnested>(
-      new IrEmitterUnnested(ir_emitter_context));
+  return std::make_unique<IrEmitterUnnested>(ir_emitter_context);
 }
 
 absl::Status IrEmitterUnnested::EmitConstant(

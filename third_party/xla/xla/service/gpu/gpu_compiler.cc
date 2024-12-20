@@ -348,9 +348,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     proto.set_binary(binary.data(), binary.size());
     proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
                                                 dnn_compiled_graphs.cend());
-    return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(hlo_module->Clone(),
-                                         std::move(proto)));
+    return std::make_unique<GpuThunkAotCompilationResult>(hlo_module->Clone(),
+                                                          std::move(proto));
   }
 
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
@@ -364,8 +363,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
-    return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(std::move(module), std::move(proto)));
+    return std::make_unique<GpuThunkAotCompilationResult>(std::move(module),
+                                                          std::move(proto));
   }
 
   absl::StatusOr<std::string> SerializeAsString() const override {

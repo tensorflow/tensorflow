@@ -111,7 +111,7 @@ static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
-  return std::unique_ptr<GpuExecutable>(new GpuExecutable(std::move(params)));
+  return std::make_unique<GpuExecutable>(std::move(params));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
