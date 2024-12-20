@@ -259,7 +259,7 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     if (allow_excess_precision && user->opcode() == HloOpcode::kConvert &&
         user->shape().element_type() == to && to == HighPrecisionType() &&
         from == LowPrecisionType()) {
-      conversions_to_simplify.emplace_back(user);
+      conversions_to_simplify.push_back(user);
     } else {
       TF_RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
     }
