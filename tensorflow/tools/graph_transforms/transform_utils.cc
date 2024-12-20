@@ -682,7 +682,7 @@ Status TransformFuncContext::GetOneFloatParameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strtof(string_value.c_str(), result)) {
+  if (!strings::safe_strtof(string_value, result)) {
     return errors::InvalidArgument(
         "Couldn't interpret the ", name,
         " argument as a float number:", string_value);

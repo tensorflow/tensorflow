@@ -180,8 +180,7 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
     absl::Span<const NodeDefBuilder::NodeOut> data_inputs,
     absl::Span<const std::string> control_inputs) {
   tpu::TPUEmbeddingConfiguration tpu_embedding_config;
-  if (!tpu_embedding_config.ParseFromString(
-          std::string(tpu_embedding_config_str))) {
+  if (!tpu_embedding_config.ParseFromString(tpu_embedding_config_str)) {
     return absl::InvalidArgumentError(
         "Malformed config attribute in the SendTPUEmbeddingGradients node.");
   }
