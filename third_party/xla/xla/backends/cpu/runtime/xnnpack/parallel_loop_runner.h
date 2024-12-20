@@ -19,7 +19,6 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <functional>
-#include <utility>
 
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"

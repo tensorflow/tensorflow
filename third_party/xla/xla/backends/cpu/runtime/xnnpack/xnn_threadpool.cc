@@ -20,13 +20,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/cpu_info.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -53,6 +55,24 @@ bool IsCustomPthreadpoolEnabled() {
 #else
   return false;
 #endif  // XLA_CPU_USE_CUSTOM_PTHREADPOOL
+}
+
+// Default XLA:CPU pthreadpool initialized once per process.
+static absl::once_flag pthreadpool_init;
+static pthreadpool_t default_pthreadpool;
+
+pthreadpool_t DefaultPthreadpool() {
+  if (IsCustomPthreadpoolEnabled()) {
+    LOG(WARNING) << "Default pthreadpool is not supported when build with "
+                    "`--define pthreadpool_header_only=true`";
+    return nullptr;
+  }
+
+  absl::call_once(pthreadpool_init, []() {
+    default_pthreadpool = pthreadpool_create(tsl::port::MaxParallelism());
+  });
+
+  return default_pthreadpool;
 }
 
 namespace {
@@ -92,7 +112,7 @@ class OwnedParallelLoopRunner : public Pthreadpool {
 
 }  // namespace
 
-pthreadpool_t CreatePthreadpool(ParallelLoopRunner* runner) {
+pthreadpool_t CreateCustomPthreadpool(ParallelLoopRunner* runner) {
   if (IsCustomPthreadpoolEnabled()) {
     return reinterpret_cast<pthreadpool_t>(
         std::make_unique<WrappedParallelLoopRunner>(runner).release());
@@ -101,7 +121,7 @@ pthreadpool_t CreatePthreadpool(ParallelLoopRunner* runner) {
                 "`--define pthreadpool_header_only=true`";
 }
 
-static pthreadpool_t CreatePthreadpool(size_t threads_count) {  // NOLINT
+static pthreadpool_t CreateCustomPthreadpool(size_t threads_count) {  // NOLINT
   if (IsCustomPthreadpoolEnabled()) {
     return reinterpret_cast<pthreadpool_t>(
         std::make_unique<OwnedParallelLoopRunner>(threads_count).release());
@@ -122,7 +142,7 @@ xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool) {
 // C++ implementation of the subset of `pthreadpool` C API.
 //===----------------------------------------------------------------------===//
 
-static void DestroyPthreadpool(pthreadpool_t threadpool) {  // NOLINT
+static void DestroyCustomPthreadpool(pthreadpool_t threadpool) {  // NOLINT
   if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
     return;
   }
@@ -208,11 +228,11 @@ static void Parallelize3DTile2D(pthreadpool_t threadpool,  // NOLINT
 #if defined(XLA_CPU_USE_CUSTOM_PTHREADPOOL)
 
 extern "C" pthreadpool_t pthreadpool_create(size_t threads_count) {
-  return xla::cpu::CreatePthreadpool(threads_count);
+  return xla::cpu::CreateCustomPthreadpool(threads_count);
 }
 
 extern "C" void pthreadpool_destroy(pthreadpool_t threadpool) {
-  xla::cpu::DestroyPthreadpool(threadpool);
+  xla::cpu::DestroyCustomPthreadpool(threadpool);
 }
 
 extern "C" size_t pthreadpool_get_threads_count(pthreadpool_t threadpool) {

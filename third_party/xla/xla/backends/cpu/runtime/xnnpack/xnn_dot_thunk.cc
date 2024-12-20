@@ -92,18 +92,21 @@ auto XnnDotThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
 
 absl::StatusOr<XnnDotThunk::XnnRuntime> XnnDotThunk::CreateXnnRuntime(
     const Eigen::ThreadPoolDevice* device) {
-  bool use_runner = device && IsCustomPthreadpoolEnabled();
+  bool use_custom_threadpool = device && IsCustomPthreadpoolEnabled();
   VLOG(3) << absl::StreamFormat(
-      "Create XNN runtime for dot operation: num_created=%d, use_runner=%v",
-      xnn_runtime_pool_.num_created(), use_runner);
+      "Create XNN runtime for dot operation: num_created=%d, "
+      "use_custom_threadpool=%v",
+      xnn_runtime_pool_.num_created(), use_custom_threadpool);
 
   XnnRuntime runtime;
 
   // If XLA is compiled with custom pthreadpool, use it in XNNPACK runtime,
-  // otherwise we'll run all XNNPACK operations in the caller thread.
+  // otherwise we'll run all XNNPACK operations in the default pthreadpool.
   runtime.runner = std::make_unique<ParallelLoopRunner>(device);
-  if (use_runner) {
-    runtime.threadpool = CreatePthreadpool(runtime.runner.get());
+  if (use_custom_threadpool) {
+    runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
+  } else {
+    runtime.threadpool = DefaultPthreadpool();
   }
 
   XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
@@ -155,7 +158,9 @@ void XnnDotThunk::XnnRuntime::Destroy() {
   if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
   if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
   if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
-  if (threadpool != nullptr) pthreadpool_destroy(threadpool);
+
+  bool owned_threadpool = threadpool != nullptr && IsCustomPthreadpoolEnabled();
+  if (owned_threadpool) pthreadpool_destroy(threadpool);
 }
 
 tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::XnnRuntime::Invoke(

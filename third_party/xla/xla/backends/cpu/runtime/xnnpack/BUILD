@@ -98,10 +98,12 @@ cc_library(
     deps = [
         ":parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
         "@pthreadpool",
     ],
 )
