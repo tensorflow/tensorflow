@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_GRAPH_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_GRAPH_MGR_H_
 
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
