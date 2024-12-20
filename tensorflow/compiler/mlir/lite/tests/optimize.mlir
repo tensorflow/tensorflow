@@ -17,6 +17,16 @@ func.func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x
   // CHECK: return %0
 }
 
+// CHECK-LABEL: fusedConv3dRelu
+func.func @fusedConv3dRelu(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>, %arg2: tensor<16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.relu"(%0) : (tensor<256x32x32x32x16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: fusedDepthwiseConv2dRelu6
 func.func @fusedDepthwiseConv2dRelu6(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
   %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2) {depth_multiplier = 4 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
@@ -100,6 +110,75 @@ func.func @fuseSubIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x
 
   // CHECK-DAG: %cst = arith.constant dense<[5.000000e-01, 1.500000e+00, 2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01]> : tensor<16xf32>
   // CHECK: %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuseAddIntoConv3d
+func.func @fuseAddIntoConv3d(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %cst = arith.constant dense<1.5> : tensor<16xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst_0) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x32x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<[2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01, 1.650000e+01, 1.750000e+01]> : tensor<16xf32>
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuseAddIntoConv3dNoBias
+func.func @fuseAddIntoConv3dNoBias(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %cst = arith.constant dense<1.5> : tensor<16xf32>
+  %cst_0 = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst_0) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, none) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x32x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<1.500000e+00> : tensor<16xf32>
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuseBroadcastedAddIntoConv3D
+func.func @fuseBroadcastedAddIntoConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %cst = arith.constant dense<1.5> : tensor<1x1x16xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst_0) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x32x16xf32>, tensor<1x1x16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<[2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01, 1.650000e+01, 1.750000e+01]> : tensor<16xf32>
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuse5DAddIntoConv3d
+func.func @fuse5DAddIntoConv3d(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x2xf32>) -> tensor<256x32x32x32x2xf32> {
+  %cst = arith.constant dense<[[[[[1.0, 2.0]]]]]> : tensor<1x1x1x1x2xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst_0) {
+    dilation_d_factor = 1 : i32,
+    dilation_h_factor = 1 : i32,
+    dilation_w_factor = 1 : i32,
+    fused_activation_function = "NONE",
+    padding = "SAME",
+    stride_d = 1 : i32,
+    stride_h = 1 : i32,
+    stride_w = 1 : i32
+  } : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x2xf32>, tensor<2xf32>) -> tensor<256x32x32x32x2xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x32x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<256x32x32x32x2xf32>
+  func.return %1 : tensor<256x32x32x32x2xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<[2.000000e+00, 4.000000e+00]> : tensor<2xf32>
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuseSubIntoConv3d
+func.func @fuseSubIntoConv3d(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %cst = arith.constant dense<0.5> : tensor<16xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst_0) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.sub"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x32x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK-DAG: %cst = arith.constant dense<[5.000000e-01, 1.500000e+00, 2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01]> : tensor<16xf32>
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %cst)
 }
 
 // CHECK-LABEL: fuseAddIntoTransposeConv
