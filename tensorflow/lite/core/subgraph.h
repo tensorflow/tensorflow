@@ -1048,10 +1048,10 @@ class Subgraph {
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_execution_plan_index_to_prepare_;
 
-  // Only used in cases where a delegate supporting dynamic tensors is applied.
-  // This helps prepare the original execution before the post-delegation one,
-  // so that tensor shapes propagate.
-  int next_original_execution_plan_index_to_prepare_;
+  // Only used in cases where a delegate requiring propagated shapes is applied.
+  // This helps prepare the propagation execution before the post-delegation
+  // one, so that tensor shapes propagate.
+  int next_propagation_execution_plan_index_to_prepare_;
 
   // This is similar to `next_execution_plan_index_to_prepare_`, but it tracks
   // which nodes' allocation is planned with the arena planner.
@@ -1071,6 +1071,10 @@ class Subgraph {
   // This is a copy of the first execution_plan_ before any delegates were
   // applied. It is empty if no delegates were applied to this Subgraph.
   std::vector<int> pre_delegation_execution_plan_;
+
+  // This is a copy of the last execution_plan_ before any delegate asked
+  // for shape propagation.
+  std::vector<int> pre_propagation_execution_plan_;
 
   // Contains a list of delegates applied by the user so far, in order.
   std::vector<TfLiteDelegate*> delegates_applied_;
