@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <list>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/vendors/cc/backend_ir.h"
@@ -38,6 +39,7 @@ struct ExampleTensor {
   using Id = int32_t;
   ExampleTensorType type;
   std::vector<uint32_t> dims;
+  std::string name;
   Id id = -1;
 };
 
@@ -49,11 +51,13 @@ enum class ExampleOpType {
 };
 
 // Example backend op that stores op type as well as input and output tensor
-// IDs.
+// IDs and names.
 struct ExampleOp {
   ExampleOpType op_code;
   std::vector<ExampleTensor::Id> inputs;
+  std::vector<std::string> input_names;
   std::vector<ExampleTensor::Id> outputs;
+  std::vector<std::string> output_names;
 };
 
 // Simple allocator(s) for example example IR types that provides pointer

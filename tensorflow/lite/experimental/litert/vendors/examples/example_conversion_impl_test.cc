@@ -41,15 +41,20 @@ using ::testing::HasSubstr;
 
 TEST(ExampleConversionImplTest, ConvertTensor) {
   static constexpr std::array kDims = {2, 2};
+  static constexpr absl::string_view kName = "foo";
+
   LiteRtTensorT litert_tensor;
   litert_tensor.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                              absl::MakeConstSpan(kDims)));
+  litert_tensor.SetName(std::string(kName));
+
   ExampleTensorAllocator tensor_alloc;
   auto tensor_convert = MakeTensorConverter(tensor_alloc);
 
   auto& example_tensor = **tensor_convert(Tensor(&litert_tensor));
   EXPECT_EQ(example_tensor.type, ExampleTensorType::FLOAT);
   EXPECT_THAT(example_tensor.dims, ElementsAreArray(kDims));
+  EXPECT_EQ(example_tensor.name, kName);
 }
 
 TEST(ExampleConversionImplTest, ExampleGraphBuilder) {
@@ -87,16 +92,21 @@ TEST(ExampleConversionImplTest, ExampleGraphBuilder) {
 
 TEST(ExampleConversionImplTest, LegalizeAddSimpleResult) {
   static constexpr std::array kDims = {2, 2};
+
   LiteRtTensorT input1;
   input1.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  input1.SetName("input1");
+
   LiteRtTensorT input2;
   input2.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  input2.SetName("input2");
 
   LiteRtTensorT output;
   output.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  output.SetName("output");
 
   LiteRtOpT op;
   op.SetOpCode(kLiteRtOpCodeTflAdd);
@@ -128,7 +138,10 @@ TEST(ExampleConversionImplTest, LegalizeAddSimpleResult) {
 
   EXPECT_EQ(example_op.op_code, ExampleOpType::ADD);
   EXPECT_THAT(example_op.inputs, ElementsAreArray({0, 1}));
+  EXPECT_THAT(example_op.input_names,
+              ElementsAreArray({input1.Name(), input2.Name()}));
   EXPECT_THAT(example_op.outputs, ElementsAreArray({2}));
+  EXPECT_THAT(example_op.output_names, ElementsAreArray({output.Name()}));
 }
 
 TEST(ExampleConversionImplTest, LegalizeAddGeneralResult) {
@@ -136,13 +149,17 @@ TEST(ExampleConversionImplTest, LegalizeAddGeneralResult) {
   LiteRtTensorT input1;
   input1.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  input1.SetName("input1");
+
   LiteRtTensorT input2;
   input2.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  input2.SetName("input2");
 
   LiteRtTensorT output;
   output.SetType(MakeRankedTensorType(kLiteRtElementTypeFloat32,
                                       absl::MakeConstSpan(kDims)));
+  output.SetName("output");
 
   LiteRtOpT op;
   op.SetOpCode(kLiteRtOpCodeTflAdd);
@@ -173,12 +190,22 @@ TEST(ExampleConversionImplTest, LegalizeAddGeneralResult) {
   ASSERT_EQ(gen_result->ops.size(), 2);
   EXPECT_EQ(gen_result->ops[0]->op_code, ExampleOpType::ADD);
   EXPECT_THAT(gen_result->ops[0]->inputs, ElementsAreArray({0, 1}));
+  EXPECT_THAT(gen_result->ops[0]->input_names,
+              ElementsAreArray({input1.Name(), input2.Name()}));
   EXPECT_THAT(gen_result->ops[0]->outputs, ElementsAreArray({3}));
+  EXPECT_THAT(gen_result->ops[0]->output_names,
+              ElementsAreArray({kIntermediateTensorName}));
   EXPECT_EQ(gen_result->ops[1]->op_code, ExampleOpType::RELU);
   EXPECT_THAT(gen_result->ops[1]->inputs, ElementsAreArray({3}));
+  EXPECT_THAT(gen_result->ops[1]->input_names,
+              ElementsAreArray({kIntermediateTensorName}));
   EXPECT_THAT(gen_result->ops[1]->outputs, ElementsAreArray({2}));
+  EXPECT_THAT(gen_result->ops[1]->output_names,
+              ElementsAreArray({output.Name()}));
   EXPECT_EQ(gen_result->intermediate_tensors.size(), 1);
   EXPECT_EQ(gen_result->intermediate_tensors.front()->id, 3);
+  EXPECT_EQ(gen_result->intermediate_tensors.front()->name,
+            kIntermediateTensorName);
 }
 
 }  // namespace

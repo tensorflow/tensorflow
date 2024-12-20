@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/vendors/cc:backend_ir",
         "//tensorflow/lite/experimental/litert/vendors/cc:conversion",
         "//tensorflow/lite/experimental/litert/vendors/cc:ir_types",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

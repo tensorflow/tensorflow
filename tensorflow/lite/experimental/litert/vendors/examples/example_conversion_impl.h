@@ -17,6 +17,7 @@
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
@@ -32,6 +33,9 @@ namespace litert::example {
 
 ExampleTypes::TensorConverter MakeTensorConverter(
     ExampleTypes::TensorAllocator alloc);
+
+static constexpr absl::string_view kIntermediateTensorName =
+    "intermediate_bin_output";
 
 // Example legalization for simple binary ops.
 template <ExampleOpType BackendOpType, LiteRtOpCode LiteRtOpType>
@@ -77,23 +81,29 @@ class ExampleBinOpLegalization : public Legalization<ExampleOp, ExampleTensor> {
 
     for (const auto* input : inputs) {
       bin_op.inputs.push_back(input->id);
+      bin_op.input_names.push_back(input->name);
     }
 
     auto& output_tensor = *outputs.front();
     if (!HasFusedRelu(litert_op)) {
       bin_op.outputs.push_back(output_tensor.id);
+      bin_op.output_names.push_back(output_tensor.name);
       return Expected<Result>(&bin_op);
     }
 
     auto* bin_output = tensor_allocator();
     bin_output->dims = output_tensor.dims;
     bin_output->type = output_tensor.type;
+    bin_output->name = std::string(kIntermediateTensorName);
     bin_op.outputs.push_back(bin_output->id);
+    bin_op.output_names.push_back(bin_output->name);
 
     auto& relu = *op_allocator();
     relu.op_code = ExampleOpType::RELU;
     relu.inputs.push_back(bin_output->id);
+    relu.input_names.push_back(bin_output->name);
     relu.outputs.push_back(output_tensor.id);
+    relu.output_names.push_back(output_tensor.name);
 
     ExampleTypes::GeneralConversionResult result;
     result.ops.push_back(&bin_op);
