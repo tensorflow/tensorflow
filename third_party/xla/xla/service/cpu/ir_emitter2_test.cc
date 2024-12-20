@@ -19,18 +19,22 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
@@ -39,23 +43,23 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::cpu {
 
 class IrEmitter2Test : public HloTestBase {
  public:
-  // This is a proxy function that allows us call private method
-  // IrEmitter2::EmitKernelPrototype.
+  // This is a proxy function that allows us access to private member
+  // IrEmitter2::kernel_api_ir_builder_.
   static auto EmitKernelPrototype(
       IrEmitter2& ir_emitter,
-      const std::vector<IrEmitter2::KernelParameter>& arguments,
-      const std::vector<IrEmitter2::KernelParameter>& results) {
-    return ir_emitter.EmitKernelPrototype("test", arguments, results);
+      const std::vector<KernelApiIrBuilder::KernelParameter>& arguments,
+      const std::vector<KernelApiIrBuilder::KernelParameter>& results) {
+    return ir_emitter.kernel_api_ir_builder_.EmitKernelPrototype(
+        *ir_emitter.module_, "test", arguments, results);
   }
 
   absl::StatusOr<IrEmitter2> MakeIrEmitter2(llvm::Module& module,
@@ -117,10 +121,10 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   BufferAllocation::Slice res0(&alloc, /*offset=*/512, /*size=*/256);
   BufferAllocation::Slice res1(&alloc, /*offset=*/768, /*size=*/256);
 
-  std::vector<IrEmitter2::KernelParameter> arguments = {{shape, arg0},
-                                                        {shape, arg1}};
-  std::vector<IrEmitter2::KernelParameter> results = {{shape, res0},
-                                                      {shape, res1}};
+  std::vector<KernelApiIrBuilder::KernelParameter> arguments = {{shape, arg0},
+                                                                {shape, arg1}};
+  std::vector<KernelApiIrBuilder::KernelParameter> results = {{shape, res0},
+                                                              {shape, res1}};
 
   IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto prototype,
