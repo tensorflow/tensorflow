@@ -4,7 +4,6 @@ package tensorflow;
 
 import "tensorflow/core/framework/types.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "GraphTransferInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -14,6 +13,7 @@ message GraphTransferNodeInput {
   int32 node_id = 1;
   int32 output_port = 2;
 }
+
 message GraphTransferNodeInfo {
   string name = 1;
   int32 node_id = 2;
@@ -23,6 +23,7 @@ message GraphTransferNodeInfo {
   int32 input_count = 6;
   int32 output_count = 7;
 }
+
 message GraphTransferConstNodeInfo {
   string name = 1;
   int32 node_id = 2;
@@ -30,14 +31,17 @@ message GraphTransferConstNodeInfo {
   bytes data = 4;
   DataType dtype = 5;
 }
+
 message GraphTransferNodeInputInfo {
   int32 node_id = 1;
   repeated GraphTransferNodeInput node_input = 2;
 }
+
 message GraphTransferNodeOutputInfo {
   int32 node_id = 1;
   repeated int32 max_byte_size = 2;
 }
+
 message GraphTransferGraphInputNodeInfo {
   string name = 1;
   repeated int64 shape = 2;
@@ -63,9 +67,11 @@ message GraphTransferInfo {
   repeated GraphTransferConstNodeInfo const_node_info = 2;
   repeated GraphTransferNodeInputInfo node_input_info = 3;
   repeated GraphTransferNodeOutputInfo node_output_info = 4;
+
   // Input Node parameters of transferred graph
   repeated GraphTransferGraphInputNodeInfo graph_input_node_info = 5;
   repeated GraphTransferGraphOutputNodeInfo graph_output_node_info = 6;
+
   // Destination of graph transfer
   Destination destination = 7;
 }
