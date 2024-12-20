@@ -90,7 +90,10 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
                output_storage_type)
                ? absl::OkStatus()
                : absl::UnimplementedError(absl::StrFormat(
-                     "Unsupported algorithm on the current device(s): %s",
+                     "Unsupported algorithm on the current device(s) with "
+                     "input storage type %s and ouput storage type %s: %s",
+                     PrimitiveType_Name(lhs_storage_type),
+                     PrimitiveType_Name(output_storage_type),
                      PrecisionConfig::Algorithm_Name(config.algorithm())));
   }
 
