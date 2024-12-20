@@ -59,11 +59,19 @@ Status TRT_ShapedWeights::SetShape(DimsAdapter dims) {
 size_t TRT_ShapedWeights::size_bytes() const {
   size_t data_type_size = -1;
   switch (type_) {
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    case nvinfer1::DataType::kINT64:
+      data_type_size = 8;
+      break;
+#endif
     case nvinfer1::DataType::kFLOAT:
     case nvinfer1::DataType::kINT32:
       data_type_size = 4;
       break;
     case nvinfer1::DataType::kHALF:
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    case nvinfer1::DataType::kBF16:
+#endif
       data_type_size = 2;
       break;
 #if IS_TRT_VERSION_GE(8, 5, 0, 0)
@@ -76,6 +84,10 @@ size_t TRT_ShapedWeights::size_bytes() const {
     case nvinfer1::DataType::kBOOL:
       data_type_size = 1;
       break;
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    case nvinfer1::DataType::kINT4:  // Not supported
+      return 0;
+#endif
   }
   return volume_ * data_type_size;
 }

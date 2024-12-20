@@ -156,7 +156,7 @@ Status ConvertGraphDefToEngine(
     int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<PartialTensorShape>& input_shapes,
     nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator,
+    nvinfer1::IRuntime* runtime, TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
@@ -280,6 +280,7 @@ class Converter {
   Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
                          int max_batch_size, size_t max_workspace_size_bytes,
                          nvinfer1::IGpuAllocator* allocator,
+                         nvinfer1::IRuntime* runtime,
                          TRTInt8Calibrator* calibrator,
                          TrtShapeOptimizationProfile* profiles);
 
