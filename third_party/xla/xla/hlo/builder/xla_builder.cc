@@ -3456,7 +3456,7 @@ XlaOp XlaBuilder::ConditionalImpl(
 
     std::vector<XlaOp> operands(1, branch_index);
     for (const XlaOp branch_operand : branch_operands) {
-      operands.emplace_back(branch_operand);
+      operands.push_back(branch_operand);
     }
     return AddInstruction(std::move(instr), HloOpcode::kConditional,
                           absl::MakeSpan(operands));

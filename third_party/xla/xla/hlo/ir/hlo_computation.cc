@@ -1728,7 +1728,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
       for (HloInstruction* operand : cur->operands()) {
         const HloInstruction* new_operand = replace(operand);
         if (new_operand) {
-          dfs_stack.emplace_back(new_operand);
+          dfs_stack.push_back(new_operand);
         }
       }
     }
