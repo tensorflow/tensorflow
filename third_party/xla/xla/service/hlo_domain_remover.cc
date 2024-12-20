@@ -108,7 +108,7 @@ absl::StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
   // users vector could be changed during the loop(e.g. ReplaceAllUsesWith).
   const std::vector<HloInstruction*> users(instruction->users());
   for (HloInstruction* user : users) {
-    if (user->opcode() == HloOpcode::kDomain &&
+    if (HloPredicateIsOp<HloOpcode::kDomain>(user) &&
         user->user_side_metadata().Kind() == domain_kind &&
         user->operand_side_metadata().Kind() == domain_kind) {
       VLOG(5) << "Removing exit domain " << user->name();

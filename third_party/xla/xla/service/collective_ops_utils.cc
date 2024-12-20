@@ -167,11 +167,12 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
 
 absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(
     const HloInstruction* hlo) {
-  const bool is_all_reduce = (hlo->opcode() == HloOpcode::kAllReduce ||
-                              hlo->opcode() == HloOpcode::kAllReduceStart ||
-                              hlo->opcode() == HloOpcode::kReduceScatter);
-  const bool is_all_gather = (hlo->opcode() == HloOpcode::kAllGather ||
-                              hlo->opcode() == HloOpcode::kAllGatherStart);
+  const bool is_all_reduce =
+      (HloPredicateIsOp<HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
+                        HloOpcode::kReduceScatter>(hlo));
+  const bool is_all_gather =
+      (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllGatherStart>(
+          hlo));
   if (!is_all_reduce && !is_all_gather) {
     return absl::InvalidArgumentError(
         "GetReplicaGroupCountAndSize only supports AllReduce and AllGather.");
@@ -745,7 +746,7 @@ bool IsCollective(const HloInstruction* instruction) {
   if (IsNonFusionCollective(instruction)) {
     return true;
   }
-  if (instruction->opcode() == HloOpcode::kFusion &&
+  if (HloPredicateIsOp<HloOpcode::kFusion>(instruction) &&
       instruction->IsCustomFusion()) {
     for (const auto* inner_inst : instruction->fused_instructions()) {
       if (IsCollective(inner_inst)) {
@@ -757,7 +758,7 @@ bool IsCollective(const HloInstruction* instruction) {
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(instruction)) {
     for (auto* inner_inst : instruction->fused_instructions()) {
       if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
         return inner_inst;

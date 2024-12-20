@@ -316,7 +316,7 @@ static const HloInstruction* GetEntryParameterInstruction(
   for (const auto& p : alloc.assigned_buffers()) {
     const HloValue* value = p.first;
     const HloInstruction* instr = value->instruction();
-    if (instr->opcode() == HloOpcode::kParameter &&
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instr) &&
         instr->parent() == instr->GetModule()->entry_computation()) {
       return instr;
     }
@@ -1047,7 +1047,7 @@ std::string BufferAssignment::ToVerboseString(
       buf_strs.push_back(absl::StrCat(
           "\n\t\tOperator: ", xla::OpMetadataToString(instr->metadata())));
     }
-    if (instr->opcode() == HloOpcode::kParameter &&
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instr) &&
         (instr->parent() == instr->GetModule()->entry_computation())) {
       // Special case on entry parameters as they sometimes have hundreds of
       // indices in their shapes, and overwhelm the output.
@@ -1483,7 +1483,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
 
     const HloInstruction* instruction = value->instruction();
     const bool is_entry_parameter =
-        instruction->opcode() == HloOpcode::kParameter &&
+        HloPredicateIsOp<HloOpcode::kParameter>(instruction) &&
         instruction->parent() == instruction->GetModule()->entry_computation();
 
     if (is_entry_parameter) {
