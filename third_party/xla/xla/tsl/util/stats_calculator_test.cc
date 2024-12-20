@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 
+#include "xla/tsl/util/stat_summarizer_options.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
