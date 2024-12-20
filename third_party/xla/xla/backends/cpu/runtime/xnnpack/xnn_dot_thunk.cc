@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -44,10 +46,68 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static absl::Status DefineXnnSubgraph(
-    xnn_subgraph_t subgraph, const DotDimensionNumbers& dot_dimensions,
-    const DotSlices& dot_slices, const DotShape& dot_shape,
-    const DotCanonicalDims& dot_canonical_dims) {
+// XNNPACK runtime instantiated for the dot operation.
+struct XnnDotThunk::XnnRuntime {
+  XnnRuntime() = default;
+  ~XnnRuntime() { Destroy(); }
+
+  XnnRuntime(XnnRuntime&&);
+  XnnRuntime& operator=(XnnRuntime&&);
+
+  absl::Status Invoke(se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
+                      se::DeviceMemoryBase out);
+
+  void Destroy();
+
+  xnn_subgraph_t subgraph = nullptr;
+  xnn_workspace_t workspace = nullptr;
+  xnn_runtime_t runtime = nullptr;
+
+  std::unique_ptr<ParallelLoopRunner> runner;
+};
+
+XnnDotThunk::XnnRuntime::XnnRuntime(XnnRuntime&& other) {
+  *this = std::move(other);
+}
+
+auto XnnDotThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
+  Destroy();
+
+  subgraph = other.subgraph;
+  workspace = other.workspace;
+  runtime = other.runtime;
+
+  other.subgraph = nullptr;
+  other.workspace = nullptr;
+  other.runtime = nullptr;
+
+  runner = std::move(other.runner);
+  return *this;
+}
+
+absl::Status XnnDotThunk::XnnRuntime::Invoke(se::DeviceMemoryBase lhs,
+                                             se::DeviceMemoryBase rhs,
+                                             se::DeviceMemoryBase out) {
+  std::array<xnn_external_value, 3> external_values = {
+      xnn_external_value{0, lhs.opaque()},
+      xnn_external_value{1, rhs.opaque()},
+      xnn_external_value{2, out.opaque()},
+  };
+
+  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, 3, external_values.data()));
+  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<XnnDotThunk::XnnRuntime> XnnDotThunk::CreateXnnRuntime() {
+  VLOG(3) << "Create XNN runtime for dot operation: num_created="
+          << xnn_runtime_pool_.num_created();
+
+  XnnRuntime runtime;
+
+  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0,
+                                          &runtime.subgraph));
+
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   uint32_t rhs_id = XNN_INVALID_VALUE_ID;
   uint32_t out_id = XNN_INVALID_VALUE_ID;
@@ -56,27 +116,44 @@ static absl::Status DefineXnnSubgraph(
     return {dims.begin(), dims.end()};
   };
 
-  std::vector<size_t> lhs_dims = dims(dot_slices.lhs_shape.dimensions());
-  std::vector<size_t> rhs_dims = dims(dot_slices.rhs_shape.dimensions());
-  std::vector<size_t> out_dims = dims(dot_slices.out_shape.dimensions());
+  std::vector<size_t> lhs_dims = dims(dot_slices_.lhs_shape.dimensions());
+  std::vector<size_t> rhs_dims = dims(dot_slices_.rhs_shape.dimensions());
+  std::vector<size_t> out_dims = dims(dot_slices_.out_shape.dimensions());
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(), nullptr,
+      runtime.subgraph, xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(),
+      nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(), nullptr,
+      runtime.subgraph, xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(),
+      nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(), nullptr,
+      runtime.subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(),
+      nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
-      subgraph, lhs_id, rhs_id, out_id,
-      /*flags=*/dot_canonical_dims.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
+      runtime.subgraph, lhs_id, rhs_id, out_id,
+      /*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
 
-  return absl::OkStatus();
+  XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
+
+  XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(runtime.subgraph, nullptr,
+                                            runtime.workspace, nullptr, 0,
+                                            &runtime.runtime));
+
+  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
+
+  return {std::move(runtime)};
+}
+
+void XnnDotThunk::XnnRuntime::Destroy() {
+  if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
+  if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+  if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
 }
 
 absl::StatusOr<bool> XnnDotThunk::IsSupported(
@@ -129,7 +206,10 @@ XnnDotThunk::XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
       dot_dimensions_(std::move(dot_dimensions)),
       dot_slices_(std::move(dot_slices)),
       dot_shape_(std::move(dot_shape)),
-      dot_canonical_dims_(std::move(dot_canonical_dims)) {}
+      dot_canonical_dims_(std::move(dot_canonical_dims)),
+      xnn_runtime_pool_(std::bind(&XnnDotThunk::CreateXnnRuntime, this)) {}
+
+XnnDotThunk::~XnnDotThunk() = default;
 
 tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::Execute(
     const ExecuteParams& params) {
@@ -178,34 +258,8 @@ tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::Execute(
       dot_canonical_dims_.lhs_column_major, dot_canonical_dims_.lhs_canonical,
       dot_canonical_dims_.rhs_column_major, dot_canonical_dims_.rhs_canonical);
 
-  xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(
-      xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0, &subgraph));
-
-  TF_RETURN_IF_ERROR(DefineXnnSubgraph(subgraph, dot_dimensions_, dot_slices_,
-                                       dot_shape_, dot_canonical_dims_));
-
-  xnn_workspace_t workspace = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_workspace(&workspace));
-
-  xnn_runtime_t runtime = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(subgraph, nullptr, workspace,
-                                            nullptr, 0, &runtime));
-
-  std::array<xnn_external_value, 3> external_values = {
-      xnn_external_value{0, lhs_data.opaque()},
-      xnn_external_value{1, rhs_data.opaque()},
-      xnn_external_value{2, out_data.opaque()},
-  };
-
-  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime));
-  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, 3, external_values.data()));
-
-  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
-
-  XNN_RETURN_IF_ERROR(xnn_delete_runtime(runtime));
-  XNN_RETURN_IF_ERROR(xnn_delete_subgraph(subgraph));
-  XNN_RETURN_IF_ERROR(xnn_release_workspace(workspace));
+  TF_ASSIGN_OR_RETURN(auto runtime, xnn_runtime_pool_.GetOrCreate());
+  TF_RETURN_IF_ERROR(runtime->Invoke(lhs_data, rhs_data, out_data));
 
   return OkExecuteEvent();
 }

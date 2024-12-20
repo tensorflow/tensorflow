@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "xla/util.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 
@@ -29,6 +30,14 @@ namespace xla::cpu {
     if (!s.ok()) {                            \
       return s;                               \
     }                                         \
+  } while (0)
+
+#define XNN_LOG_IF_ERROR(expr)                         \
+  do {                                                 \
+    absl::Status s = XnnStatusToStatus(expr);          \
+    if (!s.ok()) {                                     \
+      LOG(ERROR) << "XNNPACK operation failed: " << s; \
+    }                                                  \
   } while (0)
 
 // Statically initializes XNNPACK for the current process.

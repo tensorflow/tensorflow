@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -28,8 +29,10 @@ limitations under the License.
 namespace xla::cpu {
 
 // Dot operation implemented on top of XNNPACK.
-class XnnDotThunk : public Thunk {
+class XnnDotThunk final : public Thunk {
  public:
+  ~XnnDotThunk() final;
+
   // Returns true if the dot operation is supported by XNNPACK. Returns an error
   // if the dot operation shape is invalid.
   static absl::StatusOr<bool> IsSupported(
@@ -47,14 +50,23 @@ class XnnDotThunk : public Thunk {
   BufferUses buffer_uses() const final { return DotBufferUses(dot_slices_); }
 
  private:
+  // XNNPACK runtime instantiated for the dot operation.
+  struct XnnRuntime;
+
   XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
               DotSlices dot_slices, DotShape dot_shape,
               DotCanonicalDims dot_canonical_dims);
+
+  absl::StatusOr<XnnRuntime> CreateXnnRuntime();
 
   DotDimensionNumbers dot_dimensions_;
   DotSlices dot_slices_;
   DotShape dot_shape_;
   DotCanonicalDims dot_canonical_dims_;
+
+  // XLA:CPU executable can be called concurrently from multiple threads, and we
+  // need to keep a pool of XNNPACK runtimes to avoid data races.
+  ObjectPool<XnnRuntime> xnn_runtime_pool_;
 };
 
 }  // namespace xla::cpu

@@ -19,6 +19,8 @@ cc_library(
     hdrs = ["object_pool.h"],
     deps = [
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -27,11 +29,13 @@ xla_cc_test(
     srcs = ["object_pool_test.cc"],
     deps = [
         ":object_pool",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -75,6 +79,7 @@ cc_library(
         "@XNNPACK",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -123,6 +128,7 @@ cc_library(
     srcs = ["xnn_dot_thunk.cc"],
     hdrs = ["xnn_dot_thunk.h"],
     deps = [
+        ":object_pool",
         ":parallel_loop_runner",
         ":xnn_interop",
         ":xnn_threadpool",
