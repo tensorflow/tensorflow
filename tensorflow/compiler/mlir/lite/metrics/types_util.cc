@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
+#include <cstddef>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
