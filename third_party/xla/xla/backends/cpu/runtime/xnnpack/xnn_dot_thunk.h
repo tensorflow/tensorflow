@@ -57,7 +57,8 @@ class XnnDotThunk final : public Thunk {
               DotSlices dot_slices, DotShape dot_shape,
               DotCanonicalDims dot_canonical_dims);
 
-  absl::StatusOr<XnnRuntime> CreateXnnRuntime();
+  absl::StatusOr<XnnRuntime> CreateXnnRuntime(
+      const Eigen::ThreadPoolDevice* device);
 
   DotDimensionNumbers dot_dimensions_;
   DotSlices dot_slices_;
@@ -66,7 +67,7 @@ class XnnDotThunk final : public Thunk {
 
   // XLA:CPU executable can be called concurrently from multiple threads, and we
   // need to keep a pool of XNNPACK runtimes to avoid data races.
-  ObjectPool<XnnRuntime> xnn_runtime_pool_;
+  ObjectPool<XnnRuntime, const Eigen::ThreadPoolDevice*> xnn_runtime_pool_;
 };
 
 }  // namespace xla::cpu

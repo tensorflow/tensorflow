@@ -25,15 +25,16 @@ limitations under the License.
 
 #include "xnnpack.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
@@ -54,16 +55,18 @@ struct XnnDotThunk::XnnRuntime {
   XnnRuntime(XnnRuntime&&);
   XnnRuntime& operator=(XnnRuntime&&);
 
-  absl::Status Invoke(se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
-                      se::DeviceMemoryBase out);
+  tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> Invoke(
+      const Eigen::ThreadPoolDevice* device, se::DeviceMemoryBase lhs,
+      se::DeviceMemoryBase rhs, se::DeviceMemoryBase out);
 
   void Destroy();
+
+  std::unique_ptr<ParallelLoopRunner> runner;
+  pthreadpool_t threadpool = nullptr;
 
   xnn_subgraph_t subgraph = nullptr;
   xnn_workspace_t workspace = nullptr;
   xnn_runtime_t runtime = nullptr;
-
-  std::unique_ptr<ParallelLoopRunner> runner;
 };
 
 XnnDotThunk::XnnRuntime::XnnRuntime(XnnRuntime&& other) {
@@ -73,10 +76,12 @@ XnnDotThunk::XnnRuntime::XnnRuntime(XnnRuntime&& other) {
 auto XnnDotThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
   Destroy();
 
+  threadpool = other.threadpool;
   subgraph = other.subgraph;
   workspace = other.workspace;
   runtime = other.runtime;
 
+  other.threadpool = nullptr;
   other.subgraph = nullptr;
   other.workspace = nullptr;
   other.runtime = nullptr;
@@ -85,28 +90,24 @@ auto XnnDotThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
   return *this;
 }
 
-absl::Status XnnDotThunk::XnnRuntime::Invoke(se::DeviceMemoryBase lhs,
-                                             se::DeviceMemoryBase rhs,
-                                             se::DeviceMemoryBase out) {
-  std::array<xnn_external_value, 3> external_values = {
-      xnn_external_value{0, lhs.opaque()},
-      xnn_external_value{1, rhs.opaque()},
-      xnn_external_value{2, out.opaque()},
-  };
-
-  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, 3, external_values.data()));
-  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
-  return absl::OkStatus();
-}
-
-absl::StatusOr<XnnDotThunk::XnnRuntime> XnnDotThunk::CreateXnnRuntime() {
-  VLOG(3) << "Create XNN runtime for dot operation: num_created="
-          << xnn_runtime_pool_.num_created();
+absl::StatusOr<XnnDotThunk::XnnRuntime> XnnDotThunk::CreateXnnRuntime(
+    const Eigen::ThreadPoolDevice* device) {
+  bool use_runner = device && IsCustomPthreadpoolEnabled();
+  VLOG(3) << absl::StreamFormat(
+      "Create XNN runtime for dot operation: num_created=%d, use_runner=%v",
+      xnn_runtime_pool_.num_created(), use_runner);
 
   XnnRuntime runtime;
 
-  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3, /*flags=*/0,
-                                          &runtime.subgraph));
+  // If XLA is compiled with custom pthreadpool, use it in XNNPACK runtime,
+  // otherwise we'll run all XNNPACK operations in the caller thread.
+  runtime.runner = std::make_unique<ParallelLoopRunner>(device);
+  if (use_runner) {
+    runtime.threadpool = CreatePthreadpool(runtime.runner.get());
+  }
+
+  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
+                                          /*flags=*/0, &runtime.subgraph));
 
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   uint32_t rhs_id = XNN_INVALID_VALUE_ID;
@@ -141,9 +142,9 @@ absl::StatusOr<XnnDotThunk::XnnRuntime> XnnDotThunk::CreateXnnRuntime() {
 
   XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
 
-  XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(runtime.subgraph, nullptr,
-                                            runtime.workspace, nullptr, 0,
-                                            &runtime.runtime));
+  XNN_RETURN_IF_ERROR(
+      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
+                            runtime.threadpool, 0, &runtime.runtime));
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 
@@ -154,6 +155,23 @@ void XnnDotThunk::XnnRuntime::Destroy() {
   if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
   if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
   if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
+  if (threadpool != nullptr) pthreadpool_destroy(threadpool);
+}
+
+tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::XnnRuntime::Invoke(
+    const Eigen::ThreadPoolDevice* device, se::DeviceMemoryBase lhs,
+    se::DeviceMemoryBase rhs, se::DeviceMemoryBase out) {
+  std::array<xnn_external_value, 3> external_values = {
+      xnn_external_value{0, lhs.opaque()},
+      xnn_external_value{1, rhs.opaque()},
+      xnn_external_value{2, out.opaque()},
+  };
+
+  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, 3, external_values.data()));
+
+  runner->set_device(device);
+  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
+  return runner->ResetDoneEvent();
 }
 
 absl::StatusOr<bool> XnnDotThunk::IsSupported(
@@ -207,7 +225,8 @@ XnnDotThunk::XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
       dot_slices_(std::move(dot_slices)),
       dot_shape_(std::move(dot_shape)),
       dot_canonical_dims_(std::move(dot_canonical_dims)),
-      xnn_runtime_pool_(std::bind(&XnnDotThunk::CreateXnnRuntime, this)) {}
+      xnn_runtime_pool_(std::bind(&XnnDotThunk::CreateXnnRuntime, this,
+                                  std::placeholders::_1)) {}
 
 XnnDotThunk::~XnnDotThunk() = default;
 
@@ -258,10 +277,10 @@ tsl::AsyncValueRef<XnnDotThunk::ExecuteEvent> XnnDotThunk::Execute(
       dot_canonical_dims_.lhs_column_major, dot_canonical_dims_.lhs_canonical,
       dot_canonical_dims_.rhs_column_major, dot_canonical_dims_.rhs_canonical);
 
-  TF_ASSIGN_OR_RETURN(auto runtime, xnn_runtime_pool_.GetOrCreate());
-  TF_RETURN_IF_ERROR(runtime->Invoke(lhs_data, rhs_data, out_data));
-
-  return OkExecuteEvent();
+  TF_ASSIGN_OR_RETURN(
+      auto runtime, xnn_runtime_pool_.GetOrCreate(params.intra_op_threadpool));
+  return runtime->Invoke(params.intra_op_threadpool, lhs_data, rhs_data,
+                         out_data);
 }
 
 }  // namespace xla::cpu

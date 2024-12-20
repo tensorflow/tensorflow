@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 
+#include "absl/base/optimization.h"
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
@@ -120,21 +123,36 @@ xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool) {
 //===----------------------------------------------------------------------===//
 
 static void DestroyPthreadpool(pthreadpool_t threadpool) {  // NOLINT
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    return;
+  }
+
+  tsl::BlockUntilReady(Cast(threadpool)->runner()->done_event());
   delete Cast(threadpool);
 }
 
 static size_t GetThreadsCount(pthreadpool_t threadpool) {  // NOLINT
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    return 0;
+  }
+
   return Cast(threadpool)->runner()->num_threads();
 }
 
 static void Parallelize1DTile1D(  // NOLINT
     pthreadpool_t threadpool, pthreadpool_task_1d_tile_1d_t function,
     void* context, size_t range, size_t tile, uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    for (size_t i = 0; i < range; i += tile) {
+      function(context, i, std::min(range - i, tile));
+    }
+    return;
+  }
+
   ParallelLoopRunner::Task1DTile1D task = [function, context](size_t offset,
                                                               size_t extent) {
     (*function)(context, offset, extent);
   };
-
   Cast(threadpool)->runner()->Parallelize(range, tile, task);
 }
 
@@ -142,6 +160,15 @@ static void Parallelize2DTile1D(pthreadpool_t threadpool,  // NOLINT
                                 pthreadpool_task_2d_tile_1d_t function,
                                 void* context, size_t range_i, size_t range_j,
                                 size_t tile_j, uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    for (size_t i = 0; i < range_i; i++) {
+      for (size_t j = 0; j < range_j; j += tile_j) {
+        function(context, i, j, std::min(range_j - j, tile_j));
+      }
+    }
+    return;
+  }
+
   ParallelLoopRunner::Task2DTile1D task =
       [function, context](size_t offset_i, size_t offset_j, size_t extent_j) {
         (*function)(context, offset_i, offset_j, extent_j);
@@ -154,6 +181,18 @@ static void Parallelize3DTile2D(pthreadpool_t threadpool,  // NOLINT
                                 void* context, size_t range_i, size_t range_j,
                                 size_t range_k, size_t tile_j, size_t tile_k,
                                 uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    for (size_t i = 0; i < range_i; i++) {
+      for (size_t j = 0; j < range_j; j += tile_j) {
+        for (size_t k = 0; k < range_k; k += tile_k) {
+          function(context, i, j, k, std::min(range_j - j, tile_j),
+                   std::min(range_k - k, tile_k));
+        }
+      }
+    }
+    return;
+  }
+
   ParallelLoopRunner::Task3DTile2D task =
       [function, context](size_t offset_i, size_t offset_j, size_t offset_k,
                           size_t extent_j, size_t extent_k) {
