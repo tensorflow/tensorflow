@@ -16,6 +16,13 @@ limitations under the License.
 // TODO(skyewm): this is necessary to make the single_threaded_cpu_device.h
 // include work. Some other include must be including eigen without defining
 // this. Consider defining in this in a BUILD rule.
+#include <cstddef>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
