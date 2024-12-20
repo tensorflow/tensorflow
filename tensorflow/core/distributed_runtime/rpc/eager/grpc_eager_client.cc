@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "grpcpp/generic/generic_stub.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
