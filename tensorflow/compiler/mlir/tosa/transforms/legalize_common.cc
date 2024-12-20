@@ -1344,7 +1344,9 @@ std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     // Batch dimension and remaining dimensions.
     if (i == 0 || i > crops_dims) {
       a4_begin_vals[i] = 0;
-      a4_size_vals[i] = result_type.getShape()[i];
+      a4_size_vals[i] = (result_type.getShape()[i] == ShapedType::kDynamic)
+                            ? a4_shape[i]
+                            : result_type.getShape()[i];
     } else {
       // Spatial dimension.
       assert(i - 1 >= 0 && i - 1 < crops_dims);
