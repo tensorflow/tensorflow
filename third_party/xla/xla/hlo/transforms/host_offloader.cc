@@ -138,7 +138,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_insert_copies_before;
   std::vector<InstructionAndShapeIndex> buffers_to_set_to_host_memory;
-  std::vector<HloInstruction*> dynamic_update_slices;
+  std::vector<HloInstruction*> move_to_host_dynamic_update_slices;
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
   std::queue<InstructionAndShapeIndex> queue;
@@ -166,11 +166,12 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       continue;
     } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
       if (instruction == starting_instruction) {
-        dynamic_update_slices.push_back(instruction);
+        move_to_host_dynamic_update_slices.push_back(instruction);
       } else {
-        // The input to this DynamicUpdateSlice is already in host memory. Save
-        // this so that we don't try to create an AllocateBuffer later.
-        dynamic_update_slices_already_allocated_.insert(instruction);
+        VLOG(1) << "DynamicUpdateSlice \"" << instruction->name()
+                << "\" is not associated with an offload annotation. Going to "
+                   "wrap it as host compute.";
+        need_to_wrap_instruction_as_host_compute = true;
       }
     } else if (host_offload_utils::IsValidDuringPureMemoryOffload(
                    instruction)) {
@@ -239,10 +240,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "a very high overhead.",
           instruction->name());
       SetHostComputeFrontendAttribute(*instruction);
-    }
-
-    if (!already_saved_buffer) {
-      // Save buffer to be set to host memory.
+    } else if (!already_saved_buffer) {
+      // Save buffer to be set to host memory. Do not set host compute as host
+      // memory space.
       VLOG(5) << "Saving " << instruction_and_shape_index.ToString()
               << " to be set to host memory.";
       buffers_to_set_to_host_memory.push_back(instruction_and_shape_index);
@@ -283,7 +283,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       buffers_to_set_to_host_memory, kHostMemorySpaceColor);
   changed = changed || set_buffers_changed;
 
-  for (HloInstruction* dus : dynamic_update_slices) {
+  for (HloInstruction* dus : move_to_host_dynamic_update_slices) {
     // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
     // will update-slice into.
     TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
