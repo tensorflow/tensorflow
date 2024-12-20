@@ -340,25 +340,36 @@ class PjitFunction {
   std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
 
-// thread-compatible.
+// Thread-safe.
 class PjitFunctionStore {
  public:
-  void Insert(PjitFunction* function) { compiled_functions_.insert(function); }
+  void Insert(PjitFunction* function) {
+    nb::ft_lock_guard lock(mu_);
+    compiled_functions_.insert(function);
+  }
 
-  void Erase(PjitFunction* function) { compiled_functions_.erase(function); }
+  void Erase(PjitFunction* function) {
+    nb::ft_lock_guard lock(mu_);
+    compiled_functions_.erase(function);
+  }
 
   void ClearFunctionCache() {
-    for (auto* function : compiled_functions_) {
+    absl::flat_hash_set<PjitFunction*> functions;
+    {
+      nb::ft_lock_guard lock(mu_);
+      std::swap(functions, compiled_functions_);
+    }
+    for (auto* function : functions) {
       function->ClearCache();
     }
-    compiled_functions_.clear();
   }
 
  private:
+  // Protected by the GIL in GIL mode, and by mu_ in freethreading mode.
+  nb::ft_mutex mu_;
   absl::flat_hash_set<PjitFunction*> compiled_functions_;
 };
 
-// Protected by GIL.
 PjitFunctionStore& GetGlobalPjitFunctionStore() {
   static auto* const store = new PjitFunctionStore();
   return *store;
