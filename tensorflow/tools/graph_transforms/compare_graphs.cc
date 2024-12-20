@@ -24,6 +24,9 @@ limitations under the License.
 // The return value is 0 if the graphs are equal, 1 if they're different, and -1
 // if there was a problem.
 
+#include <iostream>
+#include <ostream>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
