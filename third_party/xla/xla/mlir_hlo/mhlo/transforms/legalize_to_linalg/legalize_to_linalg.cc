@@ -2118,10 +2118,10 @@ class ReduceRegionReturnOpConversion
       return failure();
     }
     SmallVector<Value, 4> operands(adaptor.getOperands());
-    for (size_t i = 0; i < operands.size(); ++i) {
-      if (mlir::isa<ShapedType>(operands[i].getType())) {
-        auto loc = operands[i].getLoc();
-        operands[i] = rewriter.create<tensor::ExtractOp>(loc, operands[i]);
+    for (auto& operand : operands) {
+      if (mlir::isa<ShapedType>(operand.getType())) {
+        auto loc = operand.getLoc();
+        operand = rewriter.create<tensor::ExtractOp>(loc, operand);
       }
     }
     rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, operands);
@@ -2645,10 +2645,10 @@ struct SelectAndScatterNoOverlapConverter
     // Compute the index of the tiled region to determine if it was selected.
     Value id = b.create<arith::ConstantIndexOp>(0);
     int64_t dim = 0;
-    for (int i = 0, s = strides.size(); i < s; ++i) {
-      if (strides[i] > 1) {
+    for (long& stride : strides) {
+      if (stride > 1) {
         Value idx = b.create<linalg::IndexOp>(++dim);
-        Value tileSz = b.create<arith::ConstantIndexOp>(strides[i]);
+        Value tileSz = b.create<arith::ConstantIndexOp>(stride);
         id = b.create<arith::MulIOp>(id, tileSz);
         id = b.create<arith::AddIOp>(id, idx);
       }
