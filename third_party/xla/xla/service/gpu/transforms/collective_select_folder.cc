@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -51,12 +52,20 @@ struct FoldableSelect {
   HloInstruction* false_operand;
 };
 
+const HloInstruction* FindInnerScalarOp(const HloInstruction* inst) {
+  while (inst->opcode() == HloOpcode::kConvert ||
+         inst->opcode() == HloOpcode::kBroadcast) {
+    inst = inst->operand(0);
+  }
+  return inst;
+}
+
 // Matches foldable select ops that we can analyse and returns handy references
 // to %constant, %true_operand, %false_operand of the op. Matches, e.g.,
 //
 // ```
 // select(
-//     broadcast(compare(partition-id(), constant)),
+//     broadcast(compare(convert(partition-id()), constant)),
 //     true_operand,
 //     false_operand)
 // ```
@@ -65,7 +74,7 @@ struct FoldableSelect {
 //
 // ```
 // select(
-//     compare(partition-id(), constant),
+//     compare(replica-id(), constant),
 //     true_operand,
 //     false_operand)
 // ```
@@ -74,21 +83,22 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
     return std::nullopt;
   }
 
-  // Match select predicate (may be broadcasted).
-  const HloInstruction* predicate_candidate = select->operand(0);
-  if (HloPredicateIsOp<HloOpcode::kBroadcast>(predicate_candidate))
-    predicate_candidate = predicate_candidate->operand(0);
+  // Match select predicate.
+  const HloInstruction* predicate_candidate =
+      FindInnerScalarOp(select->operand(0));
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(predicate_candidate);
-  if (compare == nullptr) return std::nullopt;
+  if (compare == nullptr) {
+    return std::nullopt;
+  }
   if (compare->direction() != Comparison::Direction::kEq &&
       compare->direction() != Comparison::Direction::kNe) {
     return std::nullopt;
   }
 
   // Find replica-id or partition-id op and constant op, swap if needed.
-  const HloInstruction* id_op = compare->operand(0);
-  const HloInstruction* constant_op = compare->operand(1);
+  const HloInstruction* id_op = FindInnerScalarOp(compare->operand(0));
+  const HloInstruction* constant_op = FindInnerScalarOp(compare->operand(1));
   if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op)) {
     std::swap(id_op, constant_op);
   }
@@ -104,10 +114,14 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   }
 
   // Match constant.
-  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op))
+  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op) ||
+      !ShapeUtil::IsScalar(constant_op->shape())) {
     return std::nullopt;
+  }
   std::optional<int64_t> constant_id = constant_op->literal().GetFirstInteger();
-  if (!constant_id.has_value()) return std::nullopt;
+  if (!constant_id.has_value()) {
+    return std::nullopt;
+  }
   return FoldableSelect{compare->direction(), *constant_id, collective_mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }

@@ -530,6 +530,7 @@ cc_library(
     hdrs = ["collective_select_folder.h"],
     deps = [
         "//xla:comparison_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:collective_ops_utils",
