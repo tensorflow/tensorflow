@@ -15,15 +15,25 @@ limitations under the License.
 
 #include "xla/tsl/platform/threadpool.h"
 
+#include <cfenv>  // NOLINT
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/base/optimization.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/types.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/setround.h"
 #include "tsl/platform/tracing.h"
@@ -45,32 +55,34 @@ namespace tsl {
 namespace thread {
 
 struct EigenEnvironment {
-  typedef Thread EnvThread;
+  using EnvThread = Thread;
+
   struct TaskImpl {
     std::function<void()> f;
     Context context;
     uint64 trace_id;
   };
+
   struct Task {
-    std::unique_ptr<TaskImpl> f;
+    std::optional<TaskImpl> f;
   };
 
-  Env* const env_;
-  const ThreadOptions thread_options_;
-  const string name_;
+  Env* const env;
+  const ThreadOptions thread_options;
+  const std::string name;
 
   EigenEnvironment(Env* env, const ThreadOptions& thread_options,
-                   const string& name)
-      : env_(env), thread_options_(thread_options), name_(name) {}
+                   std::string name)
+      : env(env), thread_options(thread_options), name(std::move(name)) {}
 
   EnvThread* CreateThread(std::function<void()> f) {
-    return env_->StartThread(thread_options_, name_, [=]() {
+    return env->StartThread(thread_options, name, [this, f = std::move(f)]() {
       // Set the processor flag to flush denormals to zero.
       port::ScopedFlushDenormal flush;
       // Set the processor rounding mode to ROUND TO NEAREST.
       tsl::port::ScopedSetRound round(FE_TONEAREST);
-      if (thread_options_.numa_node != port::kNUMANoAffinity) {
-        port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
+      if (thread_options.numa_node != port::kNUMANoAffinity) {
+        port::NUMASetThreadNodeAffinity(thread_options.numa_node);
       }
       f();
     });
@@ -78,17 +90,11 @@ struct EigenEnvironment {
 
   Task CreateTask(std::function<void()> f) {
     uint64 id = 0;
-    if (tracing::EventCollector::IsEnabled()) {
+    if (ABSL_PREDICT_FALSE(tracing::EventCollector::IsEnabled())) {
       id = tracing::GetUniqueArg();
       tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
     }
-    return Task{
-        std::unique_ptr<TaskImpl>(new TaskImpl{
-            std::move(f),
-            Context(ContextKind::kThread),
-            id,
-        }),
-    };
+    return Task{TaskImpl{std::move(f), Context(ContextKind::kThread), id}};
   }
 
   void ExecuteTask(const Task& t) {
@@ -99,15 +105,15 @@ struct EigenEnvironment {
   }
 };
 
-ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
+ThreadPool::ThreadPool(Env* env, const std::string& name, int num_threads)
     : ThreadPool(env, ThreadOptions(), name, num_threads, true, nullptr) {}
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
-                       const string& name, int num_threads)
+                       const std::string& name, int num_threads)
     : ThreadPool(env, thread_options, name, num_threads, true, nullptr) {}
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
-                       const string& name, int num_threads,
+                       const std::string& name, int num_threads,
                        bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
 
@@ -185,7 +191,7 @@ void ThreadPool::TransformRangeConcurrently(
     const std::function<void(int64_t, int64_t)>& fn) {
   ParallelFor(total,
               SchedulingParams(SchedulingStrategy::kFixedBlockSize,
-                               absl::nullopt /* cost_per_unit */, block_size),
+                               /*cost_per_unit=*/std::nullopt, block_size),
               fn);
 }
 
