@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 
+#include "absl/strings/str_join.h"
+
 namespace tensorflow {
 
 std::ostream& operator<<(std::ostream& os,
