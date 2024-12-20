@@ -1443,8 +1443,8 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
     int64_t replicate_factor = temp_sharding.tile_assignment().dim(dim) /
                                target.tile_assignment().dim(dim);
     if (replicate_factor > 1) {
-      replicate_dims.emplace_back(dim);
-      replicate_factors.emplace_back(replicate_factor);
+      replicate_dims.push_back(dim);
+      replicate_factors.push_back(replicate_factor);
     }
   }
 
