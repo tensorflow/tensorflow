@@ -1091,7 +1091,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncFusion) {
 TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
   const char* hlo = R"(
     HloModule m, is_scheduled=true
-    
+
     async_computation.1 {
     param.1 = f32[4,8,128]{2,1,0} parameter(0)
     ROOT all-to-all.1 = f32[4,8,128]{2,1,0} all-to-all(param.1), channel_id=1, dimensions={1}
@@ -1099,7 +1099,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
 
     ENTRY main {
     param.0 = f32[4,8,128]{2,1,0} parameter(0)
-    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1 
+    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1
     ROOT all-to-all-done = f32[4,8,128]{2,1,0} async-done(all-to-all-start)
     })";
 

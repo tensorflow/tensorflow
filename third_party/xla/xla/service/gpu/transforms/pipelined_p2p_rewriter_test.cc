@@ -710,7 +710,7 @@ TEST_F(PipelinedP2pRewriterTest, NoCrashOnDynamicSliceFusion) {
 
   ENTRY %main (data.1: s32[8,32]) -> s32[2,32] {
     %data.1 = s32[8,32]{1,0} parameter(0)
-    ROOT %address-computation.1 = s32[2,32]{1,0} fusion(s32[8,32]{1,0} %data.1), kind=kCustom, calls=%dynamic-slice-fusion, 
+    ROOT %address-computation.1 = s32[2,32]{1,0} fusion(s32[8,32]{1,0} %data.1), kind=kCustom, calls=%dynamic-slice-fusion,
             backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
