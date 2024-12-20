@@ -76,6 +76,36 @@ class WeakrefLRUCacheTest(absltest.TestCase):
       cache(wrkey, GilReleasingCacheKey())
     t.join()
 
+  def testAnotherMultiThreaded(self):
+    num_workers = 5
+    barrier = threading.Barrier(num_workers)
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+
+    class WRKey:
+      pass
+
+    def WorkerAddToCache():
+      barrier.wait()
+      wrkey = WRKey()
+      for i in range(10):
+        cache(wrkey, i)
+
+    def WorkerCleanCache():
+      barrier.wait()
+      for _ in range(10):
+        cache.cache_clear()
+
+    workers = [
+        threading.Thread(target=WorkerAddToCache)
+        for _ in range(num_workers - 1)
+    ] + [threading.Thread(target=WorkerCleanCache)]
+
+    for t in workers:
+      t.start()
+
+    for t in workers:
+      t.join()
+
   def testKwargsDictOrder(self):
     miss_id = 0
 
