@@ -40,14 +40,6 @@ config_setting(
     define_values = {"tflite_with_ruy": "false"},
 )
 
-config_setting(
-    name = "aarch64",
-    constraint_values = [
-        "@platforms//cpu:aarch64",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -277,9 +269,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = select({
-        ":aarch64": [":tflite_with_ruy_enabled"],
-        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
-        "//conditions:default": [],
+        # TODO(b/388867844): Enable ruy by default on x86 as well, then
+        # remove `tflite_with_ruy_explicit_false` support.
+        "@platforms//cpu:x86_32": [],
+        "@platforms//cpu:x86_64": [],
+        "//conditions:default": [":tflite_with_ruy_enabled"],
     }),
 )
 
