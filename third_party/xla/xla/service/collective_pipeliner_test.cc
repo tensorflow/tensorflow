@@ -2946,7 +2946,7 @@ while_body {
   c2 = bf16[] constant(2.0)
   bc = bf16[1,8,128] broadcast(c2)
   ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
-  ar.2 = bf16[1,8,128] all-reduce(ar.1), replica_groups={}, to_apply=add, channel_id=1
+  ar.2 = bf16[1,8,128] all-reduce(ar.1), replica_groups={}, to_apply=add, channel_id=2
   mul2 = bf16[1,8,128] multiply(ar.1, bc), control-predecessors={ar.1}
   mul3 = bf16[1,8,128] multiply(mul2, ar.2)
   mul4 = bf16[1,8,128] multiply(mul3, mul)
