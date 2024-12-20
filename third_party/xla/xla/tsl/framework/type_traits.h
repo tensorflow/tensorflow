@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tsl/framework/numeric_types.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -70,13 +71,15 @@ struct is_simple_type {
       std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value ||
       is_quantized<T>::value || std::is_same<T, bfloat16>::value ||
+      std::is_same<T, float4_e2m1fn>::value ||
       std::is_same<T, float8_e3m4>::value ||
       std::is_same<T, float8_e4m3>::value ||
       std::is_same<T, float8_e4m3fn>::value ||
       std::is_same<T, float8_e4m3fnuz>::value ||
       std::is_same<T, float8_e4m3b11fnuz>::value ||
       std::is_same<T, float8_e5m2>::value ||
-      std::is_same<T, float8_e5m2fnuz>::value || std::is_same<T, int4>::value ||
+      std::is_same<T, float8_e5m2fnuz>::value ||
+      std::is_same<T, float8_e8m0fnu>::value || std::is_same<T, int4>::value ||
       std::is_same<T, uint4>::value;
 };
 

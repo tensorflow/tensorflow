@@ -32,6 +32,7 @@ std::optional<int> DType::byte_size() const {
     case kU2:
     case kS4:
     case kU4:
+    case kF4E2M1FN:
       // Smaller than a byte.
       return std::nullopt;
     case kPred:
@@ -39,6 +40,7 @@ std::optional<int> DType::byte_size() const {
     case kU8:
     case kF8E3M4:
     case kF8E4M3:
+    case kF8E8M0FNU:
     // The following types are https://arxiv.org/abs/2209.05433
     case kF8E4M3FN:
     case kF8E4M3B11FNUZ:
@@ -77,12 +79,14 @@ std::optional<int> DType::bit_size() const {
       return 2;
     case kS4:
     case kU4:
+    case kF4E2M1FN:
       return 4;
     case kPred:
     case kS8:
     case kU8:
     case kF8E3M4:
     case kF8E4M3:
+    case kF8E8M0FNU:
     // The following types are https://arxiv.org/abs/2209.05433
     case kF8E4M3FN:
     case kF8E4M3B11FNUZ:
@@ -141,9 +145,11 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
+      CASE(F4E2M1FN);
       // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
       // CASE(F8E3M4);
       // CASE(F8E4M3);
+      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);
@@ -189,9 +195,11 @@ DTypeProto DType::ToProto() const {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
+      CASE(F4E2M1FN);
       // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
       // CASE(F8E3M4);
       // CASE(F8E4M3);
+      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);

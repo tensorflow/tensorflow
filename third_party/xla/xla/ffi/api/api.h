@@ -131,6 +131,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "C128";
     case XLA_FFI_DataType_TOKEN:
       return os << "TOKEN";
+    case XLA_FFI_DataType_F4E2M1FN:
+      return os << "F4E2M1FN";
     case XLA_FFI_DataType_F8E5M2:
       return os << "F8E5M2";
     case XLA_FFI_DataType_F8E3M4:
@@ -145,6 +147,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "F8E5M2FNUZ";
     case XLA_FFI_DataType_F8E4M3FNUZ:
       return os << "F8E4M3FNUZ";
+    case XLA_FFI_DataType_F8E8M0FNU:
+      return os << "F8E8M0FNU";
   }
 }
 

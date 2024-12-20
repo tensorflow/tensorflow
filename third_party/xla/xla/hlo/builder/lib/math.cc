@@ -184,6 +184,7 @@ XlaOp IsNegZero(XlaOp operand) {
       case F32:
         return Eq(BitcastConvertType(operand, U32),
                   ConstantR0WithType(&b, U32, uint32_t{1} << 31));
+      case F4E2M1FN:
       case F8E3M4:
       case F8E4M3:
       case F8E5M2:
@@ -971,8 +972,9 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
     PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast = false;
-    for (PrimitiveType type : {BF16, F16, F8E3M4, F8E4M3, F8E5M2, F8E4M3FN,
-                               F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
+    for (PrimitiveType type :
+         {BF16, F16, F4E2M1FN, F8E3M4, F8E4M3, F8E4M3B11FNUZ, F8E4M3FN,
+          F8E4M3FNUZ, F8E5M2, F8E5M2FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;
@@ -1024,8 +1026,9 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IgammaGradA", a));
     bool needs_upcast = false;
-    for (PrimitiveType type : {BF16, F16, F8E3M4, F8E4M3, F8E5M2, F8E4M3FN,
-                               F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
+    for (PrimitiveType type :
+         {BF16, F16, F4E2M1FN, F8E3M4, F8E4M3, F8E4M3B11FNUZ, F8E4M3FN,
+          F8E4M3FNUZ, F8E5M2, F8E5M2FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;

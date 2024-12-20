@@ -3722,7 +3722,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Shape& result_shape) {
   std::function<ResultT(Fp, Uint)> stochastic_convert_op =
       [](Fp operand, Uint random) -> ResultT {
-    bool is_negative = static_cast<bool>(Eigen::numext::signbit(operand));
+    bool is_negative = static_cast<bool>(SignAndMagnitude(operand).first);
     if (Eigen::numext::isinf(operand)) {
       return is_negative ? std::numeric_limits<ResultT>::min()
                          : std::numeric_limits<ResultT>::max();

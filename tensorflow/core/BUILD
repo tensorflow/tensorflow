@@ -1275,6 +1275,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
         "@ml_dtypes//:intn",
+        "@ml_dtypes//:mxfloat",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1303,6 +1304,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
         "@ml_dtypes//:intn",
+        "@ml_dtypes//:mxfloat",
     ],
 )
 
@@ -1452,6 +1454,7 @@ cc_library(
         "@local_xla//xla/tsl/lib/math:math_util",
         "@ml_dtypes//:float8",
         "@ml_dtypes//:intn",
+        "@ml_dtypes//:mxfloat",
         "@snappy",
         "@zlib",
     ] + select({
