@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace test {
