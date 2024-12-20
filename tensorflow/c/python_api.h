@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_PYTHON_API_H_
 #define TENSORFLOW_C_PYTHON_API_H_
 
+#include <cstddef>
 #include <string>
 
 #include "tensorflow/c/c_api.h"
