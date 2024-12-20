@@ -115,29 +115,6 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
           absl::StrContains(feature_string, "+amx-bf16"));
 }
 
-class IrEmitter::ElementalIrEmitter : public CpuElementalIrEmitter {
- public:
-  ElementalIrEmitter(const HloModuleConfig& module_config,
-                     IrEmitter* ir_emitter, llvm::Module* module)
-      : CpuElementalIrEmitter(
-            module, ir_emitter->b(),
-            !IsNativeConvertSupportedOnTargetCPU(
-                ir_emitter->target_machine_features_
-                    .get_target_feature_string()),
-            module_config.debug_options().xla_cpu_enable_fast_min_max()),
-        ir_emitter_(ir_emitter) {}
-
- protected:
-  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name,
-                                            is_reducer);
-  }
-
-  IrEmitter* ir_emitter_;
-};
-
 IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
                      const HloModule& hlo_module,
                      const BufferAssignment& assignment,
@@ -161,6 +138,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       computation_transitively_contains_custom_call_(
           std::move(computation_transitively_contains_custom_call)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
+      hlo_module_(hlo_module),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
@@ -2212,7 +2190,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
-    ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+    CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
 
@@ -2222,7 +2200,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         fusion, GetIrArrayFor(fusion), &fused_emitter, b());
   } else if (fusion->IsLoopFusion()) {
     VLOG(3) << "HandleFusion kLoop";
-    ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+    CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
     TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
@@ -4033,13 +4011,13 @@ absl::Status IrEmitter::ElementTypesSameAndSupported(
 }
 
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
       return GetIrArrayFor(operand).EmitReadArrayElement(index, b());
     };
   }
-  ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
   return EmitTargetElementLoop(
       hlo, "elemental_loop",
       elemental_emitter.MakeElementGenerator(hlo, operand_to_generator),
@@ -4175,6 +4153,60 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
           return GetIrArrayFor(operand).EmitReadArrayElement(index, b());
         });
   }
+}
+
+CpuElementalIrEmitter IrEmitter::ElementalIrEmmiterFactory() {
+  auto thread_local_call_fn = [this](const HloComputation& callee,
+                                     absl::Span<llvm::Value* const> parameters,
+                                     absl::string_view name, bool is_reducer) {
+    return EmitThreadLocalCall(callee, parameters, name, is_reducer);
+  };
+
+  bool use_truncate_f32_to_bf16_conversion =
+      !IsNativeConvertSupportedOnTargetCPU(
+          target_machine_features_.get_target_feature_string());
+
+  return CpuElementalIrEmitter(
+      module_, b(), std::move(thread_local_call_fn),
+      use_truncate_f32_to_bf16_conversion,
+      hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
+}
+
+absl::Status IrEmitter::EmitNestedComputation(const HloComputation& callee,
+                                              absl::string_view name,
+                                              bool is_reducer) {
+  // Module must be scheduled to emit thread local computation.
+  if (!hlo_module_.has_schedule()) {
+    return absl::InternalError(
+        "HLO module must be scheduled to emit thread local computation.");
+  }
+
+  if (is_computation_emitted(callee, is_reducer)) {
+    return absl::OkStatus();
+  }
+
+  for (HloInstruction* instr : callee.instructions()) {
+    bool nested_is_reducer = instr->opcode() == HloOpcode::kReduce ||
+                             instr->opcode() == HloOpcode::kReduceWindow;
+    for (HloComputation* called_computation : instr->called_computations()) {
+      // reassociation is transitive so we "or" the caller and the callee.
+      TF_RETURN_IF_ERROR(
+          EmitNestedComputation(*called_computation, llvm_ir::IrName(instr),
+                                is_reducer || nested_is_reducer));
+    }
+  }
+
+  if (callee.IsFusionComputation()) {
+    return absl::OkStatus();
+  }
+
+  VLOG(2) << "Emit nested computation: " << callee.name();
+  return EmitComputation(
+             const_cast<HloComputation*>(&callee), name, false,
+             hlo_module_.schedule().sequence(&callee).instructions(),
+             /*allow_reassociation=*/is_reducer,
+             /*function_attributes=*/{llvm::Attribute::AlwaysInline})
+      .status();
 }
 
 }  // namespace cpu
