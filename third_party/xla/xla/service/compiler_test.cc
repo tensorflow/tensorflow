@@ -75,5 +75,22 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
          "validated!";
 }
 
+TEST(TargetConfigTest, TargetConfigEquality) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  config_proto.set_platform_name("platform");
+  config_proto.mutable_dnn_version_info()->set_major(2);
+  config_proto.mutable_gpu_device_info()->set_threads_per_block_limit(5);
+  config_proto.set_device_description_str("foo");
+
+  Compiler::TargetConfig config1(config_proto);
+  Compiler::TargetConfig config2(config_proto);
+
+  config_proto.mutable_dnn_version_info()->set_major(3);
+  Compiler::TargetConfig config3(config_proto);
+
+  ASSERT_EQ(config1, config2);
+  ASSERT_NE(config1, config3);
+}
+
 }  // namespace
 }  // namespace xla
