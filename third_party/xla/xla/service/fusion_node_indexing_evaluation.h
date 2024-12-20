@@ -32,11 +32,6 @@ class FusionNodeIndexingEvaluation {
   // constant), returns true.
   bool CodeDuplicationTooHigh(const HloInstruction* producer) const;
 
-  // Evaluate the maximum code duplication inside the fusion node. If the
-  // maximum code duplication is "too high" (some arbitrary chosen constant),
-  // returns true.
-  bool MaxCodeDuplicationTooHigh() const;
-
   // Evaluate the number of times 'producer' would be emitted if it is fused
   // into 'fusion_'.
   int64_t EvaluateEmittedInstructions(const HloInstruction* producer) const;
