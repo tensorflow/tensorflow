@@ -52,7 +52,7 @@ class CacheTest : public ::testing::Test {
 
   CacheTest() : cache_(NewLRUCache(kCacheSize)) { current_ = this; }
 
-  ~CacheTest() { delete cache_; }
+  ~CacheTest() override { delete cache_; }
 
   int Lookup(int key) {
     Cache::Handle* handle = cache_->Lookup(EncodeKey(key));
