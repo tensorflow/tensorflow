@@ -57,7 +57,8 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
 
 }  // namespace
 
-SolGPUCostModel::Config GetConfig(const HloModule* module) {
+/*static*/ SolGPUCostModel::Config SolGPUCostModel::GetConfig(
+    const HloModule* module) {
   SolGPUCostModel::Config config;
   const auto& extra_options =
       module->config()

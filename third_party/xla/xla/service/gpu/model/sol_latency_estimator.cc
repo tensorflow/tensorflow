@@ -175,7 +175,7 @@ SolLatencyEstimator::SolLatencyEstimator(
       gpu_info_(gpu_info),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function),
-      sol_flags_(GetConfig(computation->parent())) {
+      sol_flags_(SolGPUCostModel::GetConfig(computation->parent())) {
   cost_analysis_.emplace(
       GpuHloCostAnalysis::Options{shape_size_function_,
                                   /*per_second_rates=*/{},

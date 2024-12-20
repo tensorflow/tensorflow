@@ -51,6 +51,9 @@ class SolGPUCostModel {
   };
   explicit SolGPUCostModel(const Config& sys_config);
 
+  // Extract the SoL-related configuration from XLA flags.
+  static SolGPUCostModel::Config GetConfig(const HloModule* module);
+
   // Returns the latency of a NCCL ring collective.
   //
   // `buff_size_bytes`: the size of the message to be transferred.
@@ -75,8 +78,6 @@ class SolGPUCostModel {
   Config xla_flag_config_;
 };
 
-// Extract the SoL-related configuration from XLA flags.
-SolGPUCostModel::Config GetConfig(const HloModule* module);
 }  // namespace gpu
 }  // namespace xla
 
