@@ -500,6 +500,14 @@ func.func @testDiv(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testDivQuantized
+func.func @testDivQuantized(tensor<? x !quant.any<i8:f32>>, tensor<? x !quant.any<i8:f32>>) -> tensor<? x !quant.any<i8:f32>> {
+^bb0(%arg0: tensor<? x !quant.any<i8:f32>>, %arg1: tensor<? x !quant.any<i8:f32>>):
+  // CHECK: tfl.div %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = "tfl.div"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x !quant.any<i8:f32>>, tensor<? x !quant.any<i8:f32>>) -> tensor<? x !quant.any<i8:f32>>
+  func.return %0#0 : tensor<? x !quant.any<i8:f32>>
+}
+
 // CHECK-LABEL: testLess
 func.func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
