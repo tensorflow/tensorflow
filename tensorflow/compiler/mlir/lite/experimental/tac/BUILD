@@ -317,6 +317,7 @@ cc_library(
     deps = [
         ":common",
         ":execution_metadata_exporter",
+        ":tac_importer_exporter",
         ":target_aware_conversion",
         ":tflite_importer_exporter",
         "//tensorflow/compiler/mlir:init_mlir",
@@ -328,6 +329,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -374,6 +376,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
