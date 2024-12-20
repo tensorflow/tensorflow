@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/transforms/constant_folding/pass.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cctype>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
