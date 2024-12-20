@@ -10,6 +10,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/odml/model_customization/quantization:__subpackages__",
+        "//third_party/py/ai_edge_torch:__subpackages__",
         "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
