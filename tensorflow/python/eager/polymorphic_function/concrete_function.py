@@ -1260,9 +1260,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
             args, kwargs, self.function_type)
     )
     filtered_flat_args = self.function_type.unpack_inputs(bound_args)
-    return self._call_flat(
+    flat_out = self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs)
+    return self.function_type.pack_output(flat_out)
 
   def _call_flat(self, tensor_inputs, captured_inputs):
     """Executes the wrapped function.
