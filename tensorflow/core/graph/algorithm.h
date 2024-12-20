@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -27,6 +28,13 @@ namespace tensorflow {
 
 // Comparator for two nodes. This is used in order to get a stable ording.
 using NodeComparator = std::function<bool(const Node*, const Node*)>;
+
+// Give a score for emitting a node at the current position.
+// The previous (already emitted) node is also passed for orderings that want to
+// optimize some relationship between neighbors. (E.g., minimize the number of
+// adjacent nodes on different devices)
+using NodeScorer =
+    std::function<int(const Node* previous, const Node* candidate)>;
 
 using EdgeFilter = std::function<bool(const Edge&)>;
 
@@ -43,6 +51,31 @@ struct NodeComparatorName {
     return n1->name() < n2->name();
   }
 };
+
+struct NodeScorerDevice {
+  int operator()(const Node* previous, const Node* candidate) const {
+    if (previous &&
+        previous->requested_device() == candidate->requested_device()) {
+      return 1;
+    }
+    return 0;
+  }
+};
+
+// Performs a topological ordering of nodes.
+// This has the property that any child node of a parent node p is
+// emitted before p. A scoring function is used to break ties if
+// multiple child nodes (of possibly different parents) are ready
+// to be emitted at some point. Due to the large degree of freedom
+// we have during topolocal ordering, said scoring function can
+// be used to establish certain properties in the output, like e.g.
+// clustering by device. If the scoring function returns the same
+// value for multiple candidates, the algorithm tries to preserve
+// the order the children were stored in (i.e., it mimicks the DFS
+// order). The "emit" function is used for outputing the result, and
+// is called once for each node.
+void TopologicalOrdering(const Graph& g, const std::function<void(Node*)>& emit,
+                         const NodeScorer& scorer);
 
 // Perform a depth-first-search on g starting at the source node.
 // If enter is not empty, calls enter(n) before visiting any children of n.
