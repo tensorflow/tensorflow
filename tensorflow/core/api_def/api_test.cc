@@ -15,13 +15,13 @@ limitations under the License.
 
 // Test that validates tensorflow/core/api_def/base_api/api_def*.pbtxt files.
 
-#include <ctype.h>
-
-#include <algorithm>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/api_def/excluded_ops.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op.h"
