@@ -219,10 +219,10 @@ TEST(GraphDefSplitterTest, TestLotsNodes) {
     GraphDef* message = nullptr;
     if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
             chunk)) {
-      message = tsl::protobuf::DynamicCastToGenerated<GraphDef>(
+      message = proto2::DynamicCastMessage<GraphDef>(
           std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk).get());
     } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {
-      message = tsl::protobuf::DynamicCastToGenerated<GraphDef>(
+      message = proto2::DynamicCastMessage<GraphDef>(
           std::get<tsl::protobuf::Message*>(chunk));
     } else {
       EXPECT_FALSE(std::holds_alternative<std::string>(chunk));
