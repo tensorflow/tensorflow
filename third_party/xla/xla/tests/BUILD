@@ -1238,6 +1238,7 @@ CONVOLUTION_TEST_DEPS = [
     "//xla:shape_util",
     "@com_google_absl//absl/status:statusor",
     "//xla:util",
+    "//xla:window_util",
     "//xla:xla_data_proto_cc",
     "//xla/client:global_data",
     "//xla/client:local_client",
