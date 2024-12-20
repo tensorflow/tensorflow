@@ -601,6 +601,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<FloatNormalization>(&s4_support);
   FloatSupport u4_support(U4, U8);
   pipeline.AddPass<FloatNormalization>(&u4_support);
+  FloatSupport f4e2m1fn_support(F4E2M1FN, F16);
+  pipeline.AddPass<FloatNormalization>(&f4e2m1fn_support);
+  FloatSupport f8e8m0fnu_support(F8E8M0FNU, F32);
+  pipeline.AddPass<FloatNormalization>(&f8e8m0fnu_support);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
