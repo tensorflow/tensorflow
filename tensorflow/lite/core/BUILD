@@ -43,7 +43,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":cc_api_stable",
         ":signature_runner",
