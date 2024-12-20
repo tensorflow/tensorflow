@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/sharding_builder.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/check.h"
