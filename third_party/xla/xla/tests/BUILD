@@ -163,10 +163,8 @@ cc_library(
     ],
     deps = [
         ":pjrt_client_registry",
-        "//xla/pjrt:interpreter_device",
         "//xla/pjrt:pjrt_client",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:status",
+        "//xla/pjrt/interpreter:interpreter_client",
     ],
 )
 
@@ -278,15 +276,12 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
-        "//xla/service:hlo_runner",
+        "//xla/pjrt/interpreter:interpreter_client",
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_runner_pjrt",
         "//xla/service:interpreter_plugin",  # reference backend
-        "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:logging",
     ],
 )
