@@ -34,6 +34,18 @@ cc_library(
 )
 
 cc_library(
+    name = "litert_event",
+    hdrs = ["litert_event.h"],
+    deps = [
+        ":litert_expected",
+        ":litert_handle",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "litert_any",
     hdrs = ["litert_any.h"],
     deps = [
@@ -118,10 +130,12 @@ cc_library(
     ],
     deps = [
         ":litert_detail",
+        ":litert_event",
         ":litert_handle",
         ":litert_model",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",

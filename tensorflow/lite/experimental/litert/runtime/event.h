@@ -18,14 +18,15 @@
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 struct LiteRtEventT {
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
-  int fd;
-  bool owns_fd;
+  int fd = -1;
+  bool owns_fd = false;
 #endif
   ~LiteRtEventT();
-  LiteRtStatus Wait(int64_t timeout_in_ms);
+  litert::Expected<void> Wait(int64_t timeout_in_ms);
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_EVENT_H_

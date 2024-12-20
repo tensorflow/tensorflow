@@ -46,6 +46,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime/dispatch",

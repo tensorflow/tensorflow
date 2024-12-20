@@ -21,23 +21,34 @@
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
 LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event) {
+#if LITERT_HAS_SYNC_FENCE_SUPPORT
   *event = new LiteRtEventT{.fd = sync_fence_fd, .owns_fd = owns_fd};
   return kLiteRtStatusOk;
+#else
+  return kLiteRtStatusErrorUnsupported;
+#endif
 }
 
 LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd) {
+#if LITERT_HAS_SYNC_FENCE_SUPPORT
   *sync_fence_fd = event->fd;
   return kLiteRtStatusOk;
-}
+#else
+  return kLiteRtStatusErrorUnsupported;
 #endif
+}
 
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms) {
-  return event->Wait(timeout_in_ms);
+  if (auto status = event->Wait(timeout_in_ms); !status) {
+    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().data());
+    return status.Error().Status();
+  }
+  return kLiteRtStatusOk;
 }
 
 void LiteRtDestroyEvent(LiteRtEvent event) { delete event; }

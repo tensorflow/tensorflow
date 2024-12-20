@@ -18,6 +18,21 @@ package(
 )
 
 cc_library(
+    name = "event",
+    srcs = [
+        "event.cc",
+    ],
+    hdrs = [
+        "event.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
+cc_library(
     name = "tensor_buffer",
     srcs = [
         "ahwb_buffer.cc",
@@ -40,8 +55,10 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "@com_google_absl//absl/base:core_headers",
@@ -117,6 +134,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_environment",
+        "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
