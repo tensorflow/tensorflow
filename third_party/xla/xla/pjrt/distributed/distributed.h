@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/security/credentials.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
 
