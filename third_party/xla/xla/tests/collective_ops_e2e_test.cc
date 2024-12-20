@@ -1591,6 +1591,7 @@ class RaggedAllToAllTest : public AsyncCollectiveOps {
 
     Array<IndexType> input_offsets = get_offsets(input_sizes);
     Array<IndexType> output_offsets = get_offsets(output_sizes);
+    output_offsets.TransposeDimensions({1, 0});
 
     std::vector<int64_t> chunk_sizes{ragged_tensor_sizes.begin(),
                                      ragged_tensor_sizes.end()};
@@ -1610,7 +1611,7 @@ class RaggedAllToAllTest : public AsyncCollectiveOps {
         start_indices[0] = input_offsets(i, j);
         input_data[i].UpdateSlice(chunk_data, start_indices);
 
-        start_indices[0] = output_offsets(j, i);
+        start_indices[0] = output_offsets(i, j);
         output_data[j].UpdateSlice(chunk_data, start_indices);
       }
     }

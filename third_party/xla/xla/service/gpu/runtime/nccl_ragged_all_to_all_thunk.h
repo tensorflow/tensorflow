@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -59,6 +60,8 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
+  absl::Status Cleanup(const CleanupParams& params) override;
+
   static const char* GetHloOpName() { return "ragged-all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
@@ -82,12 +85,16 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
   absl::flat_hash_map<se::StreamExecutor*,
                       std::vector<std::unique_ptr<se::MemoryAllocation>>>
       host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
+
+  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryBase>
+      device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 };
 
 absl::Status RunRaggedAllToAll(
     GpuCollectives* collectives, int64_t ragged_row_element_size,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs);
+    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
+    const se::DeviceMemoryBase& output_offsets_device_buffer);
 
 }  // namespace gpu
 }  // namespace xla

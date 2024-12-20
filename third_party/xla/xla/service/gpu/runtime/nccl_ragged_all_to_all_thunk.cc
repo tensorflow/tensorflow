@@ -96,7 +96,7 @@ class IntegerOperandData {
 // in the host memory allocated by StreamExecutor to copy data from the device
 // memory.
 absl::StatusOr<std::vector<IntegerOperandData>> LoadRaggedTensorMetadata(
-    se::Stream& stream, std::vector<DeviceBufferPair>& buffers,
+    se::Stream& stream, const std::vector<DeviceBufferPair>& buffers,
     const std::vector<int64_t*>& ragged_metadata_allocs) {
   std::vector<IntegerOperandData> indices;
   for (int i = 0; i < kNumRaggedMetadataOperands; ++i) {
@@ -166,6 +166,31 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
     host_buffer_allocs_.emplace(params.executor, std::move(allocs));
   }
 
+  if (!device_buffer_allocs_.contains(params.executor)) {
+    se::DeviceMemoryBase output_offsets_device_buffer =
+        params.executor->Allocate(config_.num_ragged_rows * sizeof(int64_t));
+
+    if (output_offsets_device_buffer.is_null()) {
+      return absl::InternalError("Failed to allocate output offsets buffer.");
+    }
+
+    device_buffer_allocs_.emplace(params.executor,
+                                  output_offsets_device_buffer);
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status NcclRaggedAllToAllStartThunk::Cleanup(
+    const CleanupParams& params) {
+  absl::MutexLock lock(&mutex_);
+
+  if (device_buffer_allocs_.contains(params.executor)) {
+    se::DeviceMemoryBase alloc =
+        device_buffer_allocs_.extract(params.executor).mapped();
+    params.executor->Deallocate(&alloc);
+  }
+
   return absl::OkStatus();
 }
 
@@ -182,6 +207,7 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
   // Get buffer allocs to load sizes and offsets of ragged tensors from device
   // memory.
   std::vector<int64_t*> ragged_metadata_allocs(4);
+  se::DeviceMemoryBase output_offsets_device_buffer;
   {
     absl::MutexLock lock(&mutex_);
     auto it = host_buffer_allocs_.find(stream.parent());
@@ -191,28 +217,72 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
       ragged_metadata_allocs[i] =
           reinterpret_cast<int64_t*>(it->second[i]->opaque());
     }
+
+    auto jt = device_buffer_allocs_.find(stream.parent());
+    CHECK(jt != device_buffer_allocs_.end());
+    output_offsets_device_buffer = jt->second;
   }
 
   return xla::gpu::RunRaggedAllToAll(
       collectives, config_.ragged_row_element_size, device_buffers, stream,
-      comm_handle.comm, ragged_metadata_allocs);
+      comm_handle.comm, ragged_metadata_allocs, output_offsets_device_buffer);
 }
 
 AsyncStreamKind NcclRaggedAllToAllStartThunk::GetAsyncStreamKind() const {
   return AsyncStreamKind::kCollective;
 }
 
+// Runs AllToAll on a buffer that contains ragged tensor metadata.
+absl::Status RunAllToAllOnIndexBuffer(
+    GpuCollectives* collectives, const se::DeviceMemoryBase& source_buffer,
+    const se::DeviceMemoryBase& destination_buffer, PrimitiveType element_type,
+    se::Stream& stream, Communicator* comm) {
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+
+  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  for (int peer = 0; peer < num_ranks; ++peer) {
+    se::DeviceMemoryBase send_slice = collectives->Slice(
+        source_buffer, element_type, /*offset=*/peer, /*count=*/1);
+    se::DeviceMemoryBase recv_slice = collectives->Slice(
+        destination_buffer, element_type, /*offset=*/peer, /*count=*/1);
+
+    TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type, /*count=*/1, peer,
+                                  GpuCollectives::On(stream)));
+
+    TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type, /*count=*/1, peer,
+                                  GpuCollectives::On(stream)));
+  }
+
+  TF_RETURN_IF_ERROR(collectives->GroupEnd());
+  return stream.BlockHostUntilDone();
+}
+
 absl::Status RunRaggedAllToAll(
     GpuCollectives* collectives, int64_t ragged_row_element_size,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs) {
+    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
+    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
+    const se::DeviceMemoryBase& output_offsets_device_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing ragged-all-to-all from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),
+                                          original_buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+
+  std::vector<DeviceBufferPair> buffers = original_buffers;
+
+  // `output_offsets` of the RaggedAllToAll instruction are sharded in a way,
+  // that `output_offset[i]` is an offset in the i-th peer output buffer. To
+  // make it work for NCCL model with send/recv, we need to know offsets in the
+  // local output buffer. To get the correct offsets we perform an AllToAll on
+  // the output_offsets buffer.
+  DeviceBufferPair& output_offsets_buffer_pair = buffers[4];
+  TF_RETURN_IF_ERROR(RunAllToAllOnIndexBuffer(
+      collectives, output_offsets_buffer_pair.source_buffer,
+      output_offsets_device_buffer, output_offsets_buffer_pair.element_type,
+      stream, comm));
+  output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
 
   TF_ASSIGN_OR_RETURN(
       std::vector<IntegerOperandData> ragged_metadata,
@@ -225,7 +295,7 @@ absl::Status RunRaggedAllToAll(
 
   TF_RETURN_IF_ERROR(collectives->GroupStart());
 
-  DeviceBufferPair& data_buffer = buffers[0];
+  const DeviceBufferPair& data_buffer = buffers[0];
   for (int peer = 0; peer < num_ranks; ++peer) {
     se::DeviceMemoryBase send_slice =
         collectives->Slice(data_buffer.source_buffer, data_buffer.element_type,
