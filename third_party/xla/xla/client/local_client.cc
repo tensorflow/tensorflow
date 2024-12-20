@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/local_client.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>

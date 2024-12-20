@@ -108,6 +108,7 @@ xla_cc_test(
         ":executable_build_options",
         "//xla:protobuf_util",
         "//xla:shape_util",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/service:computation_placer",
         "//xla/service:test_compilation_environment_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
