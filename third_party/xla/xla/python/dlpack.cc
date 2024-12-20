@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/dlpack_strides.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
@@ -210,37 +211,6 @@ absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
     default:
       return Unimplemented("Unknown or invalid DLPack type code %d", type.code);
   }
-}
-
-absl::StatusOr<std::vector<int64_t>> StridesToLayout(
-    absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
-  CHECK_EQ(dims.size(), strides.size());
-  std::vector<int64_t> minor_to_major(dims.size());
-  std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
-  absl::c_sort(minor_to_major, [&](int a, int b) {
-    if (strides[a] < strides[b]) {
-      return true;
-    }
-    if (strides[a] > strides[b]) {
-      return false;
-    }
-    // If two dimensions have the same stride, prefer the major-to-minor
-    // interpretation of the ordering, since that's what JAX wants.
-    return b < a;
-  });
-  int64_t stride = 1;
-  for (int64_t d : minor_to_major) {
-    if (dims[d] > 1 && strides[d] != stride) {
-      return Unimplemented(
-          "Only DLPack tensors with trivial (compact) striding are supported; "
-          "i.e., tensors whose striding represents a transposition of the "
-          "underlying buffer but not broadcasting. Dimensions were: [%s], "
-          "strides were [%s].",
-          absl::StrJoin(dims, ","), absl::StrJoin(strides, ","));
-    }
-    stride *= dims[d];
-  }
-  return minor_to_major;
 }
 
 absl::StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
