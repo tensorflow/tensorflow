@@ -539,6 +539,79 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
                              error_spec_);
 }
 
+// Test grouped convolution (i.e. feature group count > 1) with LHS dilation.
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x4x3_2x2x2_WithLHSDilation_Grouped) {
+  XlaBuilder builder(TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 4, 3});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bf0.
+    ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{1, 1}},
+        /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1),
+        /*feature_group_count=*/2);
+  }
+
+  Array3D<float> input({{{0, 10, 20}, {1, 11, 21}, {2, 12, 22}, {3, 13, 23}}});
+  Array3D<float> filter({{{11, 21}, {12, 22}}, {{31, 41}, {32, 42}}});
+
+  Array3D<float> expected(
+      {{{22, 12, 452, 242, 882, 472}, {208, 158, 1038, 788, 1868, 1418}}});
+
+  auto input_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
+          .value();
+  auto filter_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
+          .value();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
+// Test grouped batched convolution (i.e. feature group count > 1) with LHS
+// dilation.
+XLA_TEST_F(ConvolutionTest, Convolve1D_2x4x3_2x2x2_WithLHSDilation_Grouped) {
+  XlaBuilder builder(TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 3});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bf0.
+    ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{1, 1}},
+        /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1),
+        /*feature_group_count=*/2);
+  }
+
+  Array3D<float> input(
+      {{{0, 10, 20}, {1, 11, 21}, {2, 12, 22}, {3, 13, 23}},
+       {{0, 100, 200}, {10, 110, 210}, {20, 120, 220}, {30, 130, 230}}});
+  Array3D<float> filter({{{11, 21}, {12, 22}}, {{31, 41}, {32, 42}}});
+
+  Array3D<float> expected(
+      {{{22, 12, 452, 242, 882, 472}, {208, 158, 1038, 788, 1868, 1418}},
+       {{220, 120, 4520, 2420, 8820, 4720},
+        {2080, 1580, 10380, 7880, 18680, 14180}}});
+
+  auto input_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
+          .value();
+  auto filter_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
+          .value();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
 XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   XlaBuilder builder(TestName());
   {
