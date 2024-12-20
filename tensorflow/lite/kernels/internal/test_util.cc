@@ -20,6 +20,9 @@ limitations under the License.
 #include <iterator>
 #include <random>
 
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/types.h"
+
 namespace tflite {
 
 // this is a copied from an internal function in propagate_fixed_sizes.cc

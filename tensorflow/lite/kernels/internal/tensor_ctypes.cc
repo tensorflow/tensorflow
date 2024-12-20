@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+
 namespace tflite {
 
 RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
