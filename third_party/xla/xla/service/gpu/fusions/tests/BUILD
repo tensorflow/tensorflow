@@ -12,7 +12,11 @@ package(
 
 lit_test_suite(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        ["**/*.hlo"],
+        # TODO(b/385081952): Enable sorted scatters.
+        exclude = ["scatter/sorted_indices.hlo"],
+    ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
