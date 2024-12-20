@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_DEVICES_H_
 #define TENSORFLOW_CORE_GRAPPLER_DEVICES_H_
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 
