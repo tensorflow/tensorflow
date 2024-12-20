@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <string>
 
+#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
@@ -176,7 +177,8 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
   // Transform HLO operations to LinAlg and standard.
-  pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
 
   // Remove the remaining references to unsigned types after all HLO compute
