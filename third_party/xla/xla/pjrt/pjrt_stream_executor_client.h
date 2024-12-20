@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/threadpool.h"
@@ -1012,6 +1014,13 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return fingerprint_;
   };
 
+  void SetInputHloSnapshotBits(HloModuleProto hlo_module,
+                               DebugOptions debug_options) {
+    input_hlo_snapshot_bits_ =
+        std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
+            HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
+  }
+
  protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;
@@ -1093,6 +1102,14 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
   std::string fingerprint_;
+
+  struct InputHloSnapshotBits {
+    HloModuleProto hlo_module;
+    DebugOptions debug_options;
+  };
+
+  // The unoptimized (unsharded) HloModule. Primarily used for debugging.
+  std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
 };
 
 }  // namespace xla
