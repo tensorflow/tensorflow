@@ -527,6 +527,8 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
 
 TEST_F(GpuCompilerTestWithAutotuneDb,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+  GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
+               << " until flakiness is fixed.";
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
