@@ -26,6 +26,11 @@ cc_library(
     hdrs = ["error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    visibility = [
+        "//learning/expander/pod/inference_api/models/l2cinferencer/interpreters:__pkg__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [],
 )
 
