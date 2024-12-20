@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/bcast.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 namespace tensorflow {
 
 BCast::Vec BCast::FromShape(const TensorShape& shape) {

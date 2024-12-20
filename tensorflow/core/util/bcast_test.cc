@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/bcast.h"
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/str_join.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
