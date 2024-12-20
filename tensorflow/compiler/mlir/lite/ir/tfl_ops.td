@@ -5300,6 +5300,59 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
   // code redundancy.
 }
 
+def TFL_FunctionalIfOp : Op<TFL_Dialect, "functional_if"> {
+  let summary = "output = cond ? then_branch(input) : else_branch(input)";
+
+  let description = [{
+    The `tfl.functional_if` operation represents an if-then-else construct for
+    conditionally executing two branches of code. Branches are encoded expliclty
+    as functions whose names this op holds reference to. This op is amenable
+    to being exported to flatbuffer, while TFL_IfOp is not.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$cond,
+    Variadic<AnyTensor>:$input,
+
+    FlatSymbolRefAttr:$then_branch,
+    FlatSymbolRefAttr:$else_branch,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<AnyTensor>:$output
+  );
+
+
+  let extraClassDeclaration = [{
+    // Resolve the then branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    func::FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getThenBranchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+        *this, getThenBranchAttr());
+    }
+    func::FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveThenFunction(table);
+    }
+
+    // Resolve the else branch function.
+    // Prefer passing in SymbolTableCollection to reduce lookup costs by
+    // enabling reusing cached symbol table lookup.
+    func::FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
+      if (table)
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getElseBranchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+        *this, getElseBranchAttr());
+    }
+    func::FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
+      return ResolveElseFunction(table);
+    }
+  }];
+}
+
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
     DeclareOpInterfaceMethods<LoopLikeOpInterface, ["isDefinedOutsideOfLoop"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
