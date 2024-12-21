@@ -23,7 +23,6 @@
 #include <cstdint>
 #include <ostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
