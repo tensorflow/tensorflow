@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
 #define TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
 
+#include <cstdint>
 #include <functional>
 
 #include "tensorflow/core/lib/core/threadpool.h"
