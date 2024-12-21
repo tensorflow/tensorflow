@@ -147,7 +147,8 @@ class SpmdPartitioningTest
     }
   }
 
-  int64_t NumOfInstructions(HloComputation* computation, HloOpcode opcode) {
+  int64_t NumOfInstructions(const HloComputation* computation,
+                            HloOpcode opcode) {
     int64_t count = 0;
     for (const HloInstruction* inst : computation->instructions()) {
       if (inst->opcode() == opcode) {
@@ -395,6 +396,68 @@ ENTRY entry {
       AllOf(op::Copy(op::Reshape(op::Transpose(op::AllToAll(AllOf(
                 op::Reshape(op::Parameter()), op::Shape("s32[4,2,1]")))))),
             op::Shape("s32[8,1]")));
+}
+
+TEST_P(SpmdPartitioningTest, MultipleSourceTargetDimsInOneAllToAll1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param= s32[64,64,64,64] parameter(0), sharding={devices=[1,4,2,1]<=[8]}
+  ROOT %copy = s32[64,64,64,64] copy(%param), sharding={devices=[2,1,1,4]<=[4,2]T(1,0)}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+
+  auto* all_to_all = FindInstruction(module.get(), "all-to-all");
+  EXPECT_THAT(all_to_all, op::Shape("s32[8,32,16,32,16]"));
+  EXPECT_EQ(all_to_all->replica_groups().size(), 1);
+  EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 8);
+}
+
+TEST_P(SpmdPartitioningTest, MultipleSourceTargetDimsInOneAllToAll2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param= f32[64,64,64,64,64,64] parameter(0), sharding={devices=[2,2,2,1,1,1]<=[8]}
+  ROOT %copy = f32[64,64,64,64,64,64] copy(%param), sharding={devices=[1,1,1,2,2,2]<=[2,2,2]T(1,0,2)}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 1);
+
+  auto* all_to_all = FindInstruction(module.get(), "all-to-all");
+  EXPECT_THAT(all_to_all, op::Shape("f32[8,32,32,32,32,32,32]"));
+  EXPECT_EQ(all_to_all->replica_groups().size(), 1);
+  EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 8);
+}
+
+TEST_P(SpmdPartitioningTest, MultipleSourceTargetDimsInOneAllToAll3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param= f32[64,64,64,64] parameter(0), sharding={devices=[2,4,8,1]<=[64]}
+  ROOT %copy = f32[64,64,64,64] copy(%param), sharding={devices=[4,2,1,8]<=[2,2,2,8]T(0,2,1,3)}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/64));
+
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+
+  auto* all_to_all = FindInstruction(module.get(), "all-to-all");
+  EXPECT_THAT(all_to_all, op::Shape("f32[16,16,16,8,8]"));
+  EXPECT_EQ(all_to_all->replica_groups().size(), 4);
+  EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 16);
 }
 
 TEST_P(SpmdPartitioningTest, TiledToTiledUneven) {
