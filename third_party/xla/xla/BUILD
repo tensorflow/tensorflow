@@ -200,12 +200,9 @@ cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test instead.",
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/testlib:test"],
 )
 
 cc_library(
@@ -899,12 +896,9 @@ cc_library(
     name = "test_helpers",
     testonly = 1,
     hdrs = ["test_helpers.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test_helpers instead.",
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/testlib:test_helpers"],
 )
 
 cc_library(
