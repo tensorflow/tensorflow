@@ -58,12 +58,20 @@ struct EigenEnvironment {
   using EnvThread = Thread;
 
   struct TaskImpl {
-    std::function<void()> f;
+    std::function<void()> fn;
     Context context;
     uint64 trace_id;
   };
 
   struct Task {
+    Task() = default;
+
+    Task(std::function<void()> fn, Context context, uint64 trace_id)
+        : f(TaskImpl{std::move(fn), std::move(context), trace_id}) {}
+
+    Task(Task&&) = default;
+    Task& operator=(Task&&) = default;
+
     std::optional<TaskImpl> f;
   };
 
@@ -94,14 +102,14 @@ struct EigenEnvironment {
       id = tracing::GetUniqueArg();
       tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
     }
-    return Task{TaskImpl{std::move(f), Context(ContextKind::kThread), id}};
+    return Task(std::move(f), Context(ContextKind::kThread), id);
   }
 
   void ExecuteTask(const Task& t) {
     WithContext wc(t.f->context);
     tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
                                  t.f->trace_id);
-    t.f->f();
+    t.f->fn();
   }
 };
 
