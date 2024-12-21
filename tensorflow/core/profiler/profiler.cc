@@ -16,8 +16,9 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cstdint>
+#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
