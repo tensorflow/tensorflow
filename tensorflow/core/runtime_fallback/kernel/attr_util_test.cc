@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"

@@ -128,6 +128,7 @@ tf_cc_test(
     deps = [
         ":attr_util",
         "//tensorflow/c:tf_tensor",
+        "@com_google_absl//absl/status",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

@@ -20,6 +20,7 @@ limitations under the License.
 #include <typeinfo>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringMap.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
