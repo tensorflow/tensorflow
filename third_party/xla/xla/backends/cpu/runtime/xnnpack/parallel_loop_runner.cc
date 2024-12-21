@@ -272,6 +272,35 @@ static Task3DTile2DIndex Delinearize(size_t task_index, size_t range_i,
 // (2) If done event is not available, we have to overwrite it with a new one
 //     that will be set to concrete state after the task is executed.
 
+void ParallelLoopRunner::Parallelize(size_t range, Task1D task) {
+  DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
+  DCHECK_GT(range, 0) << "Expected at least one task";
+
+  // Fast path for the degenerate parallel loop with single task.
+  if (ABSL_PREDICT_TRUE(range == 1)) {
+    // Execute task in the caller thread if done event is already available.
+    if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
+      task(0);
+      return;
+    }
+
+    // Schedule task when done event becomes available.
+    ScheduleOne([task = std::move(task)] { task(0); });
+    return;
+  }
+
+  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
+  // pool when done event becomes available.
+  auto parallel_config = ComputeParallelTaskConfig(range);
+  auto parallel_task = [parallel_config,
+                        task = std::move(task)](size_t parallel_task_index) {
+    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
+    for (size_t i = begin; i < end; ++i) task(i);
+  };
+
+  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
+}
+
 void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
                                      Task1DTile1D task) {
   DCHECK(done_event_) << "Parallel loop runner is in moved-from state";

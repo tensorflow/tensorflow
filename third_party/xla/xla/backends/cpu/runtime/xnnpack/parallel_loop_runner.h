@@ -52,6 +52,8 @@ class ParallelLoopRunner {
   static tsl::AsyncValueRef<tsl::Chain> TakeDoneEvent(
       ParallelLoopRunner&& runner);
 
+  using Task1D = std::function<void(size_t offset)>;
+
   using Task1DTile1D = std::function<void(size_t offset, size_t extent)>;
 
   using Task2DTile1D =
@@ -60,6 +62,12 @@ class ParallelLoopRunner {
   using Task3DTile2D =
       std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
                          size_t extent_j, size_t extent_k)>;
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range; i++)
+  //     task(i);
+  void Parallelize(size_t range, Task1D task);
 
   // This function implements a parallel version of a following loop:
   //

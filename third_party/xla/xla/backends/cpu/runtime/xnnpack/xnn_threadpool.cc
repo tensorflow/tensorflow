@@ -159,6 +159,22 @@ static size_t GetThreadsCount(pthreadpool_t threadpool) {  // NOLINT
   return Cast(threadpool)->runner()->num_threads();
 }
 
+static void Parallelize1D(  // NOLINT
+    pthreadpool_t threadpool, pthreadpool_task_1d_t function, void* context,
+    size_t range, uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    for (size_t i = 0; i < range; ++i) {
+      function(context, i);
+    }
+    return;
+  }
+
+  ParallelLoopRunner::Task1D task = [function, context](size_t offset) {
+    (*function)(context, offset);
+  };
+  Cast(threadpool)->runner()->Parallelize(range, task);
+}
+
 static void Parallelize1DTile1D(  // NOLINT
     pthreadpool_t threadpool, pthreadpool_task_1d_tile_1d_t function,
     void* context, size_t range, size_t tile, uint32_t flags) {
@@ -243,7 +259,7 @@ extern "C" void pthreadpool_parallelize_1d(pthreadpool_t threadpool,
                                            pthreadpool_task_1d_t function,
                                            void* context, size_t range,
                                            uint32_t flags) {
-  LOG(FATAL) << "Not implemented";
+  xla::cpu::Parallelize1D(threadpool, function, context, range, flags);
 }
 
 extern "C" void pthreadpool_parallelize_1d_with_thread(

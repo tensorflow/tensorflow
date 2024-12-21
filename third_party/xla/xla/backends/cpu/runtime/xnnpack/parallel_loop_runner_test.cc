@@ -23,16 +23,40 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
+
+TEST(ParallelLoopRunnerTest, Parallelize1D) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  constexpr int32_t d0 = 128;
+
+  auto* data = new int32_t[d0]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t offset) { data[offset] += 1; };
+
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+
+  tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0], d0),
+                             [](int32_t value) { return value == 5; }));
+}
 
 TEST(ParallelLoopRunnerTest, Parallelize1DTile1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
