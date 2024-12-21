@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_NODE_ORDER_H_
 
 #include <functional>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
