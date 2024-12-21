@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 #define XLA_HLO_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 
+#include <memory>
 #include <optional>
 #include <vector>
 
