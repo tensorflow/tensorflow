@@ -1555,8 +1555,7 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
     params->keep_num_dims = schema_params->keep_num_dims();
-    params->asymmetric_quantize_inputs =
-        schema_params->asymmetric_quantize_inputs();
+    params->asymmetric_quantize_inputs = true;
     TF_LITE_ENSURE_STATUS(
         ConvertTensorType(schema_params->quantized_bias_type(),
                           &params->quantized_bias_type, error_reporter));
