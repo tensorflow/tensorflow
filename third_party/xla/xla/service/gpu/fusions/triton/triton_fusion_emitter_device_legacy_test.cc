@@ -1881,7 +1881,7 @@ ENTRY e  {
 
   TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "fusion", R"(
         CHECK:      tt.dot
-        CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<f16> 
+        CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<f16>
         CHECK:      tt.broadcast %{{.*}} : tensor<1x1xf16> -> tensor<32x32xf16>
         CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<32x32xf16>
     )"));

@@ -11683,7 +11683,7 @@ ENTRY main {
 
   p1_copy1 = f32[8,8] copy(p1)
   p1_copy2 = f32[8,8] copy(p1)
- 
+
   r1 = f32[8,8] add(c, p1_copy1)
   r2 = f32[8,8] add(c, p1_copy2)
 
