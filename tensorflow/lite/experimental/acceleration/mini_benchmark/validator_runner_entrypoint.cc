@@ -26,7 +26,6 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <cstdint>
-#include <thread>  // NOLINT: only used on Android, where std::thread is allowed
 #include <utility>
 #include <vector>
 
