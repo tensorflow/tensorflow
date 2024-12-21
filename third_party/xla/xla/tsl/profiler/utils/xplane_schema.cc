@@ -380,6 +380,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
        {"action_inputs", kMegaScaleActionInputs},
        {"transfer_source", kMegaScaleTransferSource},
        {"transfer_destinations", kMegaScaleTransferDestinations},
+       {"dcn_topology_level", kMegaScaleTransferDcnTopologyLevel},
        {"buffer_sizes", kMegaScaleBufferSizes},
        {"compute_operation", kMegaScaleComputeOperation},
        {"chunk", kMegaScaleChunk},
