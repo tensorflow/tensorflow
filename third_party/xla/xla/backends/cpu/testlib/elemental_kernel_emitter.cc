@@ -21,11 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -45,25 +42,15 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla::cpu {
 
-class TemporraryCpuElementalIrEmitter : public CpuElementalIrEmitter {
- public:
-  using CpuElementalIrEmitter::CpuElementalIrEmitter;
-
- private:
-  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    return absl::UnimplementedError("");
-  }
-};
-
 ElementalKernelEmitter::ElementalKernelEmitter(
-    std::unique_ptr<HloInstruction> op_hlo)
+    std::unique_ptr<HloInstruction> op_hlo,
+    ThreadLocalCallCallback thread_local_call_fn)
     : op_hlo_(std::move(op_hlo)),
+      thread_local_call_fn_(std::move(thread_local_call_fn)),
       context_(std::make_unique<llvm::LLVMContext>()),
       kernel_api_ir_builder_(*context_.getContext(),
                              KernelApiIrBuilder::Options{true, 256}) {}
@@ -105,9 +92,8 @@ ElementalKernelEmitter::EmitKernelSpec() {
     };
   }
 
-  // TODO(willfroom): use real IR emitter here.
-  TemporraryCpuElementalIrEmitter elemental_ir_emitter(module.get(),
-                                                       &ir_builder, true, true);
+  CpuElementalIrEmitter elemental_ir_emitter(module.get(), &ir_builder,
+                                             thread_local_call_fn_, true, true);
 
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(op_hlo_.get(),

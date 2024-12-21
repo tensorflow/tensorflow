@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <Python.h>
+
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -65,8 +67,8 @@ NB_MODULE(_extension, kernel_runner_module) {
   // register the derived versions.
   ImportBaseClasses(kernel_runner_module);
 
-  nb::class_<LlvmIrKernelSpec, KernelSpec> give_me_a_name(kernel_runner_module,
-                                                          "LlvmIrKernelSpec");
+  nb::class_<LlvmIrKernelSpec, KernelSpec>(kernel_runner_module,
+                                           "LlvmIrKernelSpec");
 
   // Use a tuple and cast to ThreadDim to take advantage of built in bindings.
   using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
@@ -84,7 +86,10 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<std::unique_ptr<HloInstruction>>());
+      .def("__init__", [](ElementalKernelEmitter* self,
+                          std::unique_ptr<HloInstruction> op) {
+        new (self) ElementalKernelEmitter(std::move(op), nullptr);
+      });
 
   nb::class_<KernelRunner, xla::KernelRunner>(kernel_runner_module,
                                               "KernelRunner")
