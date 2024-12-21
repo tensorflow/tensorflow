@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <string>
@@ -111,8 +113,10 @@ TflBufferPtr TakeTflBuffer(LiteRtWeightsT& litert_weights) {
   return std::move(litert_weights.tfl_buf_);
 }
 
-void SetTflBuffer(LiteRtWeightsT& litert_weights, TflBufferPtr tfl_buffer) {
+void SetTflBuffer(LiteRtWeightsT& litert_weights, TflBufferPtr tfl_buffer,
+                  BufferRef<uint8_t>* flatbuffer) {
   litert_weights.tfl_buf_ = std::move(tfl_buffer);
+  litert_weights.flatbuffer_ = flatbuffer;
 }
 
 const std::vector<TflOpCodePtr>& GetTflOpCodes(
