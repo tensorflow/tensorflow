@@ -3416,6 +3416,9 @@ class SparseApplyKerasMomentumOp : public OpKernel {
                                 accum.shape().DebugString()));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
                 errors::InvalidArgument("var must be at least 1 dimensional"));
+    if (var.dtype() != DT_FLOAT || accum.dtype() != DT_FLOAT) {
+        absl::InvalidArgumentError("`var` and `accum` must be of float32 type");
+    }
 
     const Tensor& lr = ctx->input(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
