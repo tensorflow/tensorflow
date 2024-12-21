@@ -1821,7 +1821,7 @@ TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)
@@ -1855,7 +1855,7 @@ TEST_F(LayoutAssignmentTest,
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)
