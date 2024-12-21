@@ -49,8 +49,7 @@ void DeepCopy(const Tensor& input, Tensor* output);
 // REQUIRES: Each member of 'tensors' must point to data stored in CPU memory.
 // REQUIRES: Each member of 'tensors' must be a Tensor of a copy-able type if it
 //           is not appropriately memory-aligned.
-absl::Status Concat(absl::Span<const Tensor> tensors,
-                    Tensor* result) TF_MUST_USE_RESULT;
+absl::Status Concat(absl::Span<const Tensor> tensors, Tensor* result);
 
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
 // dimension. The ith output tensor has 0th-dimension size 'sizes[i]'.
@@ -63,7 +62,7 @@ absl::Status Concat(absl::Span<const Tensor> tensors,
 //
 // Split() and Concat() are inverse operations.
 absl::Status Split(const Tensor& tensor, absl::Span<const int64_t> sizes,
-                   std::vector<Tensor>* result) TF_MUST_USE_RESULT;
+                   std::vector<Tensor>* result);
 
 namespace internal {
 void SetTensorProtoShape(absl::Span<const size_t> shape,

@@ -467,69 +467,63 @@ class InferenceContext {
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
   // Note that <*out> may be set to <shape>.
-  absl::Status WithRank(ShapeHandle shape, int64_t rank,
-                        ShapeHandle* out) TF_MUST_USE_RESULT;
+  absl::Status WithRank(ShapeHandle shape, int64_t rank, ShapeHandle* out);
   absl::Status WithRankAtLeast(ShapeHandle shape, int64_t rank,
-                               ShapeHandle* out) TF_MUST_USE_RESULT;
+                               ShapeHandle* out);
   absl::Status WithRankAtMost(ShapeHandle shape, int64_t rank,
-                              ShapeHandle* out) TF_MUST_USE_RESULT;
+                              ShapeHandle* out);
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.
   //
   // Note that <*out> may be set to <dim>.
   absl::Status WithValue(DimensionHandle dim, int64_t value,
-                         DimensionHandle* out) TF_MUST_USE_RESULT;
+                         DimensionHandle* out);
 
   // Merges <s0> and <s1> and returns the merged shape in <*out>. See
   // 'MergeInput' function for full details and examples.
-  absl::Status Merge(ShapeHandle s0, ShapeHandle s1,
-                     ShapeHandle* out) TF_MUST_USE_RESULT;
+  absl::Status Merge(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
 
   // Asserts that <s>'s rank >= <prefix>'s rank, and the first
   // <prefix.rank> dimensions of <s> are compatible with the dimensions of
   // <prefix>.
   // Returns the merged results in <*s_out> and <*prefix_out>.
   absl::Status MergePrefix(ShapeHandle s, ShapeHandle prefix,
-                           ShapeHandle* s_out,
-                           ShapeHandle* prefix_out) TF_MUST_USE_RESULT;
+                           ShapeHandle* s_out, ShapeHandle* prefix_out);
 
   // Merges <d0> and <d1> and returns the merged dimension in <*out>. If <d0>
   // and <d1> have incompatible values, returns an error.
   //
   // Note that <*out> may be set to <d0> or <d1>.
   absl::Status Merge(DimensionHandle d0, DimensionHandle d1,
-                     DimensionHandle* out) TF_MUST_USE_RESULT;
+                     DimensionHandle* out);
 
   // Returns in <*out> a sub-shape of <s> with dimensions [start:].
   // <start> can be negative to index from the end of the shape. If <start> >
   // rank of <s>, then an empty subshape is returned.
-  absl::Status Subshape(ShapeHandle s, int64_t start,
-                        ShapeHandle* out) TF_MUST_USE_RESULT;
+  absl::Status Subshape(ShapeHandle s, int64_t start, ShapeHandle* out);
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   absl::Status Subshape(ShapeHandle s, int64_t start, int64_t end,
-                        ShapeHandle* out) TF_MUST_USE_RESULT;
+                        ShapeHandle* out);
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   // <stride> can be negative, to reverse the <s>.
   absl::Status Subshape(ShapeHandle s, int64_t start, int64_t end,
-                        int64_t stride, ShapeHandle* out) TF_MUST_USE_RESULT;
+                        int64_t stride, ShapeHandle* out);
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
   // of <s1>.
-  absl::Status Concatenate(ShapeHandle s1, ShapeHandle s2,
-                           ShapeHandle* out) TF_MUST_USE_RESULT;
+  absl::Status Concatenate(ShapeHandle s1, ShapeHandle s2, ShapeHandle* out);
 
   // Returns in <out> the shape from replacing <s.dim[dim_index]> with
   // <new_dim>.
   absl::Status ReplaceDim(ShapeHandle s, int64_t dim_index,
-                          DimensionHandle new_dim,
-                          ShapeHandle* out) TF_MUST_USE_RESULT;
+                          DimensionHandle new_dim, ShapeHandle* out);
 
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
