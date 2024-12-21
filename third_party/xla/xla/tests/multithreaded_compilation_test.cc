@@ -14,13 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "third_party/protobuf/util/message_differencer.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
