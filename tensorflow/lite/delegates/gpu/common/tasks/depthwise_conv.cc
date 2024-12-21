@@ -400,6 +400,13 @@ DepthwiseConv CreateDepthwiseConvolution2D(
       params.y_dilation_size = attr.dilations.h;
       params.work_group_size = int3(16, 16, 1);
     }
+  } else if (gpu_info.IsIntel()) {
+    params.use_weights_caching = true;
+    params.x_kernel_size = attr.weights.shape.w;
+    params.y_kernel_size = attr.weights.shape.h;
+    params.x_dilation_size = attr.dilations.w;
+    params.y_dilation_size = attr.dilations.h;
+    params.work_group_size = int3(32, 16, 1);
   }
   DepthwiseConv op(definition, params);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
