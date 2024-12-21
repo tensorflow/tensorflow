@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 #define XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 
+#include <cstdint>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"

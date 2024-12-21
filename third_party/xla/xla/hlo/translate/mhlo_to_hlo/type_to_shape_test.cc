@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <cstdint>
 #include <iostream>
+#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"

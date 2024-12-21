@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
