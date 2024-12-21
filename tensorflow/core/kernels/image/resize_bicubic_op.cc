@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <vector>
 #define EIGEN_USE_THREADS
 
 #include <math.h>
