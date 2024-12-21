@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-set -euxo pipefail
+set -exo pipefail
 
 function resultstore_extract_fallback {
   # In case the main script fails somehow.
