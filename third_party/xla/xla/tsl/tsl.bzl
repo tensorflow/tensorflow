@@ -357,7 +357,12 @@ def tf_openmp_copts():
         "//conditions:default": [],
     })
 
-def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs):
+def tsl_gpu_library(
+        deps = None,
+        cuda_deps = None,
+        copts = tsl_copts(),
+        add_gpu_deps_for_oss = True,
+        **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
     When the library is built with --config=cuda:
@@ -373,6 +378,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         '--config=cuda' is passed to the bazel command line.
       deps: dependencies which will always be linked.
       copts: copts always passed to the cc_library.
+      add_gpu_deps_for_oss: Whether to add gpu deps for OSS too.
       **kwargs: Any other argument to cc_library.
     """
     if not deps:
@@ -381,19 +387,30 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    deps = deps + if_cuda(cuda_deps)
     if "default_copts" in kwargs:
         copts = kwargs["default_copts"] + copts
         kwargs.pop("default_copts", None)
-    cc_library(
-        deps = deps + if_cuda([
+    if add_gpu_deps_for_oss:
+        final_deps = deps + if_cuda(cuda_deps + [
             clean_dep("//xla/tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm([
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
-        ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        ])
+        final_copts = copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
+    else:
+        final_deps = deps + if_google(cuda_deps + if_cuda([
+            clean_dep("//xla/tsl/cuda:cudart"),
+            "@local_config_cuda//cuda:cuda_headers",
+        ]) + if_rocm([
+            "@local_config_rocm//rocm:hip",
+            "@local_config_rocm//rocm:rocm_headers",
+        ]))
+        final_copts = copts + if_google(if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"])) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
+    cc_library(
+        deps = final_deps,
+        copts = final_copts,
         **kwargs
     )
 
