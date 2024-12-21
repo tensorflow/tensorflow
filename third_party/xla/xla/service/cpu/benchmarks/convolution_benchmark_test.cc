@@ -138,13 +138,16 @@ static void BM_GroupedConv2D(benchmark::State& state) {
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
 static void BM_Conv1DStrided(benchmark::State& state) {
+  int input_channels = state.range(0);
+  int output_channels = state.range(1);
+
   std::string hlo_module = R"(
     HloModule jit_jconvf
 
     ENTRY main.6 {
-      Arg_0.1 = f32[16,1,25600]{2,1,0} parameter(0)
-      Arg_1.2 = f32[1,129,256]{2,1,0} parameter(1)
-      ROOT conv.3 = f32[16,129,400]{2,1,0} convolution(Arg_0.1, Arg_1.2),
+      Arg_0.1 = $input_shape parameter(0)
+      Arg_1.2 = $kernel_shape parameter(1)
+      ROOT conv.3 = $output_shape convolution(Arg_0.1, Arg_1.2),
         window={size=256 stride=64 pad=96_96}, dim_labels=bf0_io0->bf0
     }
   )";
@@ -152,9 +155,11 @@ static void BM_Conv1DStrided(benchmark::State& state) {
   std::minstd_rand0 engine;
 
   // NCW layout
-  auto input_shape = ShapeUtil::MakeShape(F32, {16, 1, 25600});
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, input_channels, 25600});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, output_channels, 400});
   // IOW layout
-  auto kernel_shape = ShapeUtil::MakeShape(F32, {1, 129, 256});
+  auto kernel_shape =
+      ShapeUtil::MakeShape(F32, {input_channels, output_channels, 256});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -162,7 +167,10 @@ static void BM_Conv1DStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args,
+                           {{"$input_shape", input_shape.ToString()},
+                            {"$kernel_shape", kernel_shape.ToString()},
+                            {"$output_shape", output_shape.ToString()}}));
 }
 
 // Transposed version (i.e. gradient) of BM_Conv1DStrided. In terms of shapes,
@@ -172,13 +180,16 @@ static void BM_Conv1DStrided(benchmark::State& state) {
 // Currently, the performance is few times worse than regular conv when they
 // should be similar.
 static void BM_Conv1DTransposedStrided(benchmark::State& state) {
+  int input_channels = state.range(0);
+  int output_channels = state.range(1);
+
   std::string hlo_module = R"(
     HloModule jit_jconvt
 
     ENTRY main.6 {
-      Arg_0.1 = f32[16,129,400]{2,1,0} parameter(0)
-      Arg_1.2 = f32[129,1,256]{2,1,0} parameter(1)
-      ROOT conv.3 = f32[16,1,25600]{2,1,0} convolution(Arg_0.1, Arg_1.2),
+      Arg_0.1 = $input_shape parameter(0)
+      Arg_1.2 = $kernel_shape parameter(1)
+      ROOT conv.3 = $output_shape convolution(Arg_0.1, Arg_1.2),
         window={size=256 pad=159_159 lhs_dilate=64}, dim_labels=bf0_io0->bf0
     }
   )";
@@ -186,9 +197,11 @@ static void BM_Conv1DTransposedStrided(benchmark::State& state) {
   std::minstd_rand0 engine;
 
   // NCW layout
-  auto input_shape = ShapeUtil::MakeShape(F32, {16, 129, 400});
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, input_channels, 400});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, output_channels, 25600});
   // IOW layout
-  auto kernel_shape = ShapeUtil::MakeShape(F32, {129, 1, 256});
+  auto kernel_shape =
+      ShapeUtil::MakeShape(F32, {input_channels, output_channels, 256});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -196,19 +209,24 @@ static void BM_Conv1DTransposedStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args,
+                           {{"$input_shape", input_shape.ToString()},
+                            {"$kernel_shape", kernel_shape.ToString()},
+                            {"$output_shape", output_shape.ToString()}}));
 }
 
 // The same shapes as BM_Conv1DTransposedStrided, but with a different layout.
 static void BM_Conv1DTransposedStridedNonDefaultLayout(
     benchmark::State& state) {
+  int input_channels = state.range(0);
+  int output_channels = state.range(1);
   std::string hlo_module = R"(
     HloModule jit_jconvt
 
     ENTRY main.6 {
-      Arg_0.1 = f32[16,400,129]{2,1,0} parameter(0)
-      Arg_1.2 = f32[256,1,129]{2,1,0} parameter(1)
-      ROOT conv.3 = f32[16,25600,1]{2,1,0} convolution(Arg_0.1, Arg_1.2),
+      Arg_0.1 = $input_shape parameter(0)
+      Arg_1.2 = $kernel_shape parameter(1)
+      ROOT conv.3 = $output_shape convolution(Arg_0.1, Arg_1.2),
         window={size=256 pad=159_159 lhs_dilate=64}, dim_labels=b0f_0oi->b0f
     }
   )";
@@ -216,9 +234,11 @@ static void BM_Conv1DTransposedStridedNonDefaultLayout(
   std::minstd_rand0 engine;
 
   // NWC layout
-  auto input_shape = ShapeUtil::MakeShape(F32, {16, 400, 129});
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, 400, input_channels});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, 25600, output_channels});
   // WOI layout
-  auto kernel_shape = ShapeUtil::MakeShape(F32, {256, 1, 129});
+  auto kernel_shape =
+      ShapeUtil::MakeShape(F32, {256, output_channels, input_channels});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -226,7 +246,10 @@ static void BM_Conv1DTransposedStridedNonDefaultLayout(
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args,
+                           {{"$input_shape", input_shape.ToString()},
+                            {"$kernel_shape", kernel_shape.ToString()},
+                            {"$output_shape", output_shape.ToString()}}));
 }
 
 // Regular strided 2D convolution. Buffer sizes and convolution parameters are
@@ -445,9 +468,19 @@ BENCHMARK(BM_GroupedConv2D)
 // 1D and 2D strided convolutions
 // -------------------------------------------------------------------------- //
 
-BENCHMARK(BM_Conv1DStrided)->MeasureProcessCPUTime();
-BENCHMARK(BM_Conv1DTransposedStrided)->MeasureProcessCPUTime();
-BENCHMARK(BM_Conv1DTransposedStridedNonDefaultLayout)->MeasureProcessCPUTime();
+BENCHMARK(BM_Conv1DStrided)
+    ->MeasureProcessCPUTime()
+    ->Args({1, 129})
+    ->Args({3, 129});
+BENCHMARK(BM_Conv1DTransposedStrided)
+    ->MeasureProcessCPUTime()
+    ->MeasureProcessCPUTime()
+    ->Args({129, 1})
+    ->Args({129, 3});
+BENCHMARK(BM_Conv1DTransposedStridedNonDefaultLayout)
+    ->MeasureProcessCPUTime()
+    ->Args({129, 1})
+    ->Args({129, 3});
 
 BENCHMARK(BM_Conv2DStrided)->MeasureProcessCPUTime();
 BENCHMARK(BM_Conv2DTransposedStrided)->MeasureProcessCPUTime();

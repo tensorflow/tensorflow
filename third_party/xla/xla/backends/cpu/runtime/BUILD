@@ -379,6 +379,8 @@ cc_library(
         ":concurrency",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:logging",
     ],
