@@ -114,27 +114,6 @@ double GetTimeInMs(const Collection& type_ps, EventType event_type) {
   return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
 }
 
-StepSummary GetStepSummaryForSampleStats(
-    const tsl::Stat<double>& sample_stats) {
-  StepSummary step_time_summary;
-  double avg, sdv, min, max;
-  if (sample_stats.empty()) {
-    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
-    // prefer to show an 0 instead.
-    avg = sdv = min = max = 0.0;
-  } else {
-    avg = sample_stats.avg();
-    sdv = sqrt(sample_stats.sample_variance());
-    min = sample_stats.min();
-    max = sample_stats.max();
-  }
-  step_time_summary.set_average(avg);
-  step_time_summary.set_standard_deviation(sdv);
-  step_time_summary.set_minimum(min);
-  step_time_summary.set_maximum(max);
-  return step_time_summary;
-}
-
 GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
     const InputPipelineAnalysisResult& analysis) {
   tsl::Stat<double> unknown_time_ms;
@@ -483,6 +462,27 @@ std::string DatasetIntroDoc() {
 }
 
 }  // namespace
+
+StepSummary GetStepSummaryForSampleStats(
+    const tsl::Stat<double>& sample_stats) {
+  StepSummary step_time_summary;
+  double avg, sdv, min, max;
+  if (sample_stats.empty()) {
+    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
+    // prefer to show an 0 instead.
+    avg = sdv = min = max = 0.0;
+  } else {
+    avg = sample_stats.avg();
+    sdv = sqrt(sample_stats.sample_variance());
+    min = sample_stats.min();
+    max = sample_stats.max();
+  }
+  step_time_summary.set_average(avg);
+  step_time_summary.set_standard_deviation(sdv);
+  step_time_summary.set_minimum(min);
+  step_time_summary.set_maximum(max);
+  return step_time_summary;
+}
 
 void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result) {
