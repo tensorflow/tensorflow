@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 
 namespace {
 TEST(GetOpOptionTest, TestGetAddOptions) {
@@ -205,7 +206,7 @@ TEST(GetOpOptionTest, TestGetSubOptions) {
   ASSERT_EQ(fused_activation, 0);
 }
 
-TEST(GetOpOptionTest, TestGetReshapeOptions) {
+TEST(GetOpOptionTest, TestGetNullReshapeOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_reshape_op.tflite");
   auto subgraph = model.MainSubgraph();
   EXPECT_TRUE(subgraph);
@@ -215,8 +216,9 @@ TEST(GetOpOptionTest, TestGetReshapeOptions) {
 
   const int32_t* new_shape = nullptr;
   int32_t new_shape_size;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetReshapeNewShapeOption(op, &new_shape, &new_shape_size));
+
+  LITERT_ASSERT_STATUS_HAS_CODE(
+      LiteRtGetReshapeNewShapeOption(op, &new_shape, &new_shape_size), 1);
   ASSERT_EQ(new_shape_size, -1);
 }
 

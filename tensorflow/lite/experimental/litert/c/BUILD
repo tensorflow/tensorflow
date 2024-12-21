@@ -146,6 +146,7 @@ cc_test(
     deps = [
         ":litert_options",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
