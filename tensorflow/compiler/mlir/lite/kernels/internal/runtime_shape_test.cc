@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
