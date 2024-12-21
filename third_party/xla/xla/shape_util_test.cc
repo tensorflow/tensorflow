@@ -1222,6 +1222,25 @@ TEST(ShapeUtilTest, B_251055887) {
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
+TEST(ShapeUtilTest, B_385192799) {
+  // This case failed the fuzzer; see b/385192799.
+  ShapeProto proto;
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: 2000)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: -1)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
+}
+
 TEST(ShapeUtilTest, Int4ShapeSize) {
   Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
   int4_shape.mutable_layout()->set_element_size_in_bits(4);
