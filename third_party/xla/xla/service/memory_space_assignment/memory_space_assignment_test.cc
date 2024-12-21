@@ -5493,6 +5493,11 @@ TEST_F(MemorySpaceAssignmentTest,
       /*minor_to_major=*/{1, 0}, /*tiles=*/{},
       /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
   // p0 is in the default memory space.
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
@@ -5533,13 +5538,14 @@ TEST_F(MemorySpaceAssignmentTest,
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
     return true;
   };
+  XLA_VLOG_LINES(3, module->ToString());
   std::unique_ptr<PresetAssignments> preset_assignments =
       AssignMemorySpace(module.get(), options);
-
+  XLA_VLOG_LINES(3, module->ToString());
   // Ensure that p1 is in the alternate memory and add, which has p1 as an
   // operand, has a direct dependency to p1 (no CopyStart/CopyDone).
-  EXPECT_THAT(p1, op::ShapeWithLayout(shape_in_alternate_mem));
-  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape_in_default_mem));
+  EXPECT_THAT(add, op::Add(op::Negate(), op::CopyDone()));
   // Make sure add is still in the alternate memory space.
   EXPECT_THAT(add, op::ShapeWithLayout(shape_in_alternate_mem));
 
@@ -5548,6 +5554,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // alternate memory space are left to BufferAssignment to be allocated.
   for (const auto& position_and_chunk : preset_assignments->chunks()) {
     const HloPosition& position = position_and_chunk.first;
+    XLA_VLOG_LINES(3, position.instruction->ToString());
     EXPECT_NE(position.instruction, p1);
     EXPECT_NE(position.instruction, add);
   }
@@ -10129,8 +10136,10 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
-  // This test is for checking if the cross-program-prefetched buffer is freed
-  // after its last use and there is an end-of-program prefetch.
+  // This test is same as above, but with an override to cross-program prefetch
+  // parameter0 as opposed to p0 and limiting the max alternate memory
+  // size to 256 bytes so that both p0 and p1 cannot be assigned to alternate
+  // memory and priority is given to p0.
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
 
@@ -10216,6 +10225,203 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
     }
   }
   EXPECT_TRUE(has_zero_offset_allocations);
+}
+
+TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
+  // This test is same as above, but with user directive to cross-program
+  // prefetch parameter0 as opposed to p0 and limiting the max alternate memory
+  // size to 256 bytes so that both p0 and p1 cannot be assigned to alternate
+  // memory and priority is given to p0.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, entry_computation_layout={(f32[8,8]{1,0:S(1)}, f32[8,2]{1,0})->f32[8,2]{1,0}}
+
+  ENTRY CrossProgramPrefetch {
+    p0 = f32[8,8]{1,0:S(1)} parameter(0)
+    p1 = f32[8,2]{1,0} parameter(1)
+    dot = f32[8,2]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256;
+  auto preset_assignments = AssignMemorySpace(module.get(), options,
+                                              /*max_prefetch_interval=*/5,
+                                              /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module));
+  LOG(ERROR) << "module: " << module->ToString();
+  const HloValue& cross_program_prefetched_value =
+      dataflow_analysis->GetValueDefinedAt(
+          module->entry_computation()->parameter_instruction(0), {});
+  // Expect that there are two prefetches that use this value, one is the
+  // cross-program prefetch, the other is the end-of-program prefetch.
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_cross_program_prefetch),
+            1);
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_end_of_program_prefetch),
+            1);
+  // Also verify that the copy-done for the end-of-program prefetch is the last
+  // instruction in schedule.
+  const HloInstruction* last_instruction =
+      module->schedule()
+          .sequence(module->entry_computation())
+          .instructions()[module->entry_computation()->instruction_count() - 1];
+  EXPECT_THAT(last_instruction, op::CopyDone());
+  EXPECT_NE(last_instruction, module->entry_computation()->root_instruction());
+  // Cross program prefetch would use offset 0 because that's the first
+  // assignment. Since we are freeing the cross-program prefetch buffer, we
+  // would also expect to see some of the intermediate computations (one of the
+  // negate ops) to also get 0 offset allocations.
+  bool has_zero_offset_allocations = false;
+  for (auto pos_and_chunk : preset_assignments->chunks()) {
+    if (pos_and_chunk.first.instruction->opcode() == HloOpcode::kNegate &&
+        pos_and_chunk.second.offset == 0) {
+      has_zero_offset_allocations = true;
+    }
+  }
+  EXPECT_TRUE(has_zero_offset_allocations);
+  XLA_VLOG_LINES(3, module->ToString());
+  bool found = false;
+  for (auto* c : module->computations()) {
+    for (auto* instr : c->instructions()) {
+      if (instr->name() == "p0") {
+        found = true;
+        EXPECT_EQ(instr->shape().layout().memory_space(), 0);
+        EXPECT_EQ(module->entry_computation_layout()
+                      .parameter_layout(0)
+                      .shape()
+                      .layout()
+                      .memory_space(),
+                  0);
+      }
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       UserAnnotatedCrossProgramPrefetchWithoutPropagationToParameterNoReuse) {
+  // This test is same as above, but the S(1) memory space specified in the
+  // layout to cross-program prefetch p0 is only present in the entry
+  // computation layout and has not been propagated to the parameter
+  // instruction. This still works as the previous test.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, entry_computation_layout={(f32[8,8]{1,0:S(1)}, f32[8,2]{1,0})->f32[8,2]{1,0}}
+
+  ENTRY CrossProgramPrefetch {
+    p0 = f32[8,8]{1,0} parameter(0)
+    p1 = f32[8,2]{1,0} parameter(1)
+    dot = f32[8,2]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256;
+  auto preset_assignments = AssignMemorySpace(module.get(), options,
+                                              /*max_prefetch_interval=*/5,
+                                              /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module));
+  LOG(ERROR) << "module: " << module->ToString();
+  const HloValue& cross_program_prefetched_value =
+      dataflow_analysis->GetValueDefinedAt(
+          module->entry_computation()->parameter_instruction(0), {});
+  // Expect that there are two prefetches that use this value, one is the
+  // cross-program prefetch, the other is the end-of-program prefetch.
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_cross_program_prefetch),
+            1);
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->cross_program_prefetch_index().has_value();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
+                             is_end_of_program_prefetch),
+            1);
+  // Also verify that the copy-done for the end-of-program prefetch is the last
+  // instruction in schedule.
+  const HloInstruction* last_instruction =
+      module->schedule()
+          .sequence(module->entry_computation())
+          .instructions()[module->entry_computation()->instruction_count() - 1];
+  EXPECT_THAT(last_instruction, op::CopyDone());
+  EXPECT_NE(last_instruction, module->entry_computation()->root_instruction());
+  // Cross program prefetch would use offset 0 because that's the first
+  // assignment. Since we are freeing the cross-program prefetch buffer, we
+  // would also expect to see some of the intermediate computations (one of the
+  // negate ops) to also get 0 offset allocations.
+  bool has_zero_offset_allocations = false;
+  for (auto pos_and_chunk : preset_assignments->chunks()) {
+    if (pos_and_chunk.first.instruction->opcode() == HloOpcode::kNegate &&
+        pos_and_chunk.second.offset == 0) {
+      has_zero_offset_allocations = true;
+    }
+  }
+  EXPECT_TRUE(has_zero_offset_allocations);
+  XLA_VLOG_LINES(3, module->ToString());
+  bool found = false;
+  for (auto* c : module->computations()) {
+    for (auto* instr : c->instructions()) {
+      if (instr->name() == "p0") {
+        found = true;
+        EXPECT_EQ(instr->shape().layout().memory_space(), 0);
+        EXPECT_EQ(module->entry_computation_layout()
+                      .parameter_layout(0)
+                      .shape()
+                      .layout()
+                      .memory_space(),
+                  0);
+      }
+    }
+  }
+  EXPECT_TRUE(found);
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
