@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -31,26 +32,38 @@
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
 
+using litert::Error;
+using litert::Expected;
 using litert::mediatek::NEURON_NO_ERROR;
 using litert::mediatek::NEURON_PREFER_SUSTAINED_SPEED;
 using litert::mediatek::NEURON_PRIORITY_HIGH;
 using litert::mediatek::NEURON_TENSOR_FLOAT32;
 using litert::mediatek::NeuronCompilation;
+using litert::mediatek::NeuronCompilationPtr;
 using litert::mediatek::NeuronExecution;
+using litert::mediatek::NeuronExecutionPtr;
 using litert::mediatek::NeuronModel;
+using litert::mediatek::NeuronModelPtr;
 using litert::mediatek::NeuronOperandType;
 using litert::mediatek::NeuronOperationType;
 using litert::mediatek::NeuronRuntimeVersion;
 
 namespace {
 
-bool LoadFromCachedNetwork(
-    const litert::mediatek::NeuronAdapter& neuron_adapter, NeuronModel*& model,
-    NeuronCompilation*& compilation, const void* bytecode_addr,
-    size_t bytecode_size) {
-  return neuron_adapter.api().model_restore_from_compiled_network(
-             &model, &compilation, bytecode_addr, bytecode_size) ==
-         NEURON_NO_ERROR;
+Expected<std::pair<NeuronModelPtr, NeuronCompilationPtr>> LoadFromCachedNetwork(
+    const litert::mediatek::NeuronAdapter& neuron_adapter,
+    const void* bytecode_addr, size_t bytecode_size) {
+  NeuronModel* model;
+  NeuronCompilation* compilation;
+  if (neuron_adapter.api().model_restore_from_compiled_network(
+          &model, &compilation, bytecode_addr, bytecode_size) !=
+      NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to restore model from compiled network");
+  }
+  return std::make_pair(
+      NeuronModelPtr{model, neuron_adapter.api().model_free},
+      NeuronCompilationPtr{compilation, neuron_adapter.api().compilation_free});
 }
 
 uint16_t GetRestoreDlaExtensionOperandType(
@@ -65,15 +78,14 @@ uint16_t GetRestoreDlaExtensionOperandType(
   }
 }
 
-bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
-                         NeuronModel*& model, NeuronCompilation*& compilation,
-                         const void* bytecode_addr, size_t bytecode_size,
-                         int num_inputs, int num_outputs,
-                         const std::string& options) {
+Expected<std::pair<NeuronModelPtr, NeuronCompilationPtr>> LoadFromDlaBytecode(
+    const litert::mediatek::NeuronAdapter& neuron_adapter,
+    const void* bytecode_addr, size_t bytecode_size, int num_inputs,
+    int num_outputs) {
   LITERT_LOG(LITERT_INFO, "Creating model...");
-  if (neuron_adapter.api().model_create(&model) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to create model");
-    return false;
+  Expected<NeuronModelPtr> model = neuron_adapter.CreateModel();
+  if (!model) {
+    return model.Error();
   }
 
   // fake input, the real outputs are loaded by compiled network.
@@ -87,10 +99,10 @@ bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
   std::vector<uint32_t> input_op_number;
   input_op_number.reserve(num_inputs);
   for (auto i = 0; i < num_inputs; i++) {
-    if (neuron_adapter.api().model_add_operand(model, &fake_io_operand_type) !=
-        NEURON_NO_ERROR) {
-      LITERT_LOG(LITERT_ERROR, "Failed to add input operand %d", i);
-      return false;
+    if (neuron_adapter.api().model_add_operand(
+            model->get(), &fake_io_operand_type) != NEURON_NO_ERROR) {
+      return Error(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to add input operand");
     }
     input_op_number.emplace_back(i);
   }
@@ -103,10 +115,10 @@ bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
 
   int32_t operand_type;
   if (neuron_adapter.api().model_get_extension_operand_type(
-          model, kExtensionRestoreCompiledNetwork, kNetworkOperandRestoreData,
-          &operand_type) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get extension operand");
-    return false;
+          model->get(), kExtensionRestoreCompiledNetwork,
+          kNetworkOperandRestoreData, &operand_type) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to getextension operand");
   }
 
   const NeuronOperandType extension_operand_type{
@@ -115,159 +127,141 @@ bool LoadFromDlaBytecode(const litert::mediatek::NeuronAdapter& neuron_adapter,
       .scale = 0.0f,
       .zeroPoint = 0,
   };
-  if (neuron_adapter.api().model_add_operand(model, &extension_operand_type) !=
-      NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to add extension operand");
-    return false;
+  if (neuron_adapter.api().model_add_operand(
+          model->get(), &extension_operand_type) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to add extension operand");
   }
   input_op_number.emplace_back(input_op_number.size());
   if (neuron_adapter.api().model_set_operand_value(
-          model, input_op_number.back(), bytecode_addr, bytecode_size) !=
+          model->get(), input_op_number.back(), bytecode_addr, bytecode_size) !=
       NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to set extension operand value");
-    return false;
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to set extension operand value");
   }
 
   std::vector<uint32_t> output_op_number;
   for (auto i = 0; i < num_outputs; i++) {
-    if (neuron_adapter.api().model_add_operand(model, &fake_io_operand_type) !=
-        NEURON_NO_ERROR) {
-      LITERT_LOG(LITERT_ERROR, "Failed to add output operand %d", i);
-      return false;
+    if (neuron_adapter.api().model_add_operand(
+            model->get(), &fake_io_operand_type) != NEURON_NO_ERROR) {
+      return Error(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to add output operand");
     }
     output_op_number.emplace_back(input_op_number.size() + i);
   }
 
   int32_t operation_type;
   if (neuron_adapter.api().model_get_extension_operation_type(
-          model, kExtensionRestoreCompiledNetwork,
+          model->get(), kExtensionRestoreCompiledNetwork,
           kRestoreDlaExtensionOperationType,
           &operation_type) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get extension operation");
-    return false;
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to get extension operation");
   }
 
   // Add extension operation
   if (neuron_adapter.api().model_add_operation(
-          model, static_cast<NeuronOperationType>(operation_type),
+          model->get(), static_cast<NeuronOperationType>(operation_type),
           input_op_number.size(), input_op_number.data(),
           output_op_number.size(),
           output_op_number.data()) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to add extension operation");
-    return false;
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to add extension operation");
   }
 
   if (neuron_adapter.api().model_identify_inputs_and_outputs(
-          model, input_op_number.size() - 1, input_op_number.data(),
+          model->get(), input_op_number.size() - 1, input_op_number.data(),
           output_op_number.size(),
           output_op_number.data()) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to identify I/Os");
-    return false;
+    return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to identify I/Os");
   }
 
-  if (neuron_adapter.api().model_finish(model) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to finish model");
-    return false;
+  if (neuron_adapter.api().model_finish(model->get()) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to finish model");
   }
 
-  if (neuron_adapter.api().compilation_create_with_options(
-          model, &compilation, options.c_str()) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to create compilation");
-    return false;
+  auto compilation = neuron_adapter.CreateCompilation(model->get());
+  if (!compilation) {
+    return compilation.Error();
   }
 
   if (neuron_adapter.api().compilation_set_priority(
-          compilation, NEURON_PRIORITY_HIGH) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to set compilation priority");
-    return false;
+          compilation->get(), NEURON_PRIORITY_HIGH) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to set compilation priority");
   }
 
   if (neuron_adapter.api().compilation_set_preference(
-          compilation, NEURON_PREFER_SUSTAINED_SPEED) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to set compilation preference");
-    return false;
+          compilation->get(), NEURON_PREFER_SUSTAINED_SPEED) !=
+      NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to set compilation preference");
   }
 
-  if (!options.empty()) {
+  // We use AOT compile options since the DLA file was compiled ahead of time.
+  const auto compile_options = std::string(neuron_adapter.AotCompileOptions());
+  if (!compile_options.empty()) {
     if (neuron_adapter.api().compilation_set_optimization_string(
-            compilation, options.c_str()) != NEURON_NO_ERROR) {
-      LITERT_LOG(LITERT_ERROR, "Failed to set optimization string");
-      return false;
+            compilation->get(), compile_options.c_str()) != NEURON_NO_ERROR) {
+      return Error(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to set optimization string");
     }
   }
 
-  if (neuron_adapter.api().compilation_finish(compilation) != NEURON_NO_ERROR) {
-    LITERT_LOG(LITERT_ERROR, "Failed to finish compilation");
-    return false;
+  if (neuron_adapter.api().compilation_finish(compilation->get()) !=
+      NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to finish compilation");
   }
 
-  return true;
+  return std::make_pair(std::move(*model), std::move(*compilation));
 }
 
-bool LoadModelAndCompilation(
-    const litert::mediatek::NeuronAdapter& neuron_adapter, NeuronModel*& model,
-    NeuronCompilation*& compilation, const void* bytecode_addr,
-    size_t bytecode_size, int num_inputs, int num_outputs) {
-  // Option `import_forever` has been recommended by MediaTek to reduce memory
-  // footprint when using the same I/O buffers across multiple invocations.
-  constexpr const char* kOptions =
-      "--apusys-config \"{ \\\"import_forever\\\": true }\"";
-  if (!LoadFromDlaBytecode(neuron_adapter, model, compilation, bytecode_addr,
-                           bytecode_size, num_inputs, num_outputs, kOptions)) {
-    return LoadFromCachedNetwork(neuron_adapter, model, compilation,
-                                 bytecode_addr, bytecode_size);
+Expected<std::pair<NeuronModelPtr, NeuronCompilationPtr>>
+LoadModelAndCompilation(const litert::mediatek::NeuronAdapter& neuron_adapter,
+                        const void* bytecode_addr, size_t bytecode_size,
+                        int num_inputs, int num_outputs) {
+  if (auto result = LoadFromDlaBytecode(neuron_adapter, bytecode_addr,
+                                        bytecode_size, num_inputs, num_outputs);
+      !result) {
+    return LoadFromCachedNetwork(neuron_adapter, bytecode_addr, bytecode_size);
+  } else {
+    return result;
   }
-  return true;
 }
 
 }  // namespace
 
-litert::Expected<LiteRtDispatchInvocationContextT::Ptr>
+Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     litert::mediatek::NeuronAdapter& neuron_adapter,
     LiteRtDispatchDeviceContext device_context,
     LiteRtDispatchExecutableType exec_type, const void* bytecode_ptr,
     size_t bytecode_size, const char* function_name, int num_inputs,
     int num_outputs) {
-  NeuronModel* model;
-  NeuronCompilation* compilation;
-  if (!LoadModelAndCompilation(neuron_adapter, model, compilation, bytecode_ptr,
-                               bytecode_size, num_inputs, num_outputs)) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to load compiled model");
+  auto model_and_compilation = LoadModelAndCompilation(
+      neuron_adapter, bytecode_ptr, bytecode_size, num_inputs, num_outputs);
+  if (!model_and_compilation) {
+    return model_and_compilation.Error();
   }
 
-  NeuronExecution* execution;
-  if (neuron_adapter.api().execution_create(compilation, &execution) !=
-      NEURON_NO_ERROR) {
-    if (compilation) {
-      neuron_adapter.api().compilation_free(compilation);
-    }
-    if (model) {
-      neuron_adapter.api().model_free(model);
-    }
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to create execution");
+  auto& model = model_and_compilation->first;
+  auto& compilation = model_and_compilation->second;
+
+  auto execution = neuron_adapter.CreateExecution(compilation.get());
+  if (!execution) {
+    return execution.Error();
   }
 
-  if (neuron_adapter.api().execution_set_boost_hint(execution, 100) !=
+  if (neuron_adapter.api().execution_set_boost_hint(execution->get(), 100) !=
       NEURON_NO_ERROR) {
-    if (execution) {
-      neuron_adapter.api().execution_free(execution);
-    }
-    if (compilation) {
-      neuron_adapter.api().compilation_free(compilation);
-    }
-    if (model) {
-      neuron_adapter.api().model_free(model);
-    }
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to set execution boost hint");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to set execution boost hint");
   }
 
   return Ptr(new LiteRtDispatchInvocationContextT(
-      neuron_adapter, device_context, model, compilation, execution, num_inputs,
-      num_outputs));
+      neuron_adapter, device_context, model.release(), compilation.release(),
+      execution->release(), num_inputs, num_outputs));
 }
 
 LiteRtDispatchInvocationContextT::~LiteRtDispatchInvocationContextT() {
@@ -293,7 +287,7 @@ LiteRtDispatchInvocationContextT::IoRequirementsBuilder::IoRequirementsBuilder(
   }
 }
 
-litert::Expected<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::IoRequirementsBuilder::Create() {
   static constexpr std::array<LiteRtTensorBufferType, 1>
       kSupportedTensorBufferTypes = {
@@ -306,30 +300,30 @@ LiteRtDispatchInvocationContextT::IoRequirementsBuilder::Create() {
           kSupportedTensorBufferTypes.data(), buffer_size_, strides_.size(),
           strides_.data(), &requirements);
       status != kLiteRtStatusOk) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to create tensor buffer requirements");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to create tensor buffer requirements");
   }
 
   return requirements;
 }
 
-litert::Expected<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetInputRequirements(
     int input_index, const LiteRtRankedTensorType& tensor_type) {
   if (!input_requirements_builders_[input_index]) {
     size_t buffer_size;
     if (neuron_adapter_.api().compilation_get_input_padded_size(
             compilation_, input_index, &buffer_size) != NEURON_NO_ERROR) {
-      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                                "Failed to get input padded size");
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "Failed to get input padded size");
     }
 
     std::vector<uint32_t> padded_dimensions(tensor_type.layout.rank);
     if (neuron_adapter_.api().compilation_get_input_padded_dimensions(
             compilation_, input_index, padded_dimensions.data()) !=
         NEURON_NO_ERROR) {
-      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                                "Failed to get input padded dimensions");
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "Failed to get input padded dimensions");
     }
 
     input_requirements_builders_[input_index] =
@@ -339,23 +333,23 @@ LiteRtDispatchInvocationContextT::GetInputRequirements(
   return input_requirements_builders_[input_index]->Create();
 }
 
-litert::Expected<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetOutputRequirements(
     int output_index, const LiteRtRankedTensorType& tensor_type) {
   if (!output_requirements_builders_[output_index]) {
     size_t buffer_size;
     if (neuron_adapter_.api().compilation_get_output_padded_size(
             compilation_, output_index, &buffer_size) != NEURON_NO_ERROR) {
-      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                                "Failed to get output padded size");
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "Failed to get output padded size");
     }
 
     std::vector<uint32_t> padded_dimensions(tensor_type.layout.rank);
     if (neuron_adapter_.api().compilation_get_output_padded_dimensions(
             compilation_, output_index, padded_dimensions.data()) !=
         NEURON_NO_ERROR) {
-      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                                "Failed to get output padded dimensions");
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "Failed to get output padded dimensions");
     }
 
     output_requirements_builders_[output_index] =
@@ -365,58 +359,58 @@ LiteRtDispatchInvocationContextT::GetOutputRequirements(
   return output_requirements_builders_[output_index]->Create();
 }
 
-litert::Expected<void> LiteRtDispatchInvocationContextT::AttachInput(
+Expected<void> LiteRtDispatchInvocationContextT::AttachInput(
     int graph_input_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   auto neuron_memory_info =
       device_context_->GetNeuronMemoryInfo(tensor_buffer_handle);
   if (!neuron_memory_info) {
-    return litert::Unexpected(neuron_memory_info.Error());
+    return litert::Error(neuron_memory_info.Error());
   }
 
   if (neuron_adapter_.api().execution_set_input_from_memory(
           execution_, graph_input_index, nullptr,
           neuron_memory_info->neuron_memory, neuron_memory_info->offset,
           neuron_memory_info->size) != NEURON_NO_ERROR) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to set execution input from memory");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to set execution input from memory");
   }
   return {};
 }
 
-litert::Expected<void> LiteRtDispatchInvocationContextT::AttachOutput(
+Expected<void> LiteRtDispatchInvocationContextT::AttachOutput(
     int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   auto neuron_memory_info =
       device_context_->GetNeuronMemoryInfo(tensor_buffer_handle);
   if (!neuron_memory_info) {
-    return litert::Unexpected(neuron_memory_info.Error());
+    return litert::Error(neuron_memory_info.Error());
   }
 
   if (neuron_adapter_.api().execution_set_output_from_memory(
           execution_, graph_output_index, nullptr,
           neuron_memory_info->neuron_memory, neuron_memory_info->offset,
           neuron_memory_info->size) != NEURON_NO_ERROR) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to set execution output from memory");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to set execution output from memory");
   }
   return {};
 }
 
-litert::Expected<void> LiteRtDispatchInvocationContextT::DetachInput(
+Expected<void> LiteRtDispatchInvocationContextT::DetachInput(
     int graph_input_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   // Nothing to do.
   return {};
 }
 
-litert::Expected<void> LiteRtDispatchInvocationContextT::DetachOutput(
+Expected<void> LiteRtDispatchInvocationContextT::DetachOutput(
     int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle) {
   // Nothing to do.
   return {};
 }
 
-litert::Expected<void> LiteRtDispatchInvocationContextT::Invoke() {
+Expected<void> LiteRtDispatchInvocationContextT::Invoke() {
   if (neuron_adapter_.api().execution_compute(execution_) != NEURON_NO_ERROR) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to execute network");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to execute network");
   }
   return {};
 }

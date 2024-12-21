@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 #if LITERT_HAS_AHWB_SUPPORT
@@ -64,7 +65,10 @@ struct NeuronMemory;
 
 static constexpr int NEURON_NO_ERROR = 0;
 static constexpr int NEURON_FLOAT32 = 0;
+static constexpr int NEURON_INT32 = 1;
+static constexpr int NEURON_BOOL = 6;
 static constexpr int NEURON_TENSOR_FLOAT32 = 3;
+static constexpr int NEURON_TENSOR_INT32 = 4;
 static constexpr int NEURON_PRIORITY_HIGH = 110;
 static constexpr int NEURON_PREFER_SUSTAINED_SPEED = 2;
 
@@ -74,6 +78,8 @@ int NeuronCompilation_createWithOptions(NeuronModel* model,
                                         NeuronCompilation** compilation,
                                         const char* options);
 int NeuronCompilation_finish(NeuronCompilation* compilation);
+int NeuronCompilation_getCompiledNetworkSize(NeuronCompilation* compilation,
+                                             size_t* size);
 int NeuronCompilation_getInputPaddedDimensions(NeuronCompilation* compilation,
                                                int32_t index,
                                                uint32_t* dimensions);
@@ -89,6 +95,8 @@ int NeuronCompilation_setOptimizationString(NeuronCompilation* compilation,
 int NeuronCompilation_setPreference(NeuronCompilation* compilation,
                                     int32_t preference);
 int NeuronCompilation_setPriority(NeuronCompilation* compilation, int priority);
+int NeuronCompilation_storeCompiledNetwork(NeuronCompilation* compilation,
+                                           void* buffer, size_t size);
 int NeuronExecution_compute(NeuronExecution* execution);
 int NeuronExecution_create(NeuronCompilation* compilation,
                            NeuronExecution** execution);
@@ -128,6 +136,7 @@ int NeuronModel_identifyInputsAndOutputs(NeuronModel* model,
 int NeuronModel_restoreFromCompiledNetwork(NeuronModel** model,
                                            NeuronCompilation** compilation,
                                            const void* buffer, size_t size);
+int NeuronModel_setName(NeuronModel* model, const char* name);
 int NeuronModel_setOperandValue(NeuronModel* model, int32_t index,
                                 const void* buffer, size_t length);
 int Neuron_getVersion(NeuronRuntimeVersion* version);
@@ -137,6 +146,12 @@ void NeuronMemory_free(NeuronMemory* memory);
 void NeuronModel_free(NeuronModel* model);
 
 // /////////////////////////////////////////////////////////////////////////////
+
+using NeuronModelPtr = std::unique_ptr<NeuronModel, void (*)(NeuronModel*)>;
+using NeuronCompilationPtr =
+    std::unique_ptr<NeuronCompilation, void (*)(NeuronCompilation*)>;
+using NeuronExecutionPtr =
+    std::unique_ptr<NeuronExecution, void (*)(NeuronExecution*)>;
 
 class NeuronAdapter {
  public:
@@ -150,10 +165,27 @@ class NeuronAdapter {
 
   ~NeuronAdapter();
 
-  static litert::Expected<Ptr> Create(
-      std::optional<std::string> shared_library_dir);
+  static Expected<Ptr> Create(std::optional<std::string> shared_library_dir);
 
   const Api& api() const { return *api_; }
+
+  absl::string_view AotCompileOptions() const {
+    // Option `import_forever` has been recommended by MediaTek to reduce memory
+    // footprint when using the same I/O buffers across multiple invocations.
+    return "--apusys-config \"{ \\\"import_forever\\\": true }\"";
+  }
+
+  absl::string_view JitCompileOptions() const { return ""; }
+
+  Expected<NeuronModelPtr> CreateModel() const;
+
+  Expected<NeuronCompilationPtr> CreateCompilation(NeuronModel* model) const;
+
+  Expected<NeuronCompilationPtr> CreateCompilation(
+      NeuronModel* model, const std::string& compile_options) const;
+
+  Expected<NeuronExecutionPtr> CreateExecution(
+      NeuronCompilation* compilation) const;
 
  private:
   NeuronAdapter();
@@ -173,6 +205,8 @@ struct NeuronAdapter::Api {
       compilation_create_with_options = nullptr;
   decltype(&NeuronCompilation_finish) compilation_finish = nullptr;
   decltype(&NeuronCompilation_free) compilation_free = nullptr;
+  decltype(&NeuronCompilation_getCompiledNetworkSize)
+      compilation_get_compiled_network_size = nullptr;
   decltype(&NeuronCompilation_getInputPaddedDimensions)
       compilation_get_input_padded_dimensions = nullptr;
   decltype(&NeuronCompilation_getInputPaddedSize)
@@ -186,6 +220,8 @@ struct NeuronAdapter::Api {
   decltype(&NeuronCompilation_setPreference) compilation_set_preference =
       nullptr;
   decltype(&NeuronCompilation_setPriority) compilation_set_priority = nullptr;
+  decltype(&NeuronCompilation_storeCompiledNetwork)
+      compilation_store_compiled_network = nullptr;
   decltype(&NeuronExecution_compute) execution_compute = nullptr;
   decltype(&NeuronExecution_create) execution_create = nullptr;
   decltype(&NeuronExecution_free) execution_free = nullptr;
@@ -210,6 +246,7 @@ struct NeuronAdapter::Api {
       model_identify_inputs_and_outputs = nullptr;
   decltype(&NeuronModel_restoreFromCompiledNetwork)
       model_restore_from_compiled_network = nullptr;
+  decltype(&NeuronModel_setName) model_set_name = nullptr;
   decltype(&NeuronModel_setOperandValue) model_set_operand_value = nullptr;
   decltype(&Neuron_getVersion) get_version = nullptr;
 };
