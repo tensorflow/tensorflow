@@ -360,7 +360,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"source_stack", kSourceStack},
        {"device_offset_ps", kDeviceOffsetPs},
        {"device_duration_ps", kDeviceDurationPs},
-       {"scope_range_id", kScopeRangeId}});
+       {"scope_range_id", kScopeRangeId},
+       {"core_details", kCoreDetails}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
