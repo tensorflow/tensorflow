@@ -21,7 +21,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/vendors/cc/conversion.h"
+#include "tensorflow/lite/experimental/litert/vendors/cc/convert_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/partition_with_capabilities.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_conversion_impl.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_ir.h"
@@ -42,7 +42,6 @@ using ::litert::example::MakeTensorConverter;
 // to perform the actual conversion.
 // The primary benifit of this approach is the re-use of conversion logic
 // between the partition and compile phases.
-// TODO: Update with graph conversion function.
 
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {
@@ -93,55 +92,20 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 
 namespace {
 
-// TODO: Pull common graph conversion stuff into public function.
 LiteRtStatus CompileSinglePartition(
     const ExampleTypes::Legalizations& legalizations, std::string name,
     LiteRtSubgraph subgraph, LiteRtCompiledResultT& result) {
-  ExampleGraphBuilder builder;
-
-  // Wrap tensor converters so legaizations can hook into the graph builder.
-  auto make_tensor_converter = [&builder](auto alloc) {
-    return [alloc, &builder](const auto& litert_tensor) {
-      auto converter = MakeTensorConverter(alloc);
-      auto tensor = converter(litert_tensor);
-      if (!tensor) {
-        return tensor;
-      }
-      builder.RegisterTensor(**tensor);
-      return tensor;
-    };
-  };
-
-  builder.InitGraph(name);
-
-  const litert::Subgraph sg(subgraph);
-  auto map = ExampleTypes::MakeLegalizationMap(legalizations);
+  ::litert::Subgraph litert_subgraph(subgraph);
 
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
 
-  for (const auto& op : sg.Ops()) {
-    auto it = map.find(op.Code());
-    if (it == map.end()) {
-      return kLiteRtStatusErrorUnsupported;
-    }
+  ExampleGraphBuilder builder;
 
-    auto result =
-        it->second->Legalize(op, make_tensor_converter, make_tensor_converter,
-                             tensor_alloc, op_alloc);
-    if (!result) {
-      return result.Error().Status();
-    }
+  LITERT_RETURN_STATUS_IF_NOT_OK(::litert::ConvertGraph<ExampleTypes>(
+      litert_subgraph, name, MakeTensorConverter, tensor_alloc, op_alloc,
+      legalizations, builder));
 
-    auto simple_result = litert::GetSimpleConversionResult(*result);
-    if (!simple_result) {
-      return simple_result.Error().Status();
-    }
-
-    LITERT_RETURN_STATUS_IF_NOT_OK(builder.RegisterOp(**simple_result));
-  }
-
-  builder.FinalizeGraph();
   result.byte_code.append(builder.Serialize());
   result.per_op_data.push_back(std::move(name));
 
