@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/core/data/log_lineage.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -334,7 +335,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
   LogFilenames(filenames);
-
+  LogLineage(filenames);
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
                                                    &compression_type));
