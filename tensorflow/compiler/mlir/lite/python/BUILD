@@ -238,7 +238,7 @@ tf_python_pybind_extension(
         "_pywrap_converter_api.pyi",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",

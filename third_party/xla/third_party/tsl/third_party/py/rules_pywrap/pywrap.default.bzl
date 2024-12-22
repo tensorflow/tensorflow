@@ -25,12 +25,6 @@ def pybind_extension(
 
         # To patch top-level deps lists in sophisticated cases
         pywrap_ignored_deps_filter = ["@pybind11", "@pybind11//:pybind11"],
-        pywrap_private_deps_filter = [
-            "@pybind11_abseil//pybind11_abseil:absl_casters",
-            "@pybind11_abseil//pybind11_abseil:import_status_module",
-            "@pybind11_abseil//pybind11_abseil:status_casters",
-            "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-        ],
         pytype_srcs = None,  # alias for data
         hdrs = [],  # merge into sources
         pytype_deps = None,  # ignore?
@@ -53,7 +47,6 @@ def pybind_extension(
         pytype_deps,
     ]
 
-    private_deps_filter_dict = {k: None for k in pywrap_private_deps_filter}
     ignored_deps_filter_dict = {k: None for k in pywrap_ignored_deps_filter}
 
     actual_srcs = srcs + hdrs
@@ -67,12 +60,9 @@ def pybind_extension(
     actual_private_deps = []
     actual_default_deps = ["@pybind11//:pybind11"]
 
-    if type(deps) == list:
+    if not deps or type(deps) == list:
         for dep in deps:
             if dep in ignored_deps_filter_dict:
-                continue
-            if dep in private_deps_filter_dict:
-                actual_private_deps.append(dep)
                 continue
             actual_deps.append(dep)
     else:
@@ -83,7 +73,6 @@ def pybind_extension(
         name = name,
         deps = actual_deps,
         srcs = actual_srcs,
-        private_deps = actual_private_deps,
         visibility = visibility,
         win_def_file = win_def_file,
         testonly = testonly,

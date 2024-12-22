@@ -153,7 +153,7 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     # Each dependency MUST be either header-only or exclusive.
     deps = [

@@ -99,7 +99,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [":freeze_graph_lib"] + if_pywrap(
-        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+        if_true = ["//tensorflow:_pywrap_tensorflow"],
     ),
 )
 
@@ -360,7 +360,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [":saved_model_cli_lib"] + if_pywrap(
-        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+        if_true = ["//tensorflow:_pywrap_tensorflow"],
     ),
 )
 
@@ -476,7 +476,7 @@ py_strict_binary(
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-    ] + if_pywrap(["//tensorflow/python:_pywrap_tensorflow"]),
+    ] + if_pywrap(["//tensorflow:_pywrap_tensorflow"]),
 )
 
 # copybara:comment_begin(oss-only)

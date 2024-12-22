@@ -22,7 +22,7 @@ tf_python_pybind_extension(
         "_unified_api.pyi",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
@@ -43,7 +43,7 @@ tf_python_pybind_extension(
     srcs = ["tape.cc"],
     features = ["-layering_check"],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
@@ -72,7 +72,7 @@ tf_python_pybind_extension(
         "_math_ops.pyi",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
@@ -99,7 +99,7 @@ tf_python_pybind_extension(
         "_nn_ops.pyi",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",

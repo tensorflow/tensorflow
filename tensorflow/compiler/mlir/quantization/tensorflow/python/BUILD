@@ -204,7 +204,7 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = [
         "__subpackages__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
@@ -229,6 +229,9 @@ tf_python_pybind_extension(
     name = "pywrap_quantize_model",
     srcs = ["pywrap_quantize_model.cc"],
     pytype_srcs = ["pywrap_quantize_model.pyi"],
+    visibility = [
+        "//tensorflow:__pkg__",
+    ],
     # All deps must be header-only.
     deps = [
         ":py_function_lib",

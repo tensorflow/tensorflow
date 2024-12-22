@@ -38,7 +38,7 @@ pybind_extension(
     ],
     visibility = [
         "__subpackages__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [

@@ -33,6 +33,7 @@ pytype_strict_library(
         "test_util_ops.py",
     ],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",
@@ -487,6 +488,7 @@ pytype_strict_library(
     ),
     srcs = ["multi_client_test_util.py"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",

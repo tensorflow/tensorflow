@@ -480,7 +480,11 @@ class ApiCompatibilityTest(test.TestCase):
           'audio', 'histogram', 'image', 'scalar', 'text'
       ]
     omit_golden_symbols_map.update(
-        self._ignored_is_instance_types(['tensorflow.__internal__.FuncGraph'])
+        self._ignored_is_instance_types([
+            'tensorflow.__internal__.FuncGraph',
+            'tensorflow.experimental.dtensor.Mesh',
+            'tensorflow.experimental.dtensor.Layout',
+        ])
     )
 
     self._checkBackwardsCompatibility(
@@ -513,7 +517,7 @@ class ApiCompatibilityTest(test.TestCase):
         'tensorflow.__internal__.SymbolicTensor',
         'tensorflow.Graph',
         'tensorflow.Operation',
-        'tensorflow.io.TFRecordWriter'
+        'tensorflow.io.TFRecordWriter',
     ] + extra_types if extra_types else []
     return {k: 'is_instance' for k in ignored_is_instance_types}
 

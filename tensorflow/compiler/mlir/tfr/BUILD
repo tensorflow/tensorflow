@@ -273,7 +273,7 @@ tf_python_pybind_extension(
         "tfr_wrapper.pyi",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow:__pkg__",
     ],
     deps = [
         ":tfr",

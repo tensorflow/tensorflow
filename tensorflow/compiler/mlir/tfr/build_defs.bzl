@@ -26,7 +26,7 @@ def gen_op_libraries(
 
     py_deps = []
     if use_pywrap_rules():
-        py_deps = ["//tensorflow/python:_pywrap_tensorflow"]
+        py_deps = ["//tensorflow:_pywrap_tensorflow"]
 
     py_deps += [
         "//tensorflow/compiler/mlir/tfr:op_reg_gen",

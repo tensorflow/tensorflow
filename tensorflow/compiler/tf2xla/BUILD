@@ -226,6 +226,7 @@ filegroup(
         "@local_xla//xla/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
     ],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
@@ -243,6 +244,7 @@ filegroup(
         "@local_xla//xla/service/cpu:runtime_srcs",
     ],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],

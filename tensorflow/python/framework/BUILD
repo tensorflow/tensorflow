@@ -66,7 +66,7 @@ tf_cc_shared_object(
         ],
         if_true = [
             ":test_file_system_stripped",
-            "//tensorflow/python:_pywrap_tensorflow_common",
+            "//tensorflow:tensorflow_common_framework",
         ],
     ) + ["@com_google_protobuf//:protobuf_headers"],
 )
