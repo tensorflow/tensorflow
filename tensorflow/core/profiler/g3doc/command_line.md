@@ -183,9 +183,8 @@ _TFProfRoot (0us/22.44ms)
 ```
 
 Set ```-output timeline:outfile=<filename>``` to generate timeline instead of stdout.
-<left>
+
 ![CodeTimeline](code_timeline.png)
-</left>
 
 #### Profile Graph Time
 
