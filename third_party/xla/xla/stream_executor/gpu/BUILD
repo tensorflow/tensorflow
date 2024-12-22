@@ -243,6 +243,7 @@ tsl_gpu_library(
     copts = tsl_copts(),
     linkstatic = True,
     visibility = internal_visibility([
+        ":friends",
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//xla:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
