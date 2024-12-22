@@ -608,8 +608,6 @@ class QueueBase:
     >>> q.is_closed()
     <tf.Tensor: shape=(), dtype=bool, numpy=True>
 
-    Further calls to enqueue will raise `tf.errors.CancelledError`.
-
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to `False`
         (described above).
