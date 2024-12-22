@@ -82,8 +82,8 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   }
 }
 
-::tensorflow::Status ResolveReorderAxes::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status ResolveReorderAxes::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
