@@ -42,7 +42,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
@@ -69,6 +68,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -78,7 +78,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -242,31 +241,27 @@ absl::Status CommandBufferCmdSequence::Initialize(
   return absl::OkStatus();
 }
 
+namespace {
+// Returns true if slice overlaps with any of the slices in read set.
+bool Overlaps(const BufferAllocation::Slice& slice,
+              const absl::flat_hash_set<BufferAllocation::Slice>& slices) {
+  if (slices.contains(slice)) return true;
+  for (auto& read : slices)
+    if (read.OverlapsWith(slice)) return true;
+  return false;
+}
+}  // namespace
+
 bool CommandBufferCmdSequence::HasConflicts(
     ExecutionStreamId execution_stream_id,
     const CommandBufferCmd::BufferUsageVector& buffers) {
   auto& rwset = read_write_sets_[execution_stream_id];
 
-  // Returns true if slice overlaps with any of the slices in read set.
-  auto read_overlap = [&](const BufferAllocation::Slice& slice) {
-    if (rwset.read.contains(slice)) return true;
-    for (auto& read : rwset.read)
-      if (read.OverlapsWith(slice)) return true;
-    return false;
-  };
-
-  // Returns true if slice overlaps with any of the slices in write set.
-  auto write_overlap = [&](const BufferAllocation::Slice& slice) {
-    if (rwset.write.contains(slice)) return true;
-    for (auto& write : rwset.write)
-      if (write.OverlapsWith(slice)) return true;
-    return false;
-  };
-
   return absl::c_any_of(buffers, [&](const auto& buffer) {
     return buffer.access == MemoryAccess::kWrite
-               ? write_overlap(buffer.slice) || read_overlap(buffer.slice)
-               : write_overlap(buffer.slice);
+               ? Overlaps(buffer.slice, rwset.write) ||
+                     Overlaps(buffer.slice, rwset.read)
+               : Overlaps(buffer.slice, rwset.write);
   });
 }
 
@@ -546,20 +541,22 @@ CommandBufferCmd::BufferUsageVector ComputationIdCmd::buffers() {
 
 absl::Status ComputationIdCmd::Initialize(const Thunk::InitializeParams& params,
                                           StateManager& state) {
-#if defined(GOOGLE_CUDA)
-  {
+  auto cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
+      &params.executor->GetDeviceDescription().gpu_compute_capability());
+  if (cuda_cc != nullptr) {
+    {
+      absl::MutexLock lock(&mutex_);
+      if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
+    }
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                        CreateKernel("memset32", 3, kMemset32Kernel,
+                                     /*cubin_data=*/{}, params.executor,
+                                     /*shared_mem_bytes=*/0));
+
     absl::MutexLock lock(&mutex_);
-    if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
+    memset_kernels_.emplace(params.executor, std::move(kernel));
   }
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                      CreateKernel("memset32", 3, kMemset32Kernel,
-                                   /*cubin_data=*/{}, params.executor,
-                                   /*shared_mem_bytes=*/0));
-
-  absl::MutexLock lock(&mutex_);
-  memset_kernels_.emplace(params.executor, std::move(kernel));
-#endif  // GOOGLE_CUDA
   return absl::OkStatus();
 }
 
@@ -585,25 +582,29 @@ absl::Status ComputationIdCmd::Record(
           << "; value=" << value
           << "; execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  Id: " << dest_ << " (" << dst.opaque() << ")";
+  auto cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
+      &execute_params.stream->parent()
+           ->GetDeviceDescription()
+           .gpu_compute_capability());
 
-#if defined(GOOGLE_CUDA)
-  se::Kernel* memset_kernel = [&] {
-    absl::MutexLock lock(&mutex_);
-    return memset_kernels_[execute_params.stream->parent()].get();
-  }();
+  if (cuda_cc != nullptr) {
+    se::Kernel* memset_kernel = [&] {
+      absl::MutexLock lock(&mutex_);
+      return memset_kernels_[execute_params.stream->parent()].get();
+    }();
 
-  if (memset_kernel == nullptr) {
-    return absl::InternalError(
-        "Memset kernel not loaded on a command buffer executor");
+    if (memset_kernel == nullptr) {
+      return absl::InternalError(
+          "Memset kernel not loaded on a command buffer executor");
+    }
+
+    auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
+    return command_buffer->Launch(execution_scope_id, se::ThreadDim(1),
+                                  se::BlockDim(1), *memset_kernel, *args);
+  } else {
+    return command_buffer->Memset(execution_scope_id, &dst, value,
+                                  /*num_elements=*/1);
   }
-
-  auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
-  return command_buffer->Launch(execution_scope_id, se::ThreadDim(1),
-                                se::BlockDim(1), *memset_kernel, *args);
-#else
-  return command_buffer->Memset(execution_scope_id, &dst, value,
-                                /*num_elements=*/1);
-#endif  // GOOGLE_CUDA
 }
 
 //===----------------------------------------------------------------------===//
@@ -1389,50 +1390,47 @@ absl::Status CustomCallCmd::Record(const Thunk::ExecuteParams& execute_params,
   return RecordXlaFfiCall(execute_params, record_params, command_buffer);
 }
 
+namespace {
+// Records each buffer associated with each slice into the provided vector.
+// Returns an error if any of the slices is missing a buffer allocation.
+absl::Status GetBuffers(
+    const Thunk::ExecuteParams& execute_params,
+    absl::Span<const std::optional<CustomCallCmd::Slice>> slices,
+    std::vector<void*>& buffers, absl::string_view label) {
+  for (int i = 0; i < slices.size(); ++i) {
+    if (!slices[i].has_value()) {
+      buffers.push_back(nullptr);
+      VLOG(5) << label << i << ": null";
+      continue;
+    }
+
+    if (!slices[i]->slice.allocation()) {
+      return absl::InternalError("custom call input missing buffer allocation");
+    }
+
+    auto buffer =
+        execute_params.buffer_allocations->GetDeviceAddress(slices[i]->slice)
+            .opaque();
+    VLOG(5) << label << i << ": " << slices[i]->slice << " (" << buffer << ")";
+    buffers.push_back(buffer);
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
 absl::Status CustomCallCmd::RecordLegacyCustomCall(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, se::CommandBuffer* command_buffer) {
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
-  for (auto& slices : {operands_, results_}) {
-    for (const std::optional<Slice>& slice : slices) {
-      if (!slice.has_value()) {
-        buffers.push_back(nullptr);
-        continue;
-      }
-
-      if (!slice->slice.allocation()) {
-        return absl::InternalError(
-            "custom call input missing buffer allocation");
-      }
-
-      buffers.push_back(
-          execute_params.buffer_allocations->GetDeviceAddress(slice->slice)
-              .opaque());
-    }
-  }
-
   ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
   VLOG(5) << "CustomCallCmd: target_name=" << target_name_
           << ", execution_scope_id=" << execution_scope_id.value();
-  for (int i = 0; i < operands_.size(); ++i) {
-    if (operands_[i].has_value()) {
-      VLOG(5) << "  Operand " << i << ": " << operands_[i]->slice << " ("
-              << buffers[i] << ")";
-    } else {
-      VLOG(5) << "  Operand " << i << ": null";
-    }
-  }
-  for (int i = 0; i < results_.size(); ++i) {
-    if (results_[i].has_value()) {
-      VLOG(5) << "  Result " << i << ": " << results_[i]->slice << " ("
-              << buffers[operands_.size() + i] << ")";
-    } else {
-      VLOG(5) << "  Result " << i << ": null";
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      GetBuffers(execute_params, operands_, buffers, "  Operand "));
+  TF_RETURN_IF_ERROR(
+      GetBuffers(execute_params, results_, buffers, "  Result "));
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1451,11 +1449,6 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
 
   return command_buffer->AddNestedCommandBuffer(execution_scope_id,
                                                 *nested_cmd);
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 absl::Status CustomCallCmd::RecordXlaFfiCall(
@@ -1463,7 +1456,8 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
     const RecordParams& record_params, se::CommandBuffer* command_buffer) {
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
-  // separate from arguments, as they do not change after thunk is constructed.
+  // separate from arguments, as they do not change after thunk is
+  // constructed.
   ffi::CallFrameBuilder builder(operands_.size(), results_.size());
 
   ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
@@ -1511,7 +1505,6 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1529,11 +1522,6 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
 
   return command_buffer->AddNestedCommandBuffer(execution_scope_id,
                                                 *nested_cmd);
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {
@@ -2002,8 +1990,8 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
 
 // Force update the command when there is any non-constant value slice offset,
 // because the memory address might changed if the offset is loop
-// iterator or operator outputs even if the parent command's memory pointers do
-// not change.
+// iterator or operator outputs even if the parent command's memory pointers
+// do not change.
 bool DynamicSliceFusionCmd::force_update() {
   return !absl::c_all_of(slices_, [](const DynamicSliceThunk::SliceDef& slice) {
     if (!slice.offsets.has_value()) return true;
@@ -2169,8 +2157,8 @@ absl::Status DynamicSliceFusionCmd::Record(
         argument_buffer.GetByteSlice(new_offset, new_size);
   }
 
-  // Safe to create a local BufferAllocations here since buffers are only slices
-  // of bigger ones allocated elsewhere.
+  // Safe to create a local BufferAllocations here since buffers are only
+  // slices of bigger ones allocated elsewhere.
   BufferAllocations slice_allocations(slice_buffers,
                                       orig_allocations.device_ordinal(),
                                       orig_allocations.memory_allocator());
