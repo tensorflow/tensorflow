@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
