@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
+#include <cassert>
 #include <vector>
 
 #include "absl/status/status.h"
