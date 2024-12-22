@@ -41,7 +41,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_aot_export_test",
     srcs = ["cpu_aot_export_test.cc"],
-    tags = ["test_xla_cpu_thunks"],
+    tags = ["test_xla_cpu_no_thunks"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
