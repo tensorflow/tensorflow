@@ -22,7 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
@@ -31,9 +33,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -84,8 +90,13 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   // Register all custom ops, including user-specified custom ops.
   TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(converter_flags));
 
-  TF_ASSIGN_OR_RETURN(auto module, ConvertGraphdefToMlir(input, debug_info,
-                                                         specs, context.get()));
+  Graph graph(OpRegistry::Global());
+  GraphConstructorOptions options;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, input, &graph));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          graph, debug_info, graph.flib_def(), specs, context.get()));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
   bool emit_builtin_tflite_ops = !converter_flags.force_select_tf_ops();
