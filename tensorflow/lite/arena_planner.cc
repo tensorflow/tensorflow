@@ -582,6 +582,12 @@ TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int32_t tensor_index,
   // Resolve allocation for tensors which share buffers.
   auto actual_tensor_it = actual_tensor_id_.find(tensor_index);
   TfLiteTensor& tensor = tensors[tensor_index];
+  // If the tensor already has a buffer allocated, associated with
+  // buffer_handle, CPU memory allocation is not needed.
+  if (tensor.buffer_handle != kTfLiteNullBufferHandle) {
+    return kTfLiteOk;
+  }
+
   int32_t root_tensor_index = actual_tensor_it == actual_tensor_id_.end()
                                   ? tensor_index
                                   : actual_tensor_it->second;
