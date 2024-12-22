@@ -5,7 +5,6 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
