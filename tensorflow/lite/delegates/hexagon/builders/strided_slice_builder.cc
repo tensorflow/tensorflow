@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/builders/strided_slice_builder.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
