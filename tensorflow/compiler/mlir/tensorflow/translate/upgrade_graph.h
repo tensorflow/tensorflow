@@ -27,7 +27,7 @@ class MetaGraphDef;
 // Generate the shared_name for resource handle ops in the graph and functions
 // if their shared_names are empty. Resource handle ops with empty shared_name
 // may have undesired semantics.
-Status GenerateResourceSharedNameIfEmpty(
+absl::Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry);
 
 }  // namespace tensorflow
