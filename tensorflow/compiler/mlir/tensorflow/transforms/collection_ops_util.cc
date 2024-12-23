@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 
 #include "llvm/ADT/ArrayRef.h"

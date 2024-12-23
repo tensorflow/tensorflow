@@ -18,8 +18,7 @@ limitations under the License.
 // flow/frames or side effecting ops yet.
 
 #include <iterator>
-#include <optional>
-#include <tuple>
+#include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
