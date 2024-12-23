@@ -18,9 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
 #define TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
