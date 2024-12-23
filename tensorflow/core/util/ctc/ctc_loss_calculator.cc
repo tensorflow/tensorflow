@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/util/ctc/ctc_loss_calculator.h"
 
-#include <cmath>
-
 namespace tensorflow {
 namespace ctc {}  // namespace ctc
 }  // namespace tensorflow
