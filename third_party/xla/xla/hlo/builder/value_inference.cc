@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/builder/value_inference.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
