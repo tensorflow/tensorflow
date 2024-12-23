@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "xla/tsl/protobuf/test_log.pb.h"
 #define _XOPEN_SOURCE  // for setenv, unsetenv
 #include <cstdlib>
 
