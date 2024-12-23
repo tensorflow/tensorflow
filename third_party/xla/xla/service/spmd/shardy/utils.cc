@@ -30,9 +30,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 
@@ -50,6 +53,7 @@ using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 DictionaryAttr getFrontendAttrs(Operation* op) {
   return op->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
@@ -184,6 +188,21 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
 }
+
+CustomCallOp cloneOpWithNewResultTypes(CustomCallOp op,
+                                       mlir::TypeRange resultTypes,
+                                       mlir::IRRewriter& rewriter) {
+  auto customCallOp = rewriter.create<CustomCallOp>(
+      op.getLoc(), resultTypes, op.getOperands(), op.getCallTargetNameAttr(),
+      op.getHasSideEffectAttr(), op.getBackendConfigAttr(),
+      op.getApiVersionAttr(), op.getCalledComputations(),
+      op.getOperandLayoutsAttr(), op.getResultLayoutsAttr(),
+      op.getOutputOperandAliases());
+  customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
+      op->getContext(),
+      mlir::SmallVector<mlir::NamedAttribute>(op->getDiscardableAttrs())));
+  return customCallOp;
+};
 
 }  // namespace sdy
 }  // namespace xla
