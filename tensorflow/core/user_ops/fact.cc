@@ -15,6 +15,8 @@ limitations under the License.
 
 // An example Op.
 
+#include <string>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
