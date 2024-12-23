@@ -32,15 +32,15 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declared here so we don't have to expose it in the public header.
-Status ShouldIgnoreErrors(const TransformFuncParameters& transform_params,
-                          bool* ignore_errors);
+absl::Status ShouldIgnoreErrors(const TransformFuncParameters& transform_params,
+                                bool* ignore_errors);
 
 namespace {
-Status test_empty_graph_transform(const GraphDef& graph_def,
-                                  const TransformFuncContext& context,
-                                  GraphDef* result) {
+absl::Status test_empty_graph_transform(const GraphDef& graph_def,
+                                        const TransformFuncContext& context,
+                                        GraphDef* result) {
   result->Clear();
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -136,7 +136,7 @@ class TransformGraphTest : public ::testing::Test {
     EXPECT_EQ(0, graph_def.node().size());
 
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
-    Status no_such_status =
+    absl::Status no_such_status =
         TransformGraph({}, {}, {{"test_no_such_transform", {}}}, &graph_def);
     EXPECT_TRUE(absl::StrContains(no_such_status.ToString(), "not recognized"));
   }
