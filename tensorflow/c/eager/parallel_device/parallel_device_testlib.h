@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_TESTLIB_H_
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
