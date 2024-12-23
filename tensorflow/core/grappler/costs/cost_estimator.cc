@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 
+#include <algorithm>
+
+#include "absl/log/check.h"
+
 namespace tensorflow {
 namespace grappler {
 
