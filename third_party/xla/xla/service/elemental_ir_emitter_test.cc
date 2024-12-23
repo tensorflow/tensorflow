@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -446,27 +447,28 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
   auto tname = this->TypeName();
-  if (std::is_same<TypeParam, tsl::float8_e4m3>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
+  const int n = 10;
+  if (std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
       std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
-  const auto hlo_text = absl::StrReplaceAll(R"(
+  const auto hlo_text =
+      absl::StrReplaceAll(R"(
   HloModule m
   ENTRY main {
-    f16_ = f16[] parameter(0)
-    f32_ = f32[] parameter(1)
-    f64_ = f64[] parameter(2)
-    bf16_ = bf16[] parameter(3)
-    converted_f16 = ${tname}[] convert(f16_)
-    converted_f32 = ${tname}[] convert(f32_)
-    converted_f64 = ${tname}[] convert(f64_)
-    converted_bf16 = ${tname}[] convert(bf16_)
-    ROOT tuple = (${tname}[], ${tname}[], ${tname}[], ${tname}[]) tuple(
+    f16_ = f16[$n] parameter(0)
+    f32_ = f32[$n] parameter(1)
+    f64_ = f64[$n] parameter(2)
+    bf16_ = bf16[$n] parameter(3)
+    converted_f16 = ${tname}[$n] convert(f16_)
+    converted_f32 = ${tname}[$n] convert(f32_)
+    converted_f64 = ${tname}[$n] convert(f64_)
+    converted_bf16 = ${tname}[$n] convert(bf16_)
+    ROOT tuple = (${tname}[$n], ${tname}[$n], ${tname}[$n], ${tname}[$n]) tuple(
         converted_f16, converted_f32, converted_f64, converted_bf16)
   }
   )",
-                                            {{"${tname}", tname}});
+                          {{"${tname}", tname}, {"$n", absl::StrCat(n)}});
   ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
