@@ -217,7 +217,7 @@ class TextFileLineIterator
     switch (dtype) {
       case DT_INT32: {
         int32_t value;
-        if (!strings::safe_strto32(token.c_str(), &value)) {
+        if (!absl::SimpleAtoi(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid int32.");
@@ -226,7 +226,7 @@ class TextFileLineIterator
       } break;
       case DT_INT64: {
         int64_t value;
-        if (!strings::safe_strto64(token.c_str(), &value)) {
+        if (!absl::SimpleAtoi(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid int64.");
@@ -235,7 +235,7 @@ class TextFileLineIterator
       } break;
       case DT_FLOAT: {
         float value;
-        if (!strings::safe_strtof(token.c_str(), &value)) {
+        if (!absl::SimpleAtof(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid float.");
@@ -244,7 +244,7 @@ class TextFileLineIterator
       } break;
       case DT_DOUBLE: {
         double value;
-        if (!strings::safe_strtod(token.c_str(), &value)) {
+        if (!absl::SimpleAtod(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid double.");
