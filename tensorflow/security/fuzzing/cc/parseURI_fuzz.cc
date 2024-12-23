@@ -26,7 +26,7 @@ limitations under the License.
 namespace {
 
 void FuzzTest(std::string_view uri) {
-  tensorflow::StringPiece scheme, host, path;
+  absl::string_view scheme, host, path;
   tensorflow::io::ParseURI(uri, &scheme, &host, &path);
 
   // If a path is invalid.

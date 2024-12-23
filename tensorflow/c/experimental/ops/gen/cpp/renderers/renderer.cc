@@ -39,7 +39,7 @@ Renderer& Renderer::CodeLine(const string& text) {
 }
 
 Renderer& Renderer::CodeLines(const string& text) {
-  StringPiece trimmed_text(text);
+  absl::string_view trimmed_text(text);
   str_util::RemoveWhitespaceContext(&trimmed_text);
   for (const string& line : str_util::Split(trimmed_text, '\n')) {
     context_.code.AddLineWithoutIndent(line);
