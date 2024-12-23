@@ -140,7 +140,7 @@ class BaseDebugOp : public OpKernel {
     if (name_items.size() == 2) {
       node_name = name_items[0];
       OP_REQUIRES(
-          context, strings::safe_strto32(name_items[1], &output_slot),
+          context, absl::SimpleAtoi(name_items[1], &output_slot),
           errors::InvalidArgument("Invalid string value for output_slot: \"",
                                   name_items[1], "\""));
     } else if (name_items.size() == 1) {
