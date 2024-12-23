@@ -388,7 +388,7 @@ struct NodeDebugInfo {
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
-  NodeDebugInfo(StringPiece node_name, bool has_experimental_debug_info,
+  NodeDebugInfo(absl::string_view node_name, bool has_experimental_debug_info,
                 const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
 };
 
@@ -619,7 +619,7 @@ class Graph {
 
   // Add an input to dst that comes from the "src_slot" output of the
   // node named by "src_name".
-  static void AddInput(NodeDef* dst, StringPiece src_name, int src_slot);
+  static void AddInput(NodeDef* dst, absl::string_view src_name, int src_slot);
 
   // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
   // "While" op during gradient construction, see AddInputWhileHack in
@@ -719,7 +719,7 @@ class Graph {
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
-  std::string NewName(StringPiece prefix);
+  std::string NewName(absl::string_view prefix);
 
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
@@ -794,7 +794,7 @@ class Graph {
   // Create and return a new WhileContext owned by this graph. This is called
   // when a new while loop is created. `frame_name` must be unique among
   // WhileContexts in this graph.
-  absl::Status AddWhileContext(StringPiece frame_name,
+  absl::Status AddWhileContext(absl::string_view frame_name,
                                std::vector<Node*> enter_nodes,
                                std::vector<Node*> exit_nodes,
                                OutputTensor cond_output,
@@ -828,7 +828,7 @@ class Graph {
   // future, an alternative method could be added that takes in a flat_hash_map
   // of name: type and simply iterates through the graph once and annotates all
   // nodes.
-  void SetNodeType(StringPiece name, const FullTypeDef& type);
+  void SetNodeType(absl::string_view name, const FullTypeDef& type);
 
   // Get full type information for a node given its name.
   // Note that if this is called in a loop iterating over all the nodes
@@ -836,7 +836,7 @@ class Graph {
   // future, an alternative method could be added that takes in flat_hash_map of
   // name: type and simply iterates through the graph once and stores all the
   // information in the map.
-  void NodeType(StringPiece name, const FullTypeDef** result);
+  void NodeType(absl::string_view name, const FullTypeDef** result);
 
   // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
   // traces associated with function definitions will have a key of the form
