@@ -1,0 +1,92 @@
+diff --git a/third_party/f2reduce/f2reduce.cpp b/third_party/f2reduce/f2reduce.cpp
+--- a/third_party/f2reduce/f2reduce.cpp
++++ b/third_party/f2reduce/f2reduce.cpp
+@@ -470,8 +470,8 @@ namespace f2reduce {
+ 
+ void inplace_rref_strided(uint64_t *matrix, uint64_t rows, uint64_t cols, uint64_t stride) {
+ 
+-    if (rows <= 1) {
+-        // If the matrix has 0 or 1 rows, it must already be in RREF:
++    if (rows <= 1 || cols <= 1) {
++        // If the matrix has 0 or 1 rows or columns, it must already be in RREF:
+         return;
+     }
+ 
+diff --git a/third_party/nvidia/backend/cuda_utils.cc b/third_party/nvidia/backend/cuda_utils.cc
+--- a/third_party/nvidia/backend/cuda_utils.cc
++++ b/third_party/nvidia/backend/cuda_utils.cc
+@@ -276,8 +276,10 @@ const ExtractionInfo kExtractionInfos[]{
+     ExtractionInfo::build<std::uint64_t>({"'u64'"}),
+     ExtractionInfo::build<float>({"'fp16'", "'bf16'", "'fp32'", "'f32'"}),
+     ExtractionInfo::build<double>({"'fp64'"}),
++    // Note: types are e.g. '*fp32', so no closing quote is intentional.
+     ExtractionInfo::build<void*>({"'*"}, extractPointer),
+-    ExtractionInfo{{"None"}, 0, nullptr},  // Represent constexprs as None
++    ExtractionInfo{
++        {"None", "'none'"}, 0, nullptr},  // Represent constexprs as None
+ };
+ 
+ // Finds an extractor that supports a given type_repr in the extractor list.
+diff --git a/third_party/nvidia/backend/driver.py b/third_party/nvidia/backend/driver.py
+--- a/third_party/nvidia/backend/driver.py
++++ b/third_party/nvidia/backend/driver.py
+@@ -92,7 +92,22 @@ def ty_to_cpp(ty):
+     }[ty]
+ 
+ 
+-def make_launcher(constants : dict[int, str], signature : dict[int, any]) -> Callable[..., None]:
++def flatten_tuples(xs):
++    """Recursively flattens tuple elements in xs."""
++    for x in xs:
++        if isinstance(x, tuple):
++            yield from flatten_tuples(x)
++        else:
++            yield x
++
++
++def make_launcher(constants : dict[int, str], signature : dict[int, any], ids : dict[str, tuple]) -> Callable[..., None]:
++
++    signature = {k: v for k, v in signature.items() if v != 'constexpr'}
++    signature = ','.join(signature.values()).replace('[', '').replace(']', '')
++    signature = list(filter(bool, signature.split(',')))
++    signature = {i: s for i, s in enumerate(signature)}
++
+     # We seem to have 3  categories of arguments:
+     # 1. arguments listed in signature
+     # 2. arguments listed in constants
+@@ -103,8 +118,8 @@ def make_launcher(constants : dict[int, 
+     # category (3). The generic C++ launcher currently does not do that, so we
+     # are doing it in the python wrapper.
+     signature_metadata = cuda_utils.build_signature_metadata(
+-            ty if arg_id not in constants else None
+-            for arg_id, ty in signature.items())
++            ty for ty in signature.values())
++
+     def wrapper(grid_dim_x: int, grid_dim_y: int, grid_dim_z: int,
+                 stream: int, kernel: int, global_scratch: any,
+                 packed_metadata: tuple[int, int, int, int, int, int],
+@@ -115,18 +130,18 @@ def make_launcher(constants : dict[int, 
+         cuda_utils.launch(grid_dim_x, grid_dim_y, grid_dim_z, stream, kernel,
+                           packed_metadata, hook_args, launch_enter_hook,
+                           launch_exit_hook, signature_metadata, global_scratch,
+-                          args)
++                          flatten_tuples(args))
+     return wrapper
+ 
+ 
+ class CudaLauncher(object):
+ 
+     def __init__(self, src, metadata):
+-        constants = getattr(src, "constants", dict())
+-        cst_key = lambda i: src.fn.arg_names.index(i) if isinstance(i, str) else i
+-        constants = {cst_key(key): value for key, value in constants.items()}
+-        signature = {cst_key(key): value for key, value in src.signature.items()}
+-        self.launch = make_launcher(constants, signature)
++        ids = {"ids_of_const_exprs": src.fn.constexprs if hasattr(src, "fn") else tuple()}
++        constants = src.constants if hasattr(src, "constants") else dict()
++        constants = {idx: value for idx, value in constants.items()}
++        signature = {idx: value for idx, value in src.signature.items()}
++        self.launch = make_launcher(constants, signature, ids)
+         self.global_scratch_size = metadata.global_scratch_size
+         self.global_scratch_align = metadata.global_scratch_align
+ 
