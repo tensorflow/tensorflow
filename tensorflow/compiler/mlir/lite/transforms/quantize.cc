@@ -15,7 +15,7 @@ limitations under the License.
 
 // This transformation pass applies quantization on TFLite dialect.
 
-#include <cstddef>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TFL {

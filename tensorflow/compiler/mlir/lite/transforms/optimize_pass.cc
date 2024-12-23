@@ -20,11 +20,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
