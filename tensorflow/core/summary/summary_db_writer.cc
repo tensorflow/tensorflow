@@ -283,8 +283,8 @@ class GraphWriter {
         int64_t is_control = 0;
         size_t i = name.rfind(':');
         if (i != StringPiece::npos) {
-          if (!strings::safe_strto64(name.substr(i + 1, name.size() - i - 1),
-                                     &input_node_idx)) {
+          if (!absl::SimpleAtoi(name.substr(i + 1, name.size() - i - 1),
+                                &input_node_idx)) {
             return errors::DataLoss("Bad NodeDef.input: ", name);
           }
           name.remove_suffix(name.size() - i);
