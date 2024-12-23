@@ -235,7 +235,7 @@ class TextFileLineIterator
       } break;
       case DT_FLOAT: {
         float value;
-        if (!strings::safe_strtof(token.c_str(), &value)) {
+        if (!absl::SimpleAtof(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
                                          " is not a valid float.");
