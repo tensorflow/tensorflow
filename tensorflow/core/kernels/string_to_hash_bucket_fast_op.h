@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <uint64 hash(StringPiece)>
+template <uint64 hash(absl::string_view)>
 class StringToHashBucketOp : public OpKernel {
  public:
   explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {

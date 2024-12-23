@@ -37,8 +37,8 @@ static mutex* file_mutex = new mutex();
 
 // Appends the given data to the specified file. It will create the file if it
 // doesn't already exist.
-absl::Status AppendStringToFile(const std::string& fname, StringPiece data,
-                                Env* env) {
+absl::Status AppendStringToFile(const std::string& fname,
+                                absl::string_view data, Env* env) {
   // TODO(ckluk): If opening and closing on every log causes performance issues,
   // we can reimplement using reference counters.
   mutex_lock l(*file_mutex);
