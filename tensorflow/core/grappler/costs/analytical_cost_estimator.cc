@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 
-#include <limits>
-#include <unordered_map>
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/types.h"
@@ -29,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
