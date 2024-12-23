@@ -599,7 +599,7 @@ if(_TFLITE_ENABLE_RUY)
 endif()
 populate_tflite_source_vars("kernels"
   TFLITE_KERNEL_SRCS
-  FILTER "(.*_test_util_internal|test_.*|.*_ops_wrapper)\\.(cc|h)"
+  FILTER "([^/]*_test_util_internal|test_[^/]*|[^/]*_ops_wrapper)\\.(cc|h)$"
 )
 populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
 populate_tflite_source_vars("kernels/internal/optimized"
