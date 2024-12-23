@@ -70,18 +70,12 @@ message DTypeProto {
     KIND_F8E4M3FNUZ = 25;
     KIND_F8E5M2 = 19;
     KIND_F8E5M2FNUZ = 24;
-    KIND_F8E8M0FNU = 31;
-
-    // MX floating point types.
-    KIND_F4E2M1FN = 30;
 
     // Variable-length string represented as raw bytes, as in `bytes` in Python,
     // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
     // needs to match xla.PrimitiveType enum, so choose a large enum to avoid
     // collision.
     KIND_STRING = 99;
-
-    // Next: 32
   }
   // LINT.ThenChange()
   Kind kind = 1;

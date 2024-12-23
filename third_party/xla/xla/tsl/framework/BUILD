@@ -339,7 +339,6 @@ cc_library(
     ]),
     deps = [
         ":numeric_types",
-        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:types",
     ],
 )

@@ -206,9 +206,9 @@ namespace {
 template <typename T>
 void TotalOrderHelper(T x, T y) {
   auto x_sm = ToSignMagnitude(x);
+  bool x_sign = static_cast<bool>(Eigen::numext::signbit(x));
+  bool y_sign = static_cast<bool>(Eigen::numext::signbit(y));
   auto y_sm = ToSignMagnitude(y);
-  bool x_sign = static_cast<bool>(SignAndMagnitude(x).first);
-  bool y_sign = static_cast<bool>(SignAndMagnitude(y).first);
   if (x_sign && !y_sign) {
     EXPECT_LT(x_sm, y_sm) << x << " " << y;
   }
@@ -238,18 +238,6 @@ void TotalOrderHelper(T x, T y) {
   }
 }
 }  // namespace
-
-TEST(UtilTest, TotalOrder_F4E2M1FN) {
-  for (int a = 0; a < 16; ++a) {
-    tsl::float4_e2m1fn x =
-        Eigen::numext::bit_cast<tsl::float4_e2m1fn>(static_cast<uint8_t>(a));
-    for (int b = 0; b < 16; ++b) {
-      tsl::float4_e2m1fn y =
-          Eigen::numext::bit_cast<tsl::float4_e2m1fn>(static_cast<uint8_t>(b));
-      TotalOrderHelper(x, y);
-    }
-  }
-}
 
 TEST(UtilTest, TotalOrder_F8E5M2) {
   for (int a = 0; a < 256; ++a) {
@@ -332,18 +320,6 @@ TEST(UtilTest, TotalOrder_F8E3M4) {
     for (int b = 0; b < 256; ++b) {
       tsl::float8_e3m4 y =
           Eigen::numext::bit_cast<tsl::float8_e3m4>(static_cast<uint8_t>(b));
-      TotalOrderHelper(x, y);
-    }
-  }
-}
-
-TEST(UtilTest, TotalOrder_F8E8M0FNU) {
-  for (int a = 0; a < 256; ++a) {
-    tsl::float8_e8m0fnu x =
-        Eigen::numext::bit_cast<tsl::float8_e8m0fnu>(static_cast<uint8_t>(a));
-    for (int b = 0; b < 256; ++b) {
-      tsl::float8_e8m0fnu y =
-          Eigen::numext::bit_cast<tsl::float8_e8m0fnu>(static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
   }

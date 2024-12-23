@@ -52,13 +52,7 @@ using FloatTypes =
     ::testing::Types<float, half, tsl::float8_e3m4, tsl::float8_e4m3,
                      tsl::float8_e4m3fn, tsl::float8_e4m3b11fnuz,
                      tsl::float8_e4m3fnuz, tsl::float8_e5m2,
-                     tsl::float8_e5m2fnuz
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
-                     ,
-                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu
-#endif
-                     >;
+                     tsl::float8_e5m2fnuz>;
 
 TYPED_TEST_SUITE(ConstantsFloatTest, FloatTypes);
 

@@ -40,8 +40,6 @@ namespace {
 absl::StatusOr<const llvm::fltSemantics*> PrimitiveTypeToAPFloatSemantics(
     PrimitiveType type) {
   switch (type) {
-    case F4E2M1FN:
-      return &llvm::APFloat::Float4E2M1FN();
     case F8E3M4:
       return &llvm::APFloat::Float8E3M4();
     case F8E4M3:
@@ -56,8 +54,6 @@ absl::StatusOr<const llvm::fltSemantics*> PrimitiveTypeToAPFloatSemantics(
       return &llvm::APFloat::Float8E5M2();
     case F8E5M2FNUZ:
       return &llvm::APFloat::Float8E5M2FNUZ();
-    case F8E8M0FNU:
-      return &llvm::APFloat::Float8E8M0FNU();
     case BF16:
       return &llvm::APFloat::BFloat();
     case F16:
@@ -76,8 +72,6 @@ absl::StatusOr<const llvm::fltSemantics*> PrimitiveTypeToAPFloatSemantics(
 absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilderBase* b,
                                                     PrimitiveType type) {
   switch (type) {
-    case F4E2M1FN:
-      return b->getIntNTy(4);
     case F8E3M4:
     case F8E4M3:
     case F8E4M3B11FNUZ:
@@ -85,7 +79,6 @@ absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilderBase* b,
     case F8E4M3FNUZ:
     case F8E5M2:
     case F8E5M2FNUZ:
-    case F8E8M0FNU:
       return b->getInt8Ty();
     case BF16:
       return b->getBFloatTy();
@@ -656,14 +649,8 @@ absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
                          llvm::ConstantInt::get(b->getInt8Ty(), 0x0u), sign);
 
   // Bitwise or the sign bit back in.
-  int shift = output_type_bit_width - BitWidth(input_type);
-  if (shift >= 0) {
-    sign = b->CreateZExt(sign, output_int_type);
-    sign = b->CreateShl(sign, shift);
-  } else {
-    sign = b->CreateLShr(sign, -shift);
-    sign = b->CreateTrunc(sign, output_int_type);
-  }
+  sign = b->CreateZExt(sign, output_int_type);
+  sign = b->CreateShl(sign, output_type_bit_width - BitWidth(input_type));
   llvm::Value* result = b->CreateOr(sign, result_abs);
 
   // Bitcast to the output type.

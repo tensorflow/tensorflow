@@ -550,18 +550,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 using ReduceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
-static absl::string_view init_value(PrimitiveType dtype) {
-  if (dtype == C64 || dtype == C128) {
-    return "(0, 0)";
-  } else if (dtype == F8E8M0FNU) {
-    return "1e-40";
-  } else {
-    return "0";
-  }
-}
-
 TEST_P(ReduceTest, IsTritonSupportedReduction) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
@@ -576,7 +567,7 @@ ENTRY triton_computation {
   ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=add
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -608,6 +599,7 @@ TEST_P(
     ReduceTest,
     UnsupportedReduceWithMoreThanOneReduceDimensionsFailsGracefullyWithTriton) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
@@ -622,7 +614,7 @@ ENTRY triton_computation {
   ROOT reduce = $0[2] reduce(parameter_0, constant_0),
     dimensions={1,2}, to_apply=add
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -632,6 +624,7 @@ ENTRY triton_computation {
 
 TEST_P(ReduceTest, IsTritonSupportedReduceWithNonLastReduceDimension) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
@@ -645,7 +638,7 @@ ENTRY triton_computation {
   constant_0 = $0[] constant($1)
   ROOT reduce = $0[127] reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -656,6 +649,7 @@ ENTRY triton_computation {
 TEST_P(ReduceTest,
        UnsupportedReduceWithMoreThanOneOperandsFailsGracefullyWithTriton) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
@@ -676,7 +670,7 @@ ENTRY triton_computation {
       dimensions={1}, to_apply=add
   ROOT reduce = $0[125] get-tuple-element(tuple), index=0
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -707,6 +701,7 @@ ENTRY triton_computation {
 
 TEST_P(ReduceTest, UnsupportedReductionComputationFailsGracefullyWithTriton) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 custom_call {
@@ -721,7 +716,7 @@ ENTRY triton_computation {
   ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=custom_call
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -745,6 +740,7 @@ using ReductionComputationTest =
 // computation and in regular HLO. See triton_support.cc for more details.
 TEST_P(ReductionComputationTest, DifferentBinaryOps) {
   auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate = absl::Substitute(
       R"(
 reduce_computation {
@@ -759,7 +755,7 @@ ENTRY triton_computation {
   ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=reduce_computation
 })",
-      "$0", HloOpcodeString(opcode), init_value(data_type));
+      "$0", HloOpcodeString(opcode), dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -1119,12 +1115,13 @@ TEST_P(ConstantTest, ConstantEffectiveScalar) {
   // The IsTritonSupportedReduction effectively tests the scalar constant
   // support.
   auto [data_type, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 ENTRY triton_computation {
   ROOT const = $0[1,1] constant({{$1}})
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
@@ -1136,12 +1133,13 @@ TEST_P(ConstantTest, Constant2D) {
   // The IsTritonSupportedReduction effectively tests the scalar constant
   // support.
   auto [data_type, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 ENTRY triton_computation {
   ROOT const = $0[3,3] constant({{$1,$1,$1},{$1,$1,$1},{$1,$1,$1}})
 })",
-                       "$0", init_value(data_type));
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,

@@ -29,10 +29,9 @@ class FloatConversionParamTest
 
 INSTANTIATE_TEST_SUITE_P(FloatConversionParamSuite, FloatConversionParamTest,
                          ::testing::Values("f64", "f32", "f16", "bf16",
-                                           "f4e2m1fn", "f8e5m2", "f8e5m2fnuz",
-                                           "f8e4m3", "f8e4m3fn", "f8e4m3fnuz",
-                                           "f8e4m3b11fnuz", "f8e3m4",
-                                           "f8e8m0fnu"));
+                                           "f8e5m2", "f8e5m2fnuz", "f8e4m3",
+                                           "f8e4m3fn", "f8e4m3fnuz",
+                                           "f8e4m3b11fnuz", "f8e3m4"));
 
 TEST_P(FloatConversionParamTest, FloatToF16) {
   auto type_name = GetParam();

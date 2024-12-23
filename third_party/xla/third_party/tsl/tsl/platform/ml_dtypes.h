@@ -18,10 +18,8 @@ limitations under the License.
 
 #include "ml_dtypes/include/float8.h"  // from @ml_dtypes
 #include "ml_dtypes/include/intn.h"  // from @ml_dtypes
-#include "ml_dtypes/include/mxfloat.h"  // from @ml_dtypes
 
 namespace tsl {
-using float4_e2m1fn = ::ml_dtypes::float4_e2m1fn;
 using float8_e3m4 = ::ml_dtypes::float8_e3m4;
 using float8_e4m3 = ::ml_dtypes::float8_e4m3;
 using float8_e4m3fn = ::ml_dtypes::float8_e4m3fn;
@@ -29,7 +27,6 @@ using float8_e4m3fnuz = ::ml_dtypes::float8_e4m3fnuz;
 using float8_e4m3b11fnuz = ::ml_dtypes::float8_e4m3b11fnuz;
 using float8_e5m2 = ::ml_dtypes::float8_e5m2;
 using float8_e5m2fnuz = ::ml_dtypes::float8_e5m2fnuz;
-using float8_e8m0fnu = ::ml_dtypes::float8_e8m0fnu;
 
 using int1 = ::ml_dtypes::int1;
 using uint1 = ::ml_dtypes::uint1;

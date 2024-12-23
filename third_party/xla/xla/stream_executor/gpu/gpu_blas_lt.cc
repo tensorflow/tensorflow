@@ -56,10 +56,6 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
       return DataType::kF8E4M3FNUZ;
     case PrimitiveType::F8E3M4:
       return DataType::kF8E3M4;
-    case PrimitiveType::F4E2M1FN:
-      return DataType::kF4E2M1FN;
-    case PrimitiveType::F8E8M0FNU:
-      return DataType::kF8E8M0FNU;
     case PrimitiveType::S8:
       return DataType::kInt8;
     case PrimitiveType::F16:
@@ -97,10 +93,6 @@ absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
       return PrimitiveType::F8E4M3FNUZ;
     case DataType::kF8E3M4:
       return PrimitiveType::F8E3M4;
-    case DataType::kF4E2M1FN:
-      return PrimitiveType::F4E2M1FN;
-    case DataType::kF8E8M0FNU:
-      return PrimitiveType::F8E8M0FNU;
     case DataType::kInt8:
       return PrimitiveType::S8;
     case DataType::kHalf:
@@ -162,8 +154,6 @@ absl::StatusOr<ComputationType> GetBlasComputationType(
       case PrimitiveType::F8E5M2FNUZ:  // fall-through
       case PrimitiveType::F8E4M3FNUZ:  // fall-through
       case PrimitiveType::F8E3M4:      // fall-through
-      case PrimitiveType::F4E2M1FN:    // fall-through
-      case PrimitiveType::F8E8M0FNU:   // fall-through
       case PrimitiveType::F16:         // fall-through
       case PrimitiveType::BF16:
         // Accumulate in f32 precision.

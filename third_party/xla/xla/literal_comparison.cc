@@ -206,8 +206,8 @@ template <typename NativeT>
 std::string FpValueToString(NativeT value) {
   if constexpr (is_specialized_floating_point_v<NativeT>) {
     constexpr int kPrecisionDigits = std::numeric_limits<NativeT>::max_digits10;
-    const int kExponentDigts = std::ceil(
-        std::log10(std::max(std::numeric_limits<NativeT>::max_exponent10, 1)));
+    const int kExponentDigts =
+        std::ceil(std::log10(std::numeric_limits<NativeT>::max_exponent10));
     constexpr int kExtraChars = 4;
     const int kTotalChars = kPrecisionDigits * kExponentDigts + kExtraChars;
     return absl::StrFormat("%*.*g", kTotalChars, kPrecisionDigits,
@@ -418,9 +418,6 @@ class NearComparator {
     } else {
       float_distance = CalculateFloatDistance<T>(expected, actual);
       abs_error = FpAbsoluteValue(actual - expected);
-      if (!std::numeric_limits<T>::is_signed && IsNaN(abs_error)) {
-        abs_error = FpAbsoluteValue(expected - actual);
-      }
 
       // Avoid division by 0 even though it's well-defined because ubsan can be
       // configured to treat this as a fatal error.

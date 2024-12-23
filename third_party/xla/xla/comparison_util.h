@@ -193,13 +193,8 @@ class Comparison {
         //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
         // Reference:
         // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
-        if constexpr (std::numeric_limits<T>::is_signed) {
-          using R = SignedIntegerTypeForSizeType<sizeof(T)>;
-          return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
-        } else {
-          using R = UnsignedIntegerTypeForSizeType<sizeof(T)>;
-          return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
-        }
+        using R = SignedIntegerTypeForSizeType<sizeof(T)>;
+        return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
       }
     }
     // Applies the comparison from this Comparison's direction and ordering.

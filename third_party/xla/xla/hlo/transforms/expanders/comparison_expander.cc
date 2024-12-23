@@ -115,41 +115,34 @@ absl::StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
         ShapeUtil::ChangeElementType(rhs->shape(), compare_type), rhs));
   }
 
-  if (compare_type != F8E8M0FNU) {
-    int64_t bit_width = primitive_util::BitWidth(lhs->shape().element_type());
-    PrimitiveType signed_type =
-        primitive_util::SignedIntegralTypeForBitWidth(bit_width);
-    auto signed_shape = ShapeUtil::ChangeElementType(lhs->shape(), signed_type);
+  int64_t bit_width = primitive_util::BitWidth(lhs->shape().element_type());
+  PrimitiveType signed_type =
+      primitive_util::SignedIntegralTypeForBitWidth(bit_width);
+  auto signed_shape = ShapeUtil::ChangeElementType(lhs->shape(), signed_type);
 
-    auto zero_value = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(signed_type)));
-    zero_value = computation->AddInstruction(
-        HloInstruction::CreateBroadcast(signed_shape, zero_value, {}));
+  auto zero_value = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(signed_type)));
+  zero_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, zero_value, {}));
 
-    auto min_value = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::MinValue(signed_type)));
-    min_value = computation->AddInstruction(
-        HloInstruction::CreateBroadcast(signed_shape, min_value, {}));
+  auto min_value = computation->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MinValue(signed_shape.element_type())));
+  min_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, min_value, {}));
 
-    auto max_value = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::MaxValue(signed_type)));
-    max_value = computation->AddInstruction(
-        HloInstruction::CreateBroadcast(signed_shape, max_value, {}));
+  auto max_value = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MaxValue(signed_type)));
+  max_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, max_value, {}));
 
-    lhs = BitcastConvertFloatingPointToIntegral(computation, lhs, zero_value,
-                                                min_value, max_value);
-    rhs = BitcastConvertFloatingPointToIntegral(computation, rhs, zero_value,
-                                                min_value, max_value);
-  } else {
-    auto int8_shape = ShapeUtil::ChangeElementType(lhs->shape(), U8);
-    lhs = computation->AddInstruction(
-        HloInstruction::CreateBitcastConvert(int8_shape, lhs));
-    rhs = computation->AddInstruction(
-        HloInstruction::CreateBitcastConvert(int8_shape, rhs));
-  }
+  lhs = BitcastConvertFloatingPointToIntegral(computation, lhs, zero_value,
+                                              min_value, max_value);
+  rhs = BitcastConvertFloatingPointToIntegral(computation, rhs, zero_value,
+                                              min_value, max_value);
 
   auto new_compare = computation->AddInstruction(HloInstruction::CreateCompare(
-      instruction->shape(), lhs, rhs, compare->direction()));
+      instruction->shape(), lhs, rhs, compare->direction(),
+      Comparison::Type::kSigned));
 
   VLOG(2) << "New comparison instruction for total order:"
           << new_compare->ToString();
