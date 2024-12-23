@@ -80,8 +80,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "topk";
     case Kind::kWhile:
       return "while";
-    case Kind::kXnnDot:
-      return "xnn-dot";
+    case Kind::kXnnFusion:
+      return "xnn-fusion";
   }
 }
 Thunk::Thunk(Kind kind, Info info)

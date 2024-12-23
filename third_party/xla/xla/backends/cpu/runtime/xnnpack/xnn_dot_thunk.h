@@ -16,23 +16,24 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_DOT_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_DOT_THUNK_H_
 
+#include <cstddef>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/object_pool.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
 // Dot operation implemented on top of XNNPACK.
-class XnnDotThunk final : public Thunk {
+class XnnDotThunk final : public XnnFusionThunk {
  public:
-  ~XnnDotThunk() final;
-
   // Returns true if the dot operation is supported by XNNPACK. Returns an error
   // if the dot operation shape is invalid.
   static absl::StatusOr<bool> IsSupported(
@@ -45,29 +46,28 @@ class XnnDotThunk final : public Thunk {
       BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
       BufferAllocation::Slice out_buffer, Shape out_shape);
 
-  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
+ protected:
+  std::string fusion_kind() const final;
+  std::string fusion_description() const final;
 
-  BufferUses buffer_uses() const final { return DotBufferUses(dot_slices_); }
+  bool has_fusion_details() const final { return true; }
+  std::vector<std::string> fusion_details() const final;
+
+  std::string argument_name(size_t index) const final;
+  std::string result_name(size_t index) const final;
 
  private:
-  // XNNPACK runtime instantiated for the dot operation.
-  struct XnnRuntime;
-
   XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
               DotSlices dot_slices, DotShape dot_shape,
               DotCanonicalDims dot_canonical_dims);
 
-  absl::StatusOr<XnnRuntime> CreateXnnRuntime(
-      const Eigen::ThreadPoolDevice* device);
+  absl::StatusOr<xnn_subgraph_t> BuildDotSubgraph(
+      absl::Span<const Argument> arguments, absl::Span<const Result> results);
 
   DotDimensionNumbers dot_dimensions_;
   DotSlices dot_slices_;
   DotShape dot_shape_;
   DotCanonicalDims dot_canonical_dims_;
-
-  // XLA:CPU executable can be called concurrently from multiple threads, and we
-  // need to keep a pool of XNNPACK runtimes to avoid data races.
-  ObjectPool<XnnRuntime, const Eigen::ThreadPoolDevice*> xnn_runtime_pool_;
 };
 
 }  // namespace xla::cpu
