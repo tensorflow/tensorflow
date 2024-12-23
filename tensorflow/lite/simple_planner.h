@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_SIMPLE_PLANNER_H_
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 
