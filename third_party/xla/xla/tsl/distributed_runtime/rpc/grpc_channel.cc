@@ -88,7 +88,7 @@ absl::Status ValidateHostPortPair(const string& host_port) {
         }
       } else {
         int64_t value;
-        if (strings::safe_strto64(name_value[1], &value)) {
+        if (absl::SimpleAtoi(name_value[1], &value)) {
           args->SetInt(name_value[0], value);
         } else {
           LOG(ERROR) << "Invalid integer value: " << grpc_option;
