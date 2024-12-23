@@ -388,6 +388,7 @@ tf_cc_test(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/kernels:test_util",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
