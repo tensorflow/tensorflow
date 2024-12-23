@@ -555,7 +555,7 @@ int Main(int argc, char** argv) {
         str_util::Split(input_layer_shapes[n], ',');
     for (const string& layer_shape : split_layer_shapes) {
       int32_t tmp;
-      CHECK(strings::safe_strto32(layer_shape, &tmp))
+      CHECK(absl::SimpleAtoi(layer_shape, &tmp))
           << "Incorrect size string specified: " << input_layer_shapes[n];
       if (tmp == -1) {
         LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
