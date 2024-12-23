@@ -80,7 +80,7 @@ absl::Status MemmappedFileSystemWriter::SaveProtobuf(
 
 namespace {
 
-StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
+absl::string_view EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
   for (unsigned int i = 0; i < sizeof(uint64); ++i) {
     output_buffer[i] = (val >> i * 8);
   }
@@ -116,7 +116,7 @@ absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
   static constexpr uint64 kFillerBufferSize = 16;
   const char kFillerBuffer[kFillerBufferSize] = {};
   for (uint64 rest = to_write_for_alignment; rest > 0;) {
-    StringPiece sp(kFillerBuffer, std::min(rest, kFillerBufferSize));
+    absl::string_view sp(kFillerBuffer, std::min(rest, kFillerBufferSize));
     TF_RETURN_IF_ERROR(output_file_->Append(sp));
     rest -= sp.size();
     output_file_offset_ += sp.size();
