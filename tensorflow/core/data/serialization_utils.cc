@@ -107,8 +107,8 @@ absl::Status FindStatefulOps(const GraphDef& graph_def,
 }  // namespace
 
 absl::Status ReadElementsFromCheckpoint(
-    IteratorContext* ctx, IteratorStateReader* reader, StringPiece key_prefix,
-    std::vector<std::vector<Tensor>>* elements) {
+    IteratorContext* ctx, IteratorStateReader* reader,
+    absl::string_view key_prefix, std::vector<std::vector<Tensor>>* elements) {
   int64_t num_elements;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(key_prefix, kNumElements, &num_elements));
@@ -132,7 +132,8 @@ absl::Status ReadElementsFromCheckpoint(
   return absl::OkStatus();
 }
 
-absl::Status WriteElement(IteratorStateWriter* writer, StringPiece key_prefix,
+absl::Status WriteElement(IteratorStateWriter* writer,
+                          absl::string_view key_prefix,
                           const std::vector<std::vector<Tensor>>& elements,
                           int64_t index) {
   const std::vector<Tensor>& element = elements[index];
@@ -147,7 +148,7 @@ absl::Status WriteElement(IteratorStateWriter* writer, StringPiece key_prefix,
 }
 
 absl::Status WriteElementsToCheckpoint(
-    IteratorStateWriter* writer, StringPiece key_prefix,
+    IteratorStateWriter* writer, absl::string_view key_prefix,
     const std::vector<std::vector<Tensor>>& elements) {
   TF_RETURN_IF_ERROR(
       writer->WriteScalar(key_prefix, kNumElements, elements.size()));
@@ -158,7 +159,7 @@ absl::Status WriteElementsToCheckpoint(
 }
 
 absl::Status UpdateCheckpointElements(
-    IteratorStateWriter* writer, StringPiece key_prefix,
+    IteratorStateWriter* writer, absl::string_view key_prefix,
     const std::vector<std::vector<Tensor>>& elements,
     const absl::flat_hash_set<int64_t>& checkpoint_indices) {
   TF_RETURN_IF_ERROR(
@@ -184,33 +185,33 @@ VariantTensorDataReader::VariantTensorDataReader(
   }
 }
 
-absl::Status VariantTensorDataReader::ReadScalar(StringPiece key,
+absl::Status VariantTensorDataReader::ReadScalar(absl::string_view key,
                                                  int64_t* val) const {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadScalar(prefix, key, val);
 }
 
-absl::Status VariantTensorDataReader::ReadScalar(StringPiece name,
-                                                 StringPiece key,
+absl::Status VariantTensorDataReader::ReadScalar(absl::string_view name,
+                                                 absl::string_view key,
                                                  int64_t* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
-absl::Status VariantTensorDataReader::ReadScalar(StringPiece key,
+absl::Status VariantTensorDataReader::ReadScalar(absl::string_view key,
                                                  tstring* val) const {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadScalar(prefix, key, val);
 }
 
-absl::Status VariantTensorDataReader::ReadScalar(StringPiece name,
-                                                 StringPiece key,
+absl::Status VariantTensorDataReader::ReadScalar(absl::string_view name,
+                                                 absl::string_view key,
                                                  tstring* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
-absl::Status VariantTensorDataReader::ReadTensor(StringPiece key,
+absl::Status VariantTensorDataReader::ReadTensor(absl::string_view key,
                                                  Tensor* val) const {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
@@ -218,27 +219,27 @@ absl::Status VariantTensorDataReader::ReadTensor(StringPiece key,
 }
 
 absl::Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
-                                                 StringPiece key,
+                                                 absl::string_view key,
                                                  Tensor* val) const {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadTensorInternal(flr, prefix, key, val);
 }
 
-absl::Status VariantTensorDataReader::ReadTensor(StringPiece name,
-                                                 StringPiece key,
+absl::Status VariantTensorDataReader::ReadTensor(absl::string_view name,
+                                                 absl::string_view key,
                                                  Tensor* val) const {
   return ReadTensor(/*flr=*/nullptr, name, key, val);
 }
 
 absl::Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
-                                                 StringPiece name,
-                                                 StringPiece key,
+                                                 absl::string_view name,
+                                                 absl::string_view key,
                                                  Tensor* val) const {
   return ReadTensorInternal(flr, name, key, val);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece key) const {
+bool VariantTensorDataReader::Contains(absl::string_view key) const {
   string prefix;
   if (!ExtractIteratorPrefix(key, &prefix).ok()) {
     return false;
@@ -246,7 +247,8 @@ bool VariantTensorDataReader::Contains(StringPiece key) const {
   return Contains(prefix, key);
 }
 
-bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
+bool VariantTensorDataReader::Contains(absl::string_view n,
+                                       absl::string_view key) const {
   string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
@@ -257,8 +259,8 @@ bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
 }
 
 template <typename T>
-absl::Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
-                                                         StringPiece key,
+absl::Status VariantTensorDataReader::ReadScalarInternal(absl::string_view n,
+                                                         absl::string_view key,
                                                          T* val) const {
   string name(n);
   auto it = map_.find(name);
@@ -275,7 +277,7 @@ absl::Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
 }
 
 absl::Status VariantTensorDataReader::ReadTensorInternal(
-    FunctionLibraryRuntime* flr, StringPiece n, StringPiece key,
+    FunctionLibraryRuntime* flr, absl::string_view n, absl::string_view key,
     Tensor* val) const {
   if (Contains(n, strings::StrCat(key, kIsDataset))) {
     return ReadDatasetInternal(flr, n, key, val);
@@ -295,7 +297,7 @@ absl::Status VariantTensorDataReader::ReadTensorInternal(
 }
 
 absl::Status VariantTensorDataReader::ReadDatasetInternal(
-    FunctionLibraryRuntime* flr, StringPiece n, StringPiece key,
+    FunctionLibraryRuntime* flr, absl::string_view n, absl::string_view key,
     Tensor* val) const {
   if (flr == nullptr) {
     return errors::Internal(
@@ -326,41 +328,41 @@ std::map<string, Tensor> VariantTensorDataReader::ReadAllTensors() {
   return result;
 }
 
-absl::Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view key,
                                                   const int64_t val) {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteScalar(prefix, key, val);
 }
 
-absl::Status VariantTensorDataWriter::WriteScalar(StringPiece name,
-                                                  StringPiece key,
+absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view name,
+                                                  absl::string_view key,
                                                   const int64_t val) {
   return WriteScalarInternal(name, key, val);
 }
 
-absl::Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view key,
                                                   const tstring& val) {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteScalar(prefix, key, val);
 }
 
-absl::Status VariantTensorDataWriter::WriteScalar(StringPiece name,
-                                                  StringPiece key,
+absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view name,
+                                                  absl::string_view key,
                                                   const tstring& val) {
   return WriteScalarInternal(name, key, val);
 }
 
-absl::Status VariantTensorDataWriter::WriteTensor(StringPiece key,
+absl::Status VariantTensorDataWriter::WriteTensor(absl::string_view key,
                                                   const Tensor& val) {
   string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteTensor(prefix, key, val);
 }
 
-absl::Status VariantTensorDataWriter::WriteTensor(StringPiece name,
-                                                  StringPiece key,
+absl::Status VariantTensorDataWriter::WriteTensor(absl::string_view name,
+                                                  absl::string_view key,
                                                   const Tensor& val) {
   return WriteTensorInternal(name, key, val);
 }
@@ -402,9 +404,8 @@ void VariantTensorDataWriter::GetData(
 }
 
 template <typename T>
-absl::Status VariantTensorDataWriter::WriteScalarInternal(StringPiece name,
-                                                          StringPiece key,
-                                                          const T& val) {
+absl::Status VariantTensorDataWriter::WriteScalarInternal(
+    absl::string_view name, absl::string_view key, const T& val) {
   if (is_flushed_) {
     return errors::FailedPrecondition(
         "Cannot call WriteScalar after GetData or ReleaseData is called");
@@ -414,8 +415,8 @@ absl::Status VariantTensorDataWriter::WriteScalarInternal(StringPiece name,
   return WriteTensorInternal(name, key, val_t);
 }
 
-absl::Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
-                                                          StringPiece key,
+absl::Status VariantTensorDataWriter::WriteTensorInternal(absl::string_view n,
+                                                          absl::string_view key,
                                                           const Tensor& val) {
   DatasetBase* dataset;
   if (GetDatasetFromVariantTensor(val, &dataset).ok()) {
@@ -440,7 +441,7 @@ absl::Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
 }
 
 absl::Status VariantTensorDataWriter::WriteDatasetInternal(
-    StringPiece n, StringPiece key, const DatasetBase* dataset) {
+    absl::string_view n, absl::string_view key, const DatasetBase* dataset) {
   GraphDef graph_def;
   SerializationContext ctx((SerializationContext::Params()));
   TF_RETURN_IF_ERROR(AsGraphDef(dataset, std::move(ctx), &graph_def));
