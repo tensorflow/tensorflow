@@ -129,7 +129,7 @@ void ReduceTypePrecisionPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.add<CheckRangeAndConvertI8ToI4, SanitizeGatherOpOutputToI4>(
       &getContext());
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  (void)applyPatternsGreedily(getOperation(), std::move(patterns));
 }
 
 }  // namespace

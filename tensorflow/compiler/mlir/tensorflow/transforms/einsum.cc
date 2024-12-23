@@ -850,7 +850,7 @@ void TransformEinsumPass::runOnOperation() {
   auto func = getOperation();
 
   patterns.add<ConvertTFEinsumOp>(&getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

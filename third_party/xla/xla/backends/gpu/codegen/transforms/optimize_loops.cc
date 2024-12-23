@@ -321,8 +321,8 @@ class OptimizeLoopsPass
     // First unroll loops. If unrolling is possible, we prefer it.
     mlir::RewritePatternSet unroll_patterns(&getContext());
     unroll_patterns.add<UnrollLoops>(&getContext());
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
-            getOperation(), std::move(unroll_patterns)))) {
+    if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
+                                                 std::move(unroll_patterns)))) {
       signalPassFailure();
       return;
     }
@@ -331,8 +331,8 @@ class OptimizeLoopsPass
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<PipelineLoad<mlir::vector::TransferReadOp>,
                  PipelineLoad<mlir::tensor::ExtractOp>>(&getContext());
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

@@ -114,7 +114,7 @@ void RemoveUnusedWhileResultsPass::runOnOperation() {
   MLIRContext* context = &getContext();
   RewritePatternSet patterns(context);
   TF::WhileRegionOp::getCanonicalizationPatterns(patterns, context);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 }

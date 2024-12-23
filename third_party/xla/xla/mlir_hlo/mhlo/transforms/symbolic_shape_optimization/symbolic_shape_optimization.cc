@@ -793,8 +793,8 @@ class SymbolicShapeOptimizationPass final
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
     shape::ShapeOfOp::getCanonicalizationPatterns(patterns, ctx);
 
-    if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                  std::move(patterns)))) {
+    if (failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

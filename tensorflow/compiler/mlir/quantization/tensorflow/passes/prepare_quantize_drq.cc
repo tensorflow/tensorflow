@@ -278,7 +278,7 @@ void PrepareQuantizeDRQPass::runOnOperation() {
 
   for (auto func : module_op.getOps<func::FuncOp>()) {
     removeAllStatsOp(func);
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-prepare-quantize-drq failed.";
       signalPassFailure();
     }

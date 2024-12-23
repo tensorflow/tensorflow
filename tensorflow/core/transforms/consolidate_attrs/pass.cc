@@ -376,8 +376,7 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   patterns.add(
       RemoveAttributes<WhileOp, StatelessWhileOp, StatefulWhileOp, ForOp>(
           &getContext(), {"T"}));
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     getOperation()->emitError(getArgument() + " pass failed");
     signalPassFailure();
     return;
@@ -675,8 +674,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
                  ForOp>(patterns, control_type);
   patterns.insert<MaterializeTFGOpOutputShapes, MaterializeCFOpOutputShapes>(
       &getContext());
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     getOperation()->emitError(getArgument() + " pass failed");
     signalPassFailure();
     return;

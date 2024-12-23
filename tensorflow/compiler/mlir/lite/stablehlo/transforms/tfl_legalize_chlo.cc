@@ -46,7 +46,7 @@ class LegalizeChloToTflPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<LowerGELU>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
     }
   }

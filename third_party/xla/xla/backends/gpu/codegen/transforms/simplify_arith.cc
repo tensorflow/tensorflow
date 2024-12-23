@@ -363,16 +363,15 @@ class SimplifyArithPass
       RewriteTruncExtShuffle
     >(ctx);
     // clang-format on
-    if (mlir::failed(
-            mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
     }
 
     mlir::RewritePatternSet scf_patterns(ctx);
     mlir::scf::ForOp::getCanonicalizationPatterns(scf_patterns, ctx);
     mlir::scf::IfOp::getCanonicalizationPatterns(scf_patterns, ctx);
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
-            func, std::move(scf_patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(func, std::move(scf_patterns)))) {
       signalPassFailure();
     }
   }

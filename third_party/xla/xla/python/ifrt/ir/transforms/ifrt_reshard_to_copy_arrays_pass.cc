@@ -170,8 +170,8 @@ class IfrtReshardToCopyArraysPass
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<ReshardToCopyArraysOpPattern>(&getContext());
     mlir::ModuleOp module_op = getOperation();
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(module_op,
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();
     }
   }

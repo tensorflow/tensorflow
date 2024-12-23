@@ -296,7 +296,7 @@ void FallbackToFlexOps::runOnOperation() {
   // Convert binary ops to BiasAdd ops if possible.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Convert unsupported ops to Flex ops.
   auto tf_dialect = ctx->getLoadedDialect<TF::TensorFlowDialect>();

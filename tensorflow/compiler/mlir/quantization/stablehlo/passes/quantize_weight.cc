@@ -231,7 +231,7 @@ void QuantizeWeightPass::runOnOperation() {
 
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
-  if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+  if (failed(applyPatternsGreedily(func, frozen_patterns))) {
     signalPassFailure();
   }
 }

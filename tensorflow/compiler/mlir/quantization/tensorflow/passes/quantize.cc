@@ -550,14 +550,14 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 
   if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns_2)))) {
       signalPassFailure();
     }
   }

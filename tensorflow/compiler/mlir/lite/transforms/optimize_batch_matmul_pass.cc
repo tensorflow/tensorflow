@@ -214,7 +214,7 @@ void OptimizeBatchMatmulPass::runOnOperation() {
   patterns.add<ConvertBatchMatMulOp2FullyConnectedOp,
                ConvertBatchMatMulOpToReduceSum>(ctx);
   TFL::populateWithGenerated(patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace TFL

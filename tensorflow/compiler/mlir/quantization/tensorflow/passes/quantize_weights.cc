@@ -262,7 +262,7 @@ void QuantizeWeightsPass::runOnOperation() {
   // function can be modified at the same time so avoid running functions in
   // parallel.
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-quantize-weights failed.";
       signalPassFailure();
     }

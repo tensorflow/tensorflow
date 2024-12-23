@@ -36,7 +36,7 @@ class LowerQuantizedPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateLoweringQuantizedPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    (void)applyPatternsGreedily(getOperation(), std::move(patterns));
   }
 };
 

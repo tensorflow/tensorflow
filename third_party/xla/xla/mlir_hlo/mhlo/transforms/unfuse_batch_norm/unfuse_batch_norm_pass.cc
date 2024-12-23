@@ -43,8 +43,7 @@ struct TestUnfuseBatchNormPass
     RewritePatternSet patterns(&getContext());
     populateUnfuseBatchNormInferencePattern(&getContext(), &patterns);
     populateUnfuseBatchNormTrainingPattern(&getContext(), &patterns);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

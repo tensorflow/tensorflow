@@ -73,7 +73,7 @@ class LegalizeVariablesPass
 
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
-    (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
+    (void)applyPatternsGreedily(module, std::move(patterns));
   }
 };
 

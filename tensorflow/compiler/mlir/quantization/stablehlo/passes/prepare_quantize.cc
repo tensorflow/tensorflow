@@ -162,7 +162,7 @@ void PrepareQuantizePass::runOnOperation() {
     // deal with the arith::ConstantOp instances.
     patterns.add<ConvertTFConstOpToArithConstOp>(ctx);
     patterns.add<ConvertStablehloConstToArithConstOp>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
       signalPassFailure();
     }
 
@@ -180,7 +180,7 @@ void PrepareQuantizePass::runOnOperation() {
     patterns_2
         .add<MergeConsecutiveQuantizeCast, ConvertArithConstToStablehloConstOp>(
             ctx);
-    if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns_2)))) {
+    if (failed(applyPatternsGreedily(func_op, std::move(patterns_2)))) {
       signalPassFailure();
     }
   }

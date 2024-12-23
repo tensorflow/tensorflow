@@ -159,7 +159,7 @@ class OptimizeTfForTfrt
 
     EliminateCommonMultinomialOps(func.getBody().front());
 
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, patterns_)))
+    if (mlir::failed(mlir::applyPatternsGreedily(func, patterns_)))
       signalPassFailure();
   }
 

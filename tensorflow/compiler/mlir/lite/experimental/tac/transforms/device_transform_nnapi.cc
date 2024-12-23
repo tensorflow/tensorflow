@@ -63,7 +63,7 @@ void DeviceTransformNNAPIPass::runOnOperation() {
   auto* ctx = &getContext();
   NNAPIHardware nnapi_hardware;
   RewritePatternSet patterns = nnapi_hardware.GetTransformations(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

@@ -189,7 +189,7 @@ class LegalizeHashTablesPass
         .add<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
              LegalizeHashTableImportOpPattern, LegalizeHashTableSizeOpPattern>(
             &getContext());
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;
     }

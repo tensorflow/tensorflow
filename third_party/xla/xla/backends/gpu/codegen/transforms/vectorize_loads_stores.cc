@@ -329,8 +329,8 @@ class VectorizeLoadsAndStoresPass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<VectorizeLoad, VectorizeStore>(&getContext());
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

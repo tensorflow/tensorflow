@@ -113,7 +113,7 @@ void ConvertConstPass::runOnOperation() {
   auto func = getOperation();
   auto *context = &getContext();
   patterns.add<QuantizedConstRewrite>(context);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>

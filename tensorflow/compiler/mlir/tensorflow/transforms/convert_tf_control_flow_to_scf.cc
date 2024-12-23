@@ -197,7 +197,7 @@ struct ConvertTfControlFlowToScf
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateTfControlFlowToScfPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    (void)applyPatternsGreedily(getOperation(), std::move(patterns));
   }
 };
 

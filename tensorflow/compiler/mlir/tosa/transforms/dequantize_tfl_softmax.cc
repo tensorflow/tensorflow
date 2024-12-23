@@ -74,8 +74,7 @@ LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
 void TosaDequantizeTFLSoftmax::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.add<TosaDequantizeTFLSoftmaxPattern>(&getContext());
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     signalPassFailure();
   }
 }

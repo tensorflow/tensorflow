@@ -277,7 +277,7 @@ void QuantizePass::runOnOperation() {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
                                                                   quant_params);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
@@ -286,7 +286,7 @@ void QuantizePass::runOnOperation() {
   if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.add<quant::RemoveDebugAttrPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsGreedily(func, std::move(patterns_2));
 }
 }  // namespace
 

@@ -404,7 +404,7 @@ void PrepareQuantizePass::runOnOperation() {
       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
     patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+  (void)applyPatternsGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -427,7 +427,7 @@ void PrepareQuantizePass::runOnOperation() {
         ctx, quant_specs_);
     patterns_2.add<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

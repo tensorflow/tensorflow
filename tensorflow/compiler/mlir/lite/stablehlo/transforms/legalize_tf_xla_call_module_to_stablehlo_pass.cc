@@ -248,7 +248,7 @@ class TFXlaCallModuleOpToStablehloPass
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertTFXlaCallModuleOp>(&getContext(), module_op);
     patterns.add<RemoveCustomCallWithSharding>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
       return signalPassFailure();
     }
   }

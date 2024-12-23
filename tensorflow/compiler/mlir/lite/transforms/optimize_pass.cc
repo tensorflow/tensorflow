@@ -2629,7 +2629,7 @@ void OptimizePass::runOnOperation() {
            FuseSqueezingLhsReshapeIntoFC_Output,
            FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1,
            FuseInputReshape_BatchMatMulWithFlattenedRhsDims>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
+  (void)applyPatternsGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
@@ -2646,7 +2646,7 @@ void OptimizePass::runOnOperation() {
   }
   if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   RewritePatternSet phase_2_patterns(&getContext());
@@ -2671,7 +2671,7 @@ void OptimizePass::runOnOperation() {
   }
   if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace TFL

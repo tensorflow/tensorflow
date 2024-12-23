@@ -341,7 +341,7 @@ void OptimizeBroadcastLikePass::runOnOperation() {
   patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(
       func.getContext());
   TFL::populateWithGenerated(patterns);
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  (void)applyPatternsGreedily(getOperation(), std::move(patterns));
 }
 
 }  // namespace TFL

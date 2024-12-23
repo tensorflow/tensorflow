@@ -40,7 +40,7 @@ void IdentifyDilatedConvPass::runOnOperation() {
   patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
       &getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 }  // namespace
 std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass() {
