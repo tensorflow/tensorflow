@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/asm_compiler.h"

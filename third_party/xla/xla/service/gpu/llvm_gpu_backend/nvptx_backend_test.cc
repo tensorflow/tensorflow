@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 
 #include <utility>
 
-#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/test.h"
