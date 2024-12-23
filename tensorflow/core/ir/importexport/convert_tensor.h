@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TENSOR_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TENSOR_H_
 
+#include <cstdint>
+
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
