@@ -34,6 +34,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_NAMING_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_NAMING_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
