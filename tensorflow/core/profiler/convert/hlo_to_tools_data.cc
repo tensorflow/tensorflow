@@ -18,9 +18,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/util/json_util.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"

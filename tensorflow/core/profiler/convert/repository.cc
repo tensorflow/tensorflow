@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/repository.h"
 
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
