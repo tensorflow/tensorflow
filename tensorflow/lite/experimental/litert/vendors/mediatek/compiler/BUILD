@@ -112,8 +112,8 @@ litert_test(
     # Currently this test can only be run on Android because we don't have x86 shared libraries for
     # MTK.
     target_compatible_with = select({
-        "//third_party/bazel_platforms/os:android": [],
-        "//conditions:default": ["//third_party/bazel_platforms:incompatible"],
+        "@platforms//os:android": [],
+        "//conditions:default": ["@platforms//:incompatible"],
     }),
     use_sys_malloc = True,
     deps = [
