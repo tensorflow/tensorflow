@@ -65,7 +65,7 @@ class ShapeRefinerTest : public ::testing::Test {
                         int end, int stride, const char* expected,
                         int begin_mask = 0, int end_mask = 0,
                         int ellipsis_mask = 0, int shrink_axis_mask = 0,
-                        StringPiece test_op = "TensorAsShapeInt32") {
+                        absl::string_view test_op = "TensorAsShapeInt32") {
     Scope root = Scope::DisabledShapeInferenceScope();
     auto placeholder =
         ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));

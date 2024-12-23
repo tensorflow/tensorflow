@@ -41,8 +41,9 @@ class ProfileHandler {
   // - op_type: String name of the Op.
   // - details: Main content for timeline click text.
   virtual void RecordOneOp(const string& device, const NodeExecStats& stats,
-                           bool is_copy, StringPiece label, StringPiece op_type,
-                           StringPiece details) = 0;
+                           bool is_copy, absl::string_view label,
+                           absl::string_view op_type,
+                           absl::string_view details) = 0;
 
   // Records that the current step finished.
   //

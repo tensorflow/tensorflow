@@ -187,7 +187,7 @@ class GraphOperation : public TracingOperation {
 
   absl::Status SetAttrString(const char* attr_name, const char* data,
                              size_t length) override {
-    tensorflow::StringPiece s(data, length);
+    absl::string_view s(data, length);
     op_->node_builder.Attr(attr_name, s);
     return absl::OkStatus();
   }
@@ -251,7 +251,7 @@ class GraphOperation : public TracingOperation {
                                             lengths[i]);
       }
     } else {
-      std::vector<tensorflow::StringPiece> v;
+      std::vector<absl::string_view> v;
       v.reserve(num_values);
       for (int i = 0; i < num_values; ++i) {
         v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);

@@ -33,7 +33,7 @@ namespace eager {
 // These ops are not pinnable since they generate data. It can be slower to
 // generate and then copy the data instead of just generating the data on the
 // device directly.
-static bool IsPinnableOp(StringPiece op_name) {
+static bool IsPinnableOp(absl::string_view op_name) {
   static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
       "RandomUniform",
       "RandomUniformInt",
@@ -62,12 +62,12 @@ static absl::Status ValidateTensorHandleRemoteDevice(
       "workers have been restarted.");
 }
 
-bool IsColocationExempt(StringPiece op_name) {
+bool IsColocationExempt(absl::string_view op_name) {
   const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
   return exempt_ops.find(string(op_name)) != exempt_ops.end();
 }
 
-bool IsFunction(StringPiece op_name) {
+bool IsFunction(absl::string_view op_name) {
   const OpDef* op_def = nullptr;
   absl::Status s = OpDefForOp(string(op_name), &op_def);
   if (!s.ok()) {
@@ -81,9 +81,9 @@ bool IsFunction(StringPiece op_name) {
 }
 
 absl::Status MaybePinSmallOpsToCpu(
-    bool* result, StringPiece op_name,
+    bool* result, absl::string_view op_name,
     absl::Span<ImmediateExecutionTensorHandle* const> args,
-    StringPiece cpu_device_name) {
+    absl::string_view cpu_device_name) {
   if (IsFunction(op_name) || IsColocationExempt(op_name) ||
       !IsPinnableOp(op_name)) {
     *result = false;

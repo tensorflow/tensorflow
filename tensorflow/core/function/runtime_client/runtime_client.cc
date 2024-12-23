@@ -93,7 +93,7 @@ EagerContext& GlobalPythonEagerContext() {
   return *ctx;
 }
 
-absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
+absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(absl::string_view name) {
   EagerContext& ctx = this->eager_ctx_;
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
@@ -134,8 +134,8 @@ absl::Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   return CreateFunction(fdef);
 }
 
-absl::Status Runtime::TransformFunction(StringPiece name,
-                                        StringPiece pipeline_name,
+absl::Status Runtime::TransformFunction(absl::string_view name,
+                                        absl::string_view pipeline_name,
                                         Dialect dialect) {
   // TODO(mdan): Use a longer-lived context.
   mlir::MLIRContext ctx;
@@ -221,7 +221,7 @@ absl::Status Runtime::TransformFunction(StringPiece name,
 }
 
 absl::StatusOr<ReturnValues> Runtime::CallFunction(
-    StringPiece name, absl::Span<AbstractTensorHandle* const> args) {
+    absl::string_view name, absl::Span<AbstractTensorHandle* const> args) {
   EagerContext& ctx = this->eager_ctx_;
 
   ImmediateOpPtr op(ctx.CreateOperation());

@@ -289,7 +289,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             if (s.ok()) {
               bytes_counter->IncrementBy(dataset()->record_bytes_);
               lookahead_cache_.append(record);
-              StringPiece lookahead_cache_view(lookahead_cache_);
+              absl::string_view lookahead_cache_view(lookahead_cache_);
               record = tstring(
                   lookahead_cache_view.substr(0, dataset()->record_bytes_));
               lookahead_cache_ = tstring(

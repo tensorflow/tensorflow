@@ -96,7 +96,7 @@ struct EndpointEq {
 
 // The following Add* routines are used to add a few graph nodes while
 // functions are transformed.
-static Node* AddNoOp(StringPiece name, Graph* g) {
+static Node* AddNoOp(absl::string_view name, Graph* g) {
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
   ndef.set_op("NoOp");
@@ -106,7 +106,7 @@ static Node* AddNoOp(StringPiece name, Graph* g) {
   return ret;
 }
 
-static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
+static Node* AddIdentity(absl::string_view name, Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
@@ -506,7 +506,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   // control nodes and inlined function inputs and outputs.
 
   // Add a NoOp node for function control inputs/outputs.
-  const auto no_op = [&](StringPiece name) -> Node* {
+  const auto no_op = [&](absl::string_view name) -> Node* {
     Node* node = AddNoOp(absl::StrCat(caller->name(), "/", name), g);
     const absl::optional<string> device = placer->ControlNodeDevice();
     if (device.has_value()) node->set_requested_device(*device);
@@ -514,7 +514,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   };
 
   // Add an Identity node for function input.
-  const auto input_identity = [&](StringPiece name, Endpoint input,
+  const auto input_identity = [&](absl::string_view name, Endpoint input,
                                   int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->InputNodeDevice(index);
@@ -529,7 +529,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   };
 
   // Add an Identity node for function output.
-  const auto output_identity = [&](StringPiece name, Endpoint input,
+  const auto output_identity = [&](absl::string_view name, Endpoint input,
                                    int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->OutputNodeDevice(index);

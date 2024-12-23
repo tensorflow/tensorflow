@@ -507,7 +507,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         if (dataset()->env_->FileExists(lockfile_).ok()) {
           // Attempt to read the contents of the lockfile.
           char contents_scratch[151] = {0};  // Initialize all to 0.
-          StringPiece contents;
+          absl::string_view contents;
           std::unique_ptr<RandomAccessFile> file;
           if (dataset()->env_->NewRandomAccessFile(lockfile_, &file).ok()) {
             file->Read(0, 150, &contents, contents_scratch).IgnoreError();
@@ -621,7 +621,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             *end_of_sequence = true;
             return absl::OkStatus();
           }
-          StringPiece key = reader_.key();
+          absl::string_view key = reader_.key();
           DCHECK_EQ(key, dataset()->FormatName(cur_index_, i));
           TF_RETURN_IF_ERROR(reader_.ReadCurrent(&(*out_tensors)[i]));
           TF_RETURN_IF_ERROR(reader_.status());

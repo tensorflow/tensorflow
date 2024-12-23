@@ -173,7 +173,7 @@ absl::Status EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     io::ProtoEncodeHelper e_skeleton(skeleton.data(), skeleton.size());
     EncodeSkeleton(val, &e_skeleton);
 
-    StringPiece tdata = val.tensor_data();
+    absl::string_view tdata = val.tensor_data();
     uint32 overall_tensor_proto_bytesize =
         (e_skeleton.size() +
          VarLengthEncodingSize(TensorProto::kTensorContentFieldNumber,
@@ -210,7 +210,7 @@ absl::Status EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     e.WriteVarlengthBeginning(RecvTensorResponse::kTensorFieldNumber,
                               overall_tensor_proto_bytesize);
     // (C)
-    e.WriteRawBytes(StringPiece(e_skeleton.data(), e_skeleton.size()));
+    e.WriteRawBytes(absl::string_view(e_skeleton.data(), e_skeleton.size()));
     // (D1) & (D2)
     e.WriteVarlengthBeginning(TensorProto::kTensorContentFieldNumber,
                               tdata.size());
