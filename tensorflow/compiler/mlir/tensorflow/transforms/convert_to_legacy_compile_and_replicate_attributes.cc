@@ -19,6 +19,8 @@ limitations under the License.
 // This ensures the unified attributes not get exposed outside of the MLIR
 // bridge with V1 pipeline in some cases.
 
+#include <memory>
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project

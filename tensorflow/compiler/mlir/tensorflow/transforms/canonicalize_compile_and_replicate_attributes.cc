@@ -20,6 +20,8 @@ limitations under the License.
 // should be replaced with _xla_compile_device_type with the value of device
 // attribute.
 
+#include <memory>
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project

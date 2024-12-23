@@ -25,7 +25,10 @@ limitations under the License.
 // does not exist any operation placed on host_B that conumes any result of any
 // operation placed on host_A.
 
+#include <algorithm>
+#include <memory>
 #include <optional>
+#include <string>
 
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
