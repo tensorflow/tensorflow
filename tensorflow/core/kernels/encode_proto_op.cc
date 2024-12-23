@@ -301,7 +301,7 @@ static void WriteStringAdapter(int field_number, const tstring& value,
                                CodedOutputStream* output) {
   // Unfortunately, external proto does not accept string_view.
 #if defined(PLATFORM_GOOGLE)
-  WireFormatLite::WriteString(field_number, StringPiece(value), output);
+  WireFormatLite::WriteString(field_number, absl::string_view(value), output);
 #else
   WireFormatLite::WriteString(field_number, string(value), output);
 #endif
@@ -311,7 +311,7 @@ static void WriteBytesAdapter(int field_number, const tstring& value,
                               CodedOutputStream* output) {
   // Unfortunately, external proto does not accept string_view.
 #if defined(PLATFORM_GOOGLE)
-  WireFormatLite::WriteBytes(field_number, StringPiece(value), output);
+  WireFormatLite::WriteBytes(field_number, absl::string_view(value), output);
 #else
   WireFormatLite::WriteBytes(field_number, string(value), output);
 #endif

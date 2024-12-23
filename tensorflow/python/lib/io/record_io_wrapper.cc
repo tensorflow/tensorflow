@@ -179,7 +179,7 @@ class PyRecordWriter {
   PyRecordWriter() = delete;
   ~PyRecordWriter() { (void)Close(); }
 
-  absl::Status WriteRecord(tensorflow::StringPiece record) {
+  absl::Status WriteRecord(absl::string_view record) {
     if (IsClosed()) {
       return tensorflow::errors::FailedPrecondition("Writer is closed.");
     }
@@ -345,7 +345,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
            })
       .def(
           "write",
-          [](PyRecordWriter* self, tensorflow::StringPiece record) {
+          [](PyRecordWriter* self, absl::string_view record) {
             absl::Status status;
             {
               py::gil_scoped_release release;

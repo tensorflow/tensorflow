@@ -89,7 +89,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       py::arg("filename"), py::arg("token") = (PyTransactionToken*)nullptr);
   m.def(
       "WriteStringToFile",
-      [](const std::string& filename, tensorflow::StringPiece data,
+      [](const std::string& filename, absl::string_view data,
          PyTransactionToken* token) {
         py::gil_scoped_release release;
         const auto status =
@@ -258,7 +258,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
            py::arg("filename"), py::arg("mode"),
            py::arg("token") = (PyTransactionToken*)nullptr)
       .def("append",
-           [](WritableFile* self, tensorflow::StringPiece data) {
+           [](WritableFile* self, absl::string_view data) {
              const auto status = self->Append(data);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
