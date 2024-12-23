@@ -56,7 +56,7 @@ absl::Status ValidateHostPortPair(const string& host_port) {
   }
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
-  if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
+  if (!absl::SimpleAtoi(host_port.substr(colon_index + 1), &port) ||
       host_port.substr(0, colon_index).find('/') != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
@@ -88,7 +88,7 @@ absl::Status ValidateHostPortPair(const string& host_port) {
         }
       } else {
         int64_t value;
-        if (strings::safe_strto64(name_value[1], &value)) {
+        if (absl::SimpleAtoi(name_value[1], &value)) {
           args->SetInt(name_value[0], value);
         } else {
           LOG(ERROR) << "Invalid integer value: " << grpc_option;
