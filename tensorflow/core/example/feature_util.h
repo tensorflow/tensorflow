@@ -201,7 +201,7 @@ template <>
 struct is_string<std::string> : std::true_type {};
 
 template <>
-struct is_string<::tensorflow::StringPiece> : std::true_type {};
+struct is_string<absl::string_view> : std::true_type {};
 
 template <>
 struct is_string<tstring> : std::true_type {};
