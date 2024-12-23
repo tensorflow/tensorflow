@@ -429,7 +429,7 @@ absl::Status DebugNodeInserter::SetDebugNodeAttributes(
         debug_node->AddAttr<string>(attr.name(), attr_value);
       } else if (attr.type() == "float") {
         float float_value = 0.0;
-        if (!::tensorflow::strings::safe_strtof(attr_value, &float_value)) {
+        if (!absl::SimpleAtof(attr_value, &float_value)) {
           return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for float-type attribute ", attr.name(),
               "of debug node ", debug_node->name(), ": \"", attr_value, "\""));
@@ -437,7 +437,7 @@ absl::Status DebugNodeInserter::SetDebugNodeAttributes(
         debug_node->AddAttr<float>(attr.name(), float_value);
       } else if (attr.type() == "int") {
         int64_t int_value = 0;
-        if (!::tensorflow::strings::safe_strto64(attr_value, &int_value)) {
+        if (!absl::SimpleAtoi(attr_value, &int_value)) {
           return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for int-type attribute ", attr.name(),
               "of debug node ", debug_node->name(), ": \"", attr_value, "\""));
