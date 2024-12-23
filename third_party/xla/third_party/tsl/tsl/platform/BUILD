@@ -212,7 +212,6 @@ cc_library(
         ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@double_conversion//:double-conversion",
     ],
 )
 
