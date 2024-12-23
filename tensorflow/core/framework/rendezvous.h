@@ -58,18 +58,18 @@ class RendezvousInterface {
   // Parses the key constructed by CreateKey and parse src/dst device
   // names into structures respectively.
   struct ParsedKey {
-    StringPiece src_device;
+    absl::string_view src_device;
     DeviceNameUtils::ParsedName src;
     uint64 src_incarnation = 0;
-    StringPiece dst_device;
+    absl::string_view dst_device;
     DeviceNameUtils::ParsedName dst;
-    StringPiece edge_name;
+    absl::string_view edge_name;
 
     ParsedKey() {}
     ParsedKey(const ParsedKey& b) { *this = b; }
 
     ParsedKey& operator=(const ParsedKey& b);
-    StringPiece FullKey() const { return buf_; }
+    absl::string_view FullKey() const { return buf_; }
 
    private:
     friend class Rendezvous;
@@ -164,7 +164,7 @@ class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
                                const std::string& name,
                                const FrameAndIter& frame_iter);
 
-  static absl::Status ParseKey(StringPiece key, ParsedKey* out);
+  static absl::Status ParseKey(absl::string_view key, ParsedKey* out);
 };
 
 // Returns a Rendezvous instance that is limited to use only by

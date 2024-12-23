@@ -118,7 +118,7 @@ class FunctionDefHelper {
     }
 
    private:
-    void InitFromString(StringPiece val);
+    void InitFromString(absl::string_view val);
   };
 
   // Constructs an AttrValue.func given the "name" and "attrs".
@@ -237,7 +237,8 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
 }
 
 template <>
-inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(StringPiece val) {
+inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
+    absl::string_view val) {
   InitFromString(val);
 }
 
@@ -534,7 +535,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Generates new function name with the specified prefix that is unique
   // across this library.
-  std::string UniqueFunctionName(StringPiece prefix) const
+  std::string UniqueFunctionName(absl::string_view prefix) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Given a node def 'ndef', inspects attributes of the callee

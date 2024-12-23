@@ -45,7 +45,8 @@ class NameAttrList;
 std::string SummarizeAttrValue(const AttrValue& attr_value);
 
 // Generates an error if attr_value doesn't have the indicated attr type.
-absl::Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
+absl::Status AttrValueHasType(const AttrValue& attr_value,
+                              absl::string_view type);
 
 // Converts a text proto value from "text" into the field of *out
 // indicated by "type" (e.g. from the type field of an AttrDef).
@@ -54,13 +55,14 @@ absl::Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
 // * If type:"list(string)" and text:"['foo', 'bar']",
 //   then *out is set to "list { s: ['foo', 'bar'] }"
 // Returns true on success.
-bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out);
+bool ParseAttrValue(absl::string_view type, absl::string_view text,
+                    AttrValue* out);
 
 // Sets *out based on the type of value.
 void SetAttrValue(const std::string& value, AttrValue* out);
 void SetAttrValue(const tstring& value, AttrValue* out);
 void SetAttrValue(const char* value, AttrValue* out);
-void SetAttrValue(StringPiece value, AttrValue* out);
+void SetAttrValue(absl::string_view value, AttrValue* out);
 void SetAttrValue(int64_t value, AttrValue* out);
 void SetAttrValue(int32_t value, AttrValue* out);
 void SetAttrValue(float value, AttrValue* out);
@@ -77,7 +79,7 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out);
 void SetAttrValue(absl::Span<const string> value, AttrValue* out);
 void SetAttrValue(absl::Span<const tstring> value, AttrValue* out);
 void SetAttrValue(absl::Span<const char* const> value, AttrValue* out);
-void SetAttrValue(absl::Span<const StringPiece> value, AttrValue* out);
+void SetAttrValue(absl::Span<const absl::string_view> value, AttrValue* out);
 void SetAttrValue(absl::Span<const int64_t> value, AttrValue* out);
 void SetAttrValue(absl::Span<const int32> value, AttrValue* out);
 void SetAttrValue(absl::Span<const float> value, AttrValue* out);

@@ -40,7 +40,7 @@ class OpDefBuilderTest : public ::testing::Test {
  protected:
   OpDefBuilder b() { return OpDefBuilder("Test"); }
 
-  void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto,
+  void ExpectSuccess(const OpDefBuilder& builder, absl::string_view proto,
                      OpShapeInferenceFn* shape_fn_out = nullptr) {
     OpRegistrationData op_reg_data;
     absl::Status status = builder.Finalize(&op_reg_data);
@@ -61,7 +61,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
+  void ExpectOrdered(const OpDefBuilder& builder, absl::string_view proto) {
     OpRegistrationData op_reg_data;
     absl::Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
