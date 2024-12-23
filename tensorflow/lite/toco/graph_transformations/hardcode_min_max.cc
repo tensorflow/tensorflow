@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
+#include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
