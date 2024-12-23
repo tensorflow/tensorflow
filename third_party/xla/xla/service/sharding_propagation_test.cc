@@ -2828,7 +2828,7 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={{maximal device=1 metadata={op_name="a"}}, 
+    sharding={{maximal device=1 metadata={op_name="a"}},
               {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0
@@ -2889,7 +2889,7 @@ HloModule module
     sharding={maximal device=0 metadata={op_name="a"}}
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={{maximal device=1 metadata={op_name="b"}}, 
+    sharding={{maximal device=1 metadata={op_name="b"}},
               {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0
@@ -2934,7 +2934,7 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={{maximal device=1 metadata={op_name="a"}}, 
+    sharding={{maximal device=1 metadata={op_name="a"}},
               {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0,
@@ -2980,7 +2980,7 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={{maximal device=1 metadata={op_name="a"}}, 
+    sharding={{maximal device=1 metadata={op_name="a"}},
               {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0

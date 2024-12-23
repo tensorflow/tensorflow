@@ -2560,9 +2560,9 @@ ENTRY entry {
   cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
   slice = f32[16,64,256]{2,1,0} slice(f32[512,2048,2048]{2,1,0} cp1d), slice={[0:16], [0:64], [0:256]}
   c0 = f32[16,256,256]{2,1,0} convolution(p0, slice),
-    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
   c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
-    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
   ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d, cp3d)
 }
 )";
@@ -3637,7 +3637,7 @@ ENTRY entry {
   cp1d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="1"}
   f0 = f32[16,256,256]{2,1,0} fusion(p0, p0), kind=kOutput, calls=fused_computation, frontend_attributes={_scheduling_group_id="0"}
   f1 = f32[1,256,256]{2,1,0} fusion(f0, f0), kind=kOutput, calls=fused_computation.1, frontend_attributes={_scheduling_group_id="1"}
-  ROOT tuple = (f32[128,2048,2048]{2,1,0}, f32[1,256,256]{2,1,0}) tuple(cp1d, f1) 
+  ROOT tuple = (f32[128,2048,2048]{2,1,0}, f32[1,256,256]{2,1,0}) tuple(cp1d, f1)
 }
 )";
 
@@ -3685,7 +3685,7 @@ ENTRY entry {
   p1 = f32[128,2048,2048]{2,1,0} parameter(1)
   cp0s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
   cp0d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp0s), frontend_attributes={_scheduling_group_id="0"}
-  ROOT f0 = f32[16,256,256]{2,1,0} fusion(p0, p0), kind=kOutput, calls=fused_computation, frontend_attributes={_scheduling_group_id="0"} 
+  ROOT f0 = f32[16,256,256]{2,1,0} fusion(p0, p0), kind=kOutput, calls=fused_computation, frontend_attributes={_scheduling_group_id="0"}
 }
 )";
 
