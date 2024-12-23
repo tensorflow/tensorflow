@@ -56,7 +56,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
     std::unique_ptr<table::Iterator> iter(table_->NewIterator());
     iter->Seek(key);
     if (iter->Valid() && iter->key() == key) {
-      StringPiece v = iter->value();
+      absl::string_view v = iter->value();
       value->assign(v.data(), v.size());
       return true;
     } else {
