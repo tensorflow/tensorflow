@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_IMAGE_MIRROR_PAD_OP_H_
 #define TENSORFLOW_CORE_KERNELS_IMAGE_MIRROR_PAD_OP_H_
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_IMAGE_CROP_AND_RESIZE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_IMAGE_CROP_AND_RESIZE_OP_H_
 
+#include <string>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
