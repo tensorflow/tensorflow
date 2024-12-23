@@ -166,7 +166,7 @@ void ReadCSVFileToArrayOrDie(const string& filename,
     std::vector<string> split_line = str_util::Split(lines[l], ",");
     for (const string& token : split_line) {
       float tmp;
-      CHECK(strings::safe_strtof(token, &tmp));
+      CHECK(absl::SimpleAtof(token, &tmp));
       values.push_back(tmp);
     }
     array->push_back(values);
