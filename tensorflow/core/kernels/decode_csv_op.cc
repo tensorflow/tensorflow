@@ -106,7 +106,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
             } else {
               int32_t value;
-              OP_REQUIRES(ctx, strings::safe_strto32(fields[f], &value),
+              OP_REQUIRES(ctx, absl::SimpleAtoi(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid int32: ", fields[f]));
