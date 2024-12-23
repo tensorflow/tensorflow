@@ -362,7 +362,7 @@ TEST(safe_strtod, Double) {
   EXPECT_TRUE(safe_strtod("+inf", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("InF", &result));
+  EXPECT_TRUE(absl::SimpleAtod("InF", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
 
   EXPECT_TRUE(safe_strtod("-INF", &result));
