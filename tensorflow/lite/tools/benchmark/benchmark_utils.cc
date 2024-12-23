@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
