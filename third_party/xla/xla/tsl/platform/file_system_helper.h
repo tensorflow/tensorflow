@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tsl {
 

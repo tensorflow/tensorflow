@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/tsl/framework/allocator_retry.h"
 #include "xla/tsl/framework/shared_counter.h"
 #include "xla/tsl/lib/core/bits.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 class MemoryDump;

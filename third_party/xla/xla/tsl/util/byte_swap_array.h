@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_UTIL_BYTE_SWAP_ARRAY_H_
 #define XLA_TSL_UTIL_BYTE_SWAP_ARRAY_H_
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/byte_order.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.

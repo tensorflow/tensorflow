@@ -37,9 +37,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
 
 namespace tsl {
 namespace {

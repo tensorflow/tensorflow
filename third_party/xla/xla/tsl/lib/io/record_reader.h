@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_TSL_LIB_IO_RECORD_READER_H_
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/stringpiece.h"
 #if !defined(IS_SLIM_BUILD)
 #include "xla/tsl/lib/io/snappy/snappy_compression_options.h"
@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 class RandomAccessFile;

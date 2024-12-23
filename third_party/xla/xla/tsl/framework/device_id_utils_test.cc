@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tsl {
 namespace {

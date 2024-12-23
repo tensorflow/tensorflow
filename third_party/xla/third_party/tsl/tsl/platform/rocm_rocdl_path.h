@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 #define TENSORFLOW_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

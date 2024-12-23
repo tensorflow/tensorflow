@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 #if TSL_IS_IN_OSS
 #define USE_OSS_FARMHASH

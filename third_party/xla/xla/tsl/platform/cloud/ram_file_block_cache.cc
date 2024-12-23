@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/cleanup/cleanup.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 

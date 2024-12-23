@@ -18,7 +18,7 @@ limitations under the License.
 #include <errno.h>
 #include <string.h>
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 
 namespace tsl {

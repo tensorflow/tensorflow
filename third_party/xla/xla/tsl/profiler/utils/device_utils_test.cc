@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {

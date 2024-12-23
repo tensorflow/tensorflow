@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/crc/crc32c.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace crc32c {

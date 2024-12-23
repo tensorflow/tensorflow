@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/tsl/c/tsl_status.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 

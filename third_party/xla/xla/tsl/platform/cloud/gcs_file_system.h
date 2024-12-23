@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/gcs_dns_cache.h"
 #include "xla/tsl/platform/cloud/gcs_throttle.h"
 #include "xla/tsl/platform/cloud/http_request.h"
-#include "tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

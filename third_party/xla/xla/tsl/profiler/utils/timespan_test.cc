@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/timespan.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {

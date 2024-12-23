@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 

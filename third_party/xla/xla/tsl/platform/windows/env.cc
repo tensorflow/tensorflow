@@ -30,11 +30,11 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/platform/windows/windows_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/ram_file_system.h"
 
 #pragma comment(lib, "shlwapi.lib")

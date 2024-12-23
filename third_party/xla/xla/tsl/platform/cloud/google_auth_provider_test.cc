@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/http_request_fake.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 

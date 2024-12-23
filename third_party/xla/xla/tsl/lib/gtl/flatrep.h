@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/prefetch.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

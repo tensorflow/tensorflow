@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/metrics.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

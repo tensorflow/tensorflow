@@ -21,12 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {

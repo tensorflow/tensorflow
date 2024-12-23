@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

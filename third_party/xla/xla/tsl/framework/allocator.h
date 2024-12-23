@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/numeric_types.h"
 #include "xla/tsl/framework/type_traits.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

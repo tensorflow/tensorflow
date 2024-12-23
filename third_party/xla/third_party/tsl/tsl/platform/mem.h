@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_MEM_H_
 
 // TODO(cwhipkey): remove this when callers use annotations directly.
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/dynamic_annotations.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace port {

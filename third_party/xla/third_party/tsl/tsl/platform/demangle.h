@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
 #define TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace port {

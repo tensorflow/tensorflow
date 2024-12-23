@@ -43,12 +43,12 @@ cc_library(
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
-        ":errors",
-        ":macros",
-        ":status",
         ":stringpiece",
-        ":types",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -57,8 +57,8 @@ cc_library(
     hdrs = ["blocking_counter.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":logging",
         ":mutex",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -76,7 +76,7 @@ cc_library(
         ":byte_order",
         ":stringpiece",
         ":tstring",
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -86,8 +86,8 @@ tsl_cc_test(
     srcs = ["cpu_info_test.cc"],
     deps = [
         ":platform_port",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -106,8 +106,8 @@ tsl_cc_test(
     ],
     deps = [
         ":criticality",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -116,9 +116,9 @@ cc_library(
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
     deps = [
-        ":macros",
         ":platform",
         ":platform_port",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -128,8 +128,8 @@ tsl_cc_test(
     srcs = ["denormal_test.cc"],
     deps = [
         ":denormal",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -204,15 +204,15 @@ cc_library(
     srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
     deps = [
-        ":logging",
-        ":macros",
         ":str_util",
         ":stringpiece",
         ":stringprintf",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -221,14 +221,14 @@ cc_library(
     srcs = ["path.cc"],
     hdrs = ["path.h"],
     deps = [
-        ":logging",
         ":mutex",
         ":scanner",
         ":str_util",
         ":strcat",
         ":stringpiece",
-        ":types",
         "@com_google_absl//absl/algorithm:container",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -242,7 +242,7 @@ cc_library(
     hdrs = ["protobuf.h"],
     deps = [
         ":platform",
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ] + tsl_protobuf_deps(),
 )
 
@@ -803,7 +803,7 @@ cc_library(
     hdrs = ["random.h"],
     deps = [
         ":mutex",
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -813,10 +813,10 @@ cc_library(
     srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
     deps = [
-        ":logging",
         ":path",
         ":platform",
-        ":test",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
     ],
 )
 
@@ -856,11 +856,11 @@ tsl_cc_test(
     ],
     tags = ["no_windows"],
     deps = [
-        ":logging",
         ":stacktrace",
         ":stacktrace_handler",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -869,12 +869,12 @@ cc_library(
     srcs = ["str_util.cc"],
     hdrs = ["str_util.h"],
     deps = [
-        ":logging",
-        ":macros",
         ":stringpiece",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -883,12 +883,12 @@ cc_library(
     srcs = ["strcat.cc"],
     hdrs = ["strcat.h"],
     deps = [
-        ":logging",
-        ":macros",
         ":numbers",
         ":stringpiece",
-        ":types",
         "@com_google_absl//absl/meta:type_traits",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -916,8 +916,8 @@ cc_library(
     srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
     deps = [
-        ":macros",
-        ":types",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -957,14 +957,14 @@ cc_library(
     deps = [
         ":byte_order",
         ":fingerprint",
-        ":macros",
         ":net",
         ":platform",
         ":platform_port",
         ":platform_strings",
         ":stacktrace_handler",
         ":stringpiece",
-        ":threadpool_interface",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:threadpool_interface",
     ],
 )
 
@@ -1044,10 +1044,10 @@ cc_library(
     hdrs = ["hash.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":macros",
         ":raw_coding",
         ":stringpiece",
-        ":types",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1063,7 +1063,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":byte_order",
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1093,8 +1093,8 @@ cc_library(
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
     deps = [
-        ":logging",
-        ":macros",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -1115,10 +1115,10 @@ tsl_cc_test(
     ],
     tags = ["no_windows"],
     deps = [
-        ":logging",
         ":stacktrace",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1144,7 +1144,7 @@ cc_library(
     deps = [
         ":platform",
         ":stringpiece",
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ] + tf_fingerprint_deps(),
 )
 
@@ -1154,9 +1154,9 @@ tsl_cc_test(
     srcs = ["fingerprint_test.cc"],
     deps = [
         ":fingerprint",
-        ":test",
-        ":test_main",
-        ":types",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1173,9 +1173,9 @@ cc_library(
     srcs = ["scanner.cc"],
     hdrs = ["scanner.h"],
     deps = [
-        ":macros",
         ":str_util",
         ":stringpiece",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -1199,9 +1199,9 @@ tsl_cc_test(
     size = "small",
     srcs = ["ctstring_test.cc"],
     deps = [
-        ":test",
-        ":test_main",
         ":tstring",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1211,10 +1211,10 @@ tsl_cc_test(
     srcs = ["hash_test.cc"],
     deps = [
         ":hash",
-        ":logging",
-        ":test",
-        ":test_benchmark",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1223,12 +1223,12 @@ tsl_cc_test(
     size = "small",
     srcs = ["path_test.cc"],
     deps = [
-        ":env",
-        ":env_impl",
         ":path",
         ":stringpiece",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1237,9 +1237,9 @@ tsl_cc_test(
     srcs = ["random_test.cc"],
     deps = [
         ":random",
-        ":test",
-        ":test_main",
-        ":types",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1251,9 +1251,9 @@ tsl_cc_test(
         ":cord",
         ":platform",
         ":stringpiece",
-        ":test",
-        ":test_main",
         ":tstring",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1299,13 +1299,13 @@ tsl_cc_test(
     srcs = ["unbounded_work_queue_test.cc"],
     deps = [
         ":blocking_counter",
-        ":env",
-        ":env_impl",
         ":random",
-        ":test",
-        ":test_main",
         ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1320,7 +1320,7 @@ cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
     deps = [
-        ":status",
+        "@local_xla//xla/tsl/platform:status",
     ] + tf_windows_aware_platform_deps("load_library"),
 )
 
@@ -1329,7 +1329,7 @@ cc_library(
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
     deps = [
-        ":types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1337,9 +1337,9 @@ cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
     deps = [
-        ":logging",
         ":mutex",
         ":thread_annotations",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -1347,7 +1347,7 @@ cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
     deps = [
-        ":env",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
 
@@ -1360,8 +1360,8 @@ tsl_cc_test(
     deps = [
         ":intrusive_ptr",
         ":refcount",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1376,9 +1376,9 @@ tsl_cc_test(
         "notap",
     ],
     deps = [
-        ":logging",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1389,8 +1389,8 @@ tsl_cc_test(
     tags = ["noclang"],
     deps = [
         ":setround",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1401,11 +1401,11 @@ tsl_cc_test(
         "refcount_test.cc",
     ],
     deps = [
-        ":env",
-        ":env_impl",
         ":refcount",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1416,9 +1416,9 @@ tsl_cc_test(
         "integral_types_test.cc",
     ],
     deps = [
-        ":test",
-        ":test_main",
-        ":types",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1429,10 +1429,6 @@ tsl_cc_test(
         "mutex_test.cc",
     ],
     deps = [
-        ":env",
-        ":env_impl",
-        ":env_time",
-        ":logging",
         ":mutex",
         ":net",
         ":platform_port",
@@ -1441,9 +1437,13 @@ tsl_cc_test(
         ":strcat",
         ":stringpiece",
         ":stringprintf",
-        ":test",
-        ":test_main",
-        ":types",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:env_time",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1454,10 +1454,10 @@ tsl_cc_test(
         "net_test.cc",
     ],
     deps = [
-        ":logging",
         ":net",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1471,12 +1471,12 @@ tsl_cc_test(
         "notap",  #TODO(b/245510532) : disabled due to flakiness.
     ],
     deps = [
-        ":env",
-        ":env_impl",
         ":mutex",
         ":platform_port",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1488,8 +1488,8 @@ tsl_cc_test(
     ],
     deps = [
         ":scanner",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1501,8 +1501,8 @@ tsl_cc_test(
     ],
     deps = [
         ":str_util",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1515,10 +1515,10 @@ tsl_cc_test(
     deps = [
         ":strcat",
         ":stringprintf",
-        ":test",
-        ":test_main",
-        ":types",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1530,8 +1530,8 @@ tsl_cc_test(
     ],
     deps = [
         ":stringpiece",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1543,8 +1543,8 @@ tsl_cc_test(
     ],
     deps = [
         ":stringprintf",
-        ":test",
-        ":test_main",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1556,10 +1556,10 @@ tsl_cc_test(
     ],
     deps = [
         ":numbers",
-        ":test",
-        ":test_main",
-        ":types",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1573,12 +1573,12 @@ cc_library(
     ],
     copts = tsl_copts(),
     deps = [
-        ":env",
-        ":errors",
-        ":logging",
         ":random",
-        ":status",
         "@com_google_absl//absl/time",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1589,11 +1589,11 @@ cc_library(
     ],
     copts = tsl_copts(),
     deps = [
-        ":env",
-        ":errors",
         ":random",
         ":retrying_utils",
-        ":status",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1602,12 +1602,12 @@ tsl_cc_test(
     size = "small",
     srcs = ["retrying_file_system_test.cc"],
     deps = [
-        ":env_impl",
         ":retrying_file_system",
         ":str_util",
-        ":test",
-        ":test_main",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1616,14 +1616,14 @@ tsl_cc_test(
     size = "small",
     srcs = ["retrying_utils_test.cc"],
     deps = [
-        ":env",
-        ":env_impl",
-        ":errors",
         ":retrying_utils",
         ":str_util",
-        ":test",
-        ":test_main",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )

@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/compression.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/raw_coding.h"
 
 namespace tsl {

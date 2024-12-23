@@ -19,7 +19,7 @@ limitations under the License.
 #include <complex>
 
 #include "xla/tsl/framework/fixedpoint_types.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

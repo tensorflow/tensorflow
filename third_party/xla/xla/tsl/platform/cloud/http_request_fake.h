@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

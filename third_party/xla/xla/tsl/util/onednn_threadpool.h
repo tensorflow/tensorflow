@@ -30,8 +30,8 @@ limitations under the License.
 #include "dnnl_threadpool.hpp"
 #include "absl/synchronization/blocking_counter.h"
 #include "dnnl.hpp"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tsl {
 

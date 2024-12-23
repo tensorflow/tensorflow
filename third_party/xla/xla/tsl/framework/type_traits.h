@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tsl/framework/numeric_types.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

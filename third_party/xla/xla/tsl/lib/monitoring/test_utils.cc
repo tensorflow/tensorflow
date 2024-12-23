@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/lib/monitoring/types.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace tsl {
 namespace monitoring {

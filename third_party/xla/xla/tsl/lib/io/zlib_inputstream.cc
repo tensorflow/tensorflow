@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <zlib.h>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
 namespace tsl {

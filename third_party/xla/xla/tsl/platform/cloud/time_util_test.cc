@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/time_util.h"
 
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

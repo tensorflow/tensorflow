@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"

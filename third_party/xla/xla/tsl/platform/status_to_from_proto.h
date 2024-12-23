@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUS_TO_FROM_PROTO_H_
 #define XLA_TSL_PLATFORM_STATUS_TO_FROM_PROTO_H_
 
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/status.pb.h"
-#include "tsl/platform/status.h"
 
 namespace tsl {
 

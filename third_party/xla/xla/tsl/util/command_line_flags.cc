@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"

@@ -22,8 +22,8 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_LOGGING_H_
 #define XLA_TSL_PLATFORM_DEFAULT_LOGGING_H_
 
-// IWYU pragma: private, include "third_party/tensorflow/tsl/platform/logging.h"
-// IWYU pragma: friend third_party/tensorflow/tsl/platform/logging.h
+// IWYU pragma: private, include "xla/tsl/platform/logging.h"
+// IWYU pragma: friend third_party/tensorflow/compiler/xla/tsl/platform/logging.h
 
 #include <atomic>
 #include <limits>
@@ -34,8 +34,8 @@ limitations under the License.
 
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef ERROR

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/gcs_dns_cache.h"
 
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 

@@ -24,12 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 

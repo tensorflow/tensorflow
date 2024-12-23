@@ -20,9 +20,9 @@ limitations under the License.
 #include <algorithm>
 
 #include "xla/tsl/lib/io/format.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/raw_coding.h"
 
 namespace tsl {

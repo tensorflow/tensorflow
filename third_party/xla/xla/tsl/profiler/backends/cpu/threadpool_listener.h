@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "tsl/platform/tracing.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 namespace tsl {

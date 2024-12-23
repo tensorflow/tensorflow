@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_TIME_UTIL_H_
 #define XLA_TSL_PLATFORM_CLOUD_TIME_UTIL_H_
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 

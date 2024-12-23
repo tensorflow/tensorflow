@@ -23,7 +23,7 @@ limitations under the License.
 #ifdef _WIN32
 #define timegm _mkgmtime
 #endif
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tsl {
 

@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
 
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/clock_cycle_profiler.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profile_utils {

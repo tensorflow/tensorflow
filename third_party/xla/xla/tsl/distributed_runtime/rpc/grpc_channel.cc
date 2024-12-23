@@ -27,18 +27,18 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel_common.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

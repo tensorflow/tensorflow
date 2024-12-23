@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace Eigen {
 

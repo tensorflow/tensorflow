@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 

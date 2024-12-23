@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"  // IWYU pragma: export
 // TODO(kramerb): This is kept only because lots of targets transitively depend
 // on it. Remove all targets' dependencies.
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.
 #ifndef ABSL_DEPRECATE_AND_INLINE
