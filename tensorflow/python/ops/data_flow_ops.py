@@ -557,6 +557,13 @@ class QueueBase:
     If `cancel_pending_enqueues` is `True`, all pending requests will also
     be canceled.
 
+    >>> q = tf.queue.FIFOQueue(capacity=3, dtypes=tf.int32)
+    >>> q.is_closed()
+    <tf.Tensor: shape=(), dtype=bool, numpy=False>
+    >>> q.close()
+    >>> q.is_closed()
+    <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to `False`
         (described above).
