@@ -43,6 +43,9 @@ struct CpuClientOptions {
   // My process ID.
   int process_id = 0;
 
+  // If the job is CPU-only and runs multiple tasks, this indicates the task ID.
+  int task_id = 0;
+
   // Distributed collectives implementation. Optional. If not provided, an
   // in-process collectives implementation will be used.
   std::shared_ptr<cpu::CollectivesInterface> collectives;
