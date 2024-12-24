@@ -19,6 +19,7 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:op_gen_lib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -29,5 +30,6 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:op_gen_lib",
+        "@com_google_absl//absl/status",
     ],
 )
