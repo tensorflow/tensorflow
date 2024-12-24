@@ -73,7 +73,9 @@ constexpr int64_t kAnnotationPrintInterval = 5;
 inline absl::Status ShapeError(const Shape& shape, absl::string_view message) {
   return absl::InvalidArgumentError(absl::StrFormat(
       "Shape Error: %s Shape(%s): %s", message,
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()),
+      PrimitiveType_IsValid(shape.element_type())
+          ? primitive_util::LowercasePrimitiveTypeName(shape.element_type())
+          : absl::StrCat(static_cast<int>(shape.element_type())),
       shape.DebugString()));
 }
 
