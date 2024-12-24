@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <cstddef>
+
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"

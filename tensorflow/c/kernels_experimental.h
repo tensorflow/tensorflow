@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_EXPERIMENTAL_H_
 #define TENSORFLOW_C_KERNELS_EXPERIMENTAL_H_
 
+#include <cstddef>
+#include <cstdint>
+
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 

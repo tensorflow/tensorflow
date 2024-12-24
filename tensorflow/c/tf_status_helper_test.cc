@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
 
