@@ -587,9 +587,8 @@ ScatterWithDistributedIndices::ScatterWithDistributedIndices(
       num_warps_per_slice_(num_warps_per_slice),
       num_indices_per_warp_(num_indices_per_warp) {
   num_warps_ = kNumWarpsPerBlock;
-  num_blocks_ = CeilOfRatio(
-      description.num_slices,
-      CeilOfRatio(num_indices_per_warp_ * num_warps_, num_warps_per_slice_));
+  num_blocks_ = CeilOfRatio(description.num_slices * num_warps_per_slice_,
+                            num_indices_per_warp_ * num_warps_);
 }
 
 void ScatterWithDistributedIndices::ComputeIndexing(
@@ -728,13 +727,13 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   SmallVector<Value> inits =
       Pack({indices_init, is_inbounds_init, accumulator_init, output_tensor});
 
-  auto loop_over_indices_fn = [&](ImplicitLocOpBuilder& nested_b,
-                                  ValueRange ivs,
-                                  ValueRange thread_id_to_index_id_value,
-                                  ValueRange iter_args) -> SmallVector<Value> {
+  auto loop_over_indices_fn =
+      [&](ImplicitLocOpBuilder& nested_b, ValueRange ivs,
+          ValueRange thread_id_to_index_id_value,
+          ValueRange outer_iter_args) -> SmallVector<Value> {
     // Unpack the iter_args.
     SmallVector<ValueRange> iter_args_unpack =
-        Unpack(iter_args, {description_.index_vector_length, 1, 1, 1});
+        Unpack(outer_iter_args, {description_.index_vector_length, 1, 1, 1});
     ValueRange trimmed_offsets = iter_args_unpack[0];
     Value iter_is_inbounds = iter_args_unpack[1].front();
     Value iter_acc = iter_args_unpack[2].front();
@@ -781,12 +780,12 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
         b.create<arith::ConstantIndexOp>(num_indices_per_warp_ - 1));
 
     SmallVector<Value> acc_and_output = {iter_acc, iter_output};
-    auto loop_over_slices_fn = [&](ImplicitLocOpBuilder& update_loop_b,
-                                   ValueRange accumulator_indices,
-                                   ValueRange slice_indices,
-                                   ValueRange iter_args) -> SmallVector<Value> {
-      Value acc_arg = iter_args.front();
-      Value output_arg = iter_args.back();
+    auto loop_over_slices_fn =
+        [&](ImplicitLocOpBuilder& update_loop_b, ValueRange accumulator_indices,
+            ValueRange slice_indices,
+            ValueRange inner_iter_args) -> SmallVector<Value> {
+      Value acc_arg = inner_iter_args.front();
+      Value output_arg = inner_iter_args.back();
       auto update_elem = helper.GetUpdateElement(update_loop_b, slice_indices);
       auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
       // If the index changed, overwrite the accumulator element, otherwise
@@ -820,7 +819,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
                        [&](ImplicitLocOpBuilder& nested_b) {
                          return helper.WriteAccumulatedElementToOutput(
                              nested_b, updated_accumulator, accumulator_indices,
-                             slice_indices, new_offsets, iter_output);
+                             slice_indices, new_offsets, output_arg);
                        })
               .front();
       return {updated_accumulator, updated_output};
@@ -914,21 +913,21 @@ std::unique_ptr<MlirScatterFusion> CreateMlirScatterFusion(
   // possible valid indices. If we do not have multiple updates per warp, there
   // is no reason to use this algorithm.
   // TODO(b/385081952): Investigate why bf16 and f64 leads to incorrect results.
-  // if (description.scatter->indices_are_sorted() &&
-  //     description.elem_type != BF16 && num_slices > 2 * max_active_warps) {
-  //   int64_t num_indices_per_warp = CeilOfRatio(
-  //       num_slices, GetNumPossibleValidIndices(
-  //                       description.slice_shape, description.output_shape,
-  //                       description.index_vector_length));
-  //   int64_t num_warps_per_slice = CeilOfRatio(
-  //       num_elements_per_slice, num_active_threads_per_warp * vector_size);
-  //   if (num_indices_per_warp > 2 &&
-  //       num_active_threads_per_warp > warp_size / 2) {
-  //     return std::make_unique<ScatterWithDistributedIndices>(
-  //         analysis, description, vector_size, num_warps_per_slice,
-  //         num_indices_per_warp);
-  //   }
-  // }
+  if (description.scatter->indices_are_sorted() &&
+      description.elem_type != BF16 && num_slices > 2 * max_active_warps) {
+    int64_t num_indices_per_warp = CeilOfRatio(
+        num_slices, GetNumPossibleValidIndices(
+                        description.slice_shape, description.output_shape,
+                        description.index_vector_length));
+    int64_t num_warps_per_slice = CeilOfRatio(
+        num_elements_per_slice, num_active_threads_per_warp * vector_size);
+    if (num_indices_per_warp > 2 &&
+        num_active_threads_per_warp > warp_size / 2) {
+      return std::make_unique<ScatterWithDistributedIndices>(
+          analysis, description, vector_size, num_warps_per_slice,
+          num_indices_per_warp);
+    }
+  }
   // If we have enough data, we assign each warp to process a single
   // slice.
   if (num_slices > max_active_warps &&
