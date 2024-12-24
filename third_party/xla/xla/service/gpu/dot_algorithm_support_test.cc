@@ -180,7 +180,9 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    auto message = Run(hlo_text).message();
+    EXPECT_THAT(message, HasSubstr("Unsupported algorithm"));
+    EXPECT_THAT(message, HasSubstr("input storage type"));
   }
 }
 
