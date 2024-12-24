@@ -25,7 +25,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/xla_data.pb.h"
@@ -118,28 +124,22 @@ class HloRunnerPjRt : public HloRunnerInterface {
   }
 
  private:
-  std::unique_ptr<PjRtClient> pjrt_client_;
-  DeviceShapeRepresentationFn device_shape_representation_fn_;
-  DeviceShapeSizeFn device_shape_size_fn_;
-  bool use_parameter_layout_on_device_ = false;
-
-  std::vector<PjRtBuffer*> BufferVecToPointerVec(
-      const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);
-
-  std::vector<std::vector<PjRtBuffer*>> BufferMatToPointerMat(
-      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& buffer);
-
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
       HloModule* module, bool run_hlo_passes);
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
       std::function<absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>(
-          absl::Span<const std::vector<PjRtBuffer*>>&)>
+          absl::Span<const std::vector<PjRtBuffer*>>)>
           execution_helper,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
+
+  std::unique_ptr<PjRtClient> pjrt_client_;
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
+  DeviceShapeSizeFn device_shape_size_fn_;
+  bool use_parameter_layout_on_device_ = false;
 };
 
 }  // namespace xla

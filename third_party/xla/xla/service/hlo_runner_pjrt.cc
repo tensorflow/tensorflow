@@ -23,11 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -135,6 +137,27 @@ absl::StatusOr<DeviceAssignment> GetStaticDeviceAssignmentOrComputeDefault(
                                            module.config().num_partitions());
 }
 
+std::vector<PjRtBuffer*> BufferVecToPointerVec(
+    const absl::Span<const std::unique_ptr<PjRtBuffer>> buffer) {
+  std::vector<PjRtBuffer*> argument_ptrs;
+  argument_ptrs.resize(buffer.size());
+  for (int i = 0; i < buffer.size(); ++i) {
+    argument_ptrs[i] = buffer[i].get();
+  }
+
+  return argument_ptrs;
+}
+
+std::vector<std::vector<PjRtBuffer*>> BufferMatToPointerMat(
+    const absl::Span<const std::vector<std::unique_ptr<PjRtBuffer>>> buffer) {
+  std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+  argument_ptrs.reserve(buffer.size());
+  for (int i = 0; i < buffer.size(); ++i) {
+    argument_ptrs.push_back(BufferVecToPointerVec(buffer[i]));
+  }
+  return argument_ptrs;
+}
+
 }  // namespace
 
 // TODO(b/245550554): Remove the use of PjRtWrappedExecutable.
@@ -213,6 +236,9 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 
   compile_options.executable_build_options.set_result_layout(
       module->entry_computation_layout().result_shape());
+
+  compile_options.executable_build_options.set_use_spmd_partitioning(
+      module->config().use_spmd_partitioning());
 
   return compile_options;
 }
@@ -305,34 +331,10 @@ absl::StatusOr<Literal> HloRunnerPjRt::Execute(
     ExecutionProfile* profile) {
   // TODO (b/245550554) : Remove UpdateEntryComputationLayout from runner.
   UpdateEntryComputationLayout(module.get());
-  TF_ASSIGN_OR_RETURN(auto compile_options, GenerateDefaultCompileOptions(
-                                                module.get(), run_hlo_passes));
-
   TF_ASSIGN_OR_RETURN(auto executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
 
   return ExecuteWithExecutable(executable.get(), arguments, {});
-}
-
-std::vector<PjRtBuffer*> HloRunnerPjRt::BufferVecToPointerVec(
-    const std::vector<std::unique_ptr<PjRtBuffer>>& buffer) {
-  std::vector<PjRtBuffer*> argument_ptrs;
-  argument_ptrs.resize(buffer.size());
-  for (int i = 0; i < buffer.size(); ++i) {
-    argument_ptrs[i] = buffer[i].get();
-  }
-
-  return argument_ptrs;
-}
-
-std::vector<std::vector<PjRtBuffer*>> HloRunnerPjRt::BufferMatToPointerMat(
-    std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& buffer) {
-  std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
-  argument_ptrs.reserve(buffer.size());
-  for (int i = 0; i < buffer.size(); ++i) {
-    argument_ptrs.push_back(BufferVecToPointerVec(buffer[i]));
-  }
-  return argument_ptrs;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -442,7 +444,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>>& argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
           -> absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> {
         PjRtWrappedExecutable* wrapped_executable =
             static_cast<PjRtWrappedExecutable*>(executable);
@@ -476,7 +478,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
   TF_RET_CHECK(device_assignment->computation_count() == 1)
       << "Only single-computation execution is supported.";
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>>& argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
           -> absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> {
         TF_RET_CHECK(options.use_threads);
 
@@ -538,26 +540,29 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     std::function<absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>(
-        absl::Span<const std::vector<PjRtBuffer*>>&)>
+        absl::Span<const std::vector<PjRtBuffer*>>)>
         execution_helper,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
+  TF_RET_CHECK(options.infeed_values.empty() ||
+               options.infeed_values.size() == options.num_replicas);
+
+  std::vector<PjRtDevice*> replica_devices(options.num_replicas, nullptr);
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffer_slices;
   argument_buffer_slices.reserve(options.num_replicas);
-
   for (int64_t i = 0; i < options.num_replicas; ++i) {
-    TF_ASSIGN_OR_RETURN(PjRtDevice * device_ptr,
+    // Amortize device lookup.
+    TF_ASSIGN_OR_RETURN(PjRtDevice* const device_ptr,
                         pjrt_client_->LookupDevice(
                             DeviceIdForInvocation(*device_assignment, i)));
+    replica_devices[i] = device_ptr;
 
     // Transfer literals to device.
     const int64_t argument_count = argument_count_provider(i);
-
     std::vector<std::unique_ptr<PjRtBuffer>> replica_buffers;
     replica_buffers.reserve(argument_count);
-
     for (int64_t arg_index = 0; arg_index < argument_count; arg_index++) {
       const Literal* const argument = argument_provider(i, arg_index);
       TF_RET_CHECK(argument != nullptr);
@@ -570,37 +575,93 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
               : pjrt_client_->BufferFromHostLiteral(*argument, device_ptr));
       replica_buffers.push_back(std::move(assignment));
     }
-
     argument_buffer_slices.push_back(std::move(replica_buffers));
   }
 
-  TF_RET_CHECK(options.infeed_values.empty() ||
-               options.infeed_values.size() == options.num_replicas);
-
-  if (!options.infeed_values.empty()) {
-    // TODO(b/245550554): Infeed/Outfeed
+  // Handle infeed and outfeed.
+  const bool has_infeed = !options.infeed_values.empty();
+  const bool has_outfeed = ShapeUtil::IsInitialized(options.outfeed_shape);
+  std::unique_ptr<tsl::thread::ThreadPool> pool = nullptr;
+  absl::Mutex infeed_outfeed_status_mu;
+  absl::Status infeed_outfeed_status = absl::OkStatus();
+  if (has_infeed || has_outfeed) {
+    // One infeed per infeed value and one outfeed per replica.
+    const int64_t num_threads =
+        options.infeed_values.size() + (has_outfeed ? options.num_replicas : 0);
+    pool = std::make_unique<tsl::thread::ThreadPool>(
+        tsl::Env::Default(), "infeed_outfeed", num_threads);
+  }
+  if (has_infeed) {
+    for (int64_t i = 0; i < options.num_replicas; ++i) {
+      pool->Schedule(
+          [device = replica_devices[i],
+           &infeed_literal = *ABSL_DIE_IF_NULL(options.infeed_values[i]),
+           infeed_steps = options.infeed_steps, &infeed_outfeed_status_mu,
+           &infeed_outfeed_status]() {
+            VLOG(1) << "Starting infeed on device " << device->ToString();
+            absl::Status per_feed_status = absl::OkStatus();
+            for (int64_t step = 1; infeed_steps < 0 || step <= infeed_steps;
+                 ++step) {
+              per_feed_status.Update(device->TransferToInfeed(infeed_literal));
+              if (step % 100 == 0) {
+                VLOG(1) << "Infeed step " << step;
+              }
+            }
+            absl::MutexLock lock(&infeed_outfeed_status_mu);
+            infeed_outfeed_status.Update(per_feed_status);
+          });
+    }
+  }
+  if (has_outfeed) {
+    if (options.outfeed_values != nullptr) {
+      options.outfeed_values->resize(options.num_replicas);
+    }
+    for (int64_t i = 0; i < options.num_replicas; ++i) {
+      pool->Schedule([i, device = replica_devices[i],
+                      outfeed_values = options.outfeed_values,
+                      outfeed_shape = options.outfeed_shape,
+                      infeed_steps = options.infeed_steps,
+                      &infeed_outfeed_status_mu, &infeed_outfeed_status]() {
+        VLOG(1) << "Starting outfeed on device " << device->ToString();
+        absl::Status per_feed_status = absl::OkStatus();
+        for (int64_t step = 1; infeed_steps < 0 || step <= infeed_steps;
+             ++step) {
+          Literal literal(outfeed_shape);
+          per_feed_status.Update(device->TransferFromOutfeed(&literal));
+          if (outfeed_values != nullptr) {
+            outfeed_values->at(i) = std::move(literal);
+          }
+          if (step % 100 == 0) {
+            VLOG(1) << "Outfeed step " << step;
+          }
+        }
+        absl::MutexLock lock(&infeed_outfeed_status_mu);
+        infeed_outfeed_status.Update(per_feed_status);
+      });
+    }
   }
 
-  if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
-    // TODO(b/245550554): Infeed/Outfeed
-  }
+  VLOG(1) << "Replicated execution started";
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<std::unique_ptr<PjRtBuffer>> result_buffers,
+      execution_helper(BufferMatToPointerMat(argument_buffer_slices)));
+  VLOG(1) << "Replicated execution terminated";
 
-  auto mat = BufferMatToPointerMat(argument_buffer_slices);
-
-  auto span = absl::Span<const std::vector<PjRtBuffer*>>(mat);
-
-  TF_ASSIGN_OR_RETURN(auto results, execution_helper(span));
-  std::vector<Literal> exec_results;
-  exec_results.reserve(options.num_replicas);
-
+  // Get the result from execution.
+  std::vector<Literal> result_literals;
+  result_literals.reserve(options.num_replicas);
   for (int64_t i = 0; i < options.num_replicas; ++i) {
     TF_ASSIGN_OR_RETURN(Literal literal,
-                        TransferLiteralFromDevice(*results[i]));
-
-    exec_results.push_back(std::move(literal));
+                        TransferLiteralFromDevice(*result_buffers[i]));
+    result_literals.push_back(std::move(literal));
   }
 
-  return std::move(exec_results);
+  // Join infeed and outfeed threads, if they exist. The thread pool's threads
+  // are joined on destruction. No-op otherwise.
+  pool = nullptr;
+  TF_RETURN_IF_ERROR(infeed_outfeed_status);
+
+  return std::move(result_literals);
 }
 
 absl::string_view HloRunnerPjRt::Name() const { return "HloRunnerPjRt"; }
