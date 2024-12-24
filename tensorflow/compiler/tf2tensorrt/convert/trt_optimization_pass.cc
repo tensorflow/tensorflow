@@ -16,26 +16,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/strings/ascii.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
-#include "tensorflow/core/grappler/utils/functions.h"
-#include "tensorflow/core/grappler/utils/topological_sort.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/logging.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
