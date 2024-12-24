@@ -2171,7 +2171,69 @@ bool StridedSliceOp::GetSlicedBoundRanges(
   return true;
 }
 
+bool IsIdentitySlice(StridedSliceOp &slice) {
+  // Currently only support all masks being 0.
+  // Currently only support all masks being 0.
+  if (slice.getBeginMask() != 0 || slice.getEndMask() != 0 ||
+      slice.getEllipsisMask() != 0 || slice.getNewAxisMask() != 0 ||
+      slice.getShrinkAxisMask() != 0) {
+    return false;
+  }
+
+  auto input_type =
+      mlir::dyn_cast_or_null<RankedTensorType>(slice.getInput().getType());
+  if (!input_type || !input_type.hasStaticShape() ||
+      input_type != slice.getOutput().getType()) {
+    return false;
+  }
+
+  // Begin has to be all 0s.
+  DenseIntElementsAttr begin_dense_elem_attr;
+  if (!matchPattern(slice.getBegin(), m_Constant(&begin_dense_elem_attr))) {
+    return false;
+  }
+  for (auto begin_ele : begin_dense_elem_attr) {
+    if (begin_ele.getSExtValue() != 0) {
+      return false;
+    }
+  }
+
+  // Strides has to be all 1s.
+  DenseIntElementsAttr strides_dense_elem_attr;
+  if (!matchPattern(slice.getStrides(), m_Constant(&strides_dense_elem_attr))) {
+    return false;
+  }
+  for (auto stride_ele : strides_dense_elem_attr) {
+    if (stride_ele.getSExtValue() != 1) {
+      return false;
+    }
+  }
+  // End has to map the input shape.
+  DenseIntElementsAttr end_dense_elem_attr;
+  if (!matchPattern(slice.getEnd(), m_Constant(&end_dense_elem_attr))) {
+    return false;
+  }
+  int i = 0;
+  for (auto end_ele : end_dense_elem_attr) {
+    if (end_ele.getSExtValue() != input_type.getDimSize(i)) {
+      return false;
+    }
+    ++i;
+  }
+
+  for (mlir::Operation *user : slice->getUsers()) {
+    if (user->hasTrait<OpTrait::IsTerminator>()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
+  if (IsIdentitySlice(*this)) {
+    return getInput();
+  }
+
   // Fold StridedSlice operation if it extracts statically known dimensions.
   //
   // For example,
@@ -2188,12 +2250,6 @@ OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
   //
   // In this case %spatial_shape can be replaced with a constant [2, 3].
 
-  // Input to strided slice op is defined by shape operation.
-  auto shape_op = getInput().getDefiningOp<ShapeOp>();
-  if (!shape_op) {
-    return {};
-  }
-
   // `begin`, `end` and `strides` should be constant in order to infer static
   // dimension.
   DenseIntElementsAttr begin_attr, end_attr, strides_attr;
@@ -2202,6 +2258,20 @@ OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
       !matchPattern(getStrides(), m_Constant(&strides_attr)) ||
       begin_attr.getNumElements() != 1 || end_attr.getNumElements() != 1 ||
       strides_attr.getNumElements() != 1) {
+    return {};
+  }
+
+  int64_t begin_int = begin_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t end_int = end_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t strides_int = strides_attr.getValues<APInt>()[0].getSExtValue();
+
+  if (getOutput().getType() == getInput().getType()) {
+    return getInput();
+  }
+
+  // Input to strided slice op is defined by shape operation.
+  auto shape_op = getInput().getDefiningOp<ShapeOp>();
+  if (!shape_op) {
     return {};
   }
 
@@ -2215,9 +2285,6 @@ OpFoldResult StridedSliceOp::fold(FoldAdaptor) {
   if (!tensor_ty) return {};
 
   int64_t rank = tensor_ty.getRank();
-  int64_t begin_int = begin_attr.getValues<APInt>()[0].getSExtValue();
-  int64_t end_int = end_attr.getValues<APInt>()[0].getSExtValue();
-  int64_t strides_int = strides_attr.getValues<APInt>()[0].getSExtValue();
 
   // Canonicalize `begin` and `end` in case of negative index.
   if (begin_int < 0) begin_int += rank;
