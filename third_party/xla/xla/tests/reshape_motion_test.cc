@@ -13,12 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <numeric>
-#include <random>
-#include <vector>
+#include <cstdint>
 
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
