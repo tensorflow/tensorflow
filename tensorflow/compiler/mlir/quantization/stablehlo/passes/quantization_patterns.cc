@@ -64,15 +64,33 @@ namespace {
 
 using ::mlir::quant::FindUserOfType;
 using ::mlir::quant::TryCast;
+using ::mlir::stablehlo::AbsOp;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::BroadcastInDimOp;
+using ::mlir::stablehlo::CbrtOp;
+using ::mlir::stablehlo::CeilOp;
 using ::mlir::stablehlo::ConcatenateOp;
 using ::mlir::stablehlo::ConvolutionOp;
+using ::mlir::stablehlo::CosineOp;
+using ::mlir::stablehlo::DivOp;
 using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::DynamicBroadcastInDimOp;
+using ::mlir::stablehlo::Expm1Op;
+using ::mlir::stablehlo::ExpOp;
+using ::mlir::stablehlo::FloorOp;
 using ::mlir::stablehlo::GatherOp;
 using ::mlir::stablehlo::GetDimensionSizeOp;
+using ::mlir::stablehlo::Log1pOp;
+using ::mlir::stablehlo::LogisticOp;
+using ::mlir::stablehlo::LogOp;
+using ::mlir::stablehlo::MulOp;
+using ::mlir::stablehlo::NegOp;
 using ::mlir::stablehlo::ReshapeOp;
+using ::mlir::stablehlo::SignOp;
+using ::mlir::stablehlo::SineOp;
+using ::mlir::stablehlo::SqrtOp;
+using ::mlir::stablehlo::SubtractOp;
+using ::mlir::stablehlo::TanhOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizedDimension;
@@ -1020,7 +1038,43 @@ void PopulateCommonQuantizationPatterns(
 
 void PopulateAllQuantizablePatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns) {
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<AbsOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
   patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<AddOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<CbrtOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<CeilOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<CosineOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<DivOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<ExpOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<Expm1Op>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<FloorOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<LogOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<Log1pOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<LogisticOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<MulOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<NegOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<SignOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<SineOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<SqrtOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<SubtractOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<TanhOp>>>(
       ctx, /*enable_per_channel_quantized_weight=*/false);
 }
 
