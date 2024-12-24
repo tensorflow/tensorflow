@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -3420,49 +3421,73 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
 
 absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
                                                 absl::string_view trigger) {
-  auto print_options = HloPrintOptions::ShortParsable()
-                           .set_print_operand_shape(true)
-                           .set_print_extra_attributes(false);
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
-      << "The shape doesn't match when replacing '" << ToString(print_options)
-      << "' with '" << new_producer->ToString(print_options) << "'. " << shape()
-      << " is not compatible with " << new_producer->shape() << "\n '"
-      << trigger << "' triggered this wrong replacement.";
+      << shape() << " is not compatible with " << new_producer->shape()
+      << "\n '" << trigger << "' triggered this wrong replacement.";
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 
+void HloInstruction::Users::swap(Users& other) {
+  PtrVec<HloInstruction*> users(std::move(users_));
+  users_ = std::move(other.users_);
+  other.users_ = std::move(users);
+  user_map_.swap(other.user_map_);
+}
+
+absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                                HloInstruction* also_keep) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << shape() << " is not compatible with " << new_producer->shape();
+  return ReplaceAllUsesWithDifferentShape(new_producer, also_keep);
+}
+
 absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
-    HloInstruction* new_producer) {
-  bool new_producer_is_user = false;
-  // Make a copy since users span might get mutated during the loop
-  std::vector<HloInstruction*> users_vector(users().begin(), users().end());
-  for (HloInstruction* user : users_vector) {
-    if (user == new_producer) {
-      // It's possible that new_producer is a user of this instruction as might
-      // be the case when replacing an instruction with a kCopy of itself. In
-      // this case, don't do the replacement to avoid creating a cycle in the
-      // graph. new_producer remains the only user of this instruction.
-      new_producer_is_user = true;
-    } else {
-      std::replace(user->operands_.begin(), user->operands_.end(), this,
-                   new_producer);
-      new_producer->AddUser(user);
-      if (user->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(
-            Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
-      }
+    HloInstruction* new_producer, HloInstruction* also_keep) {
+  std::vector<HloInstruction*> keep_uses;
+
+  // We expect that new_producer has almost no users, so we can avoid
+  // re-adding them to the users list by swapping the entire users with the this
+  // instruction. However, we do need to keep the new_producer and the keep in
+  // the users list of this instruction.
+  if (users_.Contains(new_producer)) {
+    keep_uses.push_back(new_producer);
+  }
+  if (also_keep != nullptr) {
+    keep_uses.push_back(also_keep);
+  }
+  for (auto* user : keep_uses) {
+    RemoveUser(user);
+  }
+
+  for (HloInstruction* user : users_.vec()) {
+    TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
+    std::replace(user->operands_.begin(), user->operands_.end(), this,
+                 new_producer);
+    if (user->opcode() == HloOpcode::kFusion) {
+      TF_RETURN_IF_ERROR(
+          Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
     }
   }
-  users_.Clear();
-  if (new_producer_is_user) {
-    AddUser(new_producer);
+
+  if (users_.size() > new_producer->users_.size()) {
+    users_.swap(new_producer->users_);
   }
+  for (HloInstruction* user : users_.vec()) {
+    new_producer->AddUser(user);
+  }
+  users_.Clear();
+
+  // Now re-add the users that we want to keep.
+  for (HloInstruction* user : keep_uses) {
+    AddUser(user);
+  }
+
   if (parent_ && parent_->root_instruction() == this) {
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
-
   return absl::OkStatus();
 }
 
