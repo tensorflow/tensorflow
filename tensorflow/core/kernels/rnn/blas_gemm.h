@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RNN_BLAS_GEMM_H_
 #define TENSORFLOW_CORE_KERNELS_RNN_BLAS_GEMM_H_
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_activations.h"
