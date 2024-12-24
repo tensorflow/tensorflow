@@ -23,6 +23,7 @@ py_strict_library(
         ":kubernetes_cluster_resolver_py",
         ":sagemaker_cluster_resolver_py",
         ":slurm_cluster_resolver_py",
+        ":pbs_cluster_resolver_py",
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
     ],  # placeholder for google-internal dependencies,,
@@ -89,6 +90,17 @@ py_strict_library(
 py_strict_library(
     name = "slurm_cluster_resolver_py",
     srcs = ["slurm_cluster_resolver.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python/training:server_lib",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "pbs_cluster_resolver_py",
+    srcs = ["pbs_cluster_resolver.py"],
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
