@@ -143,6 +143,7 @@ xla_cc_test(
     deps = [
         ":hlo_extractor",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
