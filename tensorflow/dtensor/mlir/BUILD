@@ -73,6 +73,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
