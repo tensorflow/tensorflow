@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <utility>
+
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #define EIGEN_USE_THREADS
 #include "xla/service/cpu/cpu_runtime.h"
 

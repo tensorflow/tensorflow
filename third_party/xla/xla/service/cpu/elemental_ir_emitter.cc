@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
