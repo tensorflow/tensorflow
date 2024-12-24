@@ -127,6 +127,8 @@ message CollectiveBackendConfig {
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
+  // Cost model prediction.
+  ReificationCost reification_cost = 4;
 }
 
 // Backend config for cost model estimates.

@@ -174,6 +174,7 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
 #include "xla/service/gpu/reduce_scatter_combiner.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -2559,6 +2560,8 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
         /*count_multiple_input_accesses=*/true};
     pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
                                                   cost_analysis_options);
+    pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
+                                                     ShapeSizeBytesFunction());
   }
   return pipeline.Run(module).status();
 }
