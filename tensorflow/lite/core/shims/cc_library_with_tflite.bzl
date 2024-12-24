@@ -261,6 +261,8 @@ def cc_test_with_tflite(
         name,
         deps = [],
         tflite_deps = [],
+        data = [],
+        tflite_data = [],
         **kwargs):
     """Defines a cc_test that uses the TFLite shims.
 
@@ -277,11 +279,15 @@ def cc_test_with_tflite(
       deps: as for cc_test.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite'.
+      data: as for cc_test.
+      tflite_data: run-time dependencies on rules that are themselves defined
+        using 'cc_binary_with_tflite' or similar.
       **kwargs: Additional cc_test parameters.
     """
     native.cc_test(
         name = name,
         deps = deps + tflite_deps,
+        data = data + tflite_data,
         **kwargs
     )
 
