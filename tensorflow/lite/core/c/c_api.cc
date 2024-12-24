@@ -143,14 +143,6 @@ TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
   return kTfLiteOk;
 }
 
-static void InitTfLiteRegistration(TfLiteRegistration* registration,
-                                   TfLiteOperator* registration_external) {
-  registration->builtin_code = registration_external->builtin_code;
-  registration->custom_name = registration_external->custom_name;
-  registration->version = registration_external->version;
-  registration->registration_external = registration_external;
-}
-
 TfLiteInterpreter* TfLiteInterpreterCreate(
     const TfLiteModel* model,
     const TfLiteInterpreterOptions* optional_options) {
@@ -279,18 +271,6 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 
 namespace tflite {
 namespace internal {
-
-static TfLiteRegistration* OperatorToRegistration(
-    const TfLiteOperator* registration_external) {
-  // All TfLiteOperator objects are dynamically allocated via
-  // TfLiteOperatorCreate(), so they are guaranteed
-  // to be mutable, hence the const_cast below should be safe.
-  auto registration_external_non_const =
-      const_cast<TfLiteOperator*>(registration_external);
-  TfLiteRegistration* new_registration = new TfLiteRegistration{};
-  InitTfLiteRegistration(new_registration, registration_external_non_const);
-  return new_registration;
-}
 
 // Implementation of CallbackOpResolver class which is defined in
 // c_api_internal.h. CallbackOpResolver is a (C++) `tflite::OpResolver` that
