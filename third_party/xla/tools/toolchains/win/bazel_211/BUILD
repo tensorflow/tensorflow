@@ -116,7 +116,7 @@ toolchain(
         "@platforms//os:windows",
     ],
     toolchain = ":cc-compiler-x64_windows_msys",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
 
 cc_toolchain(
@@ -176,7 +176,7 @@ toolchain(
         "@platforms//os:windows",
     ],
     toolchain = ":cc-compiler-x64_windows_mingw",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
 
 cc_toolchain(
@@ -249,7 +249,7 @@ toolchain(
         "@platforms//os:windows",
     ],
     toolchain = ":cc-compiler-x64_windows",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
 
 cc_toolchain(
@@ -318,7 +318,7 @@ toolchain(
         "@platforms//os:windows",
     ],
     toolchain = ":cc-compiler-x64_windows-clang-cl",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
 
 cc_toolchain(
@@ -347,7 +347,7 @@ toolchain(
         "@platforms//os:android",
     ],
     toolchain = ":cc-compiler-armeabi-v7a",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
 
 filegroup(
