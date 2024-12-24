@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/map_util.h"
@@ -307,17 +308,12 @@ absl::StatusOr<bool> ShardyXLA::Run(
     const absl::flat_hash_set<absl::string_view>& executionThreads) {
   LOG(INFO) << "Using Shardy for XLA SPMD propagation.";
 
-  // HLO -> MLIR MHLO
+  // HLO -> StableHLO
   auto mlirContext = std::make_unique<mlir::MLIRContext>();
   loadAllRequiredDialects(mlirContext.get());
-  mlir::OwningOpRef<mlir::ModuleOp> mlirModule =
-      xla::llvm_ir::CreateMlirModuleOp(
-          mlir::UnknownLoc::get(mlirContext.get()));
-  TF_RETURN_IF_ERROR(
-      ConvertHloToMlirHlo(*mlirModule, hloModule,
-                          /*import_all_computations=*/false,
-                          /*flatten_computation_args_result=*/true));
-
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
+      xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
   std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
 
   if (shardyDir == "sponge") {
@@ -403,10 +399,10 @@ absl::StatusOr<bool> ShardyXLA::Run(
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(mlirContext.get());
   TF_RETURN_IF_ERROR(diagnosticHandler.consumeStatus(pm.run(*mlirModule)));
 
-  // MLIR MHLO -> HLO
+  // StableHlo -> HLO
   HloProto hloProto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(*mlirModule, &hloProto, useTupleArgs,
-                                         /*return_tuple=*/false));
+  TF_RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(
+      *mlirModule, &hloProto, useTupleArgs));
   TF_RETURN_IF_ERROR(
       createFromProtoAndReplaceComputations(hloModule, hloProto.hlo_module()));
 
