@@ -136,27 +136,27 @@ inline bool safe_strtod(absl::string_view str, double* value) {
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, int32_t* value) {
-  return safe_strto32(s, value);
+  return absl::SimpleAtoi(s, value);
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, uint32_t* value) {
-  return safe_strtou32(s, value);
+  return absl::SimpleAtoi(s, value);
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, int64_t* value) {
-  return safe_strto64(s, value);
+  return absl::SimpleAtoi(s, value);
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, uint64_t* value) {
-  return safe_strtou64(s, value);
+  return absl::SimpleAtoi(s, value);
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, float* value) {
-  return safe_strtof(s, value);
+  return absl::SimpleAtof(s, value);
 }
 
 inline bool ProtoParseNumeric(absl::string_view s, double* value) {
-  return safe_strtod(s, value);
+  return absl::SimpleAtod(s, value);
 }
 
 // Convert strings to number of type T.

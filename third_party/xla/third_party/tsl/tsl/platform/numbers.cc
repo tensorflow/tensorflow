@@ -233,7 +233,7 @@ size_t FloatToBuffer(float value, char* buffer) {
   DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
   float parsed_value;
-  if (!safe_strtof(buffer, &parsed_value) || parsed_value != value) {
+  if (!absl::SimpleAtof(buffer, &parsed_value) || parsed_value != value) {
     snprintf_result =
         snprintf(buffer, kFastToBufferSize, "%.*g", FLT_DIG + 3, value);
 
