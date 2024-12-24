@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
 #include "tensorflow/core/grappler/graph_analyzer/map_tools.h"
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"
 #include "tensorflow/core/grappler/graph_analyzer/subgraph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
