@@ -88,44 +88,4 @@ Allocator* AllocatorFactoryRegistry::GetAllocator() {
   }
 }
 
-SubAllocator* AllocatorFactoryRegistry::GetSubAllocator(int numa_node) {
-  mutex_lock l(mu_);
-  first_alloc_made_ = true;
-  FactoryEntry* best_entry = nullptr;
-  for (auto& entry : factories_) {
-    if (best_entry == nullptr) {
-      best_entry = &entry;
-    } else if (best_entry->factory->NumaEnabled()) {
-      if (entry.factory->NumaEnabled() &&
-          (entry.priority > best_entry->priority)) {
-        best_entry = &entry;
-      }
-    } else {
-      DCHECK(!best_entry->factory->NumaEnabled());
-      if (entry.factory->NumaEnabled() ||
-          (entry.priority > best_entry->priority)) {
-        best_entry = &entry;
-      }
-    }
-  }
-  if (best_entry) {
-    int index = 0;
-    if (numa_node != port::kNUMANoAffinity) {
-      CHECK_LE(numa_node, port::NUMANumNodes());
-      index = 1 + numa_node;
-    }
-    if (best_entry->sub_allocators.size() < static_cast<size_t>(index + 1)) {
-      best_entry->sub_allocators.resize(index + 1);
-    }
-    if (!best_entry->sub_allocators[index].get()) {
-      best_entry->sub_allocators[index].reset(
-          best_entry->factory->CreateSubAllocator(numa_node));
-    }
-    return best_entry->sub_allocators[index].get();
-  } else {
-    LOG(FATAL) << "No registered CPU AllocatorFactory";
-    return nullptr;
-  }
-}
-
 }  // namespace tsl
