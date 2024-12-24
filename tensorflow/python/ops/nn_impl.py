@@ -432,7 +432,7 @@ def relu_layer(x, weights, biases, name=None):
 @dispatch.add_dispatch_support
 def swish(features, beta=1.0):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(beta * x)`.
+  """Computes the Sigmoid Linear Unit(SiLU )or Swish activation function: `x * sigmoid(beta * x)`.
 
   beta : Hyperparameter for Swish activation function. Default value 1.0.
 
@@ -443,13 +443,19 @@ def swish(features, beta=1.0):
   [Elfwing et al. 2017](https://arxiv.org/abs/1702.03118) and was independently
   discovered (and called swish) in "Searching for Activation Functions"
   [Ramachandran et al. 2017](https://arxiv.org/abs/1710.05941)
-
+  
+  >>> features = tf.constant([1.0, -2.0, 3.0], dtype= tf.float32)
+  >>> silu_output = tf.nn.silu(features, beta=1.0)
+  >>> print(silu_output)
+  tf.Tensor([ 0.11920292 -1.9640275   0.00741787], shape=(3,), dtype=float32)
+  
   Args:
-    features: A `Tensor` representing preactivation values.
+    features: A `Tensor` representing preactivation values. Must be the
+    following data types: bfloat16, half, complex64, complex128
     beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
-    The activation value.
+    The activation value. Has the same type as input
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
