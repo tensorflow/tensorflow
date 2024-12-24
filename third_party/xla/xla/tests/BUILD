@@ -3481,3 +3481,22 @@ xla_test(
         "@local_tsl//tsl/platform:path",
     ],
 )
+
+xla_test(
+    name = "xnn_fusion_test",
+    srcs = ["xnn_fusion_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        ":hlo_test_base",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)

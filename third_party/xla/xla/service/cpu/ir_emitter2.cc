@@ -228,7 +228,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   }
 
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return Internal("Unsupported loop fusion kind for instruction: %s",
+    return Internal("Unsupported fusion kind for instruction: %s",
                     fusion->ToString());
   }
 

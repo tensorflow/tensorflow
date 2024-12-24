@@ -15,6 +15,10 @@ message CustomCallBackendConfig {
   }
 }
 
+message FusionBackendConfig {
+  string kind = 1;
+}
+
 // Backend config for XLA:CPU.
 message BackendConfig {
   // Number of partitions per outer dimension (in order, starting with
@@ -32,5 +36,7 @@ message BackendConfig {
     OneDnnConvolutionConfig onednn_conv_config = 5;
     // Configuration to be used by general custom call, e.g., FFI.
     CustomCallBackendConfig custom_call_config = 6;
+    // Configuration for custom fusions.
+    FusionBackendConfig fusion_config = 7;
   }
 }

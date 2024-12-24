@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -53,6 +54,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/xnn_emitter.h"
 #include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -75,10 +78,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
@@ -282,6 +284,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitConcatenateKernelThunk(instruction);
 
     case HloOpcode::kFusion:
+      if (instruction->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+        return EmitXnnFusionThunk(instruction);
+      }
       return EmitFusionKernelThunk(instruction);
 
     case HloOpcode::kReduce:
@@ -1116,6 +1121,52 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
                         sort->is_stable(), comparator.name, direction));
 
   return thunks;
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
+    const HloInstruction* instruction) {
+  auto* fusion = Cast<HloFusionInstruction>(instruction);
+
+  // Fusion must have backend config with __xnn_fusion kind.
+  TF_RET_CHECK(fusion->has_backend_config())
+      << "Fusion must have backend config";
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      fusion->backend_config<BackendConfig>());
+  TF_RET_CHECK(backend_config.has_fusion_config())
+      << "Backend config must have fusion config";
+
+  const FusionBackendConfig& fusion_config = backend_config.fusion_config();
+  TF_RET_CHECK(fusion_config.kind() == "__xnn_fusion")
+      << "Backend config must have __xnn_fusion kind";
+
+  // Collect XNNPACK fusion arguments.
+  std::vector<XnnFusionThunk::Argument> arguments;
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
+      arguments.push_back(XnnFusionThunk::Argument{slice, indexed.shape});
+    }
+  }
+
+  // Collect XNNPACK fusion results.
+  std::vector<XnnFusionThunk::Result> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        buffer_assignment_.GetUniqueSlice(instruction, indexed.index));
+    results.push_back(XnnFusionThunk::Result{slice, indexed.shape});
+  }
+
+  // Construct XNNPACK subgraph builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(
+      auto builder,
+      EmitXnnFusionBuilder(fusion->fused_instructions_computation()));
+
+  return ThunkSequence::Of<XnnFusionThunk>(
+      ThunkInfo(instruction), std::move(arguments), std::move(results),
+      [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
