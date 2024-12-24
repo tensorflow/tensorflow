@@ -93,37 +93,6 @@ KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// ElementalIrEmitter
-//===----------------------------------------------------------------------===//
-
-class IrEmitter2::ElementalIrEmitter : public CpuElementalIrEmitter {
- public:
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
-                     IrEmitter* nested_ir_emitter, bool fast_min_max)
-      : CpuElementalIrEmitter(module, b, true, fast_min_max),
-        nested_ir_emitter_(nested_ir_emitter),
-        fast_min_max_(fast_min_max) {}
-
- protected:
-  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    // Add a thread local call to the nested computation.
-    VLOG(2) << "Emit thread local call to: " << callee.name();
-    auto values = nested_ir_emitter_->EmitThreadLocalCall(
-        callee, parameters, name, is_reducer, /*in_compute_function=*/false);
-
-    return values;
-  }
-
-  bool fast_min_max() override { return fast_min_max_; }
-
- private:
-  IrEmitter* nested_ir_emitter_;
-  bool fast_min_max_;
-};
-
-//===----------------------------------------------------------------------===//
 // IrEmitter2
 //===----------------------------------------------------------------------===//
 
@@ -159,7 +128,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
 
   IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
 
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     operand_to_generator[operand] = [&, i](const llvm_ir::IrArray::Index& idx) {
@@ -175,8 +144,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
         *nested_computation, llvm_ir::IrName(instr), is_reducer));
   }
 
-  ElementalIrEmitter elemental_emitter(module_, &b, nested_ir_emitter_,
-                                       fast_min_max());
+  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
   llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
 
@@ -244,8 +212,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   TF_RETURN_IF_ERROR(EmitNestedComputation(*nested_computation,
                                            llvm_ir::IrName(fusion), false));
 
-  ElementalIrEmitter elemental_emitter(module_, &b, nested_ir_emitter_,
-                                       fast_min_max());
+  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
 
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion->operand_count(); i++) {
@@ -937,6 +904,20 @@ void IrEmitter2::AttachInvariantLoadMetadataForLoad(
     llvm::LoadInst* instr) const {
   nested_ir_emitter_->AttachInvariantLoadMetadataForLoad(instr,
                                                          hlo_module_.config());
+}
+
+CpuElementalIrEmitter IrEmitter2::ElementalIrEmmiterFactory(
+    llvm::IRBuilderBase* b) const {
+  auto thread_local_call_fn = [this](const HloComputation& callee,
+                                     absl::Span<llvm::Value* const> parameters,
+                                     absl::string_view name, bool is_reducer) {
+    return nested_ir_emitter_->EmitThreadLocalCall(
+        callee, parameters, name, is_reducer,
+        /*in_compute_function=*/false);
+  };
+
+  return CpuElementalIrEmitter(module_, b, thread_local_call_fn, true,
+                               fast_min_max());
 }
 
 }  // namespace xla::cpu
