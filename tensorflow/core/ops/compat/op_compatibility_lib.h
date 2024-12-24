@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <set>
 
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
