@@ -73,7 +73,6 @@ typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Error_GetCode(
     PLUGIN_Profiler_Error_GetCode_Args* args);
 
 struct PLUGIN_Profiler_Create_Args {
-  size_t struct_size;
   const char* options;
   size_t options_size;
   PLUGIN_Profiler* profiler;  // out
@@ -84,7 +83,6 @@ typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Create(
     PLUGIN_Profiler_Create_Args* args);
 
 struct PLUGIN_Profiler_Destroy_Args {
-  size_t struct_size;
   PLUGIN_Profiler* profiler;
 };
 PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Destroy_Args, profiler);
@@ -93,7 +91,6 @@ typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Destroy(
     PLUGIN_Profiler_Destroy_Args* args);
 
 struct PLUGIN_Profiler_Start_Args {
-  size_t struct_size;
   PLUGIN_Profiler* profiler;
 };
 PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Start_Args, profiler);
@@ -102,7 +99,6 @@ typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Start(
     PLUGIN_Profiler_Start_Args* args);
 
 struct PLUGIN_Profiler_Stop_Args {
-  size_t struct_size;
   PLUGIN_Profiler* profiler;
 };
 PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Stop_Args, profiler);
@@ -111,7 +107,6 @@ typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Stop(
     PLUGIN_Profiler_Stop_Args* args);
 
 struct PLUGIN_Profiler_CollectData_Args {
-  size_t struct_size;
   PLUGIN_Profiler* profiler;
   uint8_t* buffer;              // in/out
   size_t buffer_size_in_bytes;  // out
