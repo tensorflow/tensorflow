@@ -82,7 +82,6 @@ Expected<std::pair<NeuronModelPtr, NeuronCompilationPtr>> LoadFromDlaBytecode(
     const litert::mediatek::NeuronAdapter& neuron_adapter,
     const void* bytecode_addr, size_t bytecode_size, int num_inputs,
     int num_outputs) {
-  LITERT_LOG(LITERT_INFO, "Creating model...");
   Expected<NeuronModelPtr> model = neuron_adapter.CreateModel();
   if (!model) {
     return model.Error();
