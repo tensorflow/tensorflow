@@ -1783,8 +1783,8 @@ TfLiteStatus FillQuantizationParams(
           return kTfLiteError;
         }
       }  // loop over op inputs
-    }    // loop over ops
-  }      // loop over subgraphs
+    }  // loop over ops
+  }  // loop over subgraphs
   return kTfLiteOk;
 }
 
