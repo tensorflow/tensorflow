@@ -1,15 +1,42 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..91172d6 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,22 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++@@ -1619,13 +1619,16 @@
++ 
++ cc_library(
++     name = "FrontendAtomic",
+++    srcs = glob([
+++        "lib/Frontend/Atomic/*.cpp",
+++    ]),
++     hdrs = glob([
++         "include/llvm/Frontend/Atomic/*.h",
++     ]),
++     copts = llvm_copts,
++     deps = [
+++        ":Core",
++         ":Support",
++-        ":ir_headers",
++     ],
++ )
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index da3419f..cb9a476 100644
+index cb9a476..f04c32d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "7739380643718bc912bc05b969e4be525a85c0d2"
--    LLVM_SHA256 = "f5308ca8e7f19d8a347d725e7ef5b887bf909d585a1234cd26bd80c32ceaede3"
-+    LLVM_COMMIT = "21a1dbb50320889ee0e116237c924ee1af3c3dd3"
-+    LLVM_SHA256 = "399bab11e4de85d9d65957ccf236ec57c1741ec6ed96225a86076b34e0026816"
+-    LLVM_COMMIT = "21a1dbb50320889ee0e116237c924ee1af3c3dd3"
+-    LLVM_SHA256 = "399bab11e4de85d9d65957ccf236ec57c1741ec6ed96225a86076b34e0026816"
++    LLVM_COMMIT = "c660b281b60085cbe40d73d692badd43d7708d20"
++    LLVM_SHA256 = "77714a6dbfab00cb7a8d54ae119770011c9da9d810ea02864b173fce90b4ca14"
  
      tf_http_archive(
          name = name,

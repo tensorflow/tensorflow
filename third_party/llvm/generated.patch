@@ -1,1 +1,22 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -1619,13 +1619,16 @@
+ 
+ cc_library(
+     name = "FrontendAtomic",
++    srcs = glob([
++        "lib/Frontend/Atomic/*.cpp",
++    ]),
+     hdrs = glob([
+         "include/llvm/Frontend/Atomic/*.h",
+     ]),
+     copts = llvm_copts,
+     deps = [
++        ":Core",
+         ":Support",
+-        ":ir_headers",
+     ],
+ )
+ 
