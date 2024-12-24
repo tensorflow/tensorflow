@@ -47,7 +47,8 @@ namespace {
 
 string DefaultValue(OpDef_AttrDef attr) {
   static const auto* attr_default_value_map =
-      new absl::flat_hash_map<StringPiece, StringPiece, StringPieceHasher>{
+      new absl::flat_hash_map<absl::string_view, absl::string_view,
+                              StringPieceHasher>{
           {"int", "0"},
           {"string", "\"\""},
           {"list(int)", "{ 0, 1 }"},
