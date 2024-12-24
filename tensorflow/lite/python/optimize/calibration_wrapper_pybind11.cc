@@ -79,10 +79,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
               bool allow_float, int activations_py_type, int bias_py_type,
-              bool disable_per_channel) {
+              bool disable_per_channel,
+              bool disable_per_channel_quantization_for_dense_layers) {
              return tensorflow::PyoOrThrow(self.QuantizeModel(
                  input_py_type, output_py_type, allow_float,
-                 activations_py_type, bias_py_type, disable_per_channel));
+                 activations_py_type, bias_py_type, disable_per_channel,
+                 disable_per_channel_quantization_for_dense_layers));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
