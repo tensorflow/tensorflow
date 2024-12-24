@@ -536,7 +536,7 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     eliminateCopies(block, /*root=*/block);
     do {
       // Eliminate dead code.
-      (void)applyPatternsAndFoldGreedily(getOperation(), {});
+      (void)applyPatternsGreedily(getOperation(), {});
       // Only coalesce dealloc/alloc pairs that are immediate neighbors, to
       // make sure we don't accidentally extend the live range of a buffer.
       result = reuseBuffers(block, BufferReuseMode::CONSERVATIVE);
@@ -547,7 +547,7 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     // Now we can also coalesce distant dealloc/alloc pairs.
     reuseBuffers(block, BufferReuseMode::AGGRESSIVE);
     promoteBuffers(block);
-    (void)applyPatternsAndFoldGreedily(getOperation(), {});
+    (void)applyPatternsGreedily(getOperation(), {});
   }
 };
 

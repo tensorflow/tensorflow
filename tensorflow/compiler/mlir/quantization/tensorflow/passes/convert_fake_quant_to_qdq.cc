@@ -67,7 +67,7 @@ void ConvertFakeQuantToQdqPass::runOnOperation() {
 
   // For removing dead FakeQuant* ops
   RewritePatternSet patterns(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 }

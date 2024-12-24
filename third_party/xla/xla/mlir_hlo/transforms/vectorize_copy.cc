@@ -215,7 +215,7 @@ struct VectorizeCopyPass
     RewritePatternSet patterns(ctx);
     patterns.add<TileCopyPattern, CopyVectorizationPattern>(
         ctx, /*numElementsThreshold = */ 8);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
   }

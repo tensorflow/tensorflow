@@ -189,7 +189,7 @@ void FoldConstantTransposePass::runOnOperation() {
 
   RewritePatternSet patterns(&ctx);
   patterns.add<FoldTransposedConstantOp>(&ctx);
-  if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
     func_op.emitError("Failed to fold constant->transpose pattern.");
     signalPassFailure();
   }

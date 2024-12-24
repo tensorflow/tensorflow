@@ -249,7 +249,7 @@ class LiftTfliteFlexOpsPass
 
     mlir::RewritePatternSet patterns(context);
     AddLiftTfliteFlexOpsPatterns(context, patterns);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
     }

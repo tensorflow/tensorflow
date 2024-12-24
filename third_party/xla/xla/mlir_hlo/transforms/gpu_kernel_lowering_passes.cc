@@ -96,7 +96,7 @@ void GpuKernelToNVVMPass::runOnOperation() {
   {
     RewritePatternSet patterns(&getContext());
     populateAllCommonVectorProgressiveLoweringPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    (void)applyPatternsGreedily(getOperation(), std::move(patterns));
   }
 
   RewritePatternSet patterns(&getContext());

@@ -136,7 +136,7 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
   populateWithGenerated(patterns);
   populateCanonicalizationPatterns(func, patterns);
 
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {

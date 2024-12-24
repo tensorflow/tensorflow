@@ -249,8 +249,7 @@ class UnfuseMhloBatchNormPass
     RewritePatternSet patterns(&getContext());
     patterns.add<UnfuseBatchNormTrainingPattern>(&getContext());
     patterns.add<UnfuseBatchNormInferencePattern>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

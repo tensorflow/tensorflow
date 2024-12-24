@@ -136,7 +136,7 @@ void MergeFusionWithDequantizePass::runOnOperation() {
   MLIRContext* ctx = module_op.getContext();
   RewritePatternSet patterns(ctx);
   patterns.add<MergeFusionWithUniformDequantizePattern>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     signalPassFailure();
   }
 }

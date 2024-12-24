@@ -50,7 +50,7 @@ void RemoveShardingCustomCallPass::runOnOperation() {
   populateWithGenerated(patterns);
 
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  if (failed(applyPatternsAndFoldGreedily(func_op, frozen_patterns))) {
+  if (failed(applyPatternsGreedily(func_op, frozen_patterns))) {
     func_op.emitWarning() << "Failed to converge "
                           << RemoveShardingCustomCallPass::getArgumentName();
   }

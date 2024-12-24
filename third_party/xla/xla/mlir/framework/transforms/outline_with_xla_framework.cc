@@ -164,7 +164,7 @@ class OutlineWithXLAFrameworkPass
     patterns.add<OutlineXLAFunc>(ctx);
     //  Set target.
 
-    if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(m, std::move(patterns)))) {
       signalPassFailure();
     }
     m->walk([](func::FuncOp f) {

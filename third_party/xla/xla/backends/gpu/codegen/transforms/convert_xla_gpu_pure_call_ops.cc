@@ -44,8 +44,8 @@ class ConvertPureCallOpsPass
     auto* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteCall>(ctx);
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

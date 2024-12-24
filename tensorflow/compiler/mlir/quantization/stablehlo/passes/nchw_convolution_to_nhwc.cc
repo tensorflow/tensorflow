@@ -179,7 +179,7 @@ void NchwConvolutionToNhwcPass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteNchwConvolutionToNhwc>(&ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to run NchwConvolutionToNhwcPass.";
     signalPassFailure();
   }

@@ -397,7 +397,7 @@ void LegalizeTFCollective::runOnOperation() {
   patterns.insert<ConvertCollectiveReduceV2>(context, &channel_id);
   patterns.insert<ConvertXlaAllReduce>(context, &channel_id);
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
     signalPassFailure();
   }
 }

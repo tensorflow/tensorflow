@@ -2314,7 +2314,7 @@ void UniformQuantizedStableHloToTflPass::runOnOperation() {
                RewriteQuantizedSelectOp, RewriteQuantizedSliceOp,
                RewriteQuantizedTransposeOp>(&ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
                            "quantized types to tflite ops.";
     signalPassFailure();
