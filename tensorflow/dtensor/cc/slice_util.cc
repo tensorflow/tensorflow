@@ -19,9 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 
 namespace tensorflow {
 namespace dtensor {
