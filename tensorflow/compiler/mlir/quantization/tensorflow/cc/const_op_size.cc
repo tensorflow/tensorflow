@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 
 #include <climits>
+#include <cstdint>
 
+#include "absl/algorithm/container.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
