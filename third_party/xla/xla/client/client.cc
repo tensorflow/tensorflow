@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/client/client.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
