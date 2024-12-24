@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
+#include <cstdint>
 #include <string>
 
 #include "absl/status/statusor.h"
