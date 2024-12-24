@@ -35,7 +35,7 @@ using namespace std::string_literals;  // NOLINT
 
 absl::Status SavedModelSplitter::BuildChunks() {
   TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
-  SavedModel* sm = tsl::protobuf::DynamicCastToGenerated<SavedModel>(message());
+  SavedModel* sm = proto2::DynamicCastMessage<SavedModel>(message());
   int max_size = GetMaxSize();
   if (GetInitialSize() < max_size) return absl::OkStatus();
 
