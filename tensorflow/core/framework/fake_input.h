@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_FAKE_INPUT_H_
 #define TENSORFLOW_CORE_FRAMEWORK_FAKE_INPUT_H_
 
+#include <initializer_list>
+
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 

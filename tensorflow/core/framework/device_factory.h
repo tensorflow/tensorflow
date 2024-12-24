@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DEVICE_FACTORY_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DEVICE_FACTORY_H_
 
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 

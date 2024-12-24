@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_HANDLE_CACHE_H_
 
 #include <string>
+#include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
