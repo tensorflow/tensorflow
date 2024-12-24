@@ -29,6 +29,25 @@
 namespace litert {
 namespace testing {
 
+// A x-platform compatible replacement for testing::UniqueTestDirectory.
+class UniqueTestDirectory {
+ public:
+  static Expected<UniqueTestDirectory> Create();
+  ~UniqueTestDirectory();
+
+  UniqueTestDirectory(const UniqueTestDirectory&) = delete;
+  UniqueTestDirectory(UniqueTestDirectory&&) = default;
+  UniqueTestDirectory& operator=(const UniqueTestDirectory&) = delete;
+  UniqueTestDirectory& operator=(UniqueTestDirectory&&) = default;
+
+  absl::string_view Str() const { return tmpdir_; }
+
+ private:
+  explicit UniqueTestDirectory(std::string&& tmpdir)
+      : tmpdir_(std::move(tmpdir)) {}
+  std::string tmpdir_;
+};
+
 std::string GetTestFilePath(absl::string_view filename);
 
 Model LoadTestFileModel(absl::string_view filename);

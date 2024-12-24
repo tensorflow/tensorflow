@@ -315,7 +315,7 @@ TEST(TensorBuffer, ExternalHostMemory) {
       ::posix_memalign(&host_memory_ptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
                        kTensorBufferSize),
       0);
-  std::unique_ptr<void, void (*)(void*) noexcept> host_memory_ptr_deleter(
+  std::unique_ptr<void, void (*)(void*)> host_memory_ptr_deleter(
       host_memory_ptr, ::free);
 
   std::memcpy(host_memory_ptr, kTensorData, sizeof(kTensorData));
