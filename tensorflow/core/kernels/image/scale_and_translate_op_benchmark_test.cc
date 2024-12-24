@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
