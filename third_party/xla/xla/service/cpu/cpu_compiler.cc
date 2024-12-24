@@ -2042,8 +2042,8 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
-    return std::unique_ptr<CpuExecutableAotCompilationResult>(
-        new CpuExecutableAotCompilationResult(proto, std::move(module)));
+    return std::make_unique<CpuExecutableAotCompilationResult>(
+        proto, std::move(module));
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
