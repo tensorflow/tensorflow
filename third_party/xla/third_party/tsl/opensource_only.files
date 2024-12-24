@@ -3,6 +3,7 @@ third_party/__init__:.py
 third_party/absl/com_google_absl.BUILD:
 third_party/clang_toolchain/BUILD:
 third_party/clang_toolchain/cc_configure_clang.bzl:
+third_party/clang_toolchain/cc_configure_hermetic_clang.bzl:
 third_party/clang_toolchain/download_clang.bzl:
 third_party/compute_library/BUILD:
 third_party/compute_library/build_defs.bzl:
