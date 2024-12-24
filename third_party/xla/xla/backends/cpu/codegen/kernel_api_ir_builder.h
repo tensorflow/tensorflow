@@ -17,12 +17,20 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_KERNEL_API_IR_BUILDER_H_
 
 #include <cstdint>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 
@@ -49,8 +57,55 @@ class KernelApiIrBuilder {
     llvm::Value* z;
   };
 
+  // Kernel parameter (argument or result buffer) passed to a kernel function.
+  // We rely on buffer allocation slice information to infer buffer aliasing
+  // scopes for LLVM codegen.
+  struct KernelParameter {
+    Shape shape;
+    BufferAllocation::Slice slice;
+  };
+
+  // A kernel function prototype with all the LLVM values that might be needed
+  // to emit the actual kernel body.
+  struct KernelPrototype {
+    llvm::Function* function;
+    llvm::BasicBlock* return_block;
+
+    // LLVM values identifying kernel invocation thread coordinates.
+    ThreadDims thread_dims;
+    ThreadId thread_id;
+
+    // LLVM values corresponding to the kernel arguments and results arrays. All
+    // tuples are flattened as we do not have any tuples at run time and only
+    // read and write data from/to leaf arrays.
+    std::vector<llvm_ir::IrArray> arguments;
+    std::vector<llvm_ir::IrArray> results;
+
+    // Set containing all invariant (read-only) buffers indices. A buffer is
+    // read-only if it is not aliased with any result.
+    absl::flat_hash_set<int64_t> invariant_arguments;
+
+    // the set of buffer uses for this kernel, can be empty if buffer
+    // was not provided.
+    absl::InlinedVector<BufferUse, 8> buffer_uses;
+  };
+
   KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);
 
+  // Emits a kernel prototype for the given HLO instruction.
+  // buffer_assignment may be null, in which case we will not compute alias
+  // metadata.
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      llvm::Module& module, const HloInstruction* instr,
+      const BufferAssignment* buffer_assignment, absl::string_view suffix = "");
+
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      llvm::Module& module, absl::string_view name,
+      absl::Span<const KernelParameter> arguments,
+      absl::Span<const KernelParameter> results,
+      bool compute_alias_metadata = true);
+
+ private:
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);
   ThreadId EmitKernelThread(llvm::IRBuilderBase& builder,
