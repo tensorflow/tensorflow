@@ -1184,6 +1184,7 @@ xla_cc_test(
         ":tuple_simplifier",
         "//xla:shape_util",
         "//xla:test",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
