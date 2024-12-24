@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 
 namespace tensorflow {
