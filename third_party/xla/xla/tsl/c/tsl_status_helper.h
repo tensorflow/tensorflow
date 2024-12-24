@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/status.h"
 
