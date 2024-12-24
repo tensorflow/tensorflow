@@ -35,7 +35,7 @@ DeviceBase::~DeviceBase() {
 }
 
 absl::Status DeviceContext::CopyDeviceTensorToCPUSync(
-    const Tensor* device_tensor, StringPiece tensor_name, Device* device,
+    const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
     Tensor* cpu_tensor) {
   absl::Notification n;
   absl::Status status;

@@ -33,7 +33,7 @@ class Tensor;
 
 struct ShapeInferenceTestOp {
   typedef std::pair<string, DataType> ShapeAndType;
-  explicit ShapeInferenceTestOp(StringPiece name) : name(string(name)) {}
+  explicit ShapeInferenceTestOp(absl::string_view name) : name(string(name)) {}
   string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;

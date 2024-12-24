@@ -194,8 +194,9 @@ class OpKernel {
     return output_memory_types_;
   }
 
-  absl::Status InputRange(StringPiece input_name, int* start, int* stop) const;
-  absl::Status OutputRange(StringPiece output_name, int* start,
+  absl::Status InputRange(absl::string_view input_name, int* start,
+                          int* stop) const;
+  absl::Status OutputRange(absl::string_view output_name, int* start,
                            int* stop) const;
 
   // Returns `true` if and only if this kernel uses deferred execution.
@@ -318,11 +319,11 @@ class OpKernelConstruction {
   // attr with attr_name is found in def(), or the attr does not have
   // a matching type, a non-ok status will be returned.
   template <class T>
-  absl::Status GetAttr(StringPiece attr_name,
+  absl::Status GetAttr(absl::string_view attr_name,
                        T* value) const TF_ATTRIBUTE_NOINLINE;
 
   // Return true if the attr_name is defined in def().
-  bool HasAttr(StringPiece attr_name) const;
+  bool HasAttr(absl::string_view attr_name) const;
 
   // Return the device type.
   const DeviceType& device_type() const { return device_type_; }
@@ -733,7 +734,7 @@ class OpKernelContext {
 
   int num_inputs() const { return params_->inputs.size(); }
   DataType input_dtype(int index) const;
-  absl::Status input_dtype(StringPiece name, DataType* dtype) const;
+  absl::Status input_dtype(absl::string_view name, DataType* dtype) const;
   MemoryType input_memory_type(int index) const;
 
   int num_outputs() const { return outputs_.size(); }
@@ -758,14 +759,14 @@ class OpKernelContext {
   // use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // REQUIRES: the named input must not be a list.
-  absl::Status input(StringPiece name, const Tensor** tensor);
+  absl::Status input(absl::string_view name, const Tensor** tensor);
 
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
-  absl::Status input_list(StringPiece name, OpInputList* list);
+  absl::Status input_list(absl::string_view name, OpInputList* list);
 
   // For mutable inputs, use the following together to make sure there
   // is no concurrent access to mutable_input(), e.g.:
@@ -775,7 +776,7 @@ class OpKernelContext {
   //   // modify the values in t
   // }
   // REQUIRES: IsRefType(input_dtype(index))
-  absl::Status input_ref_mutex(StringPiece name, mutex** out_mutex);
+  absl::Status input_ref_mutex(absl::string_view name, mutex** out_mutex);
 
   // Returns a mutable input tensor. Must be used to access Ref
   // inputs.  REQUIRES: IsRefType(input_dtype(index)). The caller may
@@ -793,7 +794,8 @@ class OpKernelContext {
   // the input mutex will be acquired before returning the Tensor.
   // REQUIRES: the named input must not be a list.
   // REQUIRES: the named input must be a ref tensor.
-  absl::Status mutable_input(StringPiece name, Tensor* tensor, bool lock_held);
+  absl::Status mutable_input(absl::string_view name, Tensor* tensor,
+                             bool lock_held);
 
   // Returns the named list-valued mutable input in "list", as defined
   // in the OpDef.  If the named input is not list-valued, returns a
@@ -801,7 +803,8 @@ class OpKernelContext {
   // stored in the Tensor buffer may be modified, and modifications
   // will be visible to other Ops reading the same ref tensor.
   // REQUIRES: the named input must be a ref tensor.
-  absl::Status mutable_input_list(StringPiece name, OpMutableInputList* list);
+  absl::Status mutable_input_list(absl::string_view name,
+                                  OpMutableInputList* list);
 
   // Replace the corresponding Ref Input to use the storage buffer
   // used by tensor. If !lock_held the input mutex will be acquired
@@ -813,7 +816,7 @@ class OpKernelContext {
   // buffer used by tensor. If !lock_held the input mutex will be
   // acquired before returning the Tensor.
   // REQUIRES: IsRefType(input_dtype(index)).
-  absl::Status replace_ref_input(StringPiece name, const Tensor& tensor,
+  absl::Status replace_ref_input(absl::string_view name, const Tensor& tensor,
                                  bool lock_held);
 
   // Deletes the Tensor object used as the Ref Input at
@@ -865,7 +868,7 @@ class OpKernelContext {
                                           const TensorShape& output_shape,
                                           Tensor** output) TF_MUST_USE_RESULT;
   absl::Status forward_input_to_output_with_shape(
-      StringPiece input_name, StringPiece output_name,
+      absl::string_view input_name, absl::string_view output_name,
       const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
 
   // Returns a pointer to a Tensor aliasing the underlying buffer backing
@@ -912,8 +915,8 @@ class OpKernelContext {
       const TensorShape& output_shape, Tensor** output,
       int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   absl::Status forward_input_or_allocate_output(
-      absl::Span<const StringPiece> candidate_input_names,
-      StringPiece output_name, const TensorShape& output_shape,
+      absl::Span<const absl::string_view> candidate_input_names,
+      absl::string_view output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
   // Tries to reuse one of the inputs given in input_indices as a temporary.
@@ -935,7 +938,7 @@ class OpKernelContext {
 
   // Returns the named list-valued output in "list", as defined in the OpDef.
   // If the named output is not list-valued, returns a one-element list.
-  absl::Status output_list(StringPiece name, OpOutputList* list);
+  absl::Status output_list(absl::string_view name, OpOutputList* list);
 
   // If output_required(index) returns true, the OpKernel's Compute() method
   // should call allocate_output(index, ...), set_output(index, ...),
@@ -997,7 +1000,7 @@ class OpKernelContext {
   // REQUIRES: !IsRefType(expected_output_dtype(index))
   absl::Status allocate_output(int index, const TensorShape& shape,
                                Tensor** tensor) TF_MUST_USE_RESULT;
-  absl::Status allocate_output(StringPiece name, const TensorShape& shape,
+  absl::Status allocate_output(absl::string_view name, const TensorShape& shape,
                                Tensor** tensor) TF_MUST_USE_RESULT;
   // The following methods use the supplied attributes instead of
   // those in output_attr_array. The caller is responsible for
@@ -1007,7 +1010,7 @@ class OpKernelContext {
   absl::Status allocate_output(int index, const TensorShape& shape,
                                Tensor** tensor,
                                AllocatorAttributes attr) TF_MUST_USE_RESULT;
-  absl::Status allocate_output(StringPiece name, const TensorShape& shape,
+  absl::Status allocate_output(absl::string_view name, const TensorShape& shape,
                                Tensor** tensor,
                                AllocatorAttributes attr) TF_MUST_USE_RESULT;
 
@@ -1029,19 +1032,19 @@ class OpKernelContext {
   // index.  REQUIRES: !IsRefType(expected_output_dtype(index))
   // REQUIRES: 'tensor' must have the same MemoryType as
   // output_memory_types[index]. See comment above.
-  absl::Status set_output(StringPiece name, const Tensor& tensor);
-  absl::Status set_output(StringPiece name, Tensor&& tensor);
+  absl::Status set_output(absl::string_view name, const Tensor& tensor);
+  absl::Status set_output(absl::string_view name, Tensor&& tensor);
   void set_output(int index, const Tensor& tensor);
   void set_output(int index, Tensor&& tensor);
 
   // To output a reference.  Caller retains ownership of mu and tensor_for_ref,
   // and they must outlive all uses within the step. See comment above.
   // REQUIRES: IsRefType(expected_output_dtype(index))
-  absl::Status set_output_ref(StringPiece name, mutex* mu,
+  absl::Status set_output_ref(absl::string_view name, mutex* mu,
                               Tensor* tensor_for_ref);
 
   // Returns nullptr if allocate_output() or set_output() have not been called.
-  absl::Status mutable_output(StringPiece name, Tensor** tensor);
+  absl::Status mutable_output(absl::string_view name, Tensor** tensor);
 
   // Return the DeviceContext that should be used for this Op.
   //
@@ -1296,8 +1299,8 @@ class OpKernelContext {
 
   void maybe_track_allocations_for_set_output(const Tensor& tensor);
 
-  absl::Status get_input_index(StringPiece name, int* out_index) const;
-  absl::Status get_output_index(StringPiece name, int* out_index) const;
+  absl::Status get_input_index(absl::string_view name, int* out_index) const;
+  absl::Status get_output_index(absl::string_view name, int* out_index) const;
 
   // Initialize the allocated_scope_ids_ set the first time this method is
   // called.
@@ -1419,7 +1422,7 @@ absl::Status SupportedDeviceTypesForNode(
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
-std::string KernelsRegisteredForOp(StringPiece op_name);
+std::string KernelsRegisteredForOp(absl::string_view op_name);
 
 // Call once after Op registration has completed.
 absl::Status ValidateKernelRegistrations(
@@ -1511,11 +1514,12 @@ bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
 // and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
 absl::Status FindKernelDef(
-    const DeviceType& device_type, StringPiece node_name,
+    const DeviceType& device_type, absl::string_view node_name,
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
-    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, std::string* kernel_class_name);
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def,
+    std::string* kernel_class_name);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
@@ -1536,7 +1540,7 @@ KernelList GetFilteredRegisteredKernels(
     const std::function<bool(const KernelDef&)>& predicate);
 
 // Gets a list of all registered kernels for a given op
-KernelList GetRegisteredKernelsForOp(StringPiece op_name);
+KernelList GetRegisteredKernelsForOp(absl::string_view op_name);
 
 namespace kernel_factory {
 
@@ -1554,17 +1558,17 @@ class OpKernelRegistrar {
   // Registers the given kernel factory with TensorFlow. TF will call the
   // factory Create() method when it determines that a kernel matching the given
   // KernelDef is required.
-  OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    std::unique_ptr<OpKernelFactory> factory)
-      TF_ATTRIBUTE_NOINLINE {
+  OpKernelRegistrar(
+      const KernelDef* kernel_def, absl::string_view kernel_class_name,
+      std::unique_ptr<OpKernelFactory> factory) TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name, std::move(factory));
   }
 
   // Registers the given factory function with TensorFlow. This is equivalent
   // to registering a factory whose Create function invokes `create_fn`.
-  OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    OpKernel* (*create_fn)(OpKernelConstruction*))
-      TF_ATTRIBUTE_NOINLINE {
+  OpKernelRegistrar(
+      const KernelDef* kernel_def, absl::string_view kernel_class_name,
+      OpKernel* (*create_fn)(OpKernelConstruction*)) TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name,
                  std::make_unique<PtrOpKernelFactory>(create_fn));
   }
@@ -1579,7 +1583,8 @@ class OpKernelRegistrar {
     OpKernel* (*create_func_)(OpKernelConstruction*);
   };
 
-  void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
+  void InitInternal(const KernelDef* kernel_def,
+                    absl::string_view kernel_class_name,
                     std::unique_ptr<OpKernelFactory> factory);
 };
 
@@ -1589,7 +1594,7 @@ class OpKernelRegistrar {
 // Template and inline method implementations, please ignore
 
 template <class T>
-absl::Status OpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status OpKernelConstruction::GetAttr(absl::string_view attr_name,
                                            T* value) const {
   return GetNodeAttr(def(), attr_name, value);
 }

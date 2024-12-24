@@ -43,16 +43,16 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
 
 // The following search through op_def for an attr with the indicated name.
 // Returns nullptr if no such attr is found.
-const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def);
-OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
+const OpDef::AttrDef* FindAttr(absl::string_view name, const OpDef& op_def);
+OpDef::AttrDef* FindAttrMutable(absl::string_view name, OpDef* op_def);
 
 // Searches op_def for input argument with the indicated name.
 // Returns nullptr if no such attr is found.
-const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
+const OpDef::ArgDef* FindInputArg(absl::string_view name, const OpDef& op_def);
 
 // Searches api_def for input argument with the indicated name.
 // Returns nullptr if no such attr is found.
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def);
+const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def);
 
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.

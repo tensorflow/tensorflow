@@ -155,7 +155,7 @@ string DataTypeString(DataType dtype) {
   return DataTypeStringInternal(dtype);
 }
 
-bool DataTypeFromString(StringPiece sp, DataType* dt) {
+bool DataTypeFromString(absl::string_view sp, DataType* dt) {
   if (absl::EndsWith(sp, "_ref")) {
     sp.remove_suffix(4);
     DataType non_ref;

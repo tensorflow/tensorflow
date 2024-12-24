@@ -179,8 +179,8 @@ struct Helper {
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
-    port::AssignRefCounted(StringPiece(in->base<const char>(), in->size()), in,
-                           out);
+    port::AssignRefCounted(
+        absl::string_view(in->base<const char>(), in->size()), in, out);
   }
 
   // Decoder of simple type T. Copy the bytes from "in" into the
@@ -1509,9 +1509,10 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
   }
 }
 
-StringPiece Tensor::tensor_data() const {
-  if (buf_ == nullptr) return StringPiece();  // Don't die for empty tensors
-  return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
+absl::string_view Tensor::tensor_data() const {
+  if (buf_ == nullptr)
+    return absl::string_view();  // Don't die for empty tensors
+  return absl::string_view(static_cast<char*>(buf_->data()), TotalBytes());
 }
 
 void* Tensor::data() const {

@@ -168,7 +168,7 @@ class DataTypeSet {
 
 // If "sp" names a valid type, store it in "*dt" and return true.  Otherwise,
 // return false.
-bool DataTypeFromString(StringPiece sp, DataType* dt);
+bool DataTypeFromString(absl::string_view sp, DataType* dt);
 
 constexpr inline DataTypeSet ToSet(DataType dt) {
   return DataTypeSet(1u << static_cast<uint32>(dt));
