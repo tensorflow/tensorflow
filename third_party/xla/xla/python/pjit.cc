@@ -384,6 +384,7 @@ class PjitFunctionStore {
     for (auto* function : functions) {
       function->ClearCache();
     }
+    compiled_functions_.clear();
   }
 
  private:
