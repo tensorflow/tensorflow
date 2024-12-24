@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "xla/packed_literal_reader.h"
 
+#include <cstdint>
+#include <cstring>
 #include <limits>
-#include <memory>
 #include <string>
 #include <utility>
 
