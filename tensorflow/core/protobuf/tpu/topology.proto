@@ -2,24 +2,26 @@ syntax = "proto3";
 
 package tensorflow.tpu;
 
-option cc_enable_arenas = true;
-
 // Describes features of a tpu.
 message TPUHardwareFeature {
   // Embedding feature of a tpu.
   enum EmbeddingFeature {
     // No embedding lookup accelerator available on the tpu.
     UNSUPPORTED = 0;
+
     // Embedding lookup accelerator V1. The embedding lookup operation can only
     // be placed at the beginning of computation. Only one instance of embedding
     // lookup layer is allowed.
     V1 = 1;
+
     // Embedding lookup accelerator V2. The embedding lookup operation can be
     // placed anywhere of the computation. Multiple instances of embedding
     // lookup layer is allowed.
     V2 = 2;
   }
+
   EmbeddingFeature embedding_feature = 1;
+
   // Number of embedding accelerator devices per chip.
   int32 num_embedding_devices_per_chip = 2;
 }
