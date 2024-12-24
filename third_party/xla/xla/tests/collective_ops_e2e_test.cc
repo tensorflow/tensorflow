@@ -1623,7 +1623,7 @@ class RaggedAllToAllTest : public AsyncCollectiveOps {
       return row;
     };
 
-    // Create literals concert array to literals.
+    // Create literals from array data.
     for (int replica_id = 0; replica_id < num_replicas; ++replica_id) {
       inputs_.push_back(LiteralUtil::CreateFromArray(input_data[replica_id]));
       input_offsets_.push_back(
@@ -1751,6 +1751,62 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
                                      /*device_assignment=*/nullptr));
   ASSERT_EQ(results.size(), kNumReplicas);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_Degenerate_2GPUs) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[1] parameter(2)
+    send_sizes = s32[1] parameter(3)
+    output_offsets = s32[1] parameter(4)
+    recv_sizes = s32[1] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0},{1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  inputs_.push_back(LiteralUtil::CreateR1<float>({1, 0, 0, 0}));
+  inputs_.push_back(LiteralUtil::CreateR1<float>({2, 3, 4, 0}));
+
+  input_sizes_.push_back(LiteralUtil::CreateR1<int32_t>({1}));
+  input_sizes_.push_back(LiteralUtil::CreateR1<int32_t>({3}));
+
+  output_sizes_.push_back(LiteralUtil::CreateR1<int32_t>({1}));
+  output_sizes_.push_back(LiteralUtil::CreateR1<int32_t>({3}));
+
+  input_offsets_.push_back(LiteralUtil::CreateR1<int32_t>({0}));
+  input_offsets_.push_back(LiteralUtil::CreateR1<int32_t>({0}));
+
+  output_offsets_.push_back(LiteralUtil::CreateR1<int32_t>({2}));
+  output_offsets_.push_back(LiteralUtil::CreateR1<int32_t>({1}));
+
+  output_init_ = LiteralUtil::CreateR1<float>({-1, -1, -1, -1});
+
+  expected_outputs_.push_back(LiteralUtil::CreateR1<float>({-1, -1, 1, -1}));
+  expected_outputs_.push_back(LiteralUtil::CreateR1<float>({-1, 2, 3, 4}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }

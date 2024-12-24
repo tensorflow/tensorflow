@@ -1872,7 +1872,15 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // A given collective op can be degenerate if across all groups formed
   // by it are singleton. In such a case, we don't need to do any communication
   // and we can just copy the input to the output.
-  bool is_degenerate = GetNcclCollectiveConfig(inst, use_global_device_ids)
+  //
+  // The only exception is RaggedAllToAll, which is not degenerate even if
+  // all groups are singleton. In a singleton group case, RaggedAllToAll becomes
+  // a generic equivalent of DynamicUpdateSlice, except update size is not
+  // statically known. This operation can not be expressed in term of standard
+  // HLO instructions, so the best solution we have is to use NCCL thunk even
+  // for degenerate cases.
+  bool is_degenerate = kind != Thunk::Kind::kNcclRaggedAllToAll &&
+                       GetNcclCollectiveConfig(inst, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
   absl::Status implementable_status =
       NcclThunkType::CheckImplementable(inst, replica_count, partition_count);
