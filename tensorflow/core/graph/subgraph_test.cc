@@ -312,7 +312,7 @@ TEST_F(SubgraphTest, ChainOfFools) {
   EXPECT_TRUE(HasEdge("e", 0, "_send_e_0", 0));
 }
 
-static bool HasSubstr(StringPiece base, StringPiece substr) {
+static bool HasSubstr(absl::string_view base, absl::string_view substr) {
   bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
