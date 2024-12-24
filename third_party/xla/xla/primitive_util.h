@@ -401,6 +401,8 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
          primitive_type < PrimitiveType_ARRAYSIZE;
 }
 
+constexpr bool IsTokenType(PrimitiveType type) { return type == TOKEN; }
+
 constexpr bool IsF8Type(PrimitiveType type) {
   return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
          type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
@@ -584,6 +586,8 @@ inline constexpr int PrimitiveTypeBitWidth() {
       static_assert(is_complex_v<NativeT>);
       return sizeof(NativeT) * std::numeric_limits<uint8_t>::digits;
     }
+  } else if constexpr (IsTokenType(primitive_type)) {
+    return std::numeric_limits<uint8_t>::digits;
   }
   return 0;
 }
@@ -607,7 +611,7 @@ inline constexpr auto kByteWidths = ByteWidthArrayHelper(
 
 template <const std::array<int, PrimitiveType_ARRAYSIZE>& kWidths>
 inline constexpr int WidthForType(PrimitiveType type) {
-  if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
+  if (ABSL_PREDICT_TRUE(IsArrayType(type) || IsTokenType(type))) {
     return kWidths[type];
   }
   LOG(FATAL) << "Unhandled primitive type " << type;
