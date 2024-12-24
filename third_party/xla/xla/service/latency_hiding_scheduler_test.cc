@@ -62,13 +62,13 @@ bool MaxConcurrentCollectivePermutesBelowThreshold(
   int max_concurrent_collective_permutes = 0;
   int num_concurrent_collective_permutes = 0;
   for (HloInstruction* instruction : instruction_sequence) {
-    if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
+    if (HloPredicateIsOp<HloOpcode::kCollectivePermuteStart>(instruction)) {
       num_concurrent_collective_permutes += 1;
       max_concurrent_collective_permutes =
           std::max(max_concurrent_collective_permutes,
                    num_concurrent_collective_permutes);
     }
-    if (instruction->opcode() == HloOpcode::kCollectivePermuteDone) {
+    if (HloPredicateIsOp<HloOpcode::kCollectivePermuteDone>(instruction)) {
       num_concurrent_collective_permutes -= 1;
     }
   }
@@ -125,7 +125,8 @@ class TestLatencyEstimator : public LatencyEstimator {
                  ? kMediumCost
                  : kLowCost * ShapeUtil::ElementsIn(instr->shape());
     }
-    if (instr->IsOutputFusion() || instr->opcode() == HloOpcode::kConvolution) {
+    if (instr->IsOutputFusion() ||
+        HloPredicateIsOp<HloOpcode::kConvolution>(instr)) {
       return instr->shape().IsTuple()
                  ? kHighCost
                  : kMediumCost * ShapeUtil::ElementsIn(instr->shape());
