@@ -1910,6 +1910,15 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
           in_place_input_source = in_place_input_source->operand(0);
         }
         if (in_place_input_source != nullptr &&
+            in_place_input_source->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          // See if we can reach a parameter if we followed the DUS chain
+          // through operand 0. Follow the DUS chain until there is no more.
+          while (in_place_input_source->opcode() ==
+                 HloOpcode::kDynamicUpdateSlice) {
+            in_place_input_source = in_place_input_source->operand(0);
+          }
+        }
+        if (in_place_input_source != nullptr &&
             in_place_input_source->opcode() == HloOpcode::kParameter) {
           in_place_input_output_pairs.emplace_back(
               HloOperandIndex{in_place_input_source->parameter_number(),
