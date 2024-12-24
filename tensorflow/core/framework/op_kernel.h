@@ -866,7 +866,7 @@ class OpKernelContext {
                                           Tensor** output) TF_MUST_USE_RESULT;
   absl::Status forward_input_to_output_with_shape(
       StringPiece input_name, StringPiece output_name,
-      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+      const TensorShape& output_shape, Tensor** output);
 
   // Returns a pointer to a Tensor aliasing the underlying buffer backing
   // input[input_index] iff
@@ -910,11 +910,11 @@ class OpKernelContext {
   absl::Status forward_input_or_allocate_output(
       absl::Span<const int> candidate_input_indices, int output_index,
       const TensorShape& output_shape, Tensor** output,
-      int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
+      int* forwarded_input = nullptr);
   absl::Status forward_input_or_allocate_output(
       absl::Span<const StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
-      Tensor** output) TF_MUST_USE_RESULT;
+      Tensor** output);
 
   // Tries to reuse one of the inputs given in input_indices as a temporary.
   // If none of the given inputs can be forwarded, calls
@@ -922,11 +922,11 @@ class OpKernelContext {
   absl::Status forward_input_or_allocate_temp(
       absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, const AllocatorAttributes& allocator_attr,
-      Tensor* out_temp) TF_MUST_USE_RESULT;
+      Tensor* out_temp);
 
   absl::Status forward_input_or_allocate_temp(
       absl::Span<const int> candidate_input_indices, DataType type,
-      const TensorShape& shape, Tensor* out_temp) TF_MUST_USE_RESULT {
+      const TensorShape& shape, Tensor* out_temp) {
     return forward_input_or_allocate_temp(candidate_input_indices, type, shape,
                                           AllocatorAttributes(), out_temp);
   }
@@ -996,20 +996,18 @@ class OpKernelContext {
   //
   // REQUIRES: !IsRefType(expected_output_dtype(index))
   absl::Status allocate_output(int index, const TensorShape& shape,
-                               Tensor** tensor) TF_MUST_USE_RESULT;
+                               Tensor** tensor);
   absl::Status allocate_output(StringPiece name, const TensorShape& shape,
-                               Tensor** tensor) TF_MUST_USE_RESULT;
+                               Tensor** tensor);
   // The following methods use the supplied attributes instead of
   // those in output_attr_array. The caller is responsible for
   // ensuring that the attributes are "compatible" with the
   // output_attr_array, e.g. the tensor is allocated on the correct
   // device. See comment above.
   absl::Status allocate_output(int index, const TensorShape& shape,
-                               Tensor** tensor,
-                               AllocatorAttributes attr) TF_MUST_USE_RESULT;
+                               Tensor** tensor, AllocatorAttributes attr);
   absl::Status allocate_output(StringPiece name, const TensorShape& shape,
-                               Tensor** tensor,
-                               AllocatorAttributes attr) TF_MUST_USE_RESULT;
+                               Tensor** tensor, AllocatorAttributes attr);
 
   // Allocates a temporary Tensor of the specified type and
   // shape. Devices such as GPUs that enqueue Ops for lazy execution
