@@ -11,11 +11,11 @@ def workspace():
 
     http_archive(
         name = "io_bazel_rules_closure",
-        sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
-        strip_prefix = "rules_closure-308b05b2419edb5c8ee0471b67a40403df940149",
+        sha256 = "1e61cf4a9ea6a76e99763ea3700c983fae59246377f81b79bc517a3f6934c0c2",
+        strip_prefix = "rules_closure-26321bf918b16858f045d40e204482910e1dc649",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",
-            "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/26321bf918b16858f045d40e204482910e1dc649.tar.gz",
+            "https://github.com/bazelbuild/rules_closure/archive/26321bf918b16858f045d40e204482910e1dc649.tar.gz",  # 2019-06-13
         ],
     )
 
