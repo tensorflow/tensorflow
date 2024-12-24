@@ -15,7 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
 
-#include "absl/memory/memory.h"
+#include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
