@@ -101,6 +101,13 @@ absl::Status PermutationHelper(const Tensor& perm, const int dims,
                                    ". But input(1) is a vector of size ",
                                    Vperm.size());
   }
+  for (int i = 0; i < dims; ++i) {
+    if (Vperm(i) < 0)
+      return errors::InvalidArgument(
+          absl::StrCat("The perm values should be non-negative "
+                       "but found ",
+                       Vperm(i), " at index ", i));
+  }
   // using volatile instead of SubtleMustCopy here so that the
   // asynchrony boundary is permutation.
   const volatile Tperm* perm_begin =
