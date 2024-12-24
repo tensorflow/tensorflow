@@ -39,7 +39,7 @@ absl::string_view GetNameWithoutExtension(absl::string_view filename) {
 }  // namespace
 
 bool IsTextProto(const std::string& input_file) {
-  tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
+  absl::string_view extension = tensorflow::io::Extension(input_file);
   return !extension.compare("pbtxt");
 }
 

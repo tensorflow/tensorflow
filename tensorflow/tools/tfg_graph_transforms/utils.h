@@ -38,7 +38,7 @@ namespace graph_transforms {
 template <class T>
 absl::Status ReadModelProto(const std::string& input_file, T& model_proto) {
   // Proto might be either in binary or text format.
-  tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
+  absl::string_view extension = tensorflow::io::Extension(input_file);
   bool binary_extenstion = !extension.compare("pb");
   bool text_extension = !extension.compare("pbtxt");
 
