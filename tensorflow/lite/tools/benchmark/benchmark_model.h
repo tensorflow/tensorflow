@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <unordered_set>
