@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/xla_debug_info_manager.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
