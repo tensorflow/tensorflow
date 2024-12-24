@@ -17,9 +17,13 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "absl/strings/match.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
