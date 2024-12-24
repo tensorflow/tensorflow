@@ -23,12 +23,14 @@ Pod::Spec.new do |s|
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 
   s.default_subspec = 'Core'
@@ -40,14 +42,14 @@ Pod::Spec.new do |s|
 
   s.subspec 'CoreML' do |coreml|
     coreml.weak_framework = 'CoreML'
-    coreml.dependency 'TensorFlowLiteC/Core'
+    coreml.dependency "#{s.name}/Core"
     coreml.vendored_frameworks = 'Frameworks/TensorFlowLiteCCoreML.xcframework'
     coreml.resource_bundle = { 'TensorFlowLiteCCoreML' => 'Frameworks/TensorFlowLiteCCoreML.xcframework/PrivacyInfo.xcprivacy' }
   end
 
   s.subspec 'Metal' do |metal|
     metal.weak_framework = 'Metal'
-    metal.dependency 'TensorFlowLiteC/Core'
+    metal.dependency "#{s.name}/Core"
     metal.vendored_frameworks = 'Frameworks/TensorFlowLiteCMetal.xcframework'
     metal.resource_bundle = { 'TensorFlowLiteCMetal' => 'Frameworks/TensorFlowLiteCMetal.xcframework/PrivacyInfo.xcprivacy' }
   end

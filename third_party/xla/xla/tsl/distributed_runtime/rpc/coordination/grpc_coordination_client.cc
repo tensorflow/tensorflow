@@ -34,10 +34,10 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_state.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {
@@ -47,6 +47,8 @@ using tensorflow::CancelBarrierRequest;
 using tensorflow::CancelBarrierResponse;
 using tensorflow::DeleteKeyValueRequest;
 using tensorflow::DeleteKeyValueResponse;
+using tensorflow::GetAliveTasksRequest;
+using tensorflow::GetAliveTasksResponse;
 using tensorflow::GetKeyValueDirRequest;
 using tensorflow::GetKeyValueDirResponse;
 using tensorflow::GetKeyValueRequest;
@@ -252,11 +254,11 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
-                    StatusCallback done) override {
+  void BarrierAsync(CallOptions* call_opts, const BarrierRequest* request,
+                    BarrierResponse* response, StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/Barrier", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -266,6 +268,16 @@ class GrpcCoordinationClient : public CoordinationClient {
                           StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/CancelBarrier", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void GetAliveTasksAsync(const GetAliveTasksRequest* request,
+                          GetAliveTasksResponse* response,
+                          StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/GetAliveTasks", *request,
         response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);

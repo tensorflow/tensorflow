@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -29,13 +28,13 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_ordering.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
@@ -68,9 +67,8 @@ class IrEmitter2Test : public HloTestBase {
             backend().compiler()->BufferSizeBytesFunction(),
             [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
-    target_machine_ =
-        std::make_unique<TargetMachineFeaturesWithFakeAlignmentLogic>(
-            [](int64_t size) { return 1; });
+    target_machine_ = std::make_unique<TargetMachineFeaturesStub>(
+        [](int64_t size) { return 1; });
 
     nested_ir_emitter_ = absl::WrapUnique(
         new IrEmitter(nullptr, hlo, *buffer_assignment_, &module, {}, {}, {},
@@ -83,7 +81,7 @@ class IrEmitter2Test : public HloTestBase {
   // underlying FindInstruction function static first.
   absl::StatusOr<IrEmitter2::KernelInfo> EmitElementalHostKernel(
       IrEmitter2& ir_emitter, HloModule& hlo,
-      std::string_view instruction_name) {
+      absl::string_view instruction_name) {
     HloInstruction* instruction = FindInstruction(&hlo, instruction_name);
 
     if (instruction == nullptr) {
@@ -99,7 +97,7 @@ class IrEmitter2Test : public HloTestBase {
   // alive for the duration of the test, because IrEmitter2 does not take
   // ownership of them.
   std::unique_ptr<BufferAssignment> buffer_assignment_;
-  std::unique_ptr<TargetMachineFeaturesWithFakeAlignmentLogic> target_machine_;
+  std::unique_ptr<TargetMachineFeaturesStub> target_machine_;
   std::unique_ptr<IrEmitter> nested_ir_emitter_;
 };
 
@@ -145,40 +143,40 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr %0) #0 {
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThreadDim, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThreadDim, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThreadDim, {{.*}} i32 2
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThread, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThread, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %SE_HOST_KernelThread, {{.*}} i32 2
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
-    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 0, i32 0
     CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
-    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 1, i32 0
     CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
-    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 2, i32 0
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 2, i32 0
     CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
-    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 3, i32 0
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 3, i32 0
     CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
     CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]

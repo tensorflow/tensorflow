@@ -82,6 +82,9 @@ struct GraphOptimizationPassOptions {
   // A unique filename prefix (using hostname, process ID, thread ID and
   // timestamp) for graph dumps.
   string debug_filename_prefix;
+
+  // Whether to enable tf2xla mlir bridge in compiling SavedModel.
+  bool enable_tf2xla_mlir_bridge = true;
 };
 
 // Optimization passes are implemented by inheriting from
@@ -89,7 +92,7 @@ struct GraphOptimizationPassOptions {
 class GraphOptimizationPass {
  public:
   virtual ~GraphOptimizationPass() {}
-  virtual Status Run(const GraphOptimizationPassOptions& options) = 0;
+  virtual absl::Status Run(const GraphOptimizationPassOptions& options) = 0;
   void set_name(const string& name) { name_ = name; }
   string name() const { return name_; }
 
@@ -125,8 +128,8 @@ class OptimizationPassRegistry {
 
   // Run all passes in grouping, ordered by phase, with the same
   // options.
-  Status RunGrouping(Grouping grouping,
-                     const GraphOptimizationPassOptions& options);
+  absl::Status RunGrouping(Grouping grouping,
+                           const GraphOptimizationPassOptions& options);
 
   // Returns the global registry of optimization passes.
   static OptimizationPassRegistry* Global();

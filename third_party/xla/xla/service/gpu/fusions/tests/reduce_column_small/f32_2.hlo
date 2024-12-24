@@ -1,5 +1,5 @@
 // RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s --dump-input=always
+// RUN: fusion_to_mlir %s | emitters_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s --dump-input=always
 
 add {
   %p0 = f32[] parameter(0)
@@ -20,4 +20,4 @@ fusion {
 // CHECK: gpu.thread_id x {xla.range = [0 : index, 63 : index]}
 // CHECK-NOT: vector<
 // CHECK: allocate_shared : tensor<32x3xf32>
-// CHECK: shuffle_reduce @add_add{{.*}} to 16 : f32
+// CHECK: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add

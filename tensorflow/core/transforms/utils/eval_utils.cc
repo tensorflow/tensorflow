@@ -63,7 +63,7 @@ tensorflow::Allocator *SimpleDevice::GetAllocator(
   return tensorflow::cpu_allocator();
 }
 
-tensorflow::Status SimpleDevice::MakeTensorFromProto(
+absl::Status SimpleDevice::MakeTensorFromProto(
     const tensorflow::TensorProto &tensor_proto,
     const tensorflow::AllocatorAttributes alloc_attrs,
     tensorflow::Tensor *tensor) {
@@ -73,7 +73,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
         "Cannot parse tensor from tensor_proto.");
   }
   *tensor = std::move(parsed);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
@@ -111,7 +111,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     input_tensor_value.tensor = &input_tensor;
   }
 
-  tensorflow::Status status;
+  absl::Status status;
   std::unique_ptr<tensorflow::OpKernel> op_kernel = tensorflow::CreateOpKernel(
       tensorflow::DEVICE_CPU, cpu_device, cpu_device->GetAllocator({}),
       node_def, TF_GRAPH_DEF_VERSION, &status);

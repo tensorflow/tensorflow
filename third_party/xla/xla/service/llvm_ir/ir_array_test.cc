@@ -92,7 +92,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddress) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -116,7 +116,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressNonLinear) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -144,7 +144,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -177,7 +177,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
   llvm::Argument* array_index1 = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index({array_index0, array_index1}, shape,
@@ -212,7 +212,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -249,7 +249,7 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   llvm::Argument* val_to_write = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);

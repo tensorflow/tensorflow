@@ -26,41 +26,37 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/dynamic_dimension_simplifier.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
@@ -2392,6 +2388,23 @@ ENTRY gds {
   DynamicPadder pass(options);
   auto status = pass.Run(module.get()).status();
   EXPECT_TRUE(status.ok());
+}
+
+TEST_F(DynamicPadderTest, ShardingDynamicShapes) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+ENTRY main {
+  token.0 = after-all()
+  infeed_tuple.0 = (s32[<=32], token[]) infeed(token.0), sharding={{manual}, {manual}}
+  infeed.0 = get-tuple-element(infeed_tuple.0), index=0
+  ROOT sharding.0 = s32[<=32] custom-call(infeed.0), custom_call_target="Sharding", sharding={manual}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunPadder(/*slice_dynamic_output=*/true));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

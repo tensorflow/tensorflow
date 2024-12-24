@@ -17,10 +17,16 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 #define XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/dtype.h"
@@ -71,6 +77,21 @@ class ArrayMemRegion {
   void* const mem_region_start_;
   const size_t nbytes_;
 };
+
+// Utilities for serializing and deserializing a host buffer of dtype
+// `DType::kString` (represented as arrays of absl::Cords).
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
+    absl::Span<const absl::Cord> cords);
+
+absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(
+    const std::string& serialized_string_buffer);
+
+// Callers must ensure that the `preallocated_buffer` consists of `N`
+// `absl::Cord` objects, where N is the number of string elements in the
+// `serialized_string_buffer`.
+absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
+    const absl::Cord& serialized_string_buffer,
+    absl::Cord* preallocated_buffer);
 
 }  // namespace proxy
 }  // namespace ifrt

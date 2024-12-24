@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/ffi/ffi.h"
@@ -121,12 +122,13 @@ TEST(DynamicSliceThunkTest, SlicedGemm) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.
@@ -273,12 +275,13 @@ TEST(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.
@@ -461,8 +464,8 @@ TEST(DynamicSliceThunkTest, SlicedMemcpy) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
@@ -621,8 +624,8 @@ TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
@@ -792,12 +795,13 @@ TEST(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.
@@ -940,12 +944,13 @@ TEST(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.
@@ -1081,12 +1086,13 @@ TEST(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.
@@ -1262,8 +1268,8 @@ TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
@@ -1434,12 +1440,13 @@ TEST(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
                                              offset_length);
 
   // Preparing config for GEMM thunk.
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Creating embedded GEMM thunk.

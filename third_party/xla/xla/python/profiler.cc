@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "xla/python/profiler.h"
 
-#include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/pair.h"  // IWYU pragma: keep
@@ -30,23 +29,22 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/backends/profiler/plugin/plugin_tracer.h"
-#include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
+#include "xla/python/profiler/profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
+#include "xla/tsl/profiler/rpc/client/capture_profile.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/profiler/lib/profiler_factory.h"
-#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/rpc/client/capture_profile.h"
-#include "tsl/profiler/rpc/profiler_server.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 
@@ -92,7 +90,7 @@ class TraceMeWrapper {
   static void AppendMetadata(std::string* name, const nb::kwargs& kwargs) {
     name->push_back('#');
     for (const auto& kv : kwargs) {
-      absl::StrAppend(name, nb::cast<std::string_view>(kv.first), "=",
+      absl::StrAppend(name, nb::cast<absl::string_view>(kv.first), "=",
                       EncodePyObject(kv.second), ",");
     }
     name->back() = '#';
@@ -130,7 +128,7 @@ struct ProfilerSessionWrapper {
 static std::string GetFdoProfile(const std::string& xspace,
                                  bool as_textproto = false) {
   tensorflow::profiler::XSpace xspace_proto;
-  // TODO(phawkins): change to std::string_view when protobuf is
+  // TODO(phawkins): change to absl::string_view when protobuf is
   // updated in XLA.
   xspace_proto.ParseFromString(std::string(xspace.c_str(), xspace.size()));
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
@@ -160,7 +158,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("port"));
   profiler.def("register_plugin_profiler", [](nb::capsule c_api) -> void {
-    if (std::string_view(c_api.name()) != "pjrt_c_api") {
+    if (absl::string_view(c_api.name()) != "pjrt_c_api") {
       throw xla::XlaRuntimeError(
           "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
     }
@@ -198,11 +196,19 @@ void BuildProfilerSubmodule(nb::module_& m) {
              std::string xspace_str = xspace.SerializeAsString();
              return nb::bytes(xspace_str.data(), xspace_str.size());
            })
+      .def("stop_and_get_profile_data",
+           [](ProfilerSessionWrapper* sess)
+               -> tensorflow::profiler::python::ProfileData {
+             auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
+             // Disables the ProfilerSession
+             xla::ThrowIfError(sess->session->CollectData(xspace.get()));
+             return tensorflow::profiler::python::ProfileData(xspace);
+           })
       .def("export",
            [](ProfilerSessionWrapper* sess, nb::bytes xspace,
               const std::string& tensorboard_dir) -> void {
              tensorflow::profiler::XSpace xspace_proto;
-             // TODO(phawkins): change to std::string_view when protobuf is
+             // TODO(phawkins): change to absl::string_view when protobuf is
              // updated in XLA.
              xspace_proto.ParseFromString(
                  std::string(xspace.c_str(), xspace.size()));

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/layout_assignment.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <utility>
@@ -28,13 +29,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -1366,6 +1367,59 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
+TEST_F(LayoutAssignmentTest, MemorySpaceRemoved) {
+  const char* module_str = R"(
+HloModule MixedHostDeviceResult
+
+ENTRY %MixedHostDeviceResult {
+  %p0 = f32[4,4] parameter(0)
+  %d = f32[4,4]{1,0} custom-call(%p0), custom_call_target="MoveToDevice", metadata={preserve_layout=true}
+  ROOT %tuple = (f32[4,4], f32[4,4]) tuple(%p0, %d)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+
+  // Set the parameter to be in host memory.
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(
+          F32, {4, 4}, {1, 0}, /*tiles=*/{},
+          /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
+          Layout::kHostMemorySpace));
+  // Set one result component to be in host memory, the other one on device.
+  // Also make sure to request incompatible result layout so that the layout
+  // assignment pass has to copy the layout from the entry computation layout.
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShapeWithDenseLayout(
+               F32, {4, 4}, {1, 0}, /*tiles=*/{},
+               /*tail_padding_alignment_in_elements=*/1,
+               /*element_size_in_bits=*/0, Layout::kHostMemorySpace),
+           ShapeUtil::MakeShapeWithDenseLayout(
+               F32, {4, 4}, {0, 1}, /*tiles=*/{},
+               /*tail_padding_alignment_in_elements=*/1,
+               /*element_size_in_bits=*/0, Layout::kDefaultMemorySpace)}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  // Verify that the memory space did not leak from the entry computation layout
+  // to the parameter or to the result.
+  Shape result_shape = m->entry_computation()->root_instruction()->shape();
+  EXPECT_EQ(
+      ShapeUtil::GetTupleElementShape(result_shape, 0).layout().memory_space(),
+      Layout::kDefaultMemorySpace);
+  EXPECT_EQ(
+      ShapeUtil::GetTupleElementShape(result_shape, 1).layout().memory_space(),
+      Layout::kDefaultMemorySpace);
+
+  const HloInstruction* parameter = FindInstruction(m.get(), "p0");
+  EXPECT_EQ(parameter->shape().layout().memory_space(),
+            Layout::kDefaultMemorySpace);
+
+  ExpectTupleLayoutIs(result_shape, {{1, 0}, {0, 1}});
+}
+
 absl::Status AssignLayoutsToComputation(
     HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
@@ -1767,7 +1821,7 @@ TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)
@@ -1801,7 +1855,7 @@ TEST_F(LayoutAssignmentTest,
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)
@@ -1953,6 +2007,47 @@ ENTRY %main {
   LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
                                      nullptr);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, WorksWithWhileLoopWithoutLayout) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  input = f32[5,16] get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  output = add(input, input)
+  ROOT tuple1 = (f32[5,16], u32[]) tuple(output, i_)
+}
+
+ENTRY main {
+  input = f32[5,16] parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (f32[5,16], u32[]) tuple(input, c0)
+  tuple_ = (f32[5,16], u32[]) while(tuple), condition=while_condition, body=while_body
+  ROOT output_ = f32[5,16] get-tuple-element(tuple_), index=0
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  TF_CHECK_OK(backend()
+                  .compiler()
+                  ->RunHloPasses(m->Clone(),
+                                 backend().default_stream_executor(),
+                                 /*device_allocator=*/nullptr)
+                  .status());
 }
 
 }  // namespace

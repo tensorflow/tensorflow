@@ -3749,8 +3749,13 @@ def gelu(features, approximate=False, name=None):
           1.0 + math_ops.tanh(0.7978845608028654 *
                               (features + coeff * math_ops.pow(features, 3))))
     else:
-      return 0.5 * features * (1.0 + math_ops.erf(
-          features / math_ops.cast(1.4142135623730951, features.dtype)))
+      return (
+          0.5
+          * features
+          * math_ops.erfc(
+              -features * math_ops.cast(0.7071067811865476, features.dtype)
+          )
+      )
 
 
 def _flatten_outer_dims(logits):

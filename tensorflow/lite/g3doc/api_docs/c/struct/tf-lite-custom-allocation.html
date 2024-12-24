@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteCustomAllocation Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteCustomAllocation</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>Defines a custom memory allocation not owned by the runtime. </p>
+  <h2>Summary</h2>
+  <p><code>data</code> should be aligned to kDefaultTensorAlignment defined in lite/util.h. (Currently 64 bytes) NOTE: See <code>Interpreter::SetCustomAllocationForTensor</code> for details on usage. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_custom_allocation_1ac144cef6a7bf9b69f0ce3cb084028786">bytes</a></code>
+      </td>
+      <td>
+        <div>
+          <code>size_t</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_custom_allocation_1a88083398e4505b76dc2b55a413307bc1">data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_custom_allocation_1ac144cef6a7bf9b69f0ce3cb084028786">
+    <h3>bytes</h3>
+    <pre class="prettyprint">size_t TfLiteCustomAllocation::bytes</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_custom_allocation_1a88083398e4505b76dc2b55a413307bc1">
+    <h3>data</h3>
+    <pre class="prettyprint">void * TfLiteCustomAllocation::data</pre>
+    <div />
+  </div>
+</body>
+</html>

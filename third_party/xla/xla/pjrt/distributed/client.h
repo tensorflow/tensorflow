@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -75,38 +74,25 @@ class DistributedRuntimeClient {
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
     // Exposed so tests can override this behavior to something non-fatal.
-    std::function<void(absl::Status, bool coordinator_reported_failure)>
-        missed_heartbeat_callback =
-            [](absl::Status status, bool coordinator_reported_failure) {
-              if (coordinator_reported_failure) {
-                LOG(QFATAL)
-                    << "Terminating process because the coordinator detected "
-                       "missing heartbeats. This most likely indicates that "
-                       "another task died; see the other task logs for more "
-                       "details. Disable Python buffering, i.e. `python -u`, "
-                       "to be sure to see all the previous output. "
-                       "absl::Status: "
-                    << status;
-              } else {
-                LOG(QFATAL)
-                    << "Terminating process because of missing heartbeat "
-                       "response from the coordinator. This most likely "
-                       "indicates that the coordinator task died; see the "
-                       "coordinator's task logs for more details. "
-                       "Disable Python buffering, i.e. `python -u`, to be "
-                       "sure to see all the previous output. absl::Status: "
-                    << status;
-              }
-            };
+    std::function<void(absl::Status)> missed_heartbeat_callback =
+        [](const absl::Status& status) {
+          LOG(QFATAL) << "Terminating process because the JAX distributed "
+                         "service detected fatal errors. This most likely "
+                         "indicates that another task died; see the other task "
+                         "logs for more details. Disable Python buffering, "
+                         "i.e. `python -u`, to be sure to see all the "
+                         "previous output. "
+                         "absl::Status: "
+                      << status;
+        };
 
     // For testing. Should the client explicitly Shutdown() on destruction?
     bool shutdown_on_destruction = true;
 
     // Whether the client should send a request to wait for error from the
     // coordination service at the startup.
-    // TODO(b/355706798): Enable this by default once we confirm this works for
-    // all cases and eventually remove this option.
-    bool poll_for_error_from_service_at_startup = false;
+    // TODO(b/355706798): eventually remove this option.
+    bool poll_for_error_from_service_at_startup = true;
   };
 
   virtual ~DistributedRuntimeClient() = default;
@@ -128,7 +114,7 @@ class DistributedRuntimeClient {
   // There are no concurrency guarantees. To avoid a race / impose an ordering
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual absl::StatusOr<std::string> BlockingKeyValueGet(
-      std::string_view key, absl::Duration timeout) = 0;
+      absl::string_view key, absl::Duration timeout) = 0;
 
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
@@ -136,16 +122,17 @@ class DistributedRuntimeClient {
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
   virtual absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(std::string_view key) = 0;
+  KeyValueDirGet(absl::string_view key) = 0;
 
-  virtual absl::Status KeyValueSet(std::string_view key,
-                                   std::string_view value) = 0;
-  virtual absl::Status KeyValueSet(std::string_view key, std::string_view value,
+  virtual absl::Status KeyValueSet(absl::string_view key,
+                                   absl::string_view value) = 0;
+  virtual absl::Status KeyValueSet(absl::string_view key,
+                                   absl::string_view value,
                                    bool allow_overwrite) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual absl::Status KeyValueDelete(std::string_view key) = 0;
+  virtual absl::Status KeyValueDelete(absl::string_view key) = 0;
 
   // Blocks until all nodes (or the ones specified in `nodes`) are at the
   // barrier or the barrier times out. `barrier_id` should be unique across

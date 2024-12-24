@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSION_PIPELINE_H_
 #define XLA_SERVICE_GPU_FUSION_PIPELINE_H_
 
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"

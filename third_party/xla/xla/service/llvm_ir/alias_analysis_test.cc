@@ -25,7 +25,7 @@ namespace xla::cpu {
 namespace {
 
 class AliasAnalysisTest : public CpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // We do not generate IR for while loops with thunks runtime, so we
     // explicitly disable it for this test.

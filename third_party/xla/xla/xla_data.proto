@@ -32,6 +32,7 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S1 = 30;
   S2 = 26;
   S4 = 21;
   S8 = 2;
@@ -40,6 +41,7 @@ enum PrimitiveType {
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U1 = 31;
   U2 = 27;
   U4 = 22;
   U8 = 6;
@@ -66,6 +68,9 @@ enum PrimitiveType {
   // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
   // existing IEEE types.
   //
+  // F8E4M3 has 4 exponent bits and 3 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
   // Finite and NaN values are supported. Unlike IEEE types, infinities are not
   // supported.  NaN is represented when the exponent and mantissa bits are all
@@ -77,12 +82,17 @@ enum PrimitiveType {
   // the exponent and mantissa bits are all 0s with a sign bit of 1. All other
   // values are finite.
   //
+  // F8E3M4 has 3 exponent bits and 4 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // Support for these dtypes is under development. They do not yet work
   // properly in most cases.
   // TODO(b/259609697): Fully support FP8.
   F8E5M2 = 19;
+  F8E4M3 = 28;
   F8E4M3FN = 20;
   F8E4M3B11FNUZ = 23;
+  F8E3M4 = 29;
 
   // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2206.02915
   //
@@ -126,10 +136,9 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 28
+  // Next = 32
 }
 // LINT.ThenChange(
-//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
@@ -573,12 +582,14 @@ message LiteralProto {
   bytes u16s = 16;
   bytes s16s = 17;
   bytes f8e5m2s = 19;
+  bytes f8e4m3s = 28;
   bytes f8e4m3fns = 20;
   bytes f8e4m3b11fnuzs = 23;
   bytes f8e5m2fnuzs = 24;
   bytes f8e4m3fnuzs = 25;
+  bytes f8e3m4s = 29;
   repeated int64 sparse_indices = 14;
-  // Next = 28
+  // Next = 30
 }
 
 message WindowDimension {
@@ -750,6 +761,15 @@ message DotDimensionNumbers {
   repeated int64 lhs_batch_dimensions = 3;
   // The dimension numbers that represent the 'rhs' batch dimensions.
   repeated int64 rhs_batch_dimensions = 4;
+}
+
+message RaggedDotDimensionNumbers {
+  // The contracting and batch dimensions of the 'lhs' and 'rhs'.
+  DotDimensionNumbers dot_dimension_numbers = 1;
+  // The dimension numbers that represent the 'lhs' ragged dimensions.
+  repeated int64 lhs_ragged_dimensions = 2;
+  // The dimension numbers that represent the 'rhs' group dimensions.
+  repeated int64 rhs_group_dimensions = 3;
 }
 
 enum SparsityType {
@@ -991,6 +1011,29 @@ message SourceTarget {
   int64 target = 2;
 }
 
+// Describes the types of accuracy the user can request for unary ops with
+// multiple implementations.
+message ResultAccuracy {
+  enum Mode {
+    DEFAULT = 0;
+    HIGHEST = 1;
+  }
+  message Tolerance {
+    // Absolute error tolerance for unary instructions.
+    double atol = 1;
+    // Relative error tolerance for unary instructions.
+    double rtol = 2;
+    // The error in ulps (units in the last place) is relative to machine
+    // precision.
+    int64 ulps = 3;
+  }
+  oneof specs {
+    // Choose either DEFAULT or HIGHEST precision implementation.
+    Mode mode = 1;
+    Tolerance tolerance = 2;
+  }
+}
+
 // Used to indicate the precision configuration. It has backend specific
 // meaning.
 message PrecisionConfig {
@@ -1061,7 +1104,7 @@ message PrecisionConfig {
   // will be ignored.
   Algorithm algorithm = 2;
 
-  // Next: 3
+  // Next: 8
 }
 
 // Describes whether all data-parallelism replicas will receive the same

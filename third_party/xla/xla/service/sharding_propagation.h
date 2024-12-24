@@ -22,13 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/dot_as_convolution_util.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -43,7 +51,6 @@ bool InferDotShardingFromOperands(
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           const CallGraph& call_graph,
-                                          int64_t aggressiveness,
                                           bool may_combine_partial_sharding,
                                           bool is_spmd);
 
@@ -72,7 +79,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group = nullptr,
     const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr,
+    bool remove_unknown_shardings = false);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -152,6 +160,36 @@ class ShardingPropagation : public HloModulePass {
       int64_t aggressiveness, bool is_spmd,
       const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
+
+  absl::StatusOr<bool> RunToFixPoint(
+      int64_t aggressiveness, bool propagate_shard_group,
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      const CallGraph& call_graph, HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
+          unspecified_dims,
+      absl::flat_hash_map<HloInstruction*, int64_t>&
+          instruction_to_shard_group_id,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_as_group,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_like_group,
+      int64_t& iterations);
+
+  // If instruction is a while, or the root or a parameter of a while body,
+  // then propagate its sharding to the while instruction, to its body root,
+  // and to its condition parameter.
+  void MaybeComputationPropagation(
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* changed);
+
+  // Gets instructions that are related through a computation and need to share
+  // the same sharding.
+  std::vector<HloInstruction*> GetRelatedInstructions(
+      HloInstruction* inst, const ComputationMap& computation_map);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;

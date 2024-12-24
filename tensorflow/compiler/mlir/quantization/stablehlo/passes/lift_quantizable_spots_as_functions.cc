@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

@@ -181,7 +181,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'inputs_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "build_from_config"

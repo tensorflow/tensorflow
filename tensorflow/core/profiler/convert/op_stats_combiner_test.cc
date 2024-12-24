@@ -80,6 +80,45 @@ TEST(CombineAllOpStatsTest, CombineRunEnvironmentWithUnknownDevice) {
   EXPECT_EQ("TPU", dst_op_stats.run_environment().device_type());
 }
 
+TEST(CombineAllOpStatsTest, CombinePerfEnvOrderZero) {
+  // Ensure CombinePerfEnv behaves consistently regardless of order of op stats.
+  OpStats dst_op_stats1, dst_op_stats2, op_stats_1, op_stats_2;
+  op_stats_1.mutable_perf_env()->set_peak_tera_flops_per_second(100);
+  op_stats_2.mutable_perf_env()->set_peak_tera_flops_per_second(0);
+  // Construct dummy step_intersection which is required by CombineAllOpStats().
+  absl::flat_hash_map<uint32 /*=host_id*/, const StepDatabaseResult*> result;
+  StepIntersection dummy_step_intersection = StepIntersection(1, result);
+
+  OpStatsInfo op_stats_info_1(&op_stats_1, TPU, 0),
+      op_stats_info_2(&op_stats_2, TPU, 0);
+
+  // Test order 1.
+  std::vector<OpStatsInfo> all_op_stats_info = {op_stats_info_1,
+                                                op_stats_info_2};
+  CombineAllOpStats(all_op_stats_info, dummy_step_intersection, &dst_op_stats1);
+  EXPECT_EQ(100, dst_op_stats1.perf_env().peak_tera_flops_per_second());
+
+  // Test order 2.
+  all_op_stats_info = {
+      op_stats_info_2,
+      op_stats_info_1,
+  };
+  CombineAllOpStats(all_op_stats_info, dummy_step_intersection, &dst_op_stats2);
+  EXPECT_EQ(100, dst_op_stats2.perf_env().peak_tera_flops_per_second());
+}
+
+TEST(CombineAllOpStatsTest, CombineRunEnvironmentWithMismatchHardwareType) {
+  OpStats coordinator_op_stats, device_op_stats, dst_op_stats;
+  coordinator_op_stats.mutable_run_environment()->set_hardware_type(
+      HardwareType::CPU_ONLY);
+  device_op_stats.mutable_run_environment()->set_hardware_type(
+      HardwareType::TPU);
+  CombineAllOpStats({OpStatsInfo(&coordinator_op_stats, CPU_ONLY, 0),
+                     OpStatsInfo(&device_op_stats, TPU, 1)},
+                    StepIntersection(1, {}), &dst_op_stats);
+  EXPECT_EQ(dst_op_stats.run_environment().hardware_type(), HardwareType::TPU);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

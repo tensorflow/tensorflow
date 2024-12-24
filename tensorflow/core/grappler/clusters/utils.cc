@@ -100,7 +100,7 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   // 8 is the number of bits per byte. 2 is accounted for
   // double data rate (DDR).
   device.set_bandwidth(properties.memoryBusWidth / 8 *
-                       properties.memoryClockRate * 2);
+                       properties.memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
       strings::StrCat(properties.major, ".", properties.minor);
@@ -132,7 +132,7 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   // 8 is the number of bits per byte. 2 is accounted for
   // double data rate (DDR).
   device.set_bandwidth(properties.memoryBusWidth / 8 *
-                       properties.memoryClockRate * 2);
+                       properties.memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
       strings::StrCat("gfx", properties.gcnArchName);
@@ -151,7 +151,7 @@ DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
     if (device.has_id) {
       TfDeviceId tf_device_id(device.id);
       PlatformDeviceId platform_device_id;
-      Status s =
+      absl::Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         LOG(ERROR) << s;

@@ -76,9 +76,9 @@ struct MetadataResult {
 
 // Generates a metadata object file according to `opts` and `compile_result`.
 // The generated object file is returned via `metadata_result`.
-Status GenerateMetadata(const CodegenOpts& opts,
-                        const CompileResult& compile_result,
-                        MetadataResult* metadata_result);
+absl::Status GenerateMetadata(const CodegenOpts& opts,
+                              const CompileResult& compile_result,
+                              MetadataResult* metadata_result);
 
 // GenerateHeader uses the meta-information from compile_result to generate a
 // C++ header giving access to the function in the generated object file.  The
@@ -86,20 +86,22 @@ Status GenerateMetadata(const CodegenOpts& opts,
 //
 // metadata_result is an instance of MetadataResult obtained by a previous
 // invocation to GenerateMetadata.
-Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
-                      const CompileResult& compile_result,
-                      const MetadataResult& metadata_result, string* header);
+absl::Status GenerateHeader(const CodegenOpts& opts,
+                            const tf2xla::Config& config,
+                            const CompileResult& compile_result,
+                            const MetadataResult& metadata_result,
+                            string* header);
 
 // ParseCppClass parses `cpp_class` into its `class_name` and `namespaces`
 // components.  The syntax is [[<optional_namespace>::],...]<class_name>.  This
 // mirrors the C++ syntax for referring to a class, where multiple namespaces
 // may precede the class name, separated by double-colons.
-Status ParseCppClass(const string& cpp_class, string* class_name,
-                     std::vector<string>* namespaces);
+absl::Status ParseCppClass(const string& cpp_class, string* class_name,
+                           std::vector<string>* namespaces);
 
 // ValidateCppIdent returns OK iff ident is a valid C++ identifier.  The msg is
 // appended to error messages.
-Status ValidateCppIdent(absl::string_view ident, absl::string_view msg);
+absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

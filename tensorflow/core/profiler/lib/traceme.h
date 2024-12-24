@@ -20,7 +20,7 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #endif
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.

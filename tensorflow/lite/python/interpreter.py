@@ -18,6 +18,7 @@ import enum
 import os
 import platform
 import sys
+import warnings
 
 import numpy as np
 
@@ -39,6 +40,13 @@ else:
 
 
 # pylint: enable=g-import-not-at-top
+
+_INTERPRETER_DELETION_WARNING = """\
+    Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    """
 
 
 class Delegate:
@@ -417,11 +425,11 @@ class Interpreter:
         in C++.
       experimental_preserve_all_tensors: If true, then intermediate tensors used
         during computation are preserved for inspection, and if the passed op
-        resolver type is AUTO or BUILTIN, the type will be changed to
-        BUILTIN_WITHOUT_DEFAULT_DELEGATES so that no Tensorflow Lite default
-        delegates are applied. If false, getting intermediate tensors could
-        result in undefined values or None, especially when the graph is
-        successfully modified by the Tensorflow Lite default delegate.
+        resolver type is AUTO or BUILTIN, the type will be changed to BUILTIN so
+        that Tensorflow Lite default delegates are applied. If false, getting
+        intermediate tensors could result in undefined values or None,
+        especially when the graph is successfully modified by the Tensorflow
+        Lite default delegate.
       experimental_disable_delegate_clustering: If true, don't perform delegate
         clustering during delegate graph partitioning phase. Disabling delegate
         clustering will make the execution order of ops respect the
@@ -441,6 +449,7 @@ class Interpreter:
     Raises:
       ValueError: If the interpreter was unable to create.
     """
+    warnings.warn(_INTERPRETER_DELETION_WARNING)
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 
@@ -448,7 +457,13 @@ class Interpreter:
     if experimental_preserve_all_tensors and (
         experimental_op_resolver_type == OpResolverType.AUTO or
         experimental_op_resolver_type == OpResolverType.BUILTIN):
-      actual_resolver_type = OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+      warnings.warn(
+          'Warning: Enabling `experimental_preserve_all_tensors` with the'
+          ' BUILTIN or AUTO op resolver is intended for debugging purposes'
+          ' only. Be aware that this can significantly increase memory usage by'
+          ' storing all intermediate tensors. If you encounter memory problems'
+          ' or are not actively debugging, consider disabling this option.'
+      )
     op_resolver_id = _get_op_resolver_id(actual_resolver_type)
     if op_resolver_id is None:
       raise ValueError('Unrecognized passed in op resolver type: {}'.format(
@@ -602,7 +617,7 @@ class Interpreter:
     Returns:
       A dictionary containing the following fields of the tensor:
         'name': The tensor name.
-        'index': The tensor index in the interpreter.
+        'index': The tensor index in the subgraph.
         'shape': The shape of the tensor.
         'quantization': Deprecated, use 'quantization_parameters'. This field
             only works for per-tensor quantization, whereas
@@ -645,7 +660,7 @@ class Interpreter:
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
         },
-        'sparsity_parameters': tensor_sparsity_params
+        'sparsity_parameters': tensor_sparsity_params,
     }
 
     return details
@@ -662,21 +677,36 @@ class Interpreter:
         self._get_op_details(idx) for idx in range(self._interpreter.NumNodes())
     ]
 
-  def get_tensor_details(self):
-    """Gets tensor details for every tensor with valid tensor details.
+  def num_subgraphs(self):
+    """Returns the number of subgraphs in the model."""
+    return self._interpreter.NumSubgraphs()
+
+  def get_tensor_details(self, subgraph_index=0):
+    """Gets tensor details for every tensor with valid tensor details from a subgraph.
 
     Tensors where required information about the tensor is not found are not
     added to the list. This includes temporary tensors without a name.
+
+    Args:
+      subgraph_index: Index of the subgraph to fetch the tensor.
 
     Returns:
       A list of dictionaries containing tensor information.
     """
     tensor_details = []
-    for idx in range(self._interpreter.NumTensors(0)):
+    num_subgraphs = self._interpreter.NumSubgraphs()
+    if subgraph_index < 0 or subgraph_index >= num_subgraphs:
+      raise ValueError(
+          f'subgraph_index is out of range: {subgraph_index} for the model,'
+          f' which has {num_subgraphs} subgraphs.'
+      )
+
+    for idx in range(self._interpreter.NumTensors(subgraph_index)):
       try:
-        tensor_details.append(self._get_tensor_details(idx, subgraph_index=0))
+        tensor_details.append(self._get_tensor_details(idx, subgraph_index))
       except ValueError:
         pass
+
     return tensor_details
 
   def get_input_details(self):

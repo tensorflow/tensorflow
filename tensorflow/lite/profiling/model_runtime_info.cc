@@ -172,6 +172,7 @@ TfLiteStatus GenerateModelRuntimeInfo(const tflite::Interpreter& interpreter,
     RuntimeSubgraph* runtime_subgraph = model_runtime_details.add_subgraphs();
     runtime_subgraph->set_subgraph_id(i);
     runtime_subgraph->set_subgraph_type(RuntimeSubgraph::TFLITE_SUBGRAPH);
+    runtime_subgraph->set_name(interpreter.subgraph(i)->GetName());
 
     const tflite::Subgraph& subgraph = *(interpreter.subgraph(i));
     // Capturing information of all the tensors in this subgraph.

@@ -16,13 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
 
 #include <algorithm>
-#include <any>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"

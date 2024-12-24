@@ -23,10 +23,12 @@ limitations under the License.
 #include <numeric>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
+#include "ml_dtypes/include/float8.h"
 #include "xla/maybe_owning.h"
 #include "xla/test.h"
 #include "xla/types.h"
@@ -67,8 +69,8 @@ TEST(UtilTest, VectorString) {
   std::vector<float> float_vector = {5.5};
   EXPECT_EQ(VectorString(float_vector), "(5.5)");
 
-  std::set<std::string_view> string_set = {std::string_view("a"),
-                                           std::string_view("b")};
+  std::set<absl::string_view> string_set = {absl::string_view("a"),
+                                            absl::string_view("b")};
   EXPECT_EQ(VectorString(string_set), "(a, b)");
 
   EXPECT_EQ(VectorString({}), "()");
@@ -129,6 +131,18 @@ TEST(UtilTest, RoundTripFpToString) {
             "nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e5m2>(
                 true, QuietNanWithoutPayload<tsl::float8_e5m2>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e4m3>(
+                false, QuietNanWithoutPayload<tsl::float8_e4m3>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e4m3>(
+                true, QuietNanWithoutPayload<tsl::float8_e4m3>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e3m4>(
+                false, QuietNanWithoutPayload<tsl::float8_e3m4>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e3m4>(
+                true, QuietNanWithoutPayload<tsl::float8_e3m4>())),
             "-nan");
   EXPECT_EQ(
       RoundTripFpToString(std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
@@ -237,6 +251,18 @@ TEST(UtilTest, TotalOrder_F8E5M2) {
   }
 }
 
+TEST(UtilTest, TotalOrder_F8E4M3) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e4m3 x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e4m3 y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
 TEST(UtilTest, TotalOrder_F8E4M3FN) {
   for (int a = 0; a < 256; ++a) {
     tsl::float8_e4m3fn x =
@@ -282,6 +308,18 @@ TEST(UtilTest, TotalOrder_F8E5M2FNUZ) {
     for (int b = 0; b < 256; ++b) {
       tsl::float8_e5m2fnuz y = Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(
           static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
+TEST(UtilTest, TotalOrder_F8E3M4) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e3m4 x =
+        Eigen::numext::bit_cast<tsl::float8_e3m4>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e3m4 y =
+          Eigen::numext::bit_cast<tsl::float8_e3m4>(static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
   }

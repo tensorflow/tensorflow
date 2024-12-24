@@ -1,5 +1,9 @@
 licenses(["restricted"])  # NVIDIA proprietary license
 
+exports_files([
+    "version.txt",
+])
+
 cc_library(
     name = "headers",
     %{comment}hdrs = glob([

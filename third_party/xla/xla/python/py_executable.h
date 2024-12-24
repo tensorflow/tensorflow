@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -187,7 +186,7 @@ class PyLoadedExecutable {
 
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  absl::StatusOr<std::vector<std::vector<std::string_view>>>
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetParameterLayouts()
@@ -227,7 +226,7 @@ class PyLoadedExecutable {
     return exec->shared_ptr_pjrt_loaded_executable();
   }
 
-  const ExecuteOptions& options() const { return options_; }
+  const ifrt::ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyLoadedExecutable.
@@ -246,7 +245,7 @@ class PyLoadedExecutable {
   std::optional<std::string> fingerprint_;
 
   // The options to pass to `executable_.Execute`.
-  ExecuteOptions options_;
+  ifrt::ExecuteOptions options_;
 
   // Python objects to keep alive as requested by user.
   std::vector<nanobind::object> keepalives_;

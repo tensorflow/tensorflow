@@ -20,20 +20,23 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -41,28 +44,26 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
-
 namespace stream_executor::gpu {
+using testing::ElementsAre;
+using testing::IsEmpty;
+using tsl::testing::IsOkAndHolds;
 
 using ExecutionScopeId = CommandBuffer::ExecutionScopeId;
+
+static GpuCommandBuffer* CastToGpuCommandBuffer(CommandBuffer* command_buffer) {
+  return static_cast<GpuCommandBuffer*>(command_buffer);
+}
 
 static Platform* GpuPlatform() {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   return PlatformManager::PlatformWithName(name).value();
-}
-
-static MultiKernelLoaderSpec GetAddI32KernelSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  return spec;
 }
 
 using AddI32Kernel =
@@ -79,28 +80,18 @@ using AddI32Ptrs3 = TypedKernelFactory<internal::Ptrs3<int32_t>>;
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
-template <typename Info>
-static std::vector<GpuGraphNodeHandle> Deps(Info info) {
-  if (auto deps = GpuDriver::GraphNodeGetDependencies(info.handle); deps.ok()) {
-    return *deps;
-  }
-  return {GpuGraphNodeHandle(0xDEADBEEF)};
-}
-
-template <typename... Infos>
-static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
-  return {info.handle...};
-}
-
 // Some of the tests rely on CUDA 12.3+ features.
-static bool IsAtLeastCuda12300() {
-#if defined(TENSORFLOW_USE_ROCM)
-  return false;
-#endif
-#if CUDA_VERSION >= 12030
+static bool IsAtLeastCuda12300(
+    const stream_executor::StreamExecutor* executor) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
+    return false;
+  }
+  if (std::min({executor->GetDeviceDescription().runtime_version(),
+                executor->GetDeviceDescription().driver_version()}) <
+      SemanticVersion{12, 3, 0}) {
+    return false;
+  }
   return true;
-#endif
-  return false;
 }
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
@@ -157,14 +148,18 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 }
 
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
-#if defined(TENSORFLOW_USE_ROCM)
-  GTEST_SKIP() << "Not supported on ROCM";
-#endif
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "Command buffer tracing is not supported";
-#endif
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().runtime_version() <
+          SemanticVersion{12, 3, 0}) {
+    GTEST_SKIP() << "Command buffer tracing is not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -412,7 +407,7 @@ TEST(GpuCommandBufferTest, Barriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
   ASSERT_EQ(gpu_cmd_buffer->nodes().size(), 6);
   ASSERT_EQ(gpu_cmd_buffer->barriers().size(), 6);
 
@@ -421,7 +416,8 @@ TEST(GpuCommandBufferTest, Barriers) {
 
   // First barrier does not have any dependencies.
   EXPECT_TRUE(barriers[0].is_barrier_node);
-  EXPECT_TRUE(Deps(barriers[0]).empty());
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[0].handle),
+              IsOkAndHolds(IsEmpty()));
 
   // Second barrier reuses first memset node.
   EXPECT_FALSE(barriers[1].is_barrier_node);
@@ -437,8 +433,10 @@ TEST(GpuCommandBufferTest, Barriers) {
   EXPECT_TRUE(barriers[4].is_barrier_node);
   EXPECT_TRUE(barriers[5].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers[4]), ExpectedDeps(nodes[2], nodes[3]));
-  EXPECT_EQ(Deps(barriers[5]), ExpectedDeps(nodes[4], nodes[5]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[4].handle),
+              IsOkAndHolds(ElementsAre(nodes[2].handle, nodes[3].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[5].handle),
+              IsOkAndHolds(ElementsAre(nodes[4].handle, nodes[5].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -492,7 +490,7 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -507,8 +505,10 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -566,7 +566,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -591,16 +591,23 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   EXPECT_TRUE(barriers0[1].handle == barriers1[1].handle);
   EXPECT_TRUE(barriers1[1].handle == barriers2[1].handle);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
 
-  EXPECT_TRUE(Deps(barriers2[0]).empty());
-  EXPECT_EQ(Deps(barriers2[1]),
-            ExpectedDeps(barriers0[0], barriers1[0], barriers2[0]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers2[0].handle),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers2[1].handle),
+              IsOkAndHolds(ElementsAre(barriers0[0].handle, barriers1[0].handle,
+                                       barriers2[0].handle)));
 
-  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[1]));
-  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
-  EXPECT_EQ(Deps(nodes2[0]), ExpectedDeps(barriers2[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes1[2].handle),
+              IsOkAndHolds(ElementsAre(barriers1[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes2[0].handle),
+              IsOkAndHolds(ElementsAre(barriers2[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -656,7 +663,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -672,11 +679,17 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node && barriers1[1].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
-  EXPECT_EQ(Deps(barriers1[1]), ExpectedDeps(barriers0[0], barriers1[0]));
-  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[0]));
-  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
+  EXPECT_THAT(
+      gpu_cmd_buffer->GetNodeDependencies(barriers1[1].handle),
+      IsOkAndHolds(ElementsAre(barriers0[0].handle, barriers1[0].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[0].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes1[2].handle),
+              IsOkAndHolds(ElementsAre(barriers1[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -688,12 +701,12 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIf) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -774,12 +787,18 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
-#if CUDA_VERSION < 12040
-  GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.1.";
-#endif
   Platform* platform = GpuPlatform();
-
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().driver_version() <
+          SemanticVersion{12, 4, 0}) {
+    GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -837,12 +856,12 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfElse) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -933,13 +952,13 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
-  // See b/362769658.
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  // See b/362769658.
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1017,13 +1036,106 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   ASSERT_EQ(dst, expected_add);
 }
 
-TEST(GpuCommandBufferTest, ConditionalCase) {
-  if (!IsAtLeastCuda12300()) {
+class GpuCommandBufferCaseTest : public testing::TestWithParam<int> {
+ protected:
+  int GetNumCases() { return GetParam(); }
+
+  int GetEffectiveIndex(int i) {
+    return (i < 0 || i >= GetNumCases()) ? GetNumCases() - 1 : i;
+  }
+};
+
+TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load multiplication kernel.
+  MultiKernelLoaderSpec mul_spec(/*arity=*/3);
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
+
+  constexpr int64_t kLength = 1;
+  int64_t byte_length = sizeof(int32_t) * kLength;
+
+  // Prepare arguments: index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
+
+  const int kNumCases = GetNumCases();
+  std::vector<DeviceMemory<int32_t>> values;
+  std::vector<DeviceMemory<int32_t>> results;
+  std::vector<CommandBuffer::Builder> branches;
+  values.resize(kNumCases);
+  results.resize(kNumCases);
+  branches.resize(kNumCases);
+  for (int i = 0; i < kNumCases; ++i) {
+    values[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&values[i], i, byte_length));
+    results[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&results[i], 0, byte_length));
+    branches[i] = [&, i](CommandBuffer* branch_cmd) {
+      // result = i * i;
+      return branch_cmd->Launch(mul, ThreadDim(), BlockDim(kLength), values[i],
+                                values[i], results[i]);
+    };
+  }
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->Case(index, branches));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  // We test the out of bounds cases as well ( i < 0, i >= kNumCases).
+  for (int i = -1; i <= kNumCases; ++i) {
+    // Set index.
+    TF_ASSERT_OK(stream->Memset32(&index, i, sizeof(int32_t)));
+
+    // Submit case.
+    TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+    TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+    int effective_index = GetEffectiveIndex(i);
+
+    // Check all results are 0 except case index submitted.
+    for (int z = 0; z < kNumCases; ++z) {
+      std::vector<int32_t> dst(kLength, 42);
+      TF_ASSERT_OK(stream->Memcpy(dst.data(), results[z], byte_length));
+
+      // Build expected result vector.
+      std::vector<int32_t> expected;
+      expected.resize(kLength);
+      for (int p = 0; p < kLength; ++p) {
+        if (effective_index == z) {
+          expected[p] = effective_index * effective_index;
+        } else {
+          expected[p] = 0;
+        }
+      }
+
+      ASSERT_EQ(dst, expected)
+          << "For result " << z << " after running case " << i;
+      TF_ASSERT_OK(stream->Memset32(&results[z], 0, byte_length));
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, GpuCommandBufferCaseTest,
+                         testing::Range(1, 32),
+                         testing::PrintToStringParamName());
+
+TEST(GpuCommandBufferTest, ConditionalCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1107,12 +1219,12 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalFor) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1156,12 +1268,12 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhile) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1224,12 +1336,12 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
 // TODO(b/339653343): Re-enable when not failing.
 TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1306,12 +1418,12 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1366,7 +1478,7 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1378,15 +1490,17 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(barriers0.size(), 3);
   ASSERT_EQ(barriers1.size(), 3);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
   EXPECT_EQ(barriers0[0].handle, barriers0[1].handle);
 
   EXPECT_EQ(barriers1[0].handle, nodes1[0].handle);
   EXPECT_EQ(barriers1[1].handle, nodes1[1].handle);
 
   // s0 and s1 share broadcasted barrier.
-  EXPECT_TRUE(barriers0[2].handle == barriers1[2].handle);
-  EXPECT_EQ(Deps(barriers0[2]), ExpectedDeps(barriers0[1], nodes1[1]));
+  EXPECT_EQ(barriers0[2].handle, barriers1[2].handle);
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[1].handle, nodes1[1].handle)));
 
   // TODO(b/326284532): Add a test for bit pattern update.
 
@@ -1401,12 +1515,12 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1472,7 +1586,7 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   EXPECT_EQ(c_dst, 42);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1486,7 +1600,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   ASSERT_EQ(barriers1.size(), 4);
 
   // The final barrier that joins while and memset.
-  EXPECT_EQ(Deps(barriers0[1]), ExpectedDeps(nodes0[0], nodes1[2]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[1].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes1[2].handle)));
 
   // Update bit pattern and number of iterations.
   TF_ASSERT_OK(cmd_buffer->Update());

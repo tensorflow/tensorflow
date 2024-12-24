@@ -12,7 +12,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -41,7 +40,7 @@ limitations under the License.
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 #define DEBUG_TYPE "compat-passes"
 
@@ -50,7 +49,7 @@ namespace odml {
 
 #define GEN_PASS_DEF_LEGALIZESTABLEHLOTOVHLOPASS
 #define GEN_PASS_DEF_LEGALIZEVHLOTOSTABLEHLOPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 namespace {
 
@@ -58,7 +57,7 @@ namespace {
 // StableHLO --> VHLO types
 //===----------------------------------------------------------------------===//
 
-std::optional<Value> MaterializeIllegalCast(OpBuilder &builder, Type type,
+Value MaterializeIllegalCast(OpBuilder &builder, Type type,
                                             ValueRange inputs, Location loc) {
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs)
       ->getResult(0);

@@ -269,6 +269,10 @@ absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
                                                 ignore_unregistered_attrs,
                                                 node_def->mutable_attr()));
   RemoveIdentityCast(node_def.get());
+  if (op_reg_data) {
+    ::tensorflow::AddDefaultsToNodeDef(op_reg_data->op_def, node_def.get());
+  }
+
   return node_def;
 }
 

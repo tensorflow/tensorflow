@@ -1,0 +1,10 @@
+// RUN: hlo-opt %s --passes=foo2bar | FileCheck %s
+
+HloModule ModulePassChanged
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  // CHECK: %bar
+  ROOT foo = f32[] multiply(a, b)
+}

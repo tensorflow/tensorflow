@@ -33,7 +33,7 @@ class ReffedStatusCallback : public core::RefCounted {
  public:
   explicit ReffedStatusCallback(StatusCallback done) : done_(std::move(done)) {}
 
-  void UpdateStatus(const Status& s) {
+  void UpdateStatus(const absl::Status& s) {
     mutex_lock lock(mu_);
     status_group_.Update(s);
   }
@@ -44,7 +44,7 @@ class ReffedStatusCallback : public core::RefCounted {
   }
 
   // Returns a copy of the current status.
-  Status status() {
+  absl::Status status() {
     tf_shared_lock lock(mu_);
     return status_group_.as_summary_status();
   }

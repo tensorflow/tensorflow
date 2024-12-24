@@ -1,8 +1,8 @@
 # Compile a StableHLO program with XLA
 
 This tutorial and the code in this directory shows how to write a simple
-StableHLO program and then compile it with XLA. The purpose is simply to
-show how XLA can injest a StableHLO program and produce an executable
+StableHLO program and then compile it with XLA and PJRT . The purpose is to
+show how XLA can ingest StableHLO program and produce an executable
 that's compatible with the local device. As such, the program is very
 simple: $\alpha x+y$ ("axpy").
 
@@ -57,43 +57,12 @@ This code is in [`stablehlo_axpy.mlir`](stablehlo_axpy.mlir).
 
 Our program for this tutorial is set up as a test in
 [`stablehlo_compile_test.cc`](stablehlo_compile_test.cc). In this file,
-you'll see that we first set up a `PjRtStreamExecutorClient` that
+you'll see that we first set up a `PjrtClient` with the XLA:CPU plugin that
 allows us to compile our StableHLO program:
 
 ```c++
-// Setup client
-LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-
-// Retrieve the "platform" we intend to execute the computation on. The
-// concept of "platform" in XLA abstracts entirely everything need to
-// interact with some hardware (compiler, runtime, etc.). New HW vendor
-// plugs into XLA by registering a new platform with a different string
-// key. For example for an Nvidia GPU change the following to:
-//   PlatformUtil::GetPlatform("CUDA"));
-TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                        PlatformUtil::GetPlatform("cpu"));
-TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
-                        platform->ExecutorForDevice(0));
-
-// LocalDeviceState and PjRtStreamExecutorDevice describes the state of a
-// device which can do computation or transfer buffers. Could represent a GPU
-// or accelerator, but we'll use the CPU for this example.
-auto device_state = std::make_unique<LocalDeviceState>(
-    executor, local_client, LocalDeviceState::kSynchronous,
-    /*max_inflight_computations=*/32,
-    /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
-auto device = std::make_unique<PjRtStreamExecutorDevice>(
-    0, std::move(device_state), "cpu");
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-devices.emplace_back(std::move(device));
-
-// The PjRtStreamExecutorClient will allow us to compile and execute
-// computations on the device we just configured.
-auto pjrt_se_client = PjRtStreamExecutorClient(
-    "cpu", local_client, std::move(devices), /*process_index=*/0,
-    /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
-    /*should_stage_host_to_device_transfers=*/false,
-    /*gpu_run_options=*/nullptr);
+ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient(kCpuPjrtName));
 ```
 
 Then we read the StableHLO program from our MLIR file into a string:
@@ -130,7 +99,7 @@ compile it to an executable:
 ```c++
 // Use our client to compile our StableHLO program to an executable.
 TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                        pjrt_se_client.Compile(*program, CompileOptions{}));
+                        client->Compile(*program, CompileOptions{}));
 ```
 
 ## 3. Execute the computation

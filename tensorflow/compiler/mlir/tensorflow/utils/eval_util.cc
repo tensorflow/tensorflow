@@ -51,7 +51,7 @@ static bool IsOk(const TF_Status* s) {
   return false;
 }
 
-static bool IsOk(const Status& s) {
+static bool IsOk(const absl::Status& s) {
   if (s.ok()) return true;
   VLOG(2) << s.message();
   return false;

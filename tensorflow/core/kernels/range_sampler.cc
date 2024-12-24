@@ -241,8 +241,8 @@ FixedUnigramSampler::FixedUnigramSampler(int64_t range, float distortion,
   FillReservedIds(num_reserved_ids);
 }
 
-Status FixedUnigramSampler::SetDistributionSampler(Env* env,
-                                                   const string& vocab_file) {
+absl::Status FixedUnigramSampler::SetDistributionSampler(
+    Env* env, const string& vocab_file) {
   TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file, distortion_));
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
     return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
@@ -252,7 +252,7 @@ Status FixedUnigramSampler::SetDistributionSampler(Env* env,
   return absl::OkStatus();
 }
 
-Status FixedUnigramSampler::SetDistributionSampler(
+absl::Status FixedUnigramSampler::SetDistributionSampler(
     const std::vector<float>& unigrams) {
   LoadFromUnigrams(unigrams, distortion_);
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
@@ -280,8 +280,9 @@ void FixedUnigramSampler::FillReservedIds(int32_t num_reserved_ids) {
   }
 }
 
-Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
-                                         float distortion) {
+absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
+                                               const string& vocab_file,
+                                               float distortion) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
 
@@ -296,7 +297,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
       float w = 0.0;
-      if (!strings::safe_strtof(cols.at(cols.size() - 1), &w)) {
+      if (!absl::SimpleAtof(cols.at(cols.size() - 1), &w)) {
         return errors::InvalidArgument("Wrong vocabulary format at line: ",
                                        line);
       }

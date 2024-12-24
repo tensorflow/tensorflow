@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_PROFILER_PYWRAP_IMPL_H_
 #define TENSORFLOW_PYTHON_PROFILER_INTERNAL_PROFILER_PYWRAP_IMPL_H_
 
+#include <memory>
 #include <string>
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
@@ -27,24 +29,14 @@ namespace tensorflow {
 namespace profiler {
 namespace pywrap {
 
-tensorflow::Status Trace(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options);
-
-tensorflow::Status Monitor(const char* service_addr, int duration_ms,
-                           int monitoring_level, bool display_timestamp,
-                           tensorflow::string* result);
-
 class ProfilerSessionWrapper {
  public:
-  tensorflow::Status Start(
+  absl::Status Start(
       const char* logdir,
       const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
           options);
-  tensorflow::Status Stop(tensorflow::string* result);
-  tensorflow::Status ExportToTensorBoard();
+  absl::Status Stop(tensorflow::string* result);
+  absl::Status ExportToTensorBoard();
 
  private:
   std::unique_ptr<tsl::ProfilerSession> session_;

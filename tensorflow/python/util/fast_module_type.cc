@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <array>
+
 // clang-format off
 // These headers must be at the top, before including Python.h header
 // Otherwise, we get C2039 on MSVC due to 'copysign'
@@ -32,9 +34,9 @@ struct FastModuleObject {
   // A cache that helps reduce attribute lookup overhead.
   absl::flat_hash_map<PyObject *, PyObject *> attr_map;
   // pointer to the external getattribute function
-  PyObject *cb_getattribute = nullptr;
+  PyObject *cb_getattribute;
   // pointer to the external getattr function
-  PyObject *cb_getattr = nullptr;
+  PyObject *cb_getattr;
   // static PyTypeObject type;
 
   FastModuleObject() = delete;
@@ -42,12 +44,26 @@ struct FastModuleObject {
   static FastModuleObject *UncheckedCast(PyObject *obj);
 };
 
-static int FastModule_init(FastModuleObject *self, PyObject *args,
-                           PyObject *kwds) {
+static PyObject *FastModule_new(PyTypeObject *subtype, PyObject *args,
+                                PyObject *kwds) {
   DCHECK_EQ(PY_MODULE_TYPE_TP_BASIC_SIZE, PyModule_Type.tp_basicsize);
-  if (PyModule_Type.tp_init(reinterpret_cast<PyObject *>(self), args, kwds) < 0)
-    return -1;
+  PyObject *obj = PyModule_Type.tp_new(subtype, args, kwds);
+  FastModuleObject *self = reinterpret_cast<FastModuleObject *>(obj);
   new (&(self->attr_map)) absl::flat_hash_map<PyObject *, PyObject *>();
+  self->cb_getattribute = nullptr;
+  self->cb_getattr = nullptr;
+  return obj;
+}
+
+static int FastModule_traverse(PyObject *self, visitproc visit, void *arg) {
+  if (int super_result = PyModule_Type.tp_traverse(self, visit, arg) != 0) {
+    return super_result;
+  }
+  auto &attr_map = FastModuleObject::UncheckedCast(self)->attr_map;
+  for (auto &it : attr_map) {
+    Py_VISIT(it.first);
+    Py_VISIT(it.second);
+  }
   return 0;
 }
 
@@ -94,14 +110,14 @@ static PyObject *FastDictInsert(FastModuleObject *self, PyObject *args) {
     return nullptr;
   }
   auto &attr_map = self->attr_map;
-  if (attr_map.find(name) != attr_map.end()) {
-    Py_DECREF(name);
-    Py_DECREF(value);
-  }
-  attr_map.insert_or_assign(name, value);
-  // Increment the reference count
-  Py_INCREF(name);
   Py_INCREF(value);
+  if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
+    Py_INCREF(name);
+  } else {
+    Py_DECREF(it->second);
+    it->second = value;
+  }
+
   // Properly handle returning Py_None
   Py_RETURN_NONE;
 }
@@ -115,11 +131,9 @@ static PyObject *FastDictGet(FastModuleObject *self, PyObject *args) {
     return nullptr;
   }
   auto &attr_map = self->attr_map;
-  auto result = attr_map.find(name);
-  if (result != attr_map.end()) {
-    PyObject *value = result->second;
-    Py_INCREF(value);
-    return value;
+  if (auto it = attr_map.find(name); it != attr_map.end()) {
+    Py_INCREF(it->second);
+    return it->second;
   }
   // Copied from CPython's moduleobject.c
   PyErr_Format(PyExc_KeyError, "module has no attribute '%U'", name);
@@ -135,11 +149,10 @@ static PyObject *FastDictPop(FastModuleObject *self, PyObject *args) {
     return nullptr;
   }
   auto &attr_map = self->attr_map;
-  auto result = attr_map.find(name);
-  if (result != attr_map.end()) {
-    PyObject *value = result->second;
-    Py_INCREF(value);
-    attr_map.erase(result);
+  if (auto it = attr_map.find(name); it != attr_map.end()) {
+    Py_DECREF(it->first);
+    PyObject *value = it->second;
+    attr_map.erase(it);
     return value;
   }
   // Copied from CPython's moduleobject.c
@@ -209,9 +222,8 @@ static PyMethodDef FastModule_methods[] = {
 static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
   auto &attr_map = fast_module->attr_map;
-  auto it = attr_map.find(name);
   // If the attribute lookup is successful in the cache, directly return it.
-  if (it != attr_map.end()) {
+  if (auto it = attr_map.find(name); it != attr_map.end()) {
     PyObject *value = it->second;
     Py_INCREF(value);
     return value;
@@ -226,6 +238,7 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   }
   // Return result if it's found
   if (result != nullptr) {
+    Py_DECREF(arglist);
     return result;
   }
   // If the default lookup fails and an AttributeError is raised,
@@ -234,21 +247,24 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   if (is_error && PyErr_ExceptionMatches(PyExc_AttributeError) &&
       fast_module->cb_getattr != nullptr) {
     PyErr_Clear();
-    return CallFunc(fast_module, arglist, fast_module->cb_getattr);
+    result = CallFunc(fast_module, arglist, fast_module->cb_getattr);
   }
   // If all options were used up
+  Py_DECREF(arglist);
   return result;
 }
 
 // Customized destructor for FastModuleType.tp_dealloc
 // In addition to default behavior it also clears up the contents in attr_map.
 static void FastModuleObjectDealloc(PyObject *module) {
-  auto &attr_map = FastModuleObject::UncheckedCast(module)->attr_map;
-  for (auto &it : attr_map) {
-    Py_DECREF(it.first);
-    Py_DECREF(it.second);
+  FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
+  for (auto [key, value] : fast_module->attr_map) {
+    Py_DECREF(key);
+    Py_DECREF(value);
   }
-  attr_map.~flat_hash_map<PyObject *, PyObject *>();
+  fast_module->attr_map.~flat_hash_map<PyObject *, PyObject *>();
+  Py_XDECREF(fast_module->cb_getattribute);
+  Py_XDECREF(fast_module->cb_getattr);
   Py_TYPE(module)->tp_free(module);
 }
 
@@ -259,10 +275,11 @@ static PyTypeObject FastModuleType = []() {
   obj.tp_itemsize = 0;
   obj.tp_dealloc = FastModuleObjectDealloc;
   obj.tp_getattro = FastTpGetattro;
-  obj.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+  obj.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC;
   obj.tp_doc = "FastModuleType objects";
   obj.tp_methods = FastModule_methods;
-  obj.tp_init = reinterpret_cast<initproc>(FastModule_init);
+  obj.tp_traverse = reinterpret_cast<traverseproc>(FastModule_traverse);
+  obj.tp_new = reinterpret_cast<newfunc>(FastModule_new);
   return obj;
 }();
 
@@ -291,14 +308,13 @@ PYBIND11_MODULE(fast_module_type, m) {
   FastModuleType.tp_setattro = [](PyObject *module, PyObject *name,
                                   PyObject *value) -> int {
     auto &attr_map = FastModuleObject::UncheckedCast(module)->attr_map;
-    if (attr_map.find(name) != attr_map.end()) {
-      Py_DECREF(name);
-      Py_DECREF(value);
-    }
-    attr_map.insert_or_assign(name, value);
-    // Increment the reference count
-    Py_INCREF(name);
     Py_INCREF(value);
+    if (auto [it, inserted] = attr_map.emplace(name, value); inserted) {
+      Py_INCREF(name);
+    } else {
+      Py_DECREF(it->second);
+      it->second = value;
+    }
     PyObject_GenericSetAttr(module, name, value);
     return 0;
   };

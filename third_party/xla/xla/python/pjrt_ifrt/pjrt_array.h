@@ -16,29 +16,33 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
-
-// Converts IFRT `DType` into `xla::PrimitiveType`.
-absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
-
-// Converts `xla::PrimitiveType` into IFRT `DType`.
-absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
 // Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
@@ -151,6 +155,10 @@ class PjRtArray final
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<> CopyToHostBuffer(
@@ -158,7 +166,7 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> Copy(
-      std::optional<xla::ifrt::DeviceList> devices,
+      std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 

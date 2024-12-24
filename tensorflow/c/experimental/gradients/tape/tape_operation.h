@@ -15,8 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_TAPE_TAPE_OPERATION_H_
 #define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_TAPE_TAPE_OPERATION_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -24,41 +33,45 @@ class TapeOperation : public AbstractOperation {
  public:
   explicit TapeOperation(AbstractOperation*, Tape*, const GradientRegistry&);
   void Release() override;
-  Status Reset(const char* op, const char* raw_device_name) override;
+  absl::Status Reset(const char* op, const char* raw_device_name) override;
   const string& Name() const override;
   const string& DeviceName() const override;
-  Status SetDeviceName(const char* name) override;
-  Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
-  Status Execute(absl::Span<AbstractTensorHandle*> retvals,
-                 int* num_retvals) override;
-  Status SetAttrString(const char* attr_name, const char* data,
-                       size_t length) override;
-  Status SetAttrInt(const char* attr_name, int64_t value) override;
-  Status SetAttrFloat(const char* attr_name, float value) override;
-  Status SetAttrBool(const char* attr_name, bool value) override;
-  Status SetAttrType(const char* attr_name, DataType value) override;
-  Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override;
-  Status SetAttrFunction(const char* attr_name,
-                         const AbstractOperation* value) override;
-  Status SetAttrFunctionName(const char* attr_name, const char* value,
+  absl::Status SetDeviceName(const char* name) override;
+  absl::Status AddInput(AbstractTensorHandle* input) override;
+  absl::Status AddInputList(
+      absl::Span<AbstractTensorHandle* const> inputs) override;
+  absl::Status Execute(absl::Span<AbstractTensorHandle*> retvals,
+                       int* num_retvals) override;
+  absl::Status SetAttrString(const char* attr_name, const char* data,
                              size_t length) override;
-  Status SetAttrTensor(const char* attr_name,
-                       AbstractTensorInterface* tensor) override;
-  Status SetAttrStringList(const char* attr_name, const void* const* values,
-                           const size_t* lengths, int num_values) override;
-  Status SetAttrFloatList(const char* attr_name, const float* values,
-                          int num_values) override;
-  Status SetAttrIntList(const char* attr_name, const int64_t* values,
-                        int num_values) override;
-  Status SetAttrTypeList(const char* attr_name, const DataType* values,
-                         int num_values) override;
-  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
-                         int num_values) override;
-  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
-                          const int* num_dims, int num_values) override;
-  Status SetAttrFunctionList(
+  absl::Status SetAttrInt(const char* attr_name, int64_t value) override;
+  absl::Status SetAttrFloat(const char* attr_name, float value) override;
+  absl::Status SetAttrBool(const char* attr_name, bool value) override;
+  absl::Status SetAttrType(const char* attr_name, DataType value) override;
+  absl::Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                            const int num_dims) override;
+  absl::Status SetAttrFunction(const char* attr_name,
+                               const AbstractOperation* value) override;
+  absl::Status SetAttrFunctionName(const char* attr_name, const char* value,
+                                   size_t length) override;
+  absl::Status SetAttrTensor(const char* attr_name,
+                             AbstractTensorInterface* tensor) override;
+  absl::Status SetAttrStringList(const char* attr_name,
+                                 const void* const* values,
+                                 const size_t* lengths,
+                                 int num_values) override;
+  absl::Status SetAttrFloatList(const char* attr_name, const float* values,
+                                int num_values) override;
+  absl::Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                              int num_values) override;
+  absl::Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                               int num_values) override;
+  absl::Status SetAttrBoolList(const char* attr_name,
+                               const unsigned char* values,
+                               int num_values) override;
+  absl::Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                                const int* num_dims, int num_values) override;
+  absl::Status SetAttrFunctionList(
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override;
   AbstractOperation* GetBackingOperation();

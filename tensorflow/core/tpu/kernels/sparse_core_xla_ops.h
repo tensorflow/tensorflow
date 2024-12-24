@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_
 
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/macros.h"
 

@@ -90,7 +90,7 @@ const string CheckpointReader::DebugString() const {
 void CheckpointReader::GetTensor(
     const string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor,
     TF_Status* out_status) const {
-  Status status;
+  absl::Status status;
   if (reader_ != nullptr) {
     status = reader_->GetTensor(name, out_tensor);
   } else {

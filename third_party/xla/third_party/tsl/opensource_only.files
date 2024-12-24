@@ -99,9 +99,12 @@ third_party/nvtx/LICENSE:
 third_party/protobuf/BUILD:
 third_party/py/BUILD.tpl:
 third_party/py/BUILD:
+third_party/py/manylinux_compliance_test.py:
 third_party/py/ml_dtypes/BUILD:
 third_party/py/ml_dtypes/LICENSE:
 third_party/py/numpy/BUILD:
+third_party/py/py_import.bzl:
+third_party/py/py_manylinux_compliance_test.bzl:
 third_party/py/python_configure.bzl:
 third_party/py/python_init_pip.bzl:
 third_party/py/python_init_repositories.bzl:
@@ -136,7 +139,6 @@ third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
 third_party/systemlibs/grpc.BUILD:
 third_party/systemlibs/jsoncpp.BUILD:
 third_party/systemlibs/lmdb.BUILD:
-third_party/systemlibs/nsync.BUILD:
 third_party/systemlibs/png.BUILD:
 third_party/systemlibs/protobuf.BUILD:
 third_party/systemlibs/protobuf.bzl:
@@ -177,4 +179,3 @@ tools/toolchains/win/bazel_211/BUILD:
 tools/toolchains/win/tf_win_05022023/BUILD:
 tools/toolchains/win_1803/py38/BUILD:
 tools/toolchains/win_1803/py39/BUILD:
-tsl/profiler/BUILD:

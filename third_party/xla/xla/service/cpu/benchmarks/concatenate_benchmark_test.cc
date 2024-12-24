@@ -15,17 +15,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -37,7 +38,7 @@ static void BM_ConcatenateTwoR3F32(benchmark::State& state) {
   Shape shape = ShapeUtil::MakeShape(F32, dims);
   int64_t axis = state.range(4);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule concatenate_r3f32_$shape_repr
 
     ENTRY test {

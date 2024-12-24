@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/client.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,7 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
@@ -36,9 +33,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 
@@ -55,14 +52,14 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status Connect() override;
   absl::Status Shutdown() override;
   absl::StatusOr<std::string> BlockingKeyValueGet(
-      std::string_view key, absl::Duration timeout) override;
+      absl::string_view key, absl::Duration timeout) override;
   absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(std::string_view key) override;
-  absl::Status KeyValueSet(std::string_view key,
-                           std::string_view value) override;
-  absl::Status KeyValueSet(std::string_view key, std::string_view value,
+  KeyValueDirGet(absl::string_view key) override;
+  absl::Status KeyValueSet(absl::string_view key,
+                           absl::string_view value) override;
+  absl::Status KeyValueSet(absl::string_view key, absl::string_view value,
                            bool allow_overwrite) override;
-  absl::Status KeyValueDelete(std::string_view key) override;
+  absl::Status KeyValueDelete(absl::string_view key) override;
   absl::Status WaitAtBarrier(
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> process_ids) override;
@@ -85,9 +82,9 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_service_leader("/job:jax_worker/task:0");
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.init_timeout));
-  min_connect_barrier_timeout_ = options.rpc_timeout;
   config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
+  config.set_cluster_register_with_barrier(true);
   config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
   config.set_agent_destruction_without_shutdown(
@@ -95,10 +92,7 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_poll_for_error_from_service_at_startup(
       options.poll_for_error_from_service_at_startup);
   auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
-                      const absl::Status& status) {
-    LOG(ERROR) << "Coordination service agent in error status: " << status;
-    timeout_fn(status, /*coordinator_reported_failure=*/true);
-  };
+                      const absl::Status& status) { timeout_fn(status); };
 
   std::unique_ptr<tsl::CoordinationClient> leader_client;
   leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
@@ -117,20 +111,8 @@ DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() = default;
 
 absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
-  const absl::Time deadline =
-      absl::Now() +
-      absl::Milliseconds(config_.cluster_register_timeout_in_ms());
-
   absl::Status s = coord_agent_->Connect();
-  if (s.ok()) {
-    absl::Duration barrier_timeout = deadline - absl::Now();
-    // Note: `init_timeout` in client options may be set to 0 so that the
-    // client only attempts to connect once. In that case, we provide some
-    // buffer time to wait for all tasks.
-    barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
-    s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
-                                    /*tasks=*/{});
-  }
+
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else if (absl::IsDeadlineExceeded(s)) {
@@ -158,13 +140,13 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
 
 absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
-    std::string_view key, absl::Duration timeout) {
+    absl::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
-    std::string_view key) {
+    absl::string_view key) {
   TF_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
@@ -179,17 +161,17 @@ DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
-    std::string_view key) {
+    absl::string_view key) {
   return coord_agent_->DeleteKeyValue(key);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string_view key, std::string_view value) {
+    absl::string_view key, absl::string_view value) {
   return KeyValueSet(key, value, /*allow_overwrite=*/false);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string_view key, std::string_view value, bool allow_overwrite) {
+    absl::string_view key, absl::string_view value, bool allow_overwrite) {
   return coord_agent_->InsertKeyValue(key, value, allow_overwrite);
 }
 
@@ -229,12 +211,12 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
                            std::string prefix)
       : client_(std::move(client)), prefix_(std::move(prefix)) {}
 
-  absl::StatusOr<std::string> Get(std::string_view key,
+  absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override {
     return client_->BlockingKeyValueGet(absl::StrCat(prefix_, key), timeout);
   }
 
-  absl::Status Set(std::string_view key, std::string_view value) override {
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
     return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
   }
 

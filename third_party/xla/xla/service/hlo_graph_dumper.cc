@@ -73,12 +73,12 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/lib/gtl/map_util.h"
-#include "tsl/lib/io/zlib_compression_options.h"
-#include "tsl/lib/io/zlib_outputbuffer.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/numbers.h"
@@ -1230,6 +1230,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return GetInstructionColor(instr->async_wrapped_instruction());
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kFft:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
@@ -1266,6 +1267,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:

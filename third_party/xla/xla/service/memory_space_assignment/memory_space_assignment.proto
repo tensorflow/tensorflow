@@ -105,21 +105,29 @@ message HloOperandFilter {
   // If operand of an instruction is a tuple and indexing into the tuple is
   // required.
   optional TupleShapeIndex tuple_index = 5;
+  // Regex to match the entire instruction HLO. The HLO string is constructed
+  // using default HloPrintOptions. Refer to the HloPrintOptions class in
+  // hlo_instruction.h to know more about the format of the HLO string used for
+  // matching.
+  optional string instruction_regex = 6;
 }
 
 // Options to override preferred prefetch time for an operand.
 message PreferredPrefetchOverrideOptions {
+  reserved "after_instruction_name",  // 2
+      "before_instruction_name";      // 3
+  reserved 2, 3;
   oneof options {
     // A value X in [0, 1] that tells us the preferred prefetch time is the
     // fraction X through the live range. For example, .5 will set the
     // preferred prefetch time to the middle of live range.
     float prefetch_eagerness = 1;
-    // Preferred prefetch time is set to after the instruction with instruction
-    // name.
-    string after_instruction_name = 2;
-    // Preferred prefetch time is set to before the instruction with instruction
-    // name.
-    string before_instruction_name = 3;
+    // Preferred prefetch time is set to after the first instruction that
+    // matches the filter.
+    HloPositionMatcher after_instruction = 4;
+    // Preferred prefetch time is set to before the first instruction that
+    // matches the filter.
+    HloPositionMatcher before_instruction = 5;
   }
 }
 
@@ -154,6 +162,8 @@ message HloPositionMatcher {
   optional int64 size_gte = 4;
   // Filters instructions with output size in bytes less or equal to a value.
   optional int64 size_lte = 5;
+  // Filters instructions that have a use that matches the filter.
+  optional HloOperandFilter hlo_use_filter = 6;
 }
 
 // Options to override preferred prefetch time for an operand.
@@ -176,6 +186,7 @@ message MsaSortOrderOverride {
   optional HloPositionMatcher hlo_position_matcher = 1;
   optional xla.memory_space_assignment.MsaSortOrderOverrideOptions
       override_options = 2;
+  optional bool apply_to_cross_program_prefetches = 3;
 }
 
 // Encloses chained override configs. The first config has highest precedence

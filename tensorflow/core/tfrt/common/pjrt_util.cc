@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status SetPjRtClientInTFGlobalResourceManager(
+absl::Status SetPjRtClientInTFGlobalResourceManager(
     const DeviceType& device_type, std::unique_ptr<xla::PjRtClient> client) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;

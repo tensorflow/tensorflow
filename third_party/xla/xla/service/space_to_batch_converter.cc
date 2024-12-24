@@ -25,18 +25,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/algorithm.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -44,14 +44,12 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/lib/core/bitmap.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1747,11 +1745,12 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
     // Support the trivial case where none of the batch and split spatial dim
     // are being reduced.
-    return !absl::c_linear_search(reduce_dims, batch_dim) &&
-           !absl::c_linear_search(reduce_dims, space_dim);
+    if (!absl::c_linear_search(reduce_dims, batch_dim) &&
+        !absl::c_linear_search(reduce_dims, space_dim)) {
+      return true;
+    }
 
-    // Support only the trivial case where both batch and split spatial dim are
-    // being reduced
+    // If both batch and space dim are being reduced, propagate.
     return absl::c_linear_search(reduce_dims, batch_dim) &&
            absl::c_linear_search(reduce_dims, space_dim);
   }
@@ -2149,7 +2148,6 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
       const int64_t rank = first_operand->shape().rank();
 
       const int64_t output_rank = new_consumer->shape().rank();
-
       // Make a map of each dim in original reduce output to input.
       std::vector<int64_t> old_reduce_output_to_input(output_rank);
       int dim_number_to_assign_old = 0;
@@ -2157,7 +2155,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         if (auto it = absl::c_find(reduce_dims, i); it != reduce_dims.end()) {
           continue;
         }
-        old_reduce_output_to_input[i] = dim_number_to_assign_old++;
+        old_reduce_output_to_input[dim_number_to_assign_old++] = i;
       }
 
       // Make a map of each dim in new reduce output to the new input.
@@ -2167,7 +2165,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         if (auto it = absl::c_find(changed_dims, i); it != changed_dims.end()) {
           continue;
         }
-        new_reduce_output_to_input[i] = dim_number_to_assign_new++;
+        new_reduce_output_to_input[dim_number_to_assign_new++] = i;
       }
 
       std::vector<int64_t> new_permute_dims(output_rank);

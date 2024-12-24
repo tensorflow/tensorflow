@@ -23,17 +23,23 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "tsl/platform/threadpool.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -161,7 +167,7 @@ class Backend {
   // XLA's perspective. That is, an executable compiled for one device would
   // be equivalent to an executable compiled for the other.
   absl::StatusOr<bool> devices_equivalent(int device_ordinal_a,
-                                          int device_ordinal_b);
+                                          int device_ordinal_b) const;
 
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.

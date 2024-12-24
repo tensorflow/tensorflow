@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -29,10 +30,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/fusions/tools/test_lib.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -71,7 +73,7 @@ absl::Status TestBijection(const IndexingMap& map,
   auto status = VerifyBijection(map, intervals);
   if (status.ok()) return status;
   return absl::FailedPreconditionError(
-      absl::StrCat(status.message(), " in map ", map.ToString()));
+      absl::StrCat(status.message(), " in map ", ToString(map)));
 }
 
 TEST_F(CorrectnessTest, RunAndCompare) {

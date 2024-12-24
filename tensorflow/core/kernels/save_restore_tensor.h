@@ -63,10 +63,10 @@ void RestoreTensor(OpKernelContext* context,
 //   * "prefix" has 1 element, DT_STRING.
 //   * "tensor_names" and "shape_and_slices" shaped {N}, both DT_STRING.
 //   * "dtypes" has N elements, the datatypes of the to-restore tensors.
-Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
-                        const Tensor& tensor_names,
-                        const Tensor& shape_and_slices,
-                        absl::Span<const DataType> dtypes);
+absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
+                              const Tensor& tensor_names,
+                              const Tensor& shape_and_slices,
+                              absl::Span<const DataType> dtypes);
 
 }  // namespace tensorflow
 

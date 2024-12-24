@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
 #include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -547,13 +547,31 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF64s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF32s) {
+  constexpr float kMin = std::numeric_limits<float>::min();
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kNaN = std::numeric_limits<float>::quiet_NaN();
+  std::array<float, 9> vals{0.0f, 0.1f, 1.0f, 2.0f,       1e20f,
+                            kNaN, kInf, kMin, 1.0f / kMin};
+  std::vector<float> a_vals;
+  std::vector<float> b_vals;
+  a_vals.reserve(4 * vals.size() * vals.size());
+  b_vals.reserve(4 * vals.size() * vals.size());
+  for (auto abs_a_val : vals) {
+    for (auto a_val : {-abs_a_val, abs_a_val}) {
+      for (auto abs_b_val : vals) {
+        for (auto b_val : {-abs_b_val, abs_b_val}) {
+          a_vals.push_back(a_val);
+          b_vals.push_back(b_val);
+        }
+      }
+    }
+  }
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
-  auto b = ConstantR1<float>(&builder, {10.0f, 5.1f, 1.0f, 10.0f, -6.0f});
+  auto a = ConstantR1<float>(&builder, a_vals);
+  auto b = ConstantR1<float>(&builder, b_vals);
   Div(a, b);
 
-  ComputeAndCompareR1<float>(&builder, {-0.25f, 5.0f, 2.25f, -1.0f, -1.0f}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
@@ -571,8 +589,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
   std::array<double, 7> vals{0.0, 0.1, 1.0, 2.0, 1e20, kNaN, kInf};
   std::vector<double> a_vals;
   std::vector<double> b_vals;
-  a_vals.reserve(vals.size() * vals.size());
-  b_vals.reserve(vals.size() * vals.size());
+  a_vals.reserve(4 * vals.size() * vals.size());
+  b_vals.reserve(4 * vals.size() * vals.size());
   for (auto abs_a_val : vals) {
     for (auto a_val : {-abs_a_val, abs_a_val}) {
       for (auto abs_b_val : vals) {
@@ -1405,7 +1423,8 @@ class TotalOrderTest : public ClientLibraryTestBase {
   }
 };
 
-using Types = ::testing::Types<tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
+using Types = ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3,
+                               tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
                                tsl::float8_e5m2, tsl::float8_e5m2fnuz,
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
                                Eigen::half,

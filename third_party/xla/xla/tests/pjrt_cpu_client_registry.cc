@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/cpu_client.h"
+#include <utility>
+
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tests/pjrt_client_registry.h"
 
 namespace xla {
@@ -21,9 +24,9 @@ namespace {
 
 // Register a CPU PjRt client for tests.
 const bool kUnused = (RegisterPjRtClientTestFactory([]() {
-                        CpuClientOptions options;
+                        xla::CpuClientOptions options;
                         options.cpu_device_count = 4;
-                        return GetTfrtCpuClient(options);
+                        return xla::GetXlaPjrtCpuClient(std::move(options));
                       }),
                       true);
 

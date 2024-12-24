@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string_view>
-
+#include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 
@@ -24,7 +23,7 @@ namespace {
 
 class SimplifyFPConversionsTest : public HloTestBase {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_allow_excess_precision(
         enable_simplify_all_fp_conversions_);
@@ -43,7 +42,7 @@ class SimplifyFPConversionsTest : public HloTestBase {
     enable_simplify_all_fp_conversions_ = enable_simplify_all_fp_conversions;
   }
 
-  static constexpr std::string_view kHloText = R"(
+  static constexpr absl::string_view kHloText = R"(
 HloModule module
 
 ENTRY main {

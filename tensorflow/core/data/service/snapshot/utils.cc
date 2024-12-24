@@ -16,8 +16,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"

@@ -15,9 +15,10 @@ package.
 pip install tf-nightly --upgrade
 ```
 
-We will use the [Orbax
-Export](https://orbax.readthedocs.io/en/latest/orbax_export_101.html) library to
-export JAX models. Make sure your JAX version is at least 0.4.20 or above.
+We will use the
+[Orbax Export](https://orbax.readthedocs.io/en/latest/guides/export/orbax_export_101.html)
+library to export JAX models. Make sure your JAX version is at least 0.4.20 or
+above.
 
 ```
 pip install jax --upgrade

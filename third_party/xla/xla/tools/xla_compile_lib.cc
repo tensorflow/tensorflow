@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -37,23 +38,25 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include "stablehlo/dialect/Register.h"
-#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/service/export_hlo.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
@@ -66,18 +69,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/gpu_symbol_repository.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#endif
-#if GOOGLE_CUDA
-#include "xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/amdgpu_compiler.h"
-#endif
 
 namespace xla {
 
@@ -97,26 +88,27 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<Compiler::TargetConfig> target_config,
     CompilationResult& result) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  TF_ASSIGN_OR_RETURN(std::string platform_name,
+                      xla::PlatformUtil::CanonicalPlatformName("gpu"));
+  platform_name = absl::AsciiStrToUpper(platform_name);
+  TF_ASSIGN_OR_RETURN(
+      auto platform,
+      stream_executor::PlatformManager::PlatformWithName(platform_name));
   const bool aot = target_config.has_value();
 
-#if GOOGLE_CUDA
-  auto gpu_compiler = gpu::NVPTXCompiler();
-#elif TENSORFLOW_USE_ROCM
-  auto gpu_compiler = gpu::AMDGPUCompiler();
-#endif
+  TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
 
   auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
 
   if (aot) {
-    AotCompilationOptions aot_options(gpu_compiler.PlatformId());
+    AotCompilationOptions aot_options(platform->id());
     aot_options.set_target_config(*target_config);
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-        gpu_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
+        gpu_compiler->CompileAheadOfTime(std::move(module_group), aot_options));
     TF_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());
     *result.mutable_hlo_module() =
@@ -125,10 +117,8 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   }
 
   Compiler::CompileOptions compile_options;
-  TF_RETURN_IF_ERROR(stream_executor::ValidateGPUMachineManager());
-  TF_ASSIGN_OR_RETURN(
-      stream_executor::StreamExecutor * stream_executor,
-      stream_executor::GPUMachineManager()->ExecutorForDevice(0));
+  TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                      platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
           stream_executor);
@@ -136,14 +126,10 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      gpu_compiler.Compile(std::move(module_group), {{stream_executor}},
-                           compile_options));
+      gpu_compiler->Compile(std::move(module_group), {{stream_executor}},
+                            compile_options));
   *result.mutable_hlo_module() = executables[0]->module().ToProto();
   return executables[0]->module().ToString();
-#else
-  LOG(ERROR) << "Neither ROCm nor CUDA present; returning empty.";
-  return "";
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 absl::StatusOr<std::string> CompileExecutable(
@@ -235,13 +221,11 @@ ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
 static std::unique_ptr<Compiler::TargetConfig> ReadTargetConfigFromModule(
     HloModuleAndMetadata* mod, BackendType backend) {
   if (backend == BackendType::kGpu) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
             mod->backend_specific_data.get());
         data != nullptr) {
       return std::move(mod->target_config);
     }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   return nullptr;
@@ -252,7 +236,6 @@ namespace internal {
 absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
                                                 BackendType backend) {
   if (backend == BackendType::kGpu) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
             mod->backend_specific_data.get());
         data != nullptr && data->autotune_results.has_value() &&
@@ -262,7 +245,6 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
           gpu::AutotunerUtil::LoadAutotuneResults(*data->autotune_results));
       return true;
     }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
   return false;
 }
@@ -293,9 +275,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   bool found_autotune = false;
-#endif
 
   if (absl::string_view optimized_symbol_id =
           options.repo_options.optimized_symbol_id;
@@ -304,10 +284,8 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         std::unique_ptr<HloModuleAndMetadata> optimized_mod,
         ReadModuleFromSymbolRepo(symbol_repo, optimized_symbol_id, backend));
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     TF_ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
                                             optimized_mod.get(), backend));
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   xla::TimerStats stats;
@@ -325,7 +303,6 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   // Run AOT compilation.
   std::optional<Compiler::TargetConfig> cfg = std::nullopt;
   if (backend == BackendType::kGpu) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (absl::string_view gpu_target_config_path =
             options.gpu_options.gpu_target_config_path;
         !gpu_target_config_path.empty()) {
@@ -356,7 +333,6 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     cfg = (options.gpu_options.use_attached_device)
               ? std::nullopt
               : std::make_optional(*std::move(target_config));
-#endif
   }
   auto result = CompileExecutable(std::move(hlo_module), backend,
                                   std::move(cfg), compilation_result);

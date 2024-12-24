@@ -957,3 +957,47 @@ func.func @func(%arg0: tensor<f32>) -> tensor<4xf32> {
   func.return %1 : tensor<4xf32>
 }
 
+
+// -----
+// CHECK-LABEL: func @check_AddV2_variant_shape_with_input_sharding_propagation
+func.func @check_AddV2_variant_shape_with_input_sharding_propagation(%arg0: tensor<?x12x384xbf16>, %arg1: tensor<12x384xbf16>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["sharding_info_1", "sharding_info_1"]
+  // CHECK-SAME: output_sharding_configuration = ["sharding_info_1"]
+  "tf_device.cluster_func"(%arg0, %arg1) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true, num_cores_per_replica = 1 : i64
+  } : (tensor<?x12x384xbf16>, tensor<12x384xbf16>) -> tensor<?x12x384xbf16>
+  func.return
+}
+
+// CHECK-LABEL: func @func
+// CHECK: {{.*}}mhlo.sharding = "sharding_info_1"{{.*}}mhlo.sharding = "sharding_info_1"{{.*}}->{{.*}}mhlo.sharding = "sharding_info_1"
+func.func @func(%arg0: tensor<?x12x384xbf16>, %arg1: tensor<12x384xbf16>) -> tensor<?x12x384xbf16> {
+  %add = "tf.AddV2"(%arg0, %arg1) : (tensor<?x12x384xbf16>, tensor<12x384xbf16>) -> tensor<?x12x384xbf16>
+  %0 = "tf.XlaSharding"(%add) { _XlaSharding = "sharding_info_1"} : (tensor<?x12x384xbf16>) -> tensor<?x12x384xbf16>
+  func.return %0 : tensor<?x12x384xbf16>
+}
+
+
+
+// -----
+// CHECK-LABEL: func @check_BatchMatMul_variant_shape_without_input_sharding_propagation
+func.func @check_BatchMatMul_variant_shape_without_input_sharding_propagation(%arg0: tensor<?x12x256xbf16>, %arg1: tensor<256x384xbf16>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["", ""]
+  // CHECK-SAME: output_sharding_configuration = ["sharding_info_1"]
+  "tf_device.cluster_func"(%arg0, %arg1) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true, num_cores_per_replica = 1 : i64
+  } : (tensor<?x12x256xbf16>, tensor<256x384xbf16>) -> tensor<?x12x384xbf16>
+  func.return
+}
+
+// CHECK-LABEL: func @func
+// CHECK: {{.*}}mhlo.sharding = ""{{.*}}mhlo.sharding = ""{{.*}}->{{.*}}mhlo.sharding = "sharding_info_1"
+func.func @func(%arg0: tensor<?x12x256xbf16>, %arg1: tensor<256x384xbf16>) -> tensor<?x12x384xbf16> {
+  %mul = "tf.BatchMatMul"(%arg0, %arg1) : (tensor<?x12x256xbf16>, tensor<256x384xbf16>) -> tensor<?x12x384xbf16>
+  %0 = "tf.XlaSharding"(%mul) { _XlaSharding = "sharding_info_1"} : (tensor<?x12x384xbf16>) -> tensor<?x12x384xbf16>
+  func.return %0 : tensor<?x12x384xbf16>
+}

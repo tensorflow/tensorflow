@@ -1620,15 +1620,6 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
-// CHECK-LABEL: "op_tan"
-func.func @op_tan(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]])  <{
-  // CHECK-SAME:   call_target_name = "mhlo.tan"}> {mhlo.attributes = {}, mhlo.version = 1 : i64}
-  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
-}
-
 // CHECK-LABEL: "op_tanh"
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.tanh"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
@@ -1814,6 +1805,41 @@ func.func @type_ui64(%arg0: tensor<ui64>, %arg1: tensor<ui64>) -> tensor<ui64> {
   func.return %0 : tensor<ui64>
 }
 
+// CHECK-LABEL: "type_f4E2M1FN"
+func.func @type_f4E2M1FN(%arg0: tensor<f4E2M1FN>, %arg1: tensor<f4E2M1FN>) -> tensor<f4E2M1FN> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f4E2M1FN>, tensor<f4E2M1FN>) -> tensor<f4E2M1FN>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f4E2M1FN>, tensor<f4E2M1FN>) -> tensor<f4E2M1FN>
+  func.return %0 : tensor<f4E2M1FN>
+}
+
+// CHECK-LABEL: "type_f6E2M3FN"
+func.func @type_f6E2M3FN(%arg0: tensor<f6E2M3FN>, %arg1: tensor<f6E2M3FN>) -> tensor<f6E2M3FN> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f6E2M3FN>, tensor<f6E2M3FN>) -> tensor<f6E2M3FN>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f6E2M3FN>, tensor<f6E2M3FN>) -> tensor<f6E2M3FN>
+  func.return %0 : tensor<f6E2M3FN>
+}
+
+// CHECK-LABEL: "type_f6E3M2FN"
+func.func @type_f6E3M2FN(%arg0: tensor<f6E3M2FN>, %arg1: tensor<f6E3M2FN>) -> tensor<f6E3M2FN> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f6E3M2FN>, tensor<f6E3M2FN>) -> tensor<f6E3M2FN>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f6E3M2FN>, tensor<f6E3M2FN>) -> tensor<f6E3M2FN>
+  func.return %0 : tensor<f6E3M2FN>
+}
+
+// CHECK-LABEL: "type_f8E3M4"
+func.func @type_f8E3M4(%arg0: tensor<f8E3M4>, %arg1: tensor<f8E3M4>) -> tensor<f8E3M4> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f8E3M4>, tensor<f8E3M4>) -> tensor<f8E3M4>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E3M4>, tensor<f8E3M4>) -> tensor<f8E3M4>
+  func.return %0 : tensor<f8E3M4>
+}
+
+// CHECK-LABEL: "type_f8E4M3"
+func.func @type_f8E4M3(%arg0: tensor<f8E4M3>, %arg1: tensor<f8E4M3>) -> tensor<f8E4M3> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f8E4M3>, tensor<f8E4M3>) -> tensor<f8E4M3>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E4M3>, tensor<f8E4M3>) -> tensor<f8E4M3>
+  func.return %0 : tensor<f8E4M3>
+}
+
 // CHECK-LABEL: "type_f8E4M3FN"
 func.func @type_f8E4M3FN(%arg0: tensor<f8E4M3FN>, %arg1: tensor<f8E4M3FN>) -> tensor<f8E4M3FN> {
   // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f8E4M3FN>, tensor<f8E4M3FN>) -> tensor<f8E4M3FN>
@@ -1847,6 +1873,13 @@ func.func @type_f8E5M2FNUZ(%arg0: tensor<f8E5M2FNUZ>, %arg1: tensor<f8E5M2FNUZ>)
   // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f8E5M2FNUZ>, tensor<f8E5M2FNUZ>) -> tensor<f8E5M2FNUZ>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E5M2FNUZ>, tensor<f8E5M2FNUZ>) -> tensor<f8E5M2FNUZ>
   func.return %0 : tensor<f8E5M2FNUZ>
+}
+
+// CHECK-LABEL: "type_f8E8M0FNU"
+func.func @type_f8E8M0FNU(%arg0: tensor<f8E8M0FNU>, %arg1: tensor<f8E8M0FNU>) -> tensor<f8E8M0FNU> {
+  // CHECK: "stablehlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f8E8M0FNU>, tensor<f8E8M0FNU>) -> tensor<f8E8M0FNU>
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f8E8M0FNU>, tensor<f8E8M0FNU>) -> tensor<f8E8M0FNU>
+  func.return %0 : tensor<f8E8M0FNU>
 }
 
 // CHECK-LABEL: "type_bf16"
@@ -2106,6 +2139,15 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
     ]
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @reshape_with_dynamic_size_convert(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>> {
+  // expected-error@+1 {{'stablehlo.reshape' op result #0 must be statically shaped tensor}}
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>)
+       -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
+  return %0 : tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
 }
 
 // -----

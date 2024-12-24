@@ -1,0 +1,309 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -split-input-file %s -o - | FileCheck %s
+
+// These tests are created from MHLO->HLO of export_async.mlir.
+
+HloModule foobar
+
+// CHECK-LABEL:  func.func @main(%arg0: tensor<i32>, %arg1: !mhlo.token)
+// CHECK-NEXT: "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 3, type = 2>, is_host_transfer = true}>
+// CHECK-NEXT: "mhlo.recv"(%0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+
+ENTRY %async_send_recv_test (arg_0: s32[], arg_1: token[]) -> (s32[], token[]) {
+  %arg_0 = s32[] parameter(0)
+  %arg_1 = token[] parameter(1)
+
+  %send.0 = (s32[], u32[], token[]) send(s32[] %arg_0, token[] %arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_dtoh_0"}
+  %send-done.1 = token[] send-done((s32[], u32[], token[]) %send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_dtoh_0"}
+
+  %recv.2 = (s32[], u32[], token[]) recv(token[] %send-done.1), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_htod_0"}
+  %recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) %recv.2), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_htod_0"}
+
+  %get-tuple-element.4 = s32[] get-tuple-element((s32[], token[]) %recv-done.3), index=0, sharding={maximal device=0}
+  %get-tuple-element.5 = token[] get-tuple-element((s32[], token[]) %recv-done.3), index=1, sharding={maximal device=0}
+  ROOT %tuple.6 = (s32[], token[]) tuple(s32[] %get-tuple-element.4, token[] %get-tuple-element.5)
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,128]{1,0}}
+
+// CHECK-LABEL: func.func private @all_gather_
+// CHECK: mhlo.all_gather
+
+// CHECK-LABEL: func.func @main
+// CHECK: mhlo.async_start{{.*}}called_computation = @all_gather_
+// CHECK: mhlo.async_done
+
+ENTRY %async_all_gather_test (Arg_0.1: f32[128,32]) -> f32[128,128] {
+  %Arg_0.1 = f32[128,32] parameter(0)
+  %all-gather-start.2 = f32[128,128] all-gather-start(f32[128,32] %Arg_0.1), channel_id=1, replica_groups={{0,2,4,6},{1,3,5,7}}, constrain_layout=true, dimensions={1}, use_global_device_ids=true, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:1 offset " source_line=16}
+  ROOT %all-gather-done.3 = f32[128,128] all-gather-done(f32[128,128] %all-gather-start.2), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:1 offset " source_line=17}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+
+%region_1.2 (Arg_0.3: f32[], Arg_1.4: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %Arg_1.4 = f32[] parameter(1)
+  ROOT %maximum.5 = f32[] maximum(f32[] %Arg_0.3, f32[] %Arg_1.4), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:30 offset " source_line=7}
+}
+
+// CHECK-LABEL: func.func private @all_reduce_
+// CHECK: mhlo.all_reduce
+
+// CHECK-LABEL: func.func @main
+// CHECK: mhlo.async_start{{.*}}called_computation = @all_reduce_
+// CHECK: mhlo.async_done
+ENTRY %async_all_reduce_test (Arg_0.1: f32[10]) -> f32[10] {
+  %Arg_0.1 = f32[10] parameter(0)
+  %all-reduce-start.6 = f32[10] all-reduce-start(f32[10] %Arg_0.1), channel_id=5, replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%region_1.2, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:30 offset " source_line=22}
+  ROOT %all-reduce-done.7 = f32[10] all-reduce-done(f32[10] %all-reduce-start.6), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:30 offset " source_line=23}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,32]{1,0}}
+
+// CHECK-LABEL: func.func private @collective_permute_
+// CHECK: mhlo.collective_permute
+
+// CHECK-LABEL: func.func @main
+// CHECK: mhlo.async_start{{.*}}called_computation = @collective_permute_
+// CHECK: mhlo.async_done
+ENTRY %async_collective_permute_test (Arg_0.1: f32[128,32]) -> f32[128,32] {
+  %Arg_0.1 = f32[128,32] parameter(0)
+  %collective-permute-start.2 = f32[128,32] collective-permute-start(f32[128,32] %Arg_0.1), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3}}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:109 offset " source_line=13}
+  ROOT %collective-permute-done.3 = f32[128,32] collective-permute-done(f32[128,32] %collective-permute-start.2), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:109 offset " source_line=14}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,32]{1,0}}
+
+// CHECK-LABEL: func.func private @copy_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT: mhlo.copy %arg0 {cross_program_prefetch_index = 0 : i32}
+
+// CHECK-LABEL: func.func @main(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT: "mhlo.async_start"(%arg0) <{called_computation = @copy_, execution_thread = "main"}>
+// CHECK-NEXT: mhlo.async_done
+ENTRY %async_copy_test (Arg_0.1: f32[128,32]) -> f32[128,32] {
+  %Arg_0.1 = f32[128,32] parameter(0)
+  %copy-start.2 = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %Arg_0.1), cross_program_prefetch_index=0, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:133 offset " source_line=10}
+  ROOT %copy-done.3 = f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %copy-start.2), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:133 offset " source_line=11}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(token[])->(s32[3,4]{1,0}, token[])}
+
+// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
+// CHECK-NEXT: "mhlo.recv"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+ENTRY %async_recv_test_tuple (Arg_0.1: token[]) -> (s32[3,4], token[]) {
+  %Arg_0.1 = token[] parameter(0)
+  %recv.2 = (s32[3,4], u32[], token[]) recv(token[] %Arg_0.1), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:179 offset " source_line=16}
+  %recv-done.3 = (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) %recv.2), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:179 offset " source_line=17}
+  %get-tuple-element.4 = s32[3,4] get-tuple-element((s32[3,4], token[]) %recv-done.3), index=0, sharding={maximal device=0}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:179 offset " source_line=17}
+  %get-tuple-element.5 = token[] get-tuple-element((s32[3,4], token[]) %recv-done.3), index=1, sharding={maximal device=0}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:179 offset " source_line=17}
+  ROOT %tuple.6 = (s32[3,4], token[]) tuple(s32[3,4] %get-tuple-element.4, token[] %get-tuple-element.5)
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(s32[3,4]{1,0}, token[])->token[]}
+
+// CHECK-LABEL: func.func @main(%arg0: tensor<3x4xi32>, %arg1: !mhlo.token)
+// CHECK:  "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
+ENTRY %async_send_test (Arg_0.1: s32[3,4], Arg_1.2: token[]) -> token[] {
+  %Arg_0.1 = s32[3,4] parameter(0)
+  %Arg_1.2 = token[] parameter(1)
+  %send.3 = (s32[3,4], u32[], token[]) send(s32[3,4] %Arg_0.1, token[] %Arg_1.2), channel_id=5, is_host_transfer=true, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:213 offset " source_line=16}
+  ROOT %send-done.4 = token[] send-done((s32[3,4], u32[], token[]) %send.3), channel_id=5, is_host_transfer=true, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:213 offset " source_line=17}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(token[])->token[]}
+
+// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
+// CHECK-NEXT: "mhlo.send"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+
+ENTRY %async_send_test_empty (Arg_0.1: token[]) -> token[] {
+  %tuple.2 = () tuple(), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:240 offset " source_line=15}
+  %Arg_0.1 = token[] parameter(0)
+  %send.3 = ((), u32[], token[]) send(() %tuple.2, token[] %Arg_0.1), channel_id=5, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:240 offset " source_line=15}
+  ROOT %send-done.4 = token[] send-done(((), u32[], token[]) %send.3), channel_id=5, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:240 offset " source_line=16}
+}
+
+// -----
+
+HloModule main, entry_computation_layout={(token[])->((), token[])}
+
+// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
+// CHECK-NEXT: "mhlo.recv"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+
+ENTRY %async_recv_test_empty (Arg_0.1: token[]) -> ((), token[]) {
+  %Arg_0.1 = token[] parameter(0)
+  %recv.2 = ((), u32[], token[]) recv(token[] %Arg_0.1), channel_id=5, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:153 offset " source_line=17}
+  ROOT %recv-done.3 = ((), token[]) recv-done(((), u32[], token[]) %recv.2), channel_id=5, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:153 offset " source_line=18}
+}
+
+// -----
+
+/// Legacy tests -- These tests are not directly from export_async.mlir.
+
+HloModule foobar
+
+// CHECK-LABEL: func.func private @all_gather_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT:  "mhlo.all_gather"
+// CHECK-SAME: all_gather_dim = 1 : i64
+// CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+// CHECK-SAME: use_global_device_ids
+
+// CHECK-LABEL:  func.func @main
+// CHECK-NEXT: %0 = "mhlo.async_start"(%arg0) <{called_computation = @all_gather_, execution_thread = "main"}>
+// CHECK-NEXT:  "mhlo.async_done"
+ENTRY %test_all_gather_start {
+  input = f32[128,32] parameter(0)
+  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
+  ROOT ag-done = f32[128,128] all-gather-done(ag-start)
+}
+
+// -----
+
+HloModule foobar
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func.func private @all_reduce_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT:  "mhlo.all_reduce"
+// CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+// CHECK-SAME: use_global_device_ids
+
+// CHECK-LABEL:  func.func @main
+// CHECK-NEXT: [[AR_START:%.*]] = "mhlo.async_start"(%arg0) <{called_computation = @all_reduce_, execution_thread = "main"}>
+// CHECK-NEXT:  "mhlo.async_done"([[AR_START]])
+%test_all_reduce_start {
+  input = f32[128,32] parameter(0)
+  ar-start = (f32[128,32], f32[128,32]) all-reduce-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, to_apply=add, use_global_device_ids=true
+  ROOT ar-done = f32[128,32] all-reduce-done(ar-start)
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL:  func.func private @collective_permute_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT:  "mhlo.collective_permute"
+// CHECK-SAME{LITERAL}: <{source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
+
+// CHECK-LABEL:  func @main
+// CHECK-NEXT:  "mhlo.async_start"(%arg0) <{called_computation = @collective_permute_, execution_thread = "main"}>
+// CHECK-NEXT:  "mhlo.async_done"
+%test_collective_permute (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{1,0} parameter(0)
+  %cp-start = (f32[128,32]{1,0}, f32[128,32]) collective-permute-start(%input), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT %cp-done = f32[128,32]{1,0} collective-permute-done(%cp-start)
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL: func.func private @copy_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT:  mhlo.copy
+// CHECK-SAME: cross_program_prefetch_index
+
+// CHECK-LABEL:  func @main
+// CHECK-NEXT: "mhlo.async_start"(%arg0) <{called_computation = @copy_, execution_thread = "main"}>
+// CHECK-NEXT: "mhlo.async_done"
+%test_copy_start {
+  input = f32[128,32] parameter(0)
+  copy-start = (f32[128,32], f32[128,32], u32[]) copy-start(input), cross_program_prefetch_index=0
+  ROOT copy-done = f32[128,32] copy-done(copy-start)
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL:  func.func @main
+// CHECK-NEXT: "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
+%test_send_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  send-start = (f32[128,32], u32[], token[]) send(input, tok), channel_id=5, is_host_transfer=true
+  ROOT send-done = token[] send-done(send-start), channel_id=5, is_host_transfer=true
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL:  func.func @main
+// CHECK-NEXT:"mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+%test_recv_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  recv-start = (f32[128,32], u32[], token[]) recv(tok), channel_id=5, is_host_transfer=true
+  recv-done = (f32[128,21], token[]) recv-done(recv-start), channel_id=5, is_host_transfer=true
+  ROOT gte = get-tuple-element(recv-done), index=0
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL:  func.func @main
+// CHECK-NEXT: "mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+%test_recv_dtd_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  recv-start = (f32[128,32], u32[], token[]) recv(tok), channel_id=5
+  recv-done = (f32[128,32], token[]) recv-done(recv-start), channel_id=5
+  ROOT gte = get-tuple-element(recv-done), index=0
+}
+
+// -----
+
+HloModule foobar
+
+// CHECK-LABEL:         func.func @main
+// CHECK-NEXT:            "mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+// CHECK-SAME{LITERAL}:     {mhlo.sharding = "{{maximal device=0}, {maximal device=0}}"}
+// CHECK-SAME:              (!mhlo.token) -> (tensor<i32>, !mhlo.token)
+%test_recv_3_tuple_sharding_to_2_tuple {
+  input = s32[] parameter(0)
+  tok = token[] parameter(1)
+  recv = (s32[], u32[], token[]) recv(token[] tok), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}
+  recv-done = (s32[], token[]) recv-done((s32[], u32[], token[]) recv), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}
+  ROOT tok2 = s32[] get-tuple-element((s32[], token[]) recv-done), index=0, sharding={maximal device=0}
+}
+
+
+// BROKEN: b/TODO: support roundtrip of async custom calls?
+
+// HloModule main, entry_computation_layout={(f32[10]{0})->(f32[20]{0})}
+
+// ENTRY %async_custom_call_test2 (Arg_0.1: f32[10]) -> (f32[20]) {
+//   %Arg_0.1 = f32[10] parameter(0)
+//   %async-start.5 = ((f32[10]), f32[20], s32[]) custom-call-start(f32[10] %Arg_0.1), async_execution_thread="thread", custom_call_target="bar", metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:288 offset " source_line=21}
+//   %async-update.6 = ((f32[10]), f32[20], s32[]) custom-call-update(((f32[10]), f32[20], s32[]) %async-start.5), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:288 offset " source_line=22}
+//   ROOT %async-done.7 = (f32[20]) custom-call-done(((f32[10]), f32[20], s32[]) %async-update.6), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:288 offset " source_line=23}
+// }
+
+// HloModule main, entry_computation_layout={(f32[10]{0})->(f32[20]{0})}
+
+// ENTRY %async_custom_call_test (Arg_0.1: f32[10]) -> (f32[20]) {
+//   %Arg_0.1 = f32[10] parameter(0)
+//   %async-start.5 = ((f32[10]), f32[20], s32[]) custom-call-start(f32[10] %Arg_0.1), async_execution_thread="thread", custom_call_target="foo", metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:265 offset " source_line=16}
+//   %async-update.6 = ((f32[10]), f32[20], s32[]) custom-call-update(((f32[10]), f32[20], s32[]) %async-start.5), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:265 offset " source_line=18}
+//   ROOT %async-done.7 = (f32[20]) custom-call-done(((f32[10]), f32[20], s32[]) %async-update.6), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:265 offset " source_line=20}
+// }

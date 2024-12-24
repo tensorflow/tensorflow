@@ -28,8 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace gpu {
 
-Status InitTfrtGpu(const GpuRunnerOptions& options,
-                   tensorflow::tfrt_stub::Runtime& runtime) {
+absl::Status InitTfrtGpu(const GpuRunnerOptions& options,
+                         tensorflow::tfrt_stub::Runtime& runtime) {
   auto policy = std::make_unique<tsl::RoundRobinPolicy>();
   auto serving_device_selector =
       std::make_unique<tensorflow::gpu::GpuServingDeviceSelector>(

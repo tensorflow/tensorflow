@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -93,9 +92,7 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
     GTEST_SKIP() << "There is no PTX or any equivalent abstraction for ROCm.";
   }
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32KernelPtx, "AddI32");
-  RunAddI32Kernel(spec);
+  RunAddI32Kernel(GetAddI32PtxKernelSpec());
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
@@ -106,9 +103,7 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  RunAddI32Kernel(spec);
+  RunAddI32Kernel(GetAddI32KernelSpec());
 }
 
 }  // namespace

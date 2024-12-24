@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
 
+#include <cstddef>
 #include <functional>
 #include <optional>
-#include <string_view>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -30,9 +31,11 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
 namespace {
@@ -41,9 +44,8 @@ class TritonFusionNumericsVerifierTest
     : public HloTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_enable_triton_softmax_fusion(true);
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
     return options;
   }
@@ -51,7 +53,8 @@ class TritonFusionNumericsVerifierTest
  protected:
   std::unique_ptr<xla::HloModule> Module(absl::string_view hlo_text_template,
                                          absl::string_view type) {
-    auto m = GetOptimizedModule(absl::Substitute(hlo_text_template, type));
+    auto m = ParseAndReturnVerifiedModule(
+        absl::Substitute(hlo_text_template, type), GetModuleConfigForTest());
     TF_EXPECT_OK(m);
     return std::move(m.value());
   }
@@ -79,11 +82,10 @@ class TritonFusionNumericsVerifierTest
   }
 
   AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
-    auto opt_compile_util_or =
+    auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
-    TF_EXPECT_OK(opt_compile_util_or);
-    EXPECT_TRUE(opt_compile_util_or->has_value());
-    return std::move(opt_compile_util_or->value());
+    TF_EXPECT_OK(compile_util_or);
+    return std::move(compile_util_or).value();
   }
 };
 
@@ -99,7 +101,7 @@ add_computation {
   arg_1.1 = $0[] parameter(1)
   ROOT add = $0[] add(arg_0.1, arg_1.1)
 }
-ENTRY main {
+triton_softmax_computation {
   param_0 = $0[127,125]{1,0} parameter(0)
   constant_neg_inf = $0[] constant(-inf)
   reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
@@ -111,32 +113,24 @@ ENTRY main {
   second_broadcast = $0[127,125]{1,0} broadcast(second_reduce), dimensions={0}
   ROOT divide = $0[127,125]{1,0} divide(exponential, second_broadcast)
 }
-)";
-
-bool HloPassHasRun(const HloModule& module, absl::string_view pass_name) {
-  for (const auto& pass_metadata : module.metadata().proto().pass_metadata()) {
-    if (pass_metadata.pass_name() == pass_name) {
-      return true;
-    }
-  }
-  return false;
+ENTRY main{
+  p = $0[127,125] parameter(0)
+  ROOT triton_softmax = $0[127,125] fusion(p), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+    "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+    {"output_tile_sizes":["1","125"],"num_warps":"1"}},"force_earliest_schedule":false}
 }
 
+)";
+
 TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
-  PrimitiveType data_type = GetParam();
-
   auto module = Module(kSoftmaxHlo,
-                       primitive_util::LowercasePrimitiveTypeName(data_type));
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
-  // At this point all HLO passes have been executed successfully, because the
-  // Module() function hasn't failed. In particular the numerics verification
-  // pass should have also run and **not** found any issues. Below we just
-  // ensure that the pass has indeed been correctly enabled and that there are
-  // Triton Fusions in the input module.
-
-  EXPECT_TRUE(HloPassHasRun(*module, TritonFusionNumericsVerifier::Name()));
-  auto fusion = TritonFusion(*module);
-  EXPECT_NE(fusion, nullptr);
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
@@ -152,9 +146,9 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   // VerifyExactSoftmaxFusionNumerics is minimal and will be easier to debug if
   // it fails.
 
-  auto module_f16 = Module(kSoftmaxHlo, "f16");
-  auto fusion_f16 = TritonFusion(*module_f16);
-  EXPECT_NE(fusion_f16, nullptr);
+  auto module_f64 = Module(kSoftmaxHlo, "f64");
+  auto fusion_f64 = TritonFusion(*module_f64);
+  EXPECT_NE(fusion_f64, nullptr);
 
   auto module_f32 = Module(kSoftmaxHlo, "f32");
   auto fusion_f32 = TritonFusion(*module_f32);
@@ -165,10 +159,10 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
       CreateAutotunerCompileUtil(autotune_config);
   const DebugOptions& debug_options = GetDebugOptionsForTest();
 
-  auto f16_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-      compile_util, *fusion_f16, autotune_config, debug_options,
+  auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
+      compile_util, *fusion_f64, autotune_config, debug_options,
       /*clear_backend_config=*/false);
-  TF_EXPECT_OK(f16_result);
+  TF_EXPECT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
@@ -181,15 +175,171 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   // Intentionally compare the fusions from the different modules, triggering a
   // mismatch.
   auto cmp = triton_fusion_numerics_pass_internal::CompareBuffers(
-      *f16_result, *f32_result, fusion_f16->shape(),
-      fusion_f16->GetModule()->config(), *stream);
+      *f64_result, *f32_result, fusion_f64->shape(),
+      fusion_f64->GetModule()->config(), *stream);
 
   EXPECT_FALSE(cmp.ok());
 }
 
+// By default, AutotunerCompileUtil filters out kernels that cause registers to
+// spill. Verify that the numerics verifier still runs on those kernels.
+TEST_F(TritonFusionNumericsVerifierTest,
+       CompilationSucceedsEvenIfKernelWillSpillRegisters) {
+  auto module = Module(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[16,256000] parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[16]{0} reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_0 = f32[16,256000]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[16,256000]{1,0} multiply(param_0, broadcast_0)
+}
+
+ENTRY main {
+  param_0 = f32[16,256000] parameter(0)
+  ROOT triton_softmax = f32[16,256000]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton","block_level_fusion_config":
+        {"output_tile_sizes":["1","256000"],"num_warps":"32"}}}
+}
+  )",
+                       "");
+
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  auto fusion = TritonFusion(*module);
+  EXPECT_NE(fusion, nullptr);
+
+  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  AutotunerCompileUtil compile_util =
+      CreateAutotunerCompileUtil(autotune_config);
+  auto compilation_result =
+      triton_fusion_numerics_pass_internal::CompileAndRunFusion(
+          compile_util, *fusion, autotune_config, GetDebugOptionsForTest(),
+          /*disable_triton=*/false);
+
+  // Verify that the compilation with default flags fails. The compilation
+  // fails, because the kernel will spill registers, but the error is
+  // overwritten inside the autotuner utils and returns a generic error.
+  EXPECT_FALSE(compilation_result.ok());
+  EXPECT_THAT(compilation_result.status(),
+              tsl::testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(compilation_result.status().message(),
+              ::testing::HasSubstr("Failed to compile Triton fusion"));
+}
+
+TEST_F(TritonFusionNumericsVerifierTest, CacheIsUsed) {
+  absl::string_view hlo_text = R"(
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] maximum(p0, p1)
+}
+
+reduce_0 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=add
+}
+
+reduce_1 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=max
+}
+
+// Identical to reduce_0.
+reduce_2 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[16,16] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[16,16] parameter(2)
+  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  add_0_1 = f32[16] add(r0, r1)
+  ROOT add_0_2 = f32[16] add(add_0_1, r2)
+}
+  )";
+
+  std::unique_ptr<HloModule> module = Module(hlo_text, "");
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
+}
+
+TEST_F(TritonFusionNumericsVerifierTest, VerifyThatDisablingTritonIsFast) {
+  // This computation results in a single Triton fusion. If that fusion is
+  // compiled without Triton and without rerunning the fusion pass, the
+  // resulting kernel is extremely slow and the test will timeout. This test
+  // ensures that the fusion pass is rerun.
+  absl::string_view hlo_text = R"(
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+triton_softmax_computation {
+  p0 = f32[16384,16384] parameter(0)
+  reshape1 = f32[1,1,16384,16384] reshape(p0)
+  reshape2 = f32[1,16384,16384] reshape(p0)
+  constant3 = f32[] constant(-inf)
+  reduce0 = f32[1,16384] reduce(reshape2, constant3), dimensions={2}, to_apply=max
+  broadcast3 = f32[1,1,16384,16384] broadcast(reduce0), dimensions={1,2}
+  sub = f32[1,1,16384,16384] subtract(reshape1, broadcast3)
+  exp = f32[1,1,16384,16384] exponential(sub)
+  reshape3 = f32[1,16384,16384] reshape(exp)
+  constant4 = f32[] constant(0)
+  reduce1 = f32[1,16384] reduce(reshape3, constant4), dimensions={2}, to_apply=add
+  broadcast4 = f32[1,1,16384,16384] broadcast(reduce1), dimensions={1,2}
+  ROOT div = f32[1,1,16384,16384] divide(exp, broadcast4)
+}
+
+ENTRY main {
+  p = f32[16384,16384] parameter(0)
+  ROOT triton_softmax = f32[1,1,16384,16384] fusion(p), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+      "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+        {"output_tile_sizes":["1","1","1","16384"],"num_warps":"32"}},
+        "force_earliest_schedule":false}
+}
+  )";
+  auto module = Module(hlo_text, "");
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+}
+
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,
                          TritonFusionNumericsVerifierTest,
-                         ::testing::Values(F32, F16, BF16));
+                         ::testing::Values(F32, F64));
 
 }  // namespace
 }  // namespace xla::gpu

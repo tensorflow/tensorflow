@@ -18,28 +18,30 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/algebraic_simplifier.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/expanders/reshape_decomposer.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/transforms/cudnn_fused_mha_transpose_fusion.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/reshape_decomposer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/test_helpers.h"
@@ -67,13 +69,6 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
     // we don't run any kernels in these tests so they should be safe
     // to run anywhere.
     return se::CudaComputeCapability(8, 0);
-  }
-
-  se::CudaComputeCapability GetRealCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
   }
 
   se::dnn::VersionInfo GetCudnnVersion() {
@@ -105,7 +100,7 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
                             });
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     debug_options.set_xla_gpu_fused_attention_use_cudnn_rng(true);
@@ -128,9 +123,8 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
   std::optional<absl::string_view> skip_reason_;
 };
 
-constexpr absl::string_view
-    hlo_BF16Bmm1SoftmaxBmm2Pattern_k_hidden_not_most_minor = R"(
-HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
+constexpr absl::string_view hlo_base_pattern = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,HEAD_DIM]{3,2,1,0},bf16[16,16,256,HEAD_DIM]{3,2,1,0},bf16[16,16,256,HEAD_DIM]{3,2,1,0})->bf16[16,16,256,HEAD_DIM]{3,2,1,0}}
 
 region_0.7 {
   Arg_0.8 = bf16[] parameter(0)
@@ -145,9 +139,9 @@ region_1.19 {
 }
 
 ENTRY main.6 {
-  Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
-  Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
-  Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
+  Arg_2.3 = bf16[16,16,256,HEAD_DIM]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,HEAD_DIM]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,HEAD_DIM]{2,3,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   constant = bf16[] constant(-inf)
   reduce.11 = bf16[16,16,256]{2,1,0} reduce(dot.0, constant), dimensions={3}, to_apply=region_0.7
@@ -160,15 +154,15 @@ ENTRY main.6 {
   convert.2 = bf16[16,16,256]{2,1,0} convert(reduce.23)
   broadcast.4 = bf16[16,16,256,256]{3,2,1,0} broadcast(convert.2), dimensions={0,1,2}
   divide = bf16[16,16,256,256]{3,2,1,0} divide(exponential.1, broadcast.4)
-  ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(divide, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+  ROOT dot.1 = bf16[16,16,256,HEAD_DIM]{3,2,1,0} dot(divide, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
 })";
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1SoftmaxBmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(
-                  hlo_BF16Bmm1SoftmaxBmm2Pattern_k_hidden_not_most_minor));
+  const std::string hlo =
+      absl::StrReplaceAll(hlo_base_pattern, {{"HEAD_DIM", std::to_string(64)}});
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
@@ -181,6 +175,33 @@ TEST_F(CudnnFusedMhaRewriterTestHloTest,
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
+  EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
+            2);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1SoftmaxBmm2Pattern_large_head_dim) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  // Large head dim of 256 is supported by Cudnn 9.5+ on Hopper+ GPUs.
+  int head_dim = 256;
+  const std::string hlo = absl::StrReplaceAll(
+      hlo_base_pattern, {{"HEAD_DIM", std::to_string(head_dim)}});
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
+  CudnnFusedMHARewriter fusedMhaRewriter{se::CudaComputeCapability(9, 0),
+                                         se::dnn::VersionInfo(9, 5, 0)};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* fmha;
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+                     m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
+                     .WithShape(BF16, {16, 16, 256, head_dim})));
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
                           fmha->backend_config<GpuBackendConfig>());
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
@@ -2692,11 +2713,11 @@ main {
   SCOPED_TRACE(m->ToString());
   for (HloInstruction* instr :
        m->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kCustomCall &&
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr) &&
         instr->custom_call_target() == kCudnnfMHASoftmaxCallTarget) {
       fwd_instruction = instr;
     }
-    if (instr->opcode() == HloOpcode::kCustomCall &&
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr) &&
         instr->custom_call_target() == kCudnnfMHASoftmaxBackwardCallTarget) {
       bwd_instruction = instr;
     }

@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -38,7 +37,7 @@ class PlatformUtil {
   // there are multiple implementations. For example, GPU platform may be
   // cuda(Nvidia) or rocm(AMD)
   static absl::StatusOr<std::string> CanonicalPlatformName(
-      std::string_view platform_name);
+      absl::string_view platform_name);
 
   // Returns the platforms present on the system and supported by XLA.
   //
@@ -56,7 +55,7 @@ class PlatformUtil {
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
   static absl::StatusOr<se::Platform*> GetPlatform(
-      std::string_view platform_name);
+      absl::string_view platform_name);
 
   // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have

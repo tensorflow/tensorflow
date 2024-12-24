@@ -57,12 +57,26 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
         (TFL_TransposeOp $input,
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
-        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output"> $attrs))),
+        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
         (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
         ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
-        ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">))>;
+        ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
+    [(IsNchwLayoutOp $attrs)]>;
+
+// Pattern to lower a stablehlo.composite of `jax` image resize fuctions in
+// `bilinear` mode and with NHWC inputs to a tflite.resize_nearest_neighbor op.
+def LegalizeNhwcResizeBilinear2dComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+    (variadic $input),
+    ConstantStrAttr<StrAttr, "odml.upsample_bilinear2d">, $attrs, $_, $_),
+    (TFL_ResizeBilinearOp
+      $input,
+      (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
+      (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+      ConstBoolAttrTrue),
+    [(IsNhwcLayoutOp $attrs)]>;
 
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
 // in `nearest` mode and with NHWC inputs to a tflite.resize_nearest_neighbor op.
@@ -112,6 +126,13 @@ def LegalizeCompositeApproximateAtenGELU : Pat<
         (TFL_GeluOp $inputs, ConstBoolAttrTrue),
         [(IsStrCompositeAttribute<"approximate", "tanh"> $attrs)]>;
 
+def LegalizeCompositeGELU : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
 def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $indices, $table),
@@ -120,3 +141,28 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         [(HasRank<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $_, $indices, $table),
+          ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
+        (TFL_EmbeddingLookupOp $indices, $table),
+        [(HasRank<1> $indices),
+        (I32ElementsVal $indices),
+        (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlRandomUniform : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $shape),
+          ConstantStrAttr<StrAttr, "odml.random_uniform">, $attrs, $_, $_),
+        (TFL_RandomUniformOp $shape,
+          (GetCompositeAttributeAs<"seed", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositeOdmlRandomStandardNormal : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $shape),
+          ConstantStrAttr<StrAttr, "odml.random_standard_normal">, $attrs, $_, $_),
+        (TFL_RandomStandardNormalOp $shape,
+          (GetCompositeAttributeAs<"seed", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;

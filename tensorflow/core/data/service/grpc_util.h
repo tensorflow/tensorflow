@@ -27,7 +27,8 @@ namespace data {
 namespace grpc_util {
 
 // Wraps a grpc::Status in a tensorflow::Status with the given message.
-Status WrapError(const std::string& message, const ::grpc::Status& status);
+absl::Status WrapError(const std::string& message,
+                       const ::grpc::Status& status);
 
 // Retries the given function if the function produces UNAVAILABLE, ABORTED, or
 // CANCELLED status codes. We retry these codes because they can all indicate
@@ -37,14 +38,14 @@ Status WrapError(const std::string& message, const ::grpc::Status& status);
 // being retried, e.g. "register dataset" The retry loop uses exponential
 // backoff between retries. `deadline_micros` is interpreted as microseconds
 // since the epoch.
-Status Retry(const std::function<Status()>& f,
-             const std::function<bool()>& should_retry,
-             const std::string& description, int64_t deadline_micros);
+absl::Status Retry(const std::function<absl::Status()>& f,
+                   const std::function<bool()>& should_retry,
+                   const std::string& description, int64_t deadline_micros);
 
 // Same as `Retry` above, but with a `should_retry` callback that always returns
 // `true`.
-Status Retry(const std::function<Status()>& f, const std::string& description,
-             int64_t deadline_micros);
+absl::Status Retry(const std::function<absl::Status()>& f,
+                   const std::string& description, int64_t deadline_micros);
 
 }  // namespace grpc_util
 }  // namespace data

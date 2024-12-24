@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/logging.h"
@@ -178,10 +179,19 @@ void GraphDebugInfoBuilder::AccumulateStackTrace(
         AppendToStackTraceProto(stack_frame, stack_trace_proto);
       }
     } else {
-      frame_to_index_.reserve(frame_to_index_.size() +
-                              trace->ToFrames().size());
-      for (const auto& stack_frame : trace->ToFrames()) {
-        AppendToStackTraceProto(stack_frame, stack_trace_proto);
+      if (flags::Global()
+              .enable_graph_debug_info_caching_for_stack_frames.value()) {
+        frame_to_index_.reserve(frame_to_index_.size() +
+                                trace->ToFrames().size());
+        for (const auto& stack_frame : trace->ToFrames()) {
+          AppendToStackTraceProto(stack_frame, stack_trace_proto);
+        }
+      } else {
+        frame_to_index_.reserve(frame_to_index_.size() +
+                                trace->ToUncachedFrames().size());
+        for (const auto& stack_frame : trace->ToUncachedFrames()) {
+          AppendToStackTraceProto(stack_frame, stack_trace_proto);
+        }
       }
     }
   }

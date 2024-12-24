@@ -16,7 +16,8 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"

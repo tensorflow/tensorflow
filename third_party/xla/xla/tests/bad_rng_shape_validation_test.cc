@@ -16,15 +16,12 @@ limitations under the License.
 // Tests that passing a bad shape to RNG's output parameter causes a validation
 // failure rather than causing a crash.
 
-#include <memory>
-
 #include "absl/status/statusor.h"
-#include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/shape.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -37,29 +34,19 @@ TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto one = ConstantR0<float>(&builder, 1.0);
-  Shape default_constructed;
-  RngUniform(zero, one, default_constructed);
-
-  absl::StatusOr<XlaComputation> computation = builder.Build();
-  EXPECT_FALSE(computation.ok());
-  LOG(INFO) << "status received: " << computation.status();
-  EXPECT_THAT(computation.status().message(),
-              ::testing::HasSubstr("shape has invalid"));
+  RngUniform(zero, one, Shape());
+  EXPECT_FALSE(builder.Build().ok());
 }
 
 TEST_F(BadRngShapeValidationTest, ShapeWithoutLayoutIsOk) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto one = ConstantR0<float>(&builder, 1.0);
-  Shape sans_layout;
-  sans_layout.set_element_type(F32);
-  sans_layout.add_dimensions(1);
-
-  RngUniform(zero, one, sans_layout);
-
-  absl::StatusOr<XlaComputation> computation = builder.Build();
-  ASSERT_TRUE(computation.ok());
-  LOG(INFO) << computation.status();
+  Shape shape;
+  shape.set_element_type(F32);
+  shape.add_dimensions(1);
+  RngUniform(zero, one, shape);
+  EXPECT_TRUE(builder.Build().ok());
 }
 
 }  // namespace

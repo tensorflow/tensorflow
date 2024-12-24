@@ -143,19 +143,10 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   builder.AddInstruction(HloInstruction::CreateTuple(var_outs));
   module->AddEntryComputation(builder.Build());
 
-  // Verify that horizontal fusion is kicked in. Check that there are multiple
-  // `reduce` instructions fused into the same fusion.
-  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() < 4) {
-    // 6 is just a randomly picked number as we don't exactly know how large the
-    // fusion will be created due to the `FusionFitsInBudget` constraint.
-    CompileAndVerifyIr(module->Clone(), R"(CHECK: reduce-group-6)",
-                       /*match_optimized_ir=*/false);
-  } else {
-    // Verify that we produced a multi-output reduction with independent groups.
-    CompileAndVerifyIr(module->Clone(), R"(CHECK: switch {{.*}} label {{.*}} [
-                                           CHECK-NEXT: label)",
-                       /*match_optimized_ir=*/false);
-  }
+  // Verify that we produced a multi-output reduction with independent groups.
+  CompileAndVerifyIr(module->Clone(), R"(CHECK: switch {{.*}} label {{.*}} [
+                                          CHECK-NEXT: label)",
+                     /*match_optimized_ir=*/false);
 
   // Testing with the entire gpu optimization pipeline.
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
@@ -263,6 +254,63 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
+}
+
+TEST_F(HorizontalInputFusionTest, DoesNotFuseCustomFusions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+max {
+  p0 = f16[] parameter(0)
+  p1 = f16[] parameter(1)
+  ROOT max = f16[] maximum(p0, p1)
+}
+
+triton_a {
+   p = f16[128,256] parameter(0)
+   c = f16[] constant(0)
+   ROOT n = f16[128] reduce(p, c), dimensions={1}, to_apply=max
+}
+
+triton_b {
+   p = f16[128,256] parameter(0)
+   c = f16[] constant(0)
+   ROOT n = f16[128] reduce(p, c), dimensions={1}, to_apply=max
+}
+
+ ENTRY entry_computation {
+   p = f16[128,256] parameter(0)
+   fa = f16[128] fusion(p), kind=kCustom, calls=triton_a
+   fb = f16[128] fusion(p), kind=kCustom, calls=triton_b
+   ROOT tuple = (f16[128], f16[128]) tuple(fa, fb)
+ }
+)")
+                    .value();
+
+  EXPECT_FALSE(horizontal_input_fusion_.Run(module.get()).value());
+}
+
+TEST_F(HorizontalInputFusionTest, ChangedModuleIsReportedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+g {
+  a = s8[] parameter(0)
+  b = s8[] parameter(1)
+  c = s8[] add(a, b)
+}
+
+f {
+  p0 = s8[8] parameter(0)
+  p1 = s8[8] parameter(1)
+  c = s8[] constant(0)
+  r1 = s8[] reduce(p0, c), dimensions={0}, to_apply=g
+  r2 = s8[] reduce(p1, c), dimensions={0}, to_apply=g
+  a = s8[] add(r1, r2)
+}
+
+e {
+  p0 = s8[8] parameter(0)
+  p1 = s8[8] parameter(1)
+  c = s8[] call(p0, p1), to_apply=f
+})"));
+  EXPECT_TRUE(horizontal_input_fusion_.Run(module.get()).value());
 }
 
 }  // namespace

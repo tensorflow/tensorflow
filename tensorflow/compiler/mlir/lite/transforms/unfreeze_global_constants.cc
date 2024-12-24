@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+
 #include <cstddef>
-#include <memory>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -25,16 +26,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -50,28 +46,6 @@ using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-
-// This pass "unfreezes" the use of global constant tensor ops found in the
-// module and converts them to `tf.VarHandleOp`s. Also, an initialization
-// pattern `tf.AssignVariableOp(tf.VarHandleOp, tf.ConstOp)` is inserted to the
-// initializer function of type "init_op" for each of the unfrozen constants.
-
-#define GEN_PASS_DEF_UNFREEZEMUTABLEGLOBALTENSORSPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-class UnfreezeMutableGlobalTensorsPass
-    : public impl::UnfreezeMutableGlobalTensorsPassBase<
-          UnfreezeMutableGlobalTensorsPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfreezeMutableGlobalTensorsPass)
-  void runOnOperation() override;
-
- private:
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect,
-                    tf_saved_model::TensorFlowSavedModelDialect>();
-  }
-};
 
 struct GlobalTensorAndUseIndex {
   GlobalTensorOp global_tensor;
@@ -237,6 +211,8 @@ void CreateAssignVariableOps(
   }
 }
 
+}  // namespace
+
 void UnfreezeMutableGlobalTensorsPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
@@ -289,17 +265,6 @@ void UnfreezeMutableGlobalTensorsPass::runOnOperation() {
     global_tensor_op.erase();
   }
 }
-
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateUnfreezeMutableGlobalTensorsPass() {
-  return std::make_unique<UnfreezeMutableGlobalTensorsPass>();
-}
-
-static PassRegistration<UnfreezeMutableGlobalTensorsPass> pass([] {
-  return CreateUnfreezeMutableGlobalTensorsPass();
-});
 
 }  // namespace TFL
 }  // namespace mlir

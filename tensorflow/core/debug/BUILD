@@ -287,13 +287,11 @@ tf_cc_binary(
 # py_proto_library(
 #     name = "debug_service_py_pb2",
 #     has_services = 1,
-#     api_version = 2,
 #     deps = [":debug_service_proto"],
 # )
 #
 # py_proto_library(
 #     name = "debugger_event_metadata_py_pb2",
-#     api_version = 2,
 #     deps = [":debugger_event_metadata_proto"],
 # )
 # copybara:uncomment_end

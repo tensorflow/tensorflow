@@ -29,14 +29,14 @@ namespace tensorflow {
 // for this device_type already exists, the existing PJRT client will not be
 // destroyed, and will be kept alive in an "unused client" vector. PJRT API
 // semantics require the PJRT client to outlive PJRT buffers.
-Status SetPjRtClientInTFGlobalResourceManager(
+absl::Status SetPjRtClientInTFGlobalResourceManager(
     const DeviceType& device_type, std::unique_ptr<xla::PjRtClient> client);
 
 // Gets (the most recent) PJRT client for device_type from
 // TFGlobalResourceManager.
 absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
-Status SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(
+absl::Status SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(
     std::unique_ptr<PjRtGpuClientCreationInfo> info);
 absl::StatusOr<PjRtGpuClientCreationInfo*> GetPjRtGpuClientCreationInfo();
 

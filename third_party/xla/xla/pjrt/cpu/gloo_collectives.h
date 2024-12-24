@@ -84,8 +84,12 @@ class GlooCollectives : public CollectivesInterface {
   std::unique_ptr<gloo::rendezvous::Store> store_;
   std::shared_ptr<gloo::transport::Device> device_;
   absl::Mutex mu_;
+  struct Context {
+    absl::Mutex mu;
+    std::shared_ptr<GlooCollectivesCommunicator> communicator;
+  };
   absl::flat_hash_map<std::tuple<std::vector<GlobalDeviceId>, int>,
-                      std::shared_ptr<GlooCollectivesCommunicator>>
+                      std::unique_ptr<Context>>
       contexts_ ABSL_GUARDED_BY(mu_);
 };
 

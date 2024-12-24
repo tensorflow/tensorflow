@@ -47,6 +47,8 @@ message RuntimeSubgraph {
   repeated int32 execution_plan = 4 [packed = true];
 
   optional SubgraphType subgraph_type = 5;
+  // The name of the subgraph.
+  optional string name = 6;
 }
 
 message Node {

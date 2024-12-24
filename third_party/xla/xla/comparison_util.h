@@ -126,17 +126,11 @@ class Comparison {
   inline bool IsF32TotalOrder() const {
     return primitive_type_ == PrimitiveType::F32 && IsTotalOrder();
   }
-  inline bool IsBf16TotalOrder() const {
-    return primitive_type_ == PrimitiveType::BF16 && IsTotalOrder();
-  }
 
   // Returns whether this is a standard comparison, i.e., what you would expect
   // as the industry standard on most architectures.
   inline bool IsStandardF32() const {
     return primitive_type_ == PrimitiveType::F32 && IsPartialOrder();
-  }
-  inline bool IsStandardBf16() const {
-    return primitive_type_ == PrimitiveType::BF16 && IsPartialOrder();
   }
   inline bool IsStandardS32() const {
     return primitive_type_ == PrimitiveType::S32 && IsTotalOrder();
@@ -240,8 +234,6 @@ absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
 absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison);
-absl::StatusOr<Comparison::Order> StringToComparisonOrder(
-    absl::string_view order);
 
 // Returns a comparison function using the provided key function on each value,
 // i.e. `key_fn(a) < key_fn(b)`.

@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emission_utils.h"
 
+#include <cstdint>
+
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape_util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

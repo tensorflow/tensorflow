@@ -38,15 +38,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/service/float_normalization.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
@@ -69,14 +70,20 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   CHECK(false);
 }
 
-absl::Status CreateTritonIrAndFileCheck(
-    HloTestBase* test, absl::string_view hlo_text,
-    const BlockLevelParameters& block_level_parameters,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
+absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
+                                        absl::string_view hlo_text,
+                                        absl::string_view triton_fusion_name,
+                                        absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
+  auto fusion_backend_config = comp->FusionInstruction()
+                                   ->backend_config<GpuBackendConfig>()
+                                   ->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
   return CreateTritonIrAndFileCheck(*comp, block_level_parameters,
                                     filecheck_pattern);
 }
@@ -106,9 +113,12 @@ absl::Status CreateTritonIrAndFileCheck(
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(test, hlo_text,
-                                    /*block_level_parameters=*/{},
-                                    triton_fusion_name, filecheck_pattern);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+                      test->ParseAndReturnVerifiedModule(hlo_text));
+  auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(comp != nullptr);
+  return CreateTritonIrAndFileCheck(*comp, /*block_level_parameters=*/{},
+                                    filecheck_pattern);
 }
 
 absl::Status CreateTritonIrAndFileCheckForDot(
@@ -180,6 +190,11 @@ std::string TritonSupportTestTwoTypesAndDeviceToString(
                       "_", ComputeCapabilityToString(cc));
 }
 
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
+}
+
 namespace {
 
 // This function does nothing if the input module already has an entry
@@ -221,7 +236,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
-DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
   auto options = HloTestBase::GetDebugOptionsForTest();
   // It's necessary to set this manually, because it's disabled in optimized
   // builds and there are some ASAN builds that run on TAP with -c opt.

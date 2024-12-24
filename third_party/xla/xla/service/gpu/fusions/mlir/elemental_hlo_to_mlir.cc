@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <utility>
 #include <vector>
@@ -60,24 +61,26 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -161,31 +164,6 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kConditional,
                                    HloOpcode::kStochasticConvert,
                                    HloOpcode::kCall};
-
-bool IsUnsupportedGather(const HloInstruction* instr) {
-  // We assume gather simplifier ran, so we don't need to support all gather
-  // forms.
-  if (instr->opcode() != HloOpcode::kGather) return false;
-
-  auto* gather = Cast<HloGatherInstruction>(instr);
-  const auto& dims = gather->gather_dimension_numbers();
-  // We allow XLA:GPU's "canonical" gather (2D indices). And the form preferred
-  // by the algebraic simplifier if the second index dimension is degenerate (1D
-  // indices with implicit second dimension).
-  int indices_rank = gather->operand(1)->shape().rank();
-  if (dims.index_vector_dim() != 1 || !dims.collapsed_slice_dims().empty() ||
-      indices_rank == 0 || indices_rank > 2) {
-    return true;
-  }
-
-  for (auto [index, val] : llvm::enumerate(dims.start_index_map())) {
-    if (index != val) return true;
-  }
-  for (auto [index, val] : llvm::enumerate(dims.offset_dims())) {
-    if (index + 1 != val) return true;
-  }
-  return false;
-}
 
 absl::StatusOr<Value> GetSingleOperandValue(
     const OperandProvider& operand_provider, const HloInstruction* instr,
@@ -318,9 +296,27 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConcat(
   return generate_concat(0, instr->operand_count());
 }
 
+absl::Status ValidateDynamicIndexIsCanonical(const HloInstruction* instr) {
+  const HloDynamicIndexInstruction* dynamic_index_instruction =
+      Cast<HloDynamicIndexInstruction>(instr);
+  if (!absl::c_all_of(dynamic_index_instruction->index_operands(),
+                      [](const HloInstruction* operand) {
+                        return ShapeUtil::IsScalar(operand->shape());
+                      })) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Dynamic indexing instruction with non-scalar index is "
+                     "not supported. Make sure that 'dynamic-index-splitter' "
+                     "pass was exectuted to canonicalize the indices: ",
+                     instr->ToString()));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+  TF_RETURN_IF_ERROR(ValidateDynamicIndexIsCanonical(instr));
+
   SmallVector<Value, 3> input_indices(indices);
 
   const auto& input_shape = instr->operand(0)->shape();
@@ -341,6 +337,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+  TF_RETURN_IF_ERROR(ValidateDynamicIndexIsCanonical(instr));
+
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   Value is_in_bounds = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
@@ -606,12 +604,13 @@ template <typename MhloOp, typename... ExtraArgs>
 SmallVector<Value, 1> MapHloOp(mlir::Type result_type,
                                llvm::ArrayRef<mlir::Type> arg_types,
                                llvm::ArrayRef<Value> args,
+                               llvm::ArrayRef<mlir::NamedAttribute> attributes,
                                ImplicitLocOpBuilder& b,
                                ExtraArgs&&... extra_args) {
   Value result = mhlo::MhloOpToStdScalarOp::mapOpOfType<MhloOp>(
       b.getLoc(), result_type, arg_types,
       typename MhloOp::Adaptor(args, std::forward<ExtraArgs>(extra_args)...),
-      &b);
+      attributes, &b);
   if (result.getType().isInteger(1)) {
     result = b.create<mlir::arith::ExtUIOp>(b.getI8Type(), result);
   }
@@ -619,46 +618,16 @@ SmallVector<Value, 1> MapHloOp(mlir::Type result_type,
 }
 
 template <typename MhloOp>
-SmallVector<Value, 1> MapElementwiseOp(llvm::ArrayRef<mlir::Type> arg_types,
-                                       llvm::ArrayRef<Value> args,
-                                       ImplicitLocOpBuilder& b) {
+SmallVector<Value, 1> MapElementwiseOp(
+    llvm::ArrayRef<mlir::Type> arg_types, llvm::ArrayRef<Value> args,
+    ImplicitLocOpBuilder& b,
+    llvm::ArrayRef<mlir::NamedAttribute> attributes = std::nullopt) {
   // We use the last argument's type because of select.
-  return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, b);
+  return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, attributes,
+                          b);
 }
 
 }  // namespace
-
-Value UnrealizedConversionCast(mlir::Type type, Value value,
-                               ImplicitLocOpBuilder& b) {
-  SmallVector<Value> converted;
-  b.createOrFold<mlir::UnrealizedConversionCastOp>(converted, type, value);
-  return converted.front();
-}
-
-SmallVector<Value, 2> UnrealizedConversionCast(mlir::TypeRange types,
-                                               ValueRange values,
-                                               ImplicitLocOpBuilder& b) {
-  SmallVector<Value, 2> converted;
-  for (auto [type, value] : llvm::zip(types, values)) {
-    converted.push_back(UnrealizedConversionCast(type, value, b));
-  }
-  return converted;
-}
-
-Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
-                      ValueRange symbols, ImplicitLocOpBuilder& b) {
-  // For unknown (but undoubtedly good) reasons, affine.apply removes unused
-  // trailing dimensions, but only in the expression.
-  while (!dims.empty() && !expr.isFunctionOfDim(dims.size() - 1)) {
-    dims = dims.drop_back();
-  }
-  while (!symbols.empty() && !expr.isFunctionOfSymbol(symbols.size() - 1)) {
-    symbols = symbols.drop_back();
-  }
-  SmallVector<Value> args(dims);
-  absl::c_copy(symbols, std::back_inserter(args));
-  return b.createOrFold<mlir::affine::AffineApplyOp>(expr, args);
-}
 
 SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ValueRange symbols,
@@ -853,7 +822,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
   }
   auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type, arg_types,
-      operands, &builder);
+      operands, /*attributes=*/std::nullopt, &builder);
   if (auto int_ty = mlir::dyn_cast<IntegerType>(out.getType())) {
     auto in = operands[0];
     if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
@@ -918,7 +887,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
   index = builder.create<arith::IndexCastUIOp>(index_type, index);
   return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type,
-      {index_type}, {index}, &builder)}};
+      {index_type}, {index}, /*attributes=*/std::nullopt, &builder)}};
 }
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
@@ -933,7 +902,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
   auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
   auto i1 = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
       builder.getLoc(), result_types, arg_types,
-      mhlo::CompareOp::Adaptor(operands, nullptr, properties), &builder);
+      mhlo::CompareOp::Adaptor(operands, nullptr, properties),
+      /*attributes=*/std::nullopt, &builder);
   return {{builder.create<mlir::arith::ExtUIOp>(builder.getI8Type(), i1)
                .getResult()}};
 }
@@ -944,10 +914,22 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReducePrecision(
   mhlo::ReducePrecisionOp::Properties properties;
   properties.exponent_bits = builder.getI32IntegerAttr(instr->exponent_bits());
   properties.mantissa_bits = builder.getI32IntegerAttr(instr->mantissa_bits());
-  return MapHloOp<mhlo::ReducePrecisionOp>(operands.front().getType(),
-                                           arg_types, operands, builder,
-                                           nullptr, properties);
+  return MapHloOp<mhlo::ReducePrecisionOp>(
+      operands.front().getType(), arg_types, operands,
+      /*attributes=*/std::nullopt, builder, nullptr, properties);
 }
+
+namespace {
+// Return a named attribute that can be used to annotate an op to be eligible
+// for lowering to an approximation function in GPUToNVVM conversion.
+mlir::NamedAttribute GetFastMathFlagsForApproximationFunctions(
+    ImplicitLocOpBuilder& builder) {
+  return mlir::NamedAttribute(
+      mlir::StringAttr::get(builder.getContext(), "fastmath"),
+      mlir::arith::FastMathFlagsAttr::get(builder.getContext(),
+                                          mlir::arith::FastMathFlags::afn));
+}
+}  // namespace
 
 absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     const HloInstruction* instr, mlir::func::FuncOp this_fn, ValueRange indices,
@@ -1012,11 +994,12 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
   TF_ASSIGN_OR_RETURN(auto operands,
                       GetOperands(instr, indices, operand_provider, builder));
 
+  llvm::SmallVector<mlir::NamedAttribute> attributes;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return {
-          MapHloOp<mhlo::AbsOp>(PrimitiveTypeToMlirType(element_type, builder),
-                                arg_types, operands, builder)};
+      return {MapHloOp<mhlo::AbsOp>(
+          PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
+          /*attributes=*/std::nullopt, builder)};
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -1039,7 +1022,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kComplex:
       return MapHloOp<mhlo::ComplexOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kCos:
       return MapElementwiseOp<mhlo::CosineOp>(arg_types, operands, builder);
     case HloOpcode::kDivide:
@@ -1047,20 +1030,31 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kErf:
       return MapElementwiseOp<mhlo::ErfOp>(arg_types, operands, builder);
     case HloOpcode::kExp:
-      return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder);
+      if (element_type == F16 || element_type == BF16) {
+        attributes.emplace_back(
+            GetFastMathFlagsForApproximationFunctions(builder));
+      }
+      return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
+                                           attributes);
     case HloOpcode::kExpm1:
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
       return MapElementwiseOp<mhlo::FloorOp>(arg_types, operands, builder);
     case HloOpcode::kIsFinite:
       return MapHloOp<mhlo::IsFiniteOp>(builder.getI1Type(), arg_types,
-                                        operands, builder);
+                                        operands, /*attributes=*/std::nullopt,
+                                        builder);
     case HloOpcode::kImag:
       return MapHloOp<mhlo::ImagOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kLog:
-      return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder);
+      if (element_type == F16 || element_type == BF16) {
+        attributes.emplace_back(
+            GetFastMathFlagsForApproximationFunctions(builder));
+      }
+      return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder,
+                                           attributes);
     case HloOpcode::kLog1p:
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
@@ -1104,13 +1098,13 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kPopulationCount:
       return MapHloOp<mhlo::PopulationCountOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kPower:
       return MapElementwiseOp<mhlo::PowOp>(arg_types, operands, builder);
     case HloOpcode::kReal:
       return MapHloOp<mhlo::RealOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kReducePrecision:
       return EmitReducePrecision(instr, arg_types, operands, builder);
     case HloOpcode::kRemainder:
@@ -1152,7 +1146,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kBitcastConvert:
       return MapHloOp<mhlo::BitcastConvertOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kConvert:
       return EmitConvert(instr, arg_types, operands, builder);
     case HloOpcode::kBitcast:
@@ -1263,7 +1257,7 @@ class SubgraphConverter {
   absl::StatusOr<SmallVector<Value>> EmitInstruction(
       const HloInstruction* instr, ValueRange indices);
   absl::StatusOr<SmallVector<Value>> EmitElementwiseInstruction(
-      const HloInstruction* instr, ValueRange indices);
+      const HloInstruction* root, ValueRange indices);
 
  private:
   const PartitionedComputation& computation_;
@@ -1528,6 +1522,9 @@ ValueRange EmitLoopNestImpl(
   };
   scf::LoopNest loop_nest =
       scf::buildLoopNest(b, b.getLoc(), lbs, ubs, steps, iter_args_inits, bb);
+  if (loop_nest.results.empty()) {
+    return {};
+  }
   ValueRange result_range =
       loop_nest.results.front().getDefiningOp()->getResults();
   CHECK_EQ(result_range.size(), loop_nest.results.size())
@@ -1537,14 +1534,14 @@ ValueRange EmitLoopNestImpl(
 
 }  // namespace
 
-ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
-                         ValueRange iter_args_inits,
-                         const IndexingMap& indexing_map,
-                         mlir::function_ref<SmallVector<Value>(
-                             ValueRange /*ivs*/, ValueRange /*map_results*/,
-                             ValueRange /*iter_args*/)>
-                             create_body,
-                         bool vectorize) {
+ValueRange EmitXlaLoopOp(
+    ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
+    const IndexingMap& indexing_map,
+    mlir::function_ref<SmallVector<Value>(
+        ImplicitLocOpBuilder& nested_b, ValueRange /*ivs*/,
+        ValueRange /*map_results*/, ValueRange /*iter_args*/)>
+        create_body,
+    bool vectorize) {
   SmallVector<Value, 4> vector_inits;
   if (vectorize) {
     CHECK_EQ(indexing_map.GetSymbolBounds().back().lower, 0);
@@ -1560,6 +1557,7 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
   }
   auto bb = [&](OpBuilder& nested_builder, Location loc, ValueRange ivs,
                 ValueRange map_results, ValueRange iter_args) {
+    ImplicitLocOpBuilder nested_b(loc, nested_builder);
     SmallVector<Value, 4> results;
     if (vectorize) {
       SmallVector<Value, 4> vector_args;
@@ -1567,11 +1565,10 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
       // Extract the vector elements.
       for (auto& init : vector_args) {
         if (mlir::isa<mlir::VectorType>(init.getType())) {
-          init = nested_builder.create<mlir::vector::ExtractOp>(loc, init,
-                                                                ivs.back());
+          init = nested_b.create<mlir::vector::ExtractOp>(init, ivs.back());
         }
       }
-      results = create_body(ivs, map_results, vector_args);
+      results = create_body(nested_b, ivs, map_results, vector_args);
       // Insert the results.
       for (auto [index, init] : llvm::enumerate(iter_args)) {
         if (mlir::isa<mlir::VectorType>(init.getType())) {
@@ -1580,9 +1577,9 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
         }
       }
     } else {
-      results = create_body(ivs, map_results, iter_args);
+      results = create_body(nested_b, ivs, map_results, iter_args);
     }
-    nested_builder.create<xla::gpu::YieldOp>(loc, results);
+    nested_b.create<xla::YieldOp>(results);
   };
   return b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb)
       .getResults();
@@ -1623,9 +1620,9 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
     remainder.GetMutableSymbolBound(sym_index).lower = bound.upper;
     remainder.Simplify();
 
-    VLOG(5) << "Peeled indexing map " << indexing_map.ToString() << "\n into "
-            << peeled_map.ToString() << "\nand remainder\n"
-            << remainder.ToString();
+    VLOG(5) << "Peeled indexing map " << indexing_map << "\n into "
+            << peeled_map << "\nand remainder\n"
+            << remainder;
     return EmitLoopNestImpl(b, dim_values, first_results, remainder,
                             create_body, vectorize);
   }

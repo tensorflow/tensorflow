@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -203,7 +203,7 @@ class StepDetails {
  private:
   // Accumulates the device memory transfers from another step to this step.
   void AggregateDeviceMemoryTransfers(
-      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+      const std::vector<DeviceMemoryTransfer>& device_memory_transfers);
 
   // All step-markers found for marking this step in the traces. There could be
   // multiple step-markers for a single step for different reasons. One such

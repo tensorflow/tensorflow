@@ -28,7 +28,7 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #endif
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.

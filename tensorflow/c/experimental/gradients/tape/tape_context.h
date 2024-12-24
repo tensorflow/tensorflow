@@ -16,7 +16,11 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_TAPE_TAPE_CONTEXT_H_
 
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_function.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -25,8 +29,8 @@ class TapeContext : public AbstractContext {
   explicit TapeContext(AbstractContext*, Tape*, const GradientRegistry&);
   void Release() override;
   TapeOperation* CreateOperation() override;
-  Status RegisterFunction(AbstractFunction*) override;
-  Status RemoveFunction(const string& func) override;
+  absl::Status RegisterFunction(AbstractFunction*) override;
+  absl::Status RemoveFunction(const string& func) override;
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* ptr) {
     return ptr->getKind() == kTape;

@@ -42,10 +42,15 @@ namespace internal {
 // Clang does not allow defining a nested struct with member initializer, as
 // a workaround we define a struct in internal namespace and create an alias.
 struct ThunkExecutorOptions {
-  // If all thunks in a sequence use buffers of size less than or equal to
-  // `execute_sequential_buffer_threshold`, we mark execution as sequential, as
-  // concurrency overheads will likely dominate the overall execution time.
+  // If all thunks in a sequence use buffers of size less than or equal to the
+  // given threshold, we mark execution as sequential, as concurrency overheads
+  // will likely dominate the overall execution time.
   size_t execute_sequential_buffer_threshold = 512;
+
+  // If thunk sequence length is less than or equal to the given threshold, we
+  // mark execution as sequential, as concurrency overheads will likely dominate
+  // the overall execution time.
+  size_t execute_sequential_num_thunks_threshold = 8;
 
   // Use priority ready queue to execute nodes according to their priority. By
   // default we use FIFO ready queue.
@@ -228,8 +233,8 @@ class ThunkExecutor {
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
-  // nodes that are ready to execute. If `event` is in error state, aborts the
-  // execution and records the error status to forward it to the caller.
+  // nodes that are ready to execute. If `node_event` is in error state, aborts
+  // the execution and records the error status to forward it to the caller.
   template <typename ReadyQueue>
   void ProcessOutEdges(ExecuteState* state,
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,

@@ -4,7 +4,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -72,10 +72,22 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_tfprof.pyi",
     ],
-    deps = [
-        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
-        "@pybind11",
-    ],
+    deps = if_pywrap(
+        if_false = [
+            "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+            "@pybind11",
+        ],
+        if_true = [
+            "//tensorflow/core:framework",
+            "//tensorflow/core/framework:reader_base",
+            "//tensorflow/core:lib_headers_for_pybind",
+            "//tensorflow/core/profiler/internal:print_model_analysis",
+            "//third_party/python_runtime:headers",
+            "@com_google_absl//absl/strings",
+            "@eigen_archive//:eigen3",
+            "@pybind11",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
@@ -107,7 +119,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":cpp_nest"]),
 )
 
 cc_library(
@@ -136,11 +148,12 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":kernel_registry"]),
 )
 
 tf_python_pybind_extension(
@@ -221,8 +234,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/tools/graph_transforms:transform_graph_lib"]),
 )
 
 tf_python_pybind_extension(
@@ -257,7 +271,7 @@ tf_python_pybind_extension(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )
 
 cc_library(
@@ -350,11 +364,17 @@ pytype_strict_library(
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/py/tensorflow_core:__subpackages__",
+    # "//tensorflow:__pkg__",
+    # "//tensorflow:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//third_party/py/tensorflow_core:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":tf_decorator_py",
         ":tf_inspect",
@@ -527,7 +547,7 @@ cc_library(
 
 tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
-    testonly = True,
+    # testonly = True,
     srcs = ["function_parameter_canonicalizer_binding_for_test.cc"],
     hdrs = [
         "function_parameter_canonicalizer.h",
@@ -543,7 +563,12 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/compiler/tf2xla:tf2xla_opset",
+            "//tensorflow/python/lib/core:pybind11_lib",
+        ],
+    ),
 )
 
 tf_py_strict_test(
@@ -728,7 +753,13 @@ py_strict_library(
 py_strict_library(
     name = "deprecation",
     srcs = ["deprecation.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
@@ -808,7 +839,13 @@ py_strict_library(
 py_strict_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
@@ -878,7 +915,13 @@ py_strict_library(
     name = "compat",
     srcs = ["compat.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1028,7 +1071,13 @@ py_strict_library(
 py_strict_library(
     name = "dispatch",
     srcs = ["dispatch.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":tf_decorator_py",
         ":tf_inspect",
@@ -1048,7 +1097,13 @@ py_strict_library(
     name = "keras_deps",
     srcs = ["keras_deps.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1061,7 +1116,13 @@ py_strict_library(
 py_strict_library(
     name = "nest",
     srcs = ["nest.py"],
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":__init__",
         ":nest_util",
@@ -1092,7 +1153,13 @@ py_strict_library(
     name = "all_util",
     srcs = ["all_util.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = util_subpackage_visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = util_subpackage_visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":tf_inspect",
         # global_test_configuration is added here because all major tests depend on this

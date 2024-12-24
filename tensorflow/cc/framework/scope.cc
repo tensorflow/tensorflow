@@ -41,7 +41,7 @@ const char kScopeSeparator[] = "/";
 const char kSuffixSeparator[] = "_";
 }  // namespace
 
-Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
+Scope::Impl::Impl(Graph* graph, absl::Status* status, NameMap* name_map,
                   ShapeRefiner* refiner, bool disable_shape_inference)
     : graph_(graph),
       status_(status),
@@ -52,7 +52,7 @@ Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
       disable_shape_inference_(disable_shape_inference) {}
 
 Scope::Impl::Impl(const std::shared_ptr<Graph>& graph,
-                  const std::shared_ptr<Status>& status,
+                  const std::shared_ptr<absl::Status>& status,
                   const std::shared_ptr<NameMap>& name_map,
                   const std::shared_ptr<ShapeRefiner>& refiner)
     : graph_(graph),
@@ -67,7 +67,7 @@ Scope Scope::NewRootScope() {
   Graph* graph = new Graph(OpRegistry::Global());
   ShapeRefiner* refiner =
       new ShapeRefiner(graph->versions(), graph->op_registry());
-  return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner,
+  return Scope(new Impl(graph, new absl::Status, new Impl::NameMap, refiner,
                         /* disable_shape_inference */ false));
 }
 
@@ -75,7 +75,7 @@ Scope Scope::DisabledShapeInferenceScope() {
   Graph* graph = new Graph(OpRegistry::Global());
   ShapeRefiner* refiner =
       new ShapeRefiner(graph->versions(), graph->op_registry());
-  return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner,
+  return Scope(new Impl(graph, new absl::Status, new Impl::NameMap, refiner,
                         /* disable_shape_inference */ true));
 }
 
@@ -293,20 +293,20 @@ std::shared_ptr<Graph> Scope::graph_as_shared_ptr() const {
   return impl()->graph_;
 }
 
-Status Scope::status() const { return *impl()->status_; }
+absl::Status Scope::status() const { return *impl()->status_; }
 
 const std::vector<Operation>& Scope::control_deps() const {
   return impl()->control_deps_;
 }
 
-void Scope::UpdateStatus(const Status& s) const {
+void Scope::UpdateStatus(const absl::Status& s) const {
   impl()->status_->Update(s);
   if (impl()->exit_on_error_ && !ok()) {
     LOG(FATAL) << *impl()->status_;
   }
 }
 
-Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
+absl::Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
   if (!ok()) {
     return *impl()->status_;
   }
@@ -314,7 +314,7 @@ Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
   return absl::OkStatus();
 }
 
-Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
+absl::Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
   if (ok()) {
     GraphDef graph_def;
     graph()->ToGraphDef(&graph_def);
@@ -498,7 +498,7 @@ CompositeOpScopes Scope::GetCompositeOpScopes(
   }
 }
 
-Status Scope::DoShapeInference(Node* node) const {
+absl::Status Scope::DoShapeInference(Node* node) const {
   if (impl_->disable_shape_inference_) return absl::OkStatus();
   return impl_->refiner_->AddNode(node);
 }
@@ -506,7 +506,8 @@ Status Scope::DoShapeInference(Node* node) const {
 class InternalScope {
  public:
   // NewScope doesn't take ownership of the inputs.
-  static Scope NewScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
+  static Scope NewScope(Graph* graph, absl::Status* status,
+                        ShapeRefiner* refiner) {
     Scope::Impl::NameMap* name_map = new Scope::Impl::NameMap;
     for (const Node* node : graph->nodes()) {
       const string& name = node->name();
@@ -521,19 +522,20 @@ class InternalScope {
     // since the caller owns them and doesn't want the scope to destroy them.
     return Scope(new Scope::Impl(
         std::shared_ptr<Graph>(graph, [](Graph*) {}),
-        std::shared_ptr<Status>(status, [](Status*) {}),
+        std::shared_ptr<absl::Status>(status, [](absl::Status*) {}),
         std::shared_ptr<Scope::Impl::NameMap>(name_map),
         std::shared_ptr<ShapeRefiner>(refiner, [](ShapeRefiner*) {})));
   }
 };
 
-Scope NewInternalScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
+Scope NewInternalScope(Graph* graph, absl::Status* status,
+                       ShapeRefiner* refiner) {
   return InternalScope::NewScope(graph, status, refiner);
 }
 
-Status CreateOutputWithScope(string op_name,
-                             absl::Span<const ::tensorflow::Input> inputs,
-                             const Scope& scope, Output* output) {
+absl::Status CreateOutputWithScope(string op_name,
+                                   absl::Span<const ::tensorflow::Input> inputs,
+                                   const Scope& scope, Output* output) {
   TF_RETURN_IF_ERROR(scope.status());
   const auto unique_name = scope.GetUniqueNameForOp(op_name);
   auto builder = ::tensorflow::NodeBuilder(unique_name, op_name);

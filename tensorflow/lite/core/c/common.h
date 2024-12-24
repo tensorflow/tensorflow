@@ -80,7 +80,9 @@ typedef enum TfLiteExternalContextType {
   kTfLiteGemmLowpContext = 1,    /// include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     /// Placeholder for Edge TPU support.
   kTfLiteCpuBackendContext = 3,  /// include cpu_backend_context.h to use.
-  kTfLiteMaxExternalContexts = 4
+  kTfLiteLiteRtBufferContext =
+      4,  /// include external_litert_buffer_context.h to use.
+  kTfLiteMaxExternalContexts = 5
 } TfLiteExternalContextType;
 
 // Forward declare so dependent structs and methods can reference these types
@@ -283,6 +285,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
+// `std::unreachable` not available until CC23.
+#ifdef __GNUC__  // GCC, Clang, ICC
+
+#define TFL_UNREACHABLE() (__builtin_unreachable())
+
+#elif defined(_MSC_VER)  // MSVC
+
+#define TFL_UNREACHABLE() (__assume(false))
+
+#endif
+
 /// Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  /// real and imaginary parts, respectively.
@@ -309,7 +322,7 @@ typedef struct TfLiteBFloat16 {
 const char* TfLiteTypeGetName(TfLiteType type);
 
 /// SupportedQuantizationTypes.
-typedef enum TfLiteQuantizationType {
+typedef enum TfLiteQuantizationType : int {
   /// No quantization.
   kTfLiteNoQuantization = 0,
   /// Affine quantization (with support for per-channel quantization).
@@ -352,6 +365,7 @@ typedef union TfLitePtrUnion {
   uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
+  TfLiteBFloat16* bf16;
   double* f64;
   char* raw;
   const char* raw_const;
@@ -430,12 +444,6 @@ typedef int TfLiteBufferHandle;
 enum {
   kTfLiteNullBufferHandle = -1,
 };
-
-/// Storage format of each dimension in a sparse tensor.
-typedef enum TfLiteDimensionType {
-  kTfLiteDimDense = 0,
-  kTfLiteDimSparseCSR,
-} TfLiteDimensionType;
 
 /// Metadata to encode each dimension in a sparse tensor.
 typedef struct TfLiteDimensionMetadata {

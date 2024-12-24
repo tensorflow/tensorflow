@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CONV2D_MKL_H_
 #define XLA_SERVICE_CPU_RUNTIME_CONV2D_MKL_H_
 
+#include <cstdint>
 #include <iostream>
 
 extern "C" {

@@ -34,10 +34,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/io:buffered_file",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_xla//xla/tsl/lib/io:buffered_file",
     ],
 )
 

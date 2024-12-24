@@ -22,7 +22,9 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -33,6 +35,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // This is a header-only base C++ library that defines templates for decoding
@@ -130,6 +133,10 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "TOKEN";
     case XLA_FFI_DataType_F8E5M2:
       return os << "F8E5M2";
+    case XLA_FFI_DataType_F8E3M4:
+      return os << "F8E3M4";
+    case XLA_FFI_DataType_F8E4M3:
+      return os << "F8E4M3";
     case XLA_FFI_DataType_F8E4M3FN:
       return os << "F8E4M3FN";
     case XLA_FFI_DataType_F8E4M3B11FNUZ:
@@ -177,6 +184,10 @@ enum class ExecutionStage : uint8_t {
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
 };
 
+enum class Traits : uint32_t {
+  kCmdBufferCompatible = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
+};
+
 // Forward declare template defined below.
 template <ExecutionStage stage, typename... Ts>
 class Binding;
@@ -206,26 +217,35 @@ class Ffi {
   // less readable error messages, template metaprogramming "magic" and a risk
   // to accidentally change handler type without noticing it.
   template <typename Fn, ExecutionStage stage = ExecutionStage::kExecute>
-  static auto BindTo(Fn fn);
+  static auto BindTo(Fn fn, std::initializer_list<Traits> traits = {});
 
   virtual ~Ffi() = default;
-  virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
+  virtual XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const = 0;
 
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
-  static inline XLA_FFI_Error* RegisterStaticHandler(
+  static XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
       XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits = 0);
 
   // Registers FFI execute handler with an XLA runtime under the given name on a
   // given platform.
-  static inline XLA_FFI_Error* RegisterStaticHandler(
+  static XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
       XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
         api, name, platform,
         XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
   }
+
+  // Registers a custom type so that it can be used with State and UserData
+  // arguments to external FFI handlers. The `name` argument must be a unique
+  // identifier for the type, and duplicate registrations with the same name
+  // are not allowed. When successful, a unique ID will be returned by updating
+  // `type_id`.
+  static XLA_FFI_Error* RegisterTypeId(const XLA_FFI_Api* api,
+                                       std::string_view name,
+                                       XLA_FFI_TypeId* type_id);
 
  protected:
   template <typename... Args>
@@ -249,11 +269,9 @@ class Ffi {
                                                    size_t actual);
 };
 
-XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
-                                          std::string_view name,
-                                          std::string_view platform,
-                                          XLA_FFI_Handler_Bundle bundle,
-                                          XLA_FFI_Handler_Traits traits) {
+inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
+    const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+    XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -262,6 +280,17 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
   args.bundle = bundle;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
+}
+
+inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
+                                          std::string_view name,
+                                          XLA_FFI_TypeId* type_id) {
+  XLA_FFI_TypeId_Register_Args args;
+  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
+  args.type_id = type_id;
+  return api->XLA_FFI_TypeId_Register(&args);
 }
 
 template <typename... Args>
@@ -523,9 +552,10 @@ class Binding {
   }
 
   template <typename Fn>
-  std::unique_ptr<Handler<stage, Fn, Ts...>> To(Fn fn) {
+  std::unique_ptr<Handler<stage, Fn, Ts...>> To(
+      Fn fn, std::initializer_list<Traits> traits = {}) {
     return std::unique_ptr<Handler<stage, Fn, Ts...>>(
-        new Handler<stage, Fn, Ts...>(std::move(fn), attrs_));
+        new Handler<stage, Fn, Ts...>(std::move(fn), traits, attrs_));
   }
 
  private:
@@ -556,7 +586,8 @@ inline Binding<ExecutionStage::kInstantiate> Ffi::BindInstantiate() {
 }
 
 //===----------------------------------------------------------------------===//
-// Template metaprogramming to automatially infer Binding from invocable object.
+// Template metaprogramming to automatically infer Binding from invocable
+// object.
 //===----------------------------------------------------------------------===//
 
 // A little bit of metaprogramming that automatically infers the binding schema
@@ -658,37 +689,44 @@ struct BindOne<Fn, Param, Params...> {
   // Binds single parameter and then continues with remaining parameters using
   // recursive template instantiation.
   template <typename InFlightBinding>
-  static auto To(Fn fn, InFlightBinding binding) {
+  static auto To(Fn fn, InFlightBinding binding,
+                 std::initializer_list<Traits> traits) {
     if constexpr (is_arg_binding_v<Param>) {
       // Bind parameter as an FFI handler argument.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
-          std::move(binding).template Arg<typename ArgBinding<Param>::Arg>());
+          std::move(binding).template Arg<typename ArgBinding<Param>::Arg>(),
+          traits);
+
     } else if constexpr (is_ret_binding_v<Param>) {
       // Bind parameter as an FFI handler result.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
-          std::move(binding).template Ret<typename RetBinding<Param>::Ret>());
+          std::move(binding).template Ret<typename RetBinding<Param>::Ret>(),
+          traits);
 
     } else if constexpr (is_attr_binding_v<Param>) {
       // Bind parameter as a named FFI handler attribute.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
           std::move(binding).template Attr<typename AttrBinding<Param>::Attr>(
-              std::string(AttrBinding<Param>::name())));
+              std::string(AttrBinding<Param>::name())),
+          traits);
 
     } else if constexpr (is_attrs_binding_v<Param>) {
       // Bind parameter as attributes dictionary.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
           std::move(binding)
-              .template Attrs<typename AttrsBinding<Param>::Attrs>());
+              .template Attrs<typename AttrsBinding<Param>::Attrs>(),
+          traits);
 
     } else if constexpr (is_ctx_binding_v<Param>) {
       // Bind parameter as an FFI handler context.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
-          std::move(binding).template Ctx<typename CtxBinding<Param>::Ctx>());
+          std::move(binding).template Ctx<typename CtxBinding<Param>::Ctx>(),
+          traits);
 
     } else {
       // Parameter is not recognized as one of the types that can be bound to
@@ -703,8 +741,9 @@ struct BindOne<Fn, Param, Params...> {
 template <typename Fn>
 struct BindOne<Fn> {
   template <typename InFlightBinding>
-  static auto To(Fn fn, InFlightBinding binding) {
-    return binding.To(std::move(fn));
+  static auto To(Fn fn, InFlightBinding binding,
+                 std::initializer_list<Traits> traits) {
+    return binding.To(std::move(fn), traits);
   }
 };
 
@@ -717,8 +756,9 @@ template <ExecutionStage stage, typename ResultType, typename... Params>
 struct Bind<stage, ResultType (*)(Params...)> {
   using Fn = ResultType (*)(Params...);
 
-  static auto To(Fn fn) {
-    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind<stage>());
+  static auto To(Fn fn, std::initializer_list<Traits> traits) {
+    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind<stage>(),
+                                      traits);
   }
 };
 
@@ -726,19 +766,21 @@ struct Bind<stage, ResultType (*)(Params...)> {
 template <ExecutionStage stage, typename ResultType, typename Fn,
           typename... Params>
 struct Bind<stage, ResultType (Fn::*)(Params...) const> {
-  static auto To(Fn fn) {
-    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind<stage>());
+  static auto To(Fn fn, std::initializer_list<Traits> traits) {
+    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind<stage>(),
+                                      traits);
   }
 };
 
 }  // namespace internal
 
 template <typename Fn, ExecutionStage stage>
-auto Ffi::BindTo(Fn fn) {
+auto Ffi::BindTo(Fn fn, std::initializer_list<Traits> traits) {
   if constexpr (std::is_pointer_v<Fn>) {
-    return internal::Bind<stage, Fn>::To(fn);
+    return internal::Bind<stage, Fn>::To(fn, traits);
   } else {
-    return internal::Bind<stage, decltype(&Fn::operator())>::To(std::move(fn));
+    return internal::Bind<stage, decltype(&Fn::operator())>::To(std::move(fn),
+                                                                traits);
   }
 }
 
@@ -865,15 +907,31 @@ struct CtxDecoding;
 // Example: encoding `absl::Status` result
 //
 //   template<ExecutionStage stage>
-//   struct ResultEncoding<absl::Status> {
+//   struct ResultEncoding<stage, absl::Status> {
 //     XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
 //                           XLA_FFI_ExecutionContext* ctx,
-//.                          absl::Status status) {...}
-//   }
+//                           absl::Status status) {...}
+//   };
 //
 // Result encoding is execution stage specific, for example at instantiation
 // stage FFI handler can return an FFI handler state, while at execution stage
 // we only support returning a status-like type.
+//
+// Asynchronous FFI handlers can return encoded result as an `XLA_FFI_Future*`
+// or as an `std::variant` of `XLA_FFI_Error*` and `XLA_FFI_Future*`, where an
+// error can be used to return synchronous errors (i.e., invalid arguments), and
+// a future can be used to return asynchronous completion. See example of such
+// encoding in result encoding for `Future`.
+//
+// Example: encoding `xla::ffi::Future` result
+//
+//   template<ExecutionStage stage>
+//   struct ResultEncoding<state, xla::ffi::Future> {
+//     std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
+//       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+//       xla::ffi::Future future) {...}
+//   };
+//
 template <ExecutionStage stage, typename T>
 struct ResultEncoding;
 
@@ -1310,7 +1368,14 @@ class Handler : public Ffi {
   using ResultType = std::invoke_result_t<Fn, FnArgType<Ts>...>;
 
  public:
-  XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const override {
+  // We deliberately opt-out from the cognitive complexity check, as this
+  // function is on a hot path, any any attempt to split it leads to measurable
+  // regressions in microbenchmarks. It is a straight line block of mostly
+  // constexpr conditionals, that gets optimized to a much smaller code size in
+  // all template instantiations.
+  //
+  // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+  XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const override {
     // Sanity checking call frame struct size.
     if (XLA_FFI_Error* err = CheckStructSize(
             call_frame->api, "XLA_FFI_CallFrame", XLA_FFI_CallFrame_STRUCT_SIZE,
@@ -1397,10 +1462,21 @@ class Handler : public Ffi {
     // handler (or a struct decoding) should be responsible for it.
     if (XLA_FFI_PREDICT_FALSE(kNumDictAttrs == 0 &&
                               call_frame->attrs.size != kNumAttrs)) {
-      return InvalidArgument(
-          call_frame->api,
-          StrCat("Wrong number of attributes: expected ", kNumAttrs,
-                 " but got ", call_frame->attrs.size));
+      std::stringstream msg;
+      msg << "Wrong number of attributes: expected " << kNumAttrs << " but got "
+          << call_frame->attrs.size;
+      if (call_frame->attrs.size > 0) {
+        msg << " with name(s): ";
+        for (int64_t n = 0; n < call_frame->attrs.size - 1; ++n) {
+          msg << std::string_view(call_frame->attrs.names[n]->ptr,
+                                  call_frame->attrs.names[n]->len)
+              << ", ";
+        }
+        msg << std::string_view(
+            call_frame->attrs.names[call_frame->attrs.size - 1]->ptr,
+            call_frame->attrs.names[call_frame->attrs.size - 1]->len);
+      }
+      return InvalidArgument(call_frame->api, msg.str());
     }
 
     // Define index sequences to access custom call operands.
@@ -1412,29 +1488,38 @@ class Handler : public Ffi {
  private:
   XLA_FFI_Error* PopulateMetadata(const XLA_FFI_Api* api,
                                   XLA_FFI_Metadata_Extension* extension) const {
-    if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
-            api, "XLA_FFI_Metadata_Extension",
-            XLA_FFI_Metadata_Extension_STRUCT_SIZE, extension->struct_size)) {
+    if (XLA_FFI_Error* err =
+            StructSizeIsGreaterOrEqual(api, "XLA_FFI_Metadata_Extension",
+                                       XLA_FFI_Metadata_Extension_STRUCT_SIZE,
+                                       extension->extension_base.struct_size)) {
       return err;
     }
+
     if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
             api, "XLA_FFI_Metadata", XLA_FFI_Metadata_STRUCT_SIZE,
             extension->metadata->struct_size)) {
       return err;
     }
+
     extension->metadata->api_version = XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
         /*extension_start=*/nullptr,
         XLA_FFI_API_MAJOR,
         XLA_FFI_API_MINOR,
     };
-    extension->metadata->traits = 0;  // Placeholder
+
+    XLA_FFI_Handler_Traits traits = 0;
+    for (const auto& trait : traits_) {
+      traits |= static_cast<XLA_FFI_Handler_Traits>(trait);
+    }
+    extension->metadata->traits = traits;
+
     return Sucess();
   }
 
   template <size_t... Is>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE XLA_FFI_Error* Call(
-      const XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
+      XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset.
     internal::DecodingOffsets offsets;
 
@@ -1457,8 +1542,46 @@ class Handler : public Ffi {
     }
 
     ResultType result = fn_(std::move(*std::get<Is>(args))...);
-    return ResultEncoding<stage, ResultType>::Encode(
+    auto encoded = ResultEncoding<stage, ResultType>::Encode(
         call_frame->api, call_frame->ctx, std::move(result));
+
+    // We do support three kinds of FFI result encodings:
+    //   (1) Synchronous handlers that return result encoded as XLA_FFI_Error*
+    //   (2) Asynchronous handlers that return result encoded as XLA_FFI_Future*
+    //   (3) Handlers that can return either (1) or (2)
+    static constexpr bool kIsEncodedError =
+        std::is_same_v<decltype(encoded), XLA_FFI_Error*>;
+    static constexpr bool kIsEncodedFuture =
+        std::is_same_v<decltype(encoded), XLA_FFI_Future*>;
+    static constexpr bool kIsEncodedErrorOrFuture =
+        std::is_same_v<decltype(encoded),
+                       std::variant<XLA_FFI_Error*, XLA_FFI_Future*>>;
+
+    static_assert(
+        kIsEncodedError || kIsEncodedFuture || kIsEncodedErrorOrFuture,
+        "Unsupported result encoding type");
+
+    if constexpr (kIsEncodedError) {
+      return encoded;
+    }
+
+    if constexpr (kIsEncodedFuture) {
+      call_frame->future = encoded;
+      assert(call_frame->future != nullptr);
+      return nullptr;
+    }
+
+    if constexpr (kIsEncodedErrorOrFuture) {
+      if (encoded.index() == 0) {
+        return std::get<0>(encoded);
+      } else {
+        call_frame->future = std::get<1>(encoded);
+        assert(call_frame->future != nullptr);
+        return nullptr;
+      }
+    }
+
+    std::abort();  // unreachable
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
@@ -1483,8 +1606,10 @@ class Handler : public Ffi {
   template <ExecutionStage, typename...>
   friend class Binding;
 
-  Handler(Fn fn, std::vector<std::string> attrs)
-      : fn_(std::move(fn)), attrs_(std::move(attrs)) {
+  Handler(Fn fn, std::vector<Traits> traits, std::vector<std::string> attrs)
+      : fn_(std::move(fn)),
+        traits_(std::move(traits)),
+        attrs_(std::move(attrs)) {
     // Sort attributes' names and remove duplicates. These unique attributes are
     // what we'll be looking for in the call frame attributes.
     std::vector<std::string> sorted = attrs_;
@@ -1501,6 +1626,7 @@ class Handler : public Ffi {
   }
 
   Fn fn_;
+  std::vector<Traits> traits_;
 
   std::vector<std::string> attrs_;  // names of bound attributes
 
@@ -1555,22 +1681,6 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<double>,
                                       XLA_FFI_DataType_C128);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
-
-template <>
-struct AttrDecoding<std::string_view> {
-  using Type = std::string_view;
-  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
-                                                void* attr,
-                                                DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
-      return diagnostic.Emit("Wrong attribute type: expected ")
-             << XLA_FFI_AttrType_STRING << " but got " << type;
-    }
-
-    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
-    return std::string_view(span->ptr, span->len);
-  }
-};
 
 //===----------------------------------------------------------------------===//
 // Automatic dictionary attributes to structs decoding.
@@ -1651,35 +1761,40 @@ auto DictionaryDecoder(Members... m) {
 // Automatically registers attributes binding for a struct that allows automatic
 // binding specification inference from a callable signature.
 //
-#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                       \
-  template <>                                                               \
-  struct xla::ffi::AttrsBinding<T> {                                        \
-    using Attrs = T;                                                        \
-  };                                                                        \
-                                                                            \
-  template <>                                                               \
-  struct xla::ffi::AttrDecoding<T> {                                        \
-    using Type = T;                                                         \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,       \
-                                   DiagnosticEngine& diagnostic) {          \
-      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {     \
-        diagnostic.Emit("Wrong attribute type: expected ")                  \
-            << XLA_FFI_AttrType_DICTIONARY << " but got " << type;          \
-        return std::nullopt;                                                \
-      }                                                                     \
-                                                                            \
-      auto decoder = xla::ffi::internal::DictionaryDecoder<T>(__VA_ARGS__); \
-      return decltype(decoder)::Decode(                                     \
-          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                     \
-          internal::StructMemberNames(__VA_ARGS__), diagnostic);            \
-    }                                                                       \
-  }
+#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                         \
+  namespace xla::ffi {                                                        \
+  template <>                                                                 \
+  struct AttrsBinding<T> {                                                    \
+    using Attrs = T;                                                          \
+  };                                                                          \
+                                                                              \
+  template <>                                                                 \
+  struct AttrDecoding<T> {                                                    \
+    using Type = T;                                                           \
+    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,         \
+                                   DiagnosticEngine& diagnostic) {            \
+      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {       \
+        diagnostic.Emit("Wrong attribute type: expected ")                    \
+            << XLA_FFI_AttrType_DICTIONARY << " but got " << type;            \
+        return std::nullopt;                                                  \
+      }                                                                       \
+                                                                              \
+      auto decoder = ::xla::ffi::internal::DictionaryDecoder<T>(__VA_ARGS__); \
+      return decltype(decoder)::Decode(                                       \
+          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                       \
+          internal::StructMemberNames(__VA_ARGS__), diagnostic);              \
+    }                                                                         \
+  };                                                                          \
+  } /* namespace xla::ffi */                                                  \
+  static_assert(std::is_class_v<::xla::ffi::AttrsBinding<T>>);                \
+  static_assert(std::is_class_v<::xla::ffi::AttrDecoding<T>>)
 
 // Registers decoding for a user-defined enum class type. Uses enums underlying
 // type to decode the attribute as a scalar value and cast it to the enum type.
 #define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
+  namespace xla::ffi {                                                        \
   template <>                                                                 \
-  struct xla::ffi::AttrDecoding<T> {                                          \
+  struct AttrDecoding<T> {                                                    \
     using Type = T;                                                           \
     using U = std::underlying_type_t<Type>;                                   \
     static_assert(std::is_enum<Type>::value, "Expected enum class");          \
@@ -1692,7 +1807,8 @@ auto DictionaryDecoder(Members... m) {
       }                                                                       \
                                                                               \
       auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
-      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
+      auto expected_dtype =                                                   \
+          ::xla::ffi::internal::NativeTypeToCApiDataType<U>();                \
       if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {           \
         return diagnostic.Emit("Wrong scalar data type: expected ")           \
                << expected_dtype << " but got " << scalar->dtype;             \
@@ -1701,7 +1817,9 @@ auto DictionaryDecoder(Members... m) {
       auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
       return static_cast<Type>(underlying);                                   \
     }                                                                         \
-  };
+  };                                                                          \
+  } /* namespace xla::ffi */                                                  \
+  static_assert(std::is_class_v<::xla::ffi::AttrDecoding<T>>)
 
 //===----------------------------------------------------------------------===//
 // Helper macro for registering FFI implementations
@@ -1723,6 +1841,12 @@ auto DictionaryDecoder(Members... m) {
     return handler->Call(call_frame);                                         \
   }
 
+#define XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, binding, traits) \
+  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) {  \
+    static auto* handler = binding.To(impl, traits).release();                 \
+    return handler->Call(call_frame);                                          \
+  }
+
 // Automatically infer binding specification from the implementation.
 #define XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl)                                 \
   static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) { \
@@ -1730,17 +1854,18 @@ auto DictionaryDecoder(Members... m) {
     return handler->Call(call_frame);                                         \
   }
 
-#define XLA_FFI_DEFINE_HANDLER_X(x, fn, impl, binding, FUNC, ...) FUNC
+#define XLA_FFI_DEFINE_HANDLER_X(x, fn, impl, binding, traits, FUNC, ...) FUNC
 
 // Define XLA FFI handler as a static function pointer variable, which allows
 // to define handlers in nested scopes without polluting the global namespace.
 //
 // This is a trick to define macro with optional parameters.
 // Source: https://stackoverflow.com/a/8814003
-#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                 \
-  XLA_FFI_DEFINE_HANDLER_X(                                   \
-      , fn, impl, ##__VA_ARGS__,                              \
-      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, __VA_ARGS__), \
+#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                             \
+  XLA_FFI_DEFINE_HANDLER_X(                                               \
+      , fn, impl, ##__VA_ARGS__,                                          \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, __VA_ARGS__), \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, __VA_ARGS__),             \
       XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl))
 
 // TODO(ezhulenev): Add a callback so that end users can log registration error

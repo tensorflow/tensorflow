@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -38,17 +40,16 @@ class CpuGpuShapeVerifierTest : public HloTestBase {
     HloVerifierOpts opts;
     std::unique_ptr<TargetVerifierMetadata> metadata =
         std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
-    hlo_verifier_ = std::make_unique<HloVerifier>(std::move(metadata));
+    set_hlo_verifier(std::make_unique<HloVerifier>(std::move(metadata)));
   }
 };
 
-TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
+TEST_F(CpuGpuShapeVerifierTest, InvalidElementSize) {
   const char* const hlo_string = R"(
   HloModule Module
 
   ENTRY main {
-    p0 = u4[2,5] parameter(0)
-    ROOT out = u4[2,5] add(p0, p0)
+    p0 = u8[2,5]{1,0:E(8)} parameter(0)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -56,23 +57,28 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("u4 is currently only supported in allow-listed instructions"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("The XLA CPU/GPU backend does not support custom "
+                        "element sizes on non-sub-byte types"));
 }
 
 TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  bcast {
+  select_bcast {
     p0 = u4[] parameter(0)
-    ROOT out = u4[3, 3] broadcast(p0), dimensions={}
+    p1 = u4[] reshape(p0)
+    p2 = u4[] parameter(1)
+    cmp = pred[] compare(p1, p2), direction=LT
+    sel = u4[] select(cmp, p1, p2)
+    ROOT out = u4[3, 3] broadcast(sel), dimensions={}
   }
 
   ENTRY main {
     p0 = u4[] parameter(0)
-    ROOT out = u4[3, 3] call(p0), to_apply=bcast
+    p1 = u4[] parameter(1)
+    ROOT out = u4[3, 3] call(p0, p1), to_apply=select_bcast
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

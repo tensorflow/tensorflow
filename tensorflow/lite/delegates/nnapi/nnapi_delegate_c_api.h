@@ -23,7 +23,7 @@ extern "C" {
 
 // Use TfLiteNnapiDelegateOptionsDefault() for Default options.
 // WARNING: This is an experimental API and subject to change.
-typedef struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
+typedef struct TfLiteNnapiDelegateOptions {
   // Preferred Power/perf trade-off. For more details please see
   // ANeuralNetworksCompilation_setPreference documentation in :
   // https://developer.android.com/ndk/reference/group/neural-networks.html
@@ -84,8 +84,8 @@ typedef struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
 // Returns a delegate that uses NNAPI for ops execution.
 // Must outlive the interpreter.
 // WARNING: This is an experimental API and subject to change.
-TfLiteDelegate* TFL_CAPI_EXPORT
-TfLiteNnapiDelegateCreate(const TfLiteNnapiDelegateOptions* options);
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteNnapiDelegateCreate(
+    const TfLiteNnapiDelegateOptions* options);
 
 // Returns TfLiteNnapiDelegateOptions populated with default values.
 // WARNING: This is an experimental API and subject to change.
@@ -93,7 +93,7 @@ TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions TfLiteNnapiDelegateOptionsDefault();
 
 // Does any needed cleanup and deletes 'delegate'.
 // WARNING: This is an experimental API and subject to change.
-void TFL_CAPI_EXPORT TfLiteNnapiDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void TfLiteNnapiDelegateDelete(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }

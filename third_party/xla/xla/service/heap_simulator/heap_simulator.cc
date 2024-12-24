@@ -44,6 +44,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -52,9 +54,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
@@ -942,6 +942,36 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
   }
   // Don't free the entry in node_storage_ until we free the entire tree.
   return true;
+}
+
+int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
+                                                   int64_t end) const {
+  int result = 0;
+  if (root_ == nullptr) {
+    return result;
+  }
+  std::vector<const BufferIntervalTreeNode*> visiting_stack;
+  visiting_stack.push_back(root_);
+  while (!visiting_stack.empty()) {
+    const BufferIntervalTreeNode* top = visiting_stack.back();
+    visiting_stack.pop_back();
+    if (start > top->subtree_end) {
+      continue;
+    }
+    if (top->left != nullptr) {
+      visiting_stack.push_back(top->left);
+    }
+    if (top->start <= end && top->end >= start) {
+      ++result;
+    }
+    if (end < top->start) {
+      continue;
+    }
+    if (top->right != nullptr) {
+      visiting_stack.push_back(top->right);
+    }
+  }
+  return result;
 }
 
 std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
@@ -2304,7 +2334,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   VLOG(1) << "result heap_size: " << result_.heap_size;
   Result result;
   result.heap_size = result_.heap_size;
-  result.heap_results.emplace_back(result_);
+  result.heap_results.push_back(result_);
   return result;
 }
 

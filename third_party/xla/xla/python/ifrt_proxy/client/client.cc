@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,6 +37,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -49,11 +51,13 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,9 +67,24 @@ char Client::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Client>> Client::Create(
     std::shared_ptr<RpcHelper> rpc_helper, InitResponse init_response) {
+  tsl::profiler::TraceMe traceme("IfrtProxyEntrypointClientCreate");
   absl::flat_hash_set<int> addressable_device_ids(
       init_response.addressable_device_ids().begin(),
       init_response.addressable_device_ids().end());
+  absl::flat_hash_set<int> primary_device_ids;
+  if (rpc_helper->version().protocol_version() < 7) {
+    // Legacy implementation for servers do not support Client::GetAllDevices()
+    // and thus do not provide device_ids(). Assume that it contains all device
+    // ids from devices().
+    primary_device_ids.reserve(init_response.all_devices().size());
+    for (const auto& d : init_response.all_devices()) {
+      primary_device_ids.insert(d.id());
+    }
+  } else {
+    primary_device_ids.reserve(init_response.primary_device_ids().size());
+    primary_device_ids.insert(init_response.primary_device_ids().begin(),
+                              init_response.primary_device_ids().end());
+  }
 
   absl::flat_hash_map<int, std::unique_ptr<Memory>> memories;
   for (const auto& m : init_response.memories()) {
@@ -76,10 +95,11 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   }
 
   absl::flat_hash_map<int, std::unique_ptr<Device>> devices;
-  std::vector<xla::ifrt::Device*> device_ptrs;
+  std::vector<xla::ifrt::Device*> primary_device_ptrs;
   std::vector<xla::ifrt::Device*> addressable_device_ptrs;
+  std::vector<xla::ifrt::Device*> all_device_ptrs;
 
-  for (const auto& d : init_response.devices()) {
+  for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
     if (rpc_helper->version().protocol_version() <= 3) {
@@ -98,13 +118,17 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
                            d.device_kind(), d.debug_string(), d.to_string(),
                            std::move(pjrt_device_attributes));
     bool is_addressable = addressable_device_ids.contains(d.id());
+    bool is_primary = primary_device_ids.contains(d.id());
 
     auto device =
         std::make_unique<Device>(std::move(desc), d.local_device_id(),
                                  d.local_hardware_id(), is_addressable);
-    device_ptrs.push_back(device.get());
-    if (is_addressable) {
-      addressable_device_ptrs.push_back(device.get());
+    all_device_ptrs.push_back(device.get());
+    if (is_primary) {
+      primary_device_ptrs.push_back(device.get());
+      if (is_addressable) {
+        addressable_device_ptrs.push_back(device.get());
+      }
     }
 
     if (d.has_default_memory_id()) {
@@ -149,9 +173,10 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       std::move(rpc_helper), init_response.session_id(),
       init_response.platform_name(), init_response.platform_version(),
       init_response.platform_id(), init_response.process_index(), runtime_type,
-      std::move(devices), device_ptrs, std::move(addressable_device_ptrs),
+      std::move(devices), std::move(primary_device_ptrs),
+      std::move(addressable_device_ptrs), all_device_ptrs,
       std::move(memories)));
-  for (ifrt::Device* device : device_ptrs) {
+  for (ifrt::Device* device : all_device_ptrs) {
     tensorflow::down_cast<Device*>(device)->client_ = client.get();
   }
   return client;
@@ -162,8 +187,9 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
                uint64_t platform_id, uint64_t process_index,
                std::string runtime_type,
                absl::flat_hash_map<int, std::unique_ptr<Device>> devices,
-               std::vector<xla::ifrt::Device*> device_ptrs,
+               std::vector<xla::ifrt::Device*> primary_device_ptrs,
                std::vector<xla::ifrt::Device*> addressable_device_ptrs,
+               std::vector<xla::ifrt::Device*> all_device_ptrs,
                absl::flat_hash_map<int, std::unique_ptr<Memory>> memories)
     : rpc_helper_(rpc_helper),
       platform_name_(std::move(platform_name)),
@@ -174,8 +200,9 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
       // TODO(b/309059940): Forward the backend attributes to the client.
       attributes_(AttributeMap::Map()),
       devices_(std::move(devices)),
-      device_ptrs_(device_ptrs),
+      primary_device_ptrs_(primary_device_ptrs),
       addressable_device_ptrs_(std::move(addressable_device_ptrs)),
+      all_device_ptrs_(all_device_ptrs),
       memories_(std::move(memories)),
       default_compiler_(this, rpc_helper) {}
 
@@ -209,21 +236,37 @@ Client::AssembleArrayFromSingleDeviceArrays(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, std::move(shape), sharding, arrays, semantics);
+      this, rpc_helper_, std::move(shape), sharding, arrays, semantics,
+      SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+Client::AssembleArrayFromSingleDeviceArrays(
+    Shape shape, std::shared_ptr<const Sharding> sharding,
+    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  return Array::AssembleArrayFromSingleDeviceArrays(
+      this, rpc_helper_, std::move(shape), sharding, arrays,
+      array_copy_semantics, single_device_shard_semantics);
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                   std::optional<DeviceList> devices,
-                   std::optional<MemoryKind> memory_kind,
-                   ArrayCopySemantics semantics) {
+Client::CopyArrays(
+    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
+    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointCopyArrays",
+                                        {{"n_arrays", n_arrays}});
+  });
   if (arrays.empty()) {
     return std::vector<tsl::RCReference<xla::ifrt::Array>>();
   }
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (sharding.devices() != arrays[0]->sharding().devices() ||
+    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
@@ -242,7 +285,7 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     }
   }
   if (devices.has_value()) {
-    for (auto* const device : devices->devices()) {
+    for (auto* const device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
     }
   }
@@ -252,18 +295,38 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
-  auto future = rpc_helper_->CopyArrays(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  std::vector<uint64_t> result_handles;
+  if (rpc_helper_->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(auto response,
+                        rpc_helper_->CopyArrays(std::move(req)).Await());
+    result_handles.assign(response->array_handles().begin(),
+                          response->array_handles().end());
+  } else {
+    for (int i = 0; i < arrays.size(); ++i) {
+      result_handles.push_back(rpc_helper_->NextHandle());
+      req->add_result_handles(result_handles.back());
+    }
+    rpc_helper_->CopyArrays(std::move(req))
+        .OnReady([result_handles](
+                     absl::StatusOr<std::shared_ptr<CopyArraysResponse>> r) {
+          if (r.ok()) {
+            for (int i = 0; i < result_handles.size(); ++i) {
+              CHECK_EQ((*r)->array_handles(i), result_handles[i]);
+            }
+          }
+        });
+  }
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
   new_arrays.reserve(arrays.size());
-  for (int i = 0; i < response->array_handles_size(); ++i) {
+  for (int i = 0; i < result_handles.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{response->array_handles(i)}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]}));
   }
   return new_arrays;
 }
@@ -277,6 +340,10 @@ Client::RemapArrays(const RemapPlan& plan,
 
 xla::ifrt::Future<> Client::GetReadyFuture(
     absl::Span<const tsl::RCReference<xla::ifrt::Value>> values) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
+                                        {{"n_values", n_values}});
+  });
   absl::InlinedVector<Future<>, 1> futures;
 
   auto req = std::make_unique<CheckValueReadyRequest>();
@@ -301,8 +368,14 @@ xla::ifrt::Future<> Client::GetReadyFuture(
   return JoinFutures(futures);
 }
 
+absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {
+  return all_device_ptrs_;
+}
+
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointGetDefaultDeviceAssignment");
   auto req = std::make_unique<GetDefaultDeviceAssignmentRequest>();
   req->set_num_replicas(num_replicas);
   req->set_num_partitions(num_partitions);

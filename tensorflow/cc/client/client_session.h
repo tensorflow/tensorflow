@@ -78,32 +78,35 @@ class ClientSession {
   /// Evaluate the tensors in `fetch_outputs`. The values are returned as
   /// `Tensor` objects in `outputs`. The number and order of `outputs` will
   /// match `fetch_outputs`.
-  Status Run(const std::vector<Output>& fetch_outputs,
-             std::vector<Tensor>* outputs) const;
+  absl::Status Run(const std::vector<Output>& fetch_outputs,
+                   std::vector<Tensor>* outputs) const;
 
   /// Same as above, but use the mapping in `inputs` as feeds.
-  Status Run(const FeedType& inputs, const std::vector<Output>& fetch_outputs,
-             std::vector<Tensor>* outputs) const;
+  absl::Status Run(const FeedType& inputs,
+                   const std::vector<Output>& fetch_outputs,
+                   std::vector<Tensor>* outputs) const;
 
   /// Same as above. Additionally runs the operations ins `run_outputs`.
-  Status Run(const FeedType& inputs, const std::vector<Output>& fetch_outputs,
-             const std::vector<Operation>& run_outputs,
-             std::vector<Tensor>* outputs) const;
+  absl::Status Run(const FeedType& inputs,
+                   const std::vector<Output>& fetch_outputs,
+                   const std::vector<Operation>& run_outputs,
+                   std::vector<Tensor>* outputs) const;
 
   /// Use `run_options` to turn on performance profiling. `run_metadata`, if not
   /// null, is filled in with the profiling results.
-  Status Run(const RunOptions& run_options, const FeedType& inputs,
-             const std::vector<Output>& fetch_outputs,
-             const std::vector<Operation>& run_outputs,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
+  absl::Status Run(const RunOptions& run_options, const FeedType& inputs,
+                   const std::vector<Output>& fetch_outputs,
+                   const std::vector<Operation>& run_outputs,
+                   std::vector<Tensor>* outputs,
+                   RunMetadata* run_metadata) const;
 
   /// Same as above. Additionally allows user to provide custom threadpool
   /// implementation via ThreadPoolOptions.
-  Status Run(const RunOptions& run_options, const FeedType& inputs,
-             const std::vector<Output>& fetch_outputs,
-             const std::vector<Operation>& run_outputs,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata,
-             const thread::ThreadPoolOptions& threadpool_options) const;
+  absl::Status Run(const RunOptions& run_options, const FeedType& inputs,
+                   const std::vector<Output>& fetch_outputs,
+                   const std::vector<Operation>& run_outputs,
+                   std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                   const thread::ThreadPoolOptions& threadpool_options) const;
 
   /// \brief A handle to a subgraph, created with
   /// `ClientSession::MakeCallable()`.
@@ -112,8 +115,8 @@ class ClientSession {
   /// \brief Creates a `handle` for invoking the subgraph defined by
   /// `callable_options`.
   /// NOTE: This API is still experimental and may change.
-  Status MakeCallable(const CallableOptions& callable_options,
-                      CallableHandle* out_handle);
+  absl::Status MakeCallable(const CallableOptions& callable_options,
+                            CallableHandle* out_handle);
 
   /// \brief Invokes the subgraph named by `handle` with the given options and
   /// input tensors.
@@ -123,10 +126,10 @@ class ClientSession {
   /// match the order of names in `CallableOptions::fetch()` when this subgraph
   /// was created.
   /// NOTE: This API is still experimental and may change.
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata);
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata);
 
   /// \brief Invokes the subgraph named by `handle` with the given options and
   /// input tensors.
@@ -136,16 +139,16 @@ class ClientSession {
   /// match the order of names in `CallableOptions::fetch()` when this subgraph
   /// was created.
   /// NOTE: This API is still experimental and may change.
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata,
-                     const thread::ThreadPoolOptions& options);
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata,
+                           const thread::ThreadPoolOptions& options);
 
   /// \brief Releases resources associated with the given `handle` in this
   /// session.
   /// NOTE: This API is still experimental and may change.
-  Status ReleaseCallable(CallableHandle handle);
+  absl::Status ReleaseCallable(CallableHandle handle);
 
  private:
   class Impl;

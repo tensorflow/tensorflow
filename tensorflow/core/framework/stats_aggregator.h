@@ -60,7 +60,8 @@ class StatsAggregator {
   virtual void EncodeToProto(Summary* out_summary) = 0;
 
   // Sets a `summary_writer` with this stats_aggregator.
-  virtual Status SetSummaryWriter(SummaryWriterInterface* summary_writer) = 0;
+  virtual absl::Status SetSummaryWriter(
+      SummaryWriterInterface* summary_writer) = 0;
 
   // Increment the `label` cell of metrics mapped with `name` by given `value`.
   virtual void IncrementCounter(const string& name, const string& label,

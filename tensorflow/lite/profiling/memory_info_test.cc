@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/memory_info.h"
 
+#include <memory>
+#include <new>
+#include <sstream>
+#include <string>
+
 #include <gtest/gtest.h>
 
 namespace tflite {
@@ -48,16 +53,39 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.in_use_allocated_bytes);
 
 #if defined(__linux__) || defined(__APPLE__)
-  // Just allocate some space in heap so that we could meaningful memory usage
-  // report.
-  std::unique_ptr<int[]> int_array(new int[1204]);
-  for (int i = 0; i < 1024; ++i) int_array[i] = i;
+  // Just allocate some space in heap so that we have some meaningful
+  // memory usage to report.
+  constexpr int size = 10 * 1024 * 1024;
+  std::unique_ptr<unsigned char[]> byte_array(new unsigned char[size]);
+  for (int i = 0; i < size; ++i) {
+    byte_array[i] = i % 256;
+  }
+
   result = GetMemoryUsage();
 
-  // As the getrusage call may fail, we might not be able to get
-  // mem_footprint_kb.
-  EXPECT_NE(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
+  // Use the heap object that we allocated, so that the compiler can't
+  // (so easily) optimize it away.
+  for (int i = 0; i < size; ++i) {
+    EXPECT_EQ(byte_array[i], i % 256);
+  }
+
+  EXPECT_GE(result.mem_footprint_kb, size / 1024);
+  EXPECT_GE(result.total_allocated_bytes, size);
+  EXPECT_GE(result.in_use_allocated_bytes, size);
 #endif
+}
+
+// The main aim of this test is just to exercise the code for
+// the ostream operator << and verify that it doesn't crash.
+// There's not much that we can usefully assert about the resulting message
+// here without making the test too brittle, so we just verify that
+// it generates a non-empty message.
+TEST(MemoryUsage, OutputMemoryUsageToStream) {
+  MemoryUsage memory_usage = GetMemoryUsage();
+  std::stringstream stream;
+  stream << memory_usage;
+  std::string message = stream.str();
+  EXPECT_STRNE(message.c_str(), "");
 }
 
 TEST(MemoryUsage, IsSupported) {

@@ -20,11 +20,11 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/hlo_domain_remover.h"
 #include "xla/service/hlo_domain_verifier.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -372,7 +372,7 @@ ENTRY entry {
         sharding={{maximal device=-1},{maximal device=-1}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
   c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, 
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
         sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
 }
@@ -831,7 +831,7 @@ ENTRY entry {
 }
 
 // Test HloDomainRemover with ShardingPropagation::NormalizeDomain to generate
-// correct shardings after removing doman instruction after tuple instructions
+// correct shardings after removing domain instruction after tuple instructions
 // with the same sharding for every tuple element.
 TEST_F(HloDomainTest, DomainTupleSameSharding) {
   const char* const hlo_string = R"(

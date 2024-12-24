@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
@@ -38,7 +39,7 @@ Renderer& Renderer::CodeLine(const string& text) {
 }
 
 Renderer& Renderer::CodeLines(const string& text) {
-  StringPiece trimmed_text(text);
+  absl::string_view trimmed_text(text);
   str_util::RemoveWhitespaceContext(&trimmed_text);
   for (const string& line : str_util::Split(trimmed_text, '\n')) {
     context_.code.AddLineWithoutIndent(line);

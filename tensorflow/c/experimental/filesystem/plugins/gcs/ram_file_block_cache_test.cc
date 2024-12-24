@@ -15,22 +15,31 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstring>
+#include <list>
+#include <memory>
+#include <set>
+#include <vector>
 
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache,
-                 const string& filename, size_t offset, size_t n,
-                 std::vector<char>* out) {
+absl::Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache,
+                       const string& filename, size_t offset, size_t n,
+                       std::vector<char>* out) {
   out->clear();
   out->resize(n, 0);
   TF_Status status;
@@ -244,7 +253,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
   // Reading at offset file_size + 4 will read the second block (since the read
   // at file_size + 4 = 28 will be aligned to an offset of 16) but will return
   // OutOfRange because the offset is past the end of the 24-byte file.
-  Status status = ReadCache(&cache, "", file_size + 4, 4, &out);
+  absl::Status status = ReadCache(&cache, "", file_size + 4, 4, &out);
   EXPECT_EQ(status.code(), error::OUT_OF_RANGE);
   EXPECT_TRUE(second_block);
   // Reading the second full block will return 8 bytes, from a cache hit.
@@ -276,7 +285,7 @@ TEST(RamFileBlockCacheTest, Inconsistent) {
   EXPECT_EQ(out.size(), 1);
   // Now read the first block; this should yield an INTERNAL error because we
   // had already cached a partial block at a later position.
-  Status status = ReadCache(&cache, "", 0, block_size, &out);
+  absl::Status status = ReadCache(&cache, "", 0, block_size, &out);
   EXPECT_EQ(status.code(), error::INTERNAL);
 }
 
@@ -502,11 +511,19 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
   // concurrently (at which point it will respond with success to all callers),
   // or 10 seconds have elapsed (at which point it will respond with an error).
   const int callers = 4;
-  BlockingCounter counter(callers);
-  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
-                            char* buffer, TF_Status* status) -> int64_t {
-    counter.DecrementCount();
-    if (!counter.WaitFor(std::chrono::seconds(10))) {
+  absl::BlockingCounter counter(callers);
+  absl::Notification notification;
+  auto fetcher = [&counter, &notification](
+                     const string& filename, size_t offset, size_t n,
+                     char* buffer, TF_Status* status) -> int64_t {
+    if (counter.DecrementCount()) {
+      notification.Notify();
+      // This call to `Wait()` is not expected to block. Calling `Wait()` here
+      // allows us to satisfy `BlockingCounter`'s requirement: "When `Wait()`
+      // returns, it is legal to destroy the `BlockingCounter`.".
+      counter.Wait();
+    }
+    if (!notification.WaitForNotificationWithTimeout(absl::Seconds(10))) {
       // This avoids having the test time out, which is harder to debug.
       TF_SetStatus(status, TF_FAILED_PRECONDITION,
                    "desired concurrency not reached");
@@ -540,7 +557,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
   // Concurrent reads to the same file blocks should be de-duplicated.
   const size_t block_size = 16;
   int num_requests = 0;
-  Notification notification;
+  absl::Notification notification;
   auto fetcher = [&num_requests, &notification, block_size](
                      const string& filename, size_t offset, size_t n,
                      char* buffer, TF_Status* status) -> int64_t {

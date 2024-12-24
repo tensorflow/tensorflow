@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
 #define TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
 
-#include "tsl/lib/gtl/flatrep.h"
+#include "xla/tsl/lib/gtl/flatrep.h"
 
 namespace tensorflow {
 namespace gtl {

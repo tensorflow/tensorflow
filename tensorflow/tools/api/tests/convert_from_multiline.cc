@@ -27,8 +27,8 @@ namespace tensorflow {
 namespace {
 constexpr char kApiDefFilePattern[] = "*.pbtxt";
 
-Status ConvertFilesFromMultiline(const string& input_dir,
-                                 const string& output_dir) {
+absl::Status ConvertFilesFromMultiline(const string& input_dir,
+                                       const string& output_dir) {
   Env* env = Env::Default();
 
   const string file_pattern = io::JoinPath(input_dir, kApiDefFilePattern);

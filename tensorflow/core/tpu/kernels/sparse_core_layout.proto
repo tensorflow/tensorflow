@@ -94,6 +94,12 @@ message SparseCoreTableLayout {
   // partitions.
   //    sparse_core_shard_rotation = table_index * sparse_cores_per_partition
   int64 sparse_core_shard_rotation = 9;
+
+  // The batch size per sparsecore for this table. This combines the batch sizes
+  // of all the features pointing to this table.
+  int64 per_sparse_core_batch_size = 10;
+  // Number of features that refer to this table.
+  int64 num_features = 11;
 }
 
 message SparseCoreTableLayouts {

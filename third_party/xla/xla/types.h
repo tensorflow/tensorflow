@@ -60,6 +60,8 @@ template <typename T>
 inline constexpr bool is_specialized_integral_v =
     is_specialized_integral<T>::value;
 
+using u1 = tsl::uint1;
+using s1 = tsl::int1;
 using u2 = tsl::uint2;
 using s2 = tsl::int2;
 using u4 = tsl::uint4;

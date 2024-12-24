@@ -4,6 +4,8 @@ load(
     "gentbl_cc_library",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load proto_library
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")

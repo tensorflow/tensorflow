@@ -27,12 +27,11 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/utils.h"
 
 namespace xla {
 namespace memory_space_assignment {
 
-using MsaBufferInterval =
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
 using MsaBufferIntervalCompare =
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
 
@@ -115,7 +114,8 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
     : public BufferIntervalComparator {
  public:
   explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
-      const HloLiveRange& hlo_live_range);
+      const HloLiveRange& hlo_live_range,
+      const MsaSortOrderOverrides& msa_sort_order_overrides);
 
   ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
 
@@ -129,7 +129,7 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   // See the value returned by DescribeComparisonCriteria() for the meaning of
   // each tuple element.
   using ComparisonTuple =
-      std::tuple<int64_t, int64_t, int64_t, BufferValue::Id>;
+      std::tuple<int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
 
   struct AdditionalSortData {
     int64_t latest_use = 0;
@@ -141,6 +141,7 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   absl::flat_hash_map<const HloValue*, AdditionalSortData>
       additional_sort_data_;
   const HloLiveRange& hlo_live_range_;
+  const MsaSortOrderOverrides& msa_sort_order_overrides_;
 };
 
 }  // namespace memory_space_assignment

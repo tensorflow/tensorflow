@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/fft.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad_util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce_window.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/slice.h"
@@ -39,7 +40,7 @@ namespace odml {
 namespace {
 
 #define GEN_PASS_DEF_PREPAREHLOPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class PrepareHloPass : public impl::PrepareHloPassBase<PrepareHloPass> {
  public:
@@ -60,6 +61,7 @@ void PrepareHloPass::runOnOperation() {
   PopulatePrepareReduceWindowPatterns(context, patterns);
   PopulatePrepareSlicePatterns(context, patterns);
   PopulateCustomCallPreparePatterns(context, patterns);
+  PopulatePrepareFftPatterns(context, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();

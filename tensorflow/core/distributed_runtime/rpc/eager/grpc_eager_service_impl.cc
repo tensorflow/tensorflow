@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
 namespace eager {
@@ -32,10 +34,17 @@ GrpcEagerServiceImpl::GrpcEagerServiceImpl(
       local_impl_(env),
       enqueue_streaming_thread_(env_->env, "enqueue_streaming_thread", 1) {
   server_builder->RegisterService(&service_);
+  // gRPC by default will cancel requests that sit in a completion queue for
+  // more than 30s. See
+  // https://github.com/grpc/grpc/blob/e52e48b7ef83feeff56ed0894ce39841ea8bd483/include/grpc/impl/channel_arg_names.h#L106-L111
+  // Extending this to 1 hour for Tensorflow since some graphs may have periods
+  // of heavy load which may cause the server to run into these cancellations.
+  server_builder->AddChannelArgument(
+      "grpc.server_max_unrequested_time_in_server", 3600);
   cq_ = server_builder->AddCompletionQueue();
 }
 
-Status GrpcEagerServiceImpl::CreateMasterContext(
+absl::Status GrpcEagerServiceImpl::CreateMasterContext(
     const tensorflow::uint64 context_id, EagerContext* context) {
   return local_impl_.CreateMasterContext(context_id, context);
 }

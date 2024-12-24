@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_REVIVED_TYPES_ASSET_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_REVIVED_TYPES_ASSET_H_
 
+#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
@@ -29,10 +31,10 @@ namespace tensorflow {
 
 class Asset : public TensorHandleConvertible {
  public:
-  static Status Create(ImmediateExecutionContext* ctx,
-                       const std::string& saved_model_dir,
-                       const std::string& asset_filename,
-                       std::unique_ptr<Asset>* output);
+  static absl::Status Create(ImmediateExecutionContext* ctx,
+                             const std::string& saved_model_dir,
+                             const std::string& asset_filename,
+                             std::unique_ptr<Asset>* output);
 
   // Asset is movable, but not copyable.
   Asset(Asset&& other) = default;

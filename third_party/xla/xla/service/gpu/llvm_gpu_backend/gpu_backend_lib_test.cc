@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 
+#include <utility>
+
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -33,7 +37,7 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(cc_next), "sm_90");
 }
 
-using VersionPair = std::pair<nvptx::Version, nvptx::Version>;
+using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
 using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
 
 TEST_P(PtxVersionFromCudaVersionTest, VerifyMapping) {
@@ -45,28 +49,28 @@ TEST_P(PtxVersionFromCudaVersionTest, VerifyMapping) {
 INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                          ::testing::ValuesIn<VersionPair>({
                              // CUDA 11
-                             {{11, 0}, {7, 0}},
-                             {{11, 1}, {7, 1}},
-                             {{11, 2}, {7, 2}},
-                             {{11, 3}, {7, 3}},
-                             {{11, 4}, {7, 4}},
-                             {{11, 5}, {7, 5}},
-                             {{11, 6}, {7, 6}},
-                             {{11, 7}, {7, 7}},
-                             {{11, 8}, {7, 8}},
+                             {{11, 0, 0}, {7, 0, 0}},
+                             {{11, 1, 0}, {7, 1, 0}},
+                             {{11, 2, 0}, {7, 2, 0}},
+                             {{11, 3, 0}, {7, 3, 0}},
+                             {{11, 4, 0}, {7, 4, 0}},
+                             {{11, 5, 0}, {7, 5, 0}},
+                             {{11, 6, 0}, {7, 6, 0}},
+                             {{11, 7, 0}, {7, 7, 0}},
+                             {{11, 8, 0}, {7, 8, 0}},
                              // CUDA 12
-                             {{12, 0}, {8, 0}},
-                             {{12, 1}, {8, 1}},
-                             {{12, 2}, {8, 2}},
-                             {{12, 3}, {8, 3}},
-                             {{12, 4}, {8, 4}},
-                             {{12, 5}, {8, 5}},
-                             {{12, 6}, {8, 5}},
+                             {{12, 0, 0}, {8, 0, 0}},
+                             {{12, 1, 0}, {8, 1, 0}},
+                             {{12, 2, 0}, {8, 2, 0}},
+                             {{12, 3, 0}, {8, 3, 0}},
+                             {{12, 4, 0}, {8, 4, 0}},
+                             {{12, 5, 0}, {8, 5, 0}},
+                             {{12, 6, 0}, {8, 5, 0}},
                          }),
                          [](::testing::TestParamInfo<VersionPair> data) {
-                           nvptx::Version cuda_version = data.param.first;
-                           return absl::StrCat("cuda", cuda_version.first,
-                                               cuda_version.second);
+                           se::SemanticVersion cuda_version = data.param.first;
+                           return absl::StrCat("cuda_", cuda_version.major(),
+                                               "_", cuda_version.minor());
                          });
 
 }  // namespace

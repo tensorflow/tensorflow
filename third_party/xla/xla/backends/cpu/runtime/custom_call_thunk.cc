@@ -60,7 +60,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
+using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
 
 absl::StatusOr<AttributesMap> ParseAttributes(
     absl::string_view backend_config) {
@@ -267,15 +267,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       /*called_computation=*/nullptr, custom_call_params->ffi_execution_context,
       execution_state_.get()};
 
-  // Call the function and check execution status.
-  auto status = ffi::Call(handler->bundle.execute, call_frame, call_options);
-  if (!status.ok()) {
-    // Overwrite the returned error code to kInternal to match the original CPU
-    // implementation.
-    // TODO(penporn): Use TF_RETURN_IF_ERROR when thunks is the only runtime.
-    return Internal("%s", status.message());
-  }
-  return OkExecuteEvent();
+  return ffi::CallAsync(handler->bundle.execute, call_frame, call_options);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(

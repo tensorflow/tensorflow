@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
@@ -36,21 +42,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+using tsl::profiler::FindPlanesWithPrefix;
 using tsl::profiler::FindTensorCorePlanes;
 
 std::string Hostname(const XSpace& space) {
@@ -75,47 +80,107 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   return result;
 }
 
+PerfEnv MakePerfEnvForTpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws, bool has_merged_vmem,
+                          bool has_megacore) {
+  PerfEnv result = MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+  result.set_has_cmem(peak_bws[MemBwType::MEM_BW_TYPE_CMEM_RD] > 0 ||
+                      peak_bws[MemBwType::MEM_BW_TYPE_CMEM_WR] > 0);
+  result.set_has_merged_vmem(has_merged_vmem);
+  result.set_has_megacore(has_megacore);
+  return result;
+}
+
+PerfEnv MakePerfEnvForGpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws) {
+  return MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+}
+
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
-    return MakePerfEnv(
-        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap)) *
-            cap.num_cores(),
-        // Ideally, the cap should report separate hbm BW, for now set to same.
-        {tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth())});
+    double peak_tera_flops_per_second =
+        cap.num_cores() *
+        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap));
+    double hbm_bw_giga_bytes_per_second =
+        tsl::profiler::UniToGiga(cap.memory_bandwidth());
+    double shm_giga_bytes_per_second =
+        cap.num_cores() *
+        tsl::profiler::UniToGiga(GetSharedMemoryBandwidthPerSM(cap));
+    // Note that treat SRAM_RD and SRAM_WR as the same. So in future, we could
+    // only use one for shared memory / L1 cache, one for another like L2.
+    return MakePerfEnvForGpu(peak_tera_flops_per_second,
+                             {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
+                              /*SRAM_RD=*/shm_giga_bytes_per_second,
+                              /*SRAM_WR=*/shm_giga_bytes_per_second});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
-    auto peak_tera_flops_per_second =
+    std::optional<XStatVisitor> peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
-    auto peak_tera_flops_per_second_val =
+    double peak_tera_flops_per_second_val =
         peak_tera_flops_per_second.has_value()
             ? peak_tera_flops_per_second->DoubleValue()
             : 0.0;
-    auto peak_hbm_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    auto peak_hbm_bw_giga_bytes_per_second_val =
+    double peak_hbm_bw_giga_bytes_per_second_val =
         peak_hbm_bw_giga_bytes_per_second.has_value()
             ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_rd_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_rd_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
-    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+    double peak_sram_rd_bw_giga_bytes_per_second_val =
         peak_sram_rd_bw_giga_bytes_per_second.has_value()
             ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_wr_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_wr_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
-    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+    double peak_sram_wr_bw_giga_bytes_per_second_val =
         peak_sram_wr_bw_giga_bytes_per_second.has_value()
             ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    return MakePerfEnv(peak_tera_flops_per_second_val,
-                       {peak_hbm_bw_giga_bytes_per_second_val,
-                        peak_sram_rd_bw_giga_bytes_per_second_val,
-                        peak_sram_wr_bw_giga_bytes_per_second_val});
+    std::optional<XStatVisitor> cmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemRdBwGigabytesPerSecond);
+    double cmem_rd_bw_giga_bytes_per_second_val =
+        cmem_rd_bw_giga_bytes_per_second.has_value()
+            ? cmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> cmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemWrBwGigabytesPerSecond);
+    double cmem_wr_bw_giga_bytes_per_second_val =
+        cmem_wr_bw_giga_bytes_per_second.has_value()
+            ? cmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemRdBwGigabytesPerSecond);
+    double vmem_rd_bw_giga_bytes_per_second_val =
+        vmem_rd_bw_giga_bytes_per_second.has_value()
+            ? vmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemWrBwGigabytesPerSecond);
+    double vmem_wr_bw_giga_bytes_per_second_val =
+        vmem_wr_bw_giga_bytes_per_second.has_value()
+            ? vmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> has_megacore =
+        visitor.GetStat(StatType::kDevHasMegacore);
+    bool has_megacore_val =
+        has_megacore.has_value() ? has_megacore->BoolValue() : false;
+    std::optional<XStatVisitor> has_merged_vmem =
+        visitor.GetStat(StatType::kDevHasMergedVmem);
+    bool has_merged_vmem_val =
+        has_merged_vmem.has_value() ? has_merged_vmem->BoolValue() : false;
+    return MakePerfEnvForTpu(
+        peak_tera_flops_per_second_val,
+        {/*HBM_RW=*/peak_hbm_bw_giga_bytes_per_second_val,
+         /*SRAM_RD=*/peak_sram_rd_bw_giga_bytes_per_second_val,
+         /*SRAM_WR=*/peak_sram_wr_bw_giga_bytes_per_second_val,
+         /**CMEM_RD=*/cmem_rd_bw_giga_bytes_per_second_val,
+         /**CMEM_WR=*/cmem_wr_bw_giga_bytes_per_second_val,
+         /**VMEM_RD=*/vmem_rd_bw_giga_bytes_per_second_val,
+         /**VMEM_WR=*/vmem_wr_bw_giga_bytes_per_second_val},
+        has_merged_vmem_val, has_megacore_val);
   }
 }
 
@@ -136,6 +201,7 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type("GPU");
     }
     env->set_device_core_count(gpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::GPU);
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
@@ -146,9 +212,11 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
     }
     env->set_device_core_count(tpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::TPU);
   } else {
     env->set_device_type("CPU");
     env->set_device_core_count(0);
+    env->set_hardware_type(tensorflow::profiler::HardwareType::CPU_ONLY);
   }
 }
 
@@ -177,13 +245,15 @@ void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
   }
 }
 
+void UpdateOpMetricsDbFromHloModuleMap(OpMetricsDb& op_metrics_db,
+                                       const HloModuleMap& hlo_module_map) {
+  for (OpMetrics& op_metrics : *op_metrics_db.mutable_metrics_db()) {
+    EnterOpMetadataFromHloModuleMap(&op_metrics, hlo_module_map);
+  }
+}
+
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
-  bool is_tpu = !device_planes.empty();
-  if (!is_tpu) {
-    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
-  }
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -194,6 +264,14 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   KernelReportMap reports;
 
+  // Handle device planes first. device_planes will contain either GPU or TPU.
+  std::vector<const XPlane*> device_planes =
+      FindPlanesWithPrefix(space, kTpuPlanePrefix);
+  const bool is_gpu = device_planes.empty();
+  if (is_gpu) {
+    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  }
+  const bool is_tpu = !is_gpu;
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
     XPlane aggregated_xplane;
@@ -202,6 +280,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
+      HloModuleMap hlo_module_map;
+      ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
       if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
@@ -211,6 +291,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
             ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db, hlo_module_map);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }

@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_CPU_CPU_LAYOUT_ASSIGNMENT_H_
 
+#include "absl/status/status.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/layout_assignment.h"
 #include "tsl/platform/status.h"
 

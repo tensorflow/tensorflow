@@ -96,8 +96,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
                 << llvm_ir::ConstantHloToGlobalName(*non_io_hlo);
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
-            llvm::Type* pointee_type =
-                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
+            llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
+                non_io_hlo->shape(), module_->getContext());
             BindHloToIrValue(*non_io_hlo,
                              llvm_ir::EmitAllocaAtFunctionEntry(
                                  pointee_type, /*name=*/"", b_),
@@ -105,14 +105,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
           }
         });
   }
-}
-
-// Returns true if `value` has a name that should not be changed.
-static bool HasMeaningfulName(llvm::Value* value) {
-  if (auto* global = llvm::dyn_cast<llvm::GlobalValue>(value)) {
-    return global->getLinkage() != llvm::GlobalValue::PrivateLinkage;
-  }
-  return false;
 }
 
 void HloToIrBindings::BindHloToIrValue(const HloInstruction& hlo,
@@ -136,58 +128,14 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
 
   llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
   Shape new_shape = ShapeUtil::GetSubshape(hlo.shape(), shape_index);
-  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(new_shape, module_);
+  llvm::Type* pointee_type =
+      llvm_ir::ShapeToIrType(new_shape, module_->getContext());
   CHECK_NE(base_ptr, nullptr)
       << "Buffer not assigned for shape_index " << shape_index.ToString()
       << " of " << hlo.ToString();
   llvm_ir::IrArray ir_array(base_ptr, pointee_type, new_shape);
 
   return ir_array;
-}
-
-std::string HloToIrBindings::ToString() const {
-  std::string s = StrCat("** HloToIrBindings **\n");
-  StrAppend(&s, "  is_nested_=", is_nested_, "\n");
-
-  if (base_ptrs_.empty()) {
-    return s;
-  }
-
-  // Iterate over all computations in the module in topological order, and print
-  // out the base pointers we have in each computation in topological order.
-  for (const HloComputation* computation :
-       base_ptrs_.begin()->first->GetModule()->MakeComputationPostOrder()) {
-    bool is_first = true;
-    for (const HloInstruction* instr :
-         computation->MakeInstructionPostOrder()) {
-      auto it = base_ptrs_.find(instr);
-      if (it == base_ptrs_.end()) {
-        continue;
-      }
-      if (is_first) {
-        StrAppend(&s, "  Base pointers for computation ", computation->name(),
-                  ":\n");
-        is_first = false;
-      }
-      StrAppend(&s, "    ", instr->ToString());
-
-      const ShapeTree<llvm::Value*>& shape_tree = it->second;
-      if (!instr->shape().IsTuple()) {
-        const llvm::Value* val = shape_tree.begin()->second;
-        StrAppend(&s, " -> ", llvm_ir::DumpToString(val), "\n");
-        continue;
-      }
-
-      StrAppend(&s, "\n");
-      for (auto shape_it = shape_tree.begin(); shape_it != shape_tree.end();
-           ++shape_it) {
-        llvm::Value* val = shape_it->second;
-        StrAppend(&s, "      ", shape_it->first.ToString(), " -> ",
-                  (val != nullptr ? llvm_ir::DumpToString(val) : "null"), "\n");
-      }
-    }
-  }
-  return s;
 }
 
 }  // namespace gpu

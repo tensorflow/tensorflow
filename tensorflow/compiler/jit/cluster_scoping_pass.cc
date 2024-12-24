@@ -34,10 +34,10 @@ class ClusterScopingPassImpl {
         global_jit_level_(global_jit_level),
         unique_scope_id_(0) {}
 
-  Status Run();
+  absl::Status Run();
 
  private:
-  Status ScopingForPipelineStages();
+  absl::Status ScopingForPipelineStages();
 
   size_t GetUniqueScopeId() { return unique_scope_id_++; }
 
@@ -131,7 +131,7 @@ void ClusterScopingPassImpl::AddScopeToAllTransitiveSuccessors(Node* start) {
 //
 // Unstage -> Node_Y
 //
-Status ClusterScopingPassImpl::ScopingForPipelineStages() {
+absl::Status ClusterScopingPassImpl::ScopingForPipelineStages() {
   for (Node* n : graph_->nodes()) {
     DCHECK(n);
     if (n->type_string() == "Unstage") {
@@ -145,7 +145,7 @@ Status ClusterScopingPassImpl::ScopingForPipelineStages() {
   return absl::OkStatus();
 }
 
-Status ClusterScopingPassImpl::Run() {
+absl::Status ClusterScopingPassImpl::Run() {
   if (global_jit_level_ == OptimizerOptions::OFF) {
     return absl::OkStatus();
   }
@@ -154,7 +154,8 @@ Status ClusterScopingPassImpl::Run() {
 }
 }  // namespace
 
-Status ClusterScopingPass::Run(const GraphOptimizationPassOptions& options) {
+absl::Status ClusterScopingPass::Run(
+    const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
   return ClusterScopingPassImpl{graph, GetGlobalJitLevelForGraph(options)}

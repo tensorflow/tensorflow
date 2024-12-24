@@ -14,16 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tf2xla/transforms/tf2xla_rewriter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -60,18 +63,20 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -93,6 +98,22 @@ using ::mlir::ModuleOp;
 using ::tensorflow::Tensor;
 using ::tsl::StatusOr;
 using ::xla::XlaComputation;
+
+// The OpOrArgLocNameMapper adds invalid characters to the name of the op when
+// concatenating locations. This version removes those characters to make the
+// name valid for NodeDef.
+class OpOrArgLocNameMapperWithoutInvalidCharacters
+    : public tensorflow::OpOrArgLocNameMapper {
+ public:
+  OpOrArgLocNameMapperWithoutInvalidCharacters() = default;
+  ~OpOrArgLocNameMapperWithoutInvalidCharacters() override = default;
+
+ protected:
+  std::string GetName(tensorflow::OpOrVal op_or_val) override {
+    std::string name = OpOrArgLocNameMapper::GetName(op_or_val);
+    return absl::StrReplaceAll(name, {{";", "."}});
+  }
+};
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type) {
@@ -125,6 +146,8 @@ Tf2XlaRewriter::Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
     : op_(op),
       device_type_(device_type),
       rewriter_(rewriter),
+      name_mapper_(
+          std::make_unique<OpOrArgLocNameMapperWithoutInvalidCharacters>()),
       context_(nullptr),
       xla_builder_(op_->getName().getStringRef().str()) {}
 
@@ -319,7 +342,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
-      op_, name_mapper_.GetUniqueName(op_),
+      op_, name_mapper_->GetUniqueName(op_),
       /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
     return op_->emitRemark() << "failed to convert op to NodeDef: "

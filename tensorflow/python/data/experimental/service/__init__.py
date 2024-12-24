@@ -38,7 +38,7 @@ The tf.data service provides the following benefits:
 >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
 ...     processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
 ...     service=dispatcher.target))
->>> print(list(dataset.as_numpy_iterator()))
+>>> print([a.item() for a in dataset.as_numpy_iterator()])
 [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 ## Setup

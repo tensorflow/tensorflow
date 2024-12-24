@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 
@@ -37,25 +38,19 @@ namespace {
 using memory_space_assignment::CostAnalysis;
 using memory_space_assignment::CostAnalysisOptions;
 
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
 class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
  protected:
   absl::Status Initialize(const HloModule* module,
                           float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
-    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.default_mem_bandwidth_bytes_per_second = 32;
     options_.pipeline_overhead_window_size_mib =
         pipeline_overhead_window_size_mib;
-    options.shape_size = ShapeSize;
     options.set_flops_per_second(8);
     options.set_bytes_per_second(32);
     options.set_transcendentals_per_second(16);
+    options.set_flops_min_latency_second(1);
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
     TF_RETURN_IF_ERROR(
         module->entry_computation()->Accept(hlo_cost_analysis_.get()));
@@ -90,8 +85,9 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, NoPipelineOverhead) {
   TF_ASSERT_OK(Initialize(module.get()));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
-  const float expected_compute_elapsed =
-      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  const float expected_compute_elapsed = std::max(
+      /*num_flops=*/8.0f / /*flops_per_second=*/8.0f,
+      hlo_cost_analysis_->min_latency_seconds(HloCostAnalysis::kFlopsKey));
   LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
             expected_compute_elapsed);
@@ -161,8 +157,9 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
                  /*pipeline_overhead_window_size_mib=*/(64.0 / 1024 / 1024)));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
-  const float expected_compute_elapsed =
-      /*num_flops=*/8 / /*flops_per_second=*/8.0;
+  const float expected_compute_elapsed = std::max(
+      /*num_flops=*/8.0f / /*flops_per_second=*/8.0f,
+      hlo_cost_analysis_->min_latency_seconds(HloCostAnalysis::kFlopsKey));
   LOG(INFO) << "Expected compute elapsed = " << expected_compute_elapsed;
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add),
             expected_compute_elapsed);
@@ -228,6 +225,24 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedInAlternateMemory(
                 *add, {{0, {}}, {1, {}}}, {{}}),
             expected_compute_elapsed);
+}
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, LatencyBoundCompute) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,2] parameter(0)
+    param1 = f32[2,2] parameter(1)
+    ROOT add = f32[2,2] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add), 1.0f);
 }
 
 }  // namespace

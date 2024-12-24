@@ -74,13 +74,13 @@ struct WhileLoopFrame {
 // If `node_filter` is defined, then we keep track of frames that should be
 // functionalized according to the filter (see comment for
 // `FunctionalizeControlFlow` for more details about node filters).
-Status ExtractWhileLoopFrames(
+absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
     std::unordered_map<string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter = {});
 
 // Check that the graph has no cycle containing the given node.
-Status CheckNodeNotInCycle(const Node* node, const int num_nodes);
+absl::Status CheckNodeNotInCycle(const Node* node, const int num_nodes);
 
 // Comparison function used for sorting nodes consistently.
 // a) resource variables are last, and

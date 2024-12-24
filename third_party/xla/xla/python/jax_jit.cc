@@ -29,10 +29,10 @@ limitations under the License.
 #include <Python.h>
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -52,6 +53,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -136,17 +138,9 @@ static std::string OptionalDebugString(
   }
 }
 
-bool FetchMemoriesFlag() {
-  auto& global_state = GlobalJitState();
-  auto& thread_local_state = ThreadLocalJitState();
-  CHECK(global_state.enable_memories.has_value());
-  return thread_local_state.enable_memories.value_or(
-      *global_state.enable_memories);
-}
-
 std::string ArgumentSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
-    out->append(nb::cast<std::string_view>(nb::str(o)));
+    out->append(nb::cast<absl::string_view>(nb::str(o)));
   };
   auto treedef_formatter = [](std::string* out, const xla::PyTreeDef& d) {
     out->append(d.ToString());
@@ -187,8 +181,8 @@ bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
               "static arguments should be comparable using __eq__."
               "The following error was raised when comparing two objects of "
               "types ",
-              nb::cast<std::string_view>(nb::str(a.type())), " and ",
-              nb::cast<std::string_view>(nb::str(b.type())),
+              nb::cast<absl::string_view>(nb::str(a.type())), " and ",
+              nb::cast<absl::string_view>(nb::str(b.type())),
               ". The error was:\n", e.what()));
         }
       });
@@ -196,11 +190,19 @@ bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
 
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
-    out->append(nb::cast<std::string_view>(nb::str(o)));
+    out->append(nb::cast<absl::string_view>(nb::str(o)));
   };
   auto signature_formatter = [](std::string* out,
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
+  };
+  auto layout_formatter = [](std::string* out,
+                             const std::shared_ptr<xla::PjRtLayout>& l) {
+    if (l != nullptr) {
+      out->append(l->ToString());
+    } else {
+      out->append("None");
+    }
   };
   auto bool_formatter = [](std::string* out, bool o) {
     out->append(o ? "true" : "false");
@@ -209,21 +211,24 @@ std::string CallSignature::DebugString() const {
       "arg signature: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
       "dynamic arg shardings: %s\n"
+      "dynamic arg layouts: %s\n"
       "committed args: %s\n"
       "device: %s\n"
       "default_device: %s\n"
       "jax_enable_x64: %d\n"
-      "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
-      "thread_local_extra_jit_context: %s\n",
+      "thread_local_extra_jit_context: %s\n"
+      "configs: %s\n",
       arg_signature.DebugString(),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
+      absl::StrJoin(dynamic_arg_layouts, ", ", layout_formatter),
       absl::StrJoin(committed_args, ",", bool_formatter),
       device != nullptr ? device->DebugString() : "nullptr",
-      OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
+      OptionalDebugString(default_device), jax_enable_x64,
       OptionalDebugString(global_extra_jit_context),
-      OptionalDebugString(thread_local_extra_jit_context));
+      OptionalDebugString(thread_local_extra_jit_context),
+      absl::StrJoin(configs, ", ", py_object_formatter));
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
@@ -239,9 +244,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
   if (jax_enable_x64 != other.jax_enable_x64) {
     return false;
   }
-  if (jax_enable_memories != other.jax_enable_memories) {
-    return false;
-  }
   if (committed_args != other.committed_args) {
     return false;
   }
@@ -249,6 +251,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
       // `==` on py:objects is the Python `is`. We need equal.
       absl::c_equal(dynamic_arg_shardings, other.dynamic_arg_shardings,
                     ShardingEqual) &&
+      absl::c_equal(dynamic_arg_layouts, other.dynamic_arg_layouts,
+                    [](const std::shared_ptr<xla::PjRtLayout>& a,
+                       const std::shared_ptr<xla::PjRtLayout>& b) {
+                      return (a && b) ? *a == *b : a == b;
+                    }) &&
       (global_extra_jit_context.has_value() ==
        other.global_extra_jit_context.has_value()) &&
       (!global_extra_jit_context.has_value() ||
@@ -260,7 +267,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
        other.thread_local_extra_jit_context.has_value()) &&
       (!thread_local_extra_jit_context.has_value() ||
        thread_local_extra_jit_context->equal(
-           *other.thread_local_extra_jit_context));
+           *other.thread_local_extra_jit_context)) &&
+      configs.size() == other.configs.size() &&
+      absl::c_equal(
+          configs, other.configs,
+          [](const nb::object& a, const nb::object& b) { return a.equal(b); });
 }
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
@@ -273,6 +284,10 @@ absl::Status ParseArguments(
     xla::PyTreeRegistry* pytree_registry, ArgumentSignature& signature,
     absl::InlinedVector<nanobind::object, 2>& flat_dynamic_args) {
   tsl::profiler::TraceMe traceme("ParseArguments");
+
+  DCHECK(absl::c_all_of(static_argnames, [](const nb::str& name) {
+    return PyUnicode_CHECK_INTERNED(name.ptr());
+  }));
 
   flat_dynamic_args.reserve(positional_args.size() + keyword_args.size());
   if (static_argnums.empty()) {
@@ -360,15 +375,11 @@ void BuildJaxjitSubmodule(nb::module_& m) {
   nb::class_<JitState> jit_state_(jitlib, "JitState");
   jit_state_.def_rw("disable_jit", &JitState::disable_jit, nb::arg().none());
   jit_state_.def_rw("enable_x64", &JitState::enable_x64, nb::arg().none());
-  jit_state_.def_rw("enable_memories", &JitState::enable_memories,
-                    nb::arg().none());
   jit_state_.def_rw("default_device", &JitState::default_device,
                     nb::arg().none());
   jit_state_.def_rw("extra_jit_context", &JitState::extra_jit_context,
                     nb::arg().none());
   jit_state_.def_rw("post_hook", &JitState::post_hook, nb::arg().none());
-
-  GetEnableMemories = +[] { return FetchMemoriesFlag(); };
 
   jitlib.def(
       "global_state", [&]() { return &GlobalJitState(); },
@@ -446,9 +457,20 @@ void BuildJaxjitSubmodule(nb::module_& m) {
         absl::Span<PyObject* const> keyword_args_span =
             absl::MakeSpan(PySequence_Fast_ITEMS(keyword_args_seq.ptr()),
                            PySequence_Fast_GET_SIZE(keyword_args_seq.ptr()));
-        xla::ThrowIfError(ParseArguments(
-            positional_args_span, keyword_args_span, kwnames, static_argnums,
-            static_argnames, pytree_registry, signature, flat_dynamic_args));
+
+        // Intern the static argument names.
+        std::vector<nb::str> static_argnames_interned;
+        static_argnames_interned.reserve(static_argnames.size());
+        for (const nb::str& name : static_argnames) {
+          PyObject* s = name.inc_ref().ptr();
+          PyUnicode_InternInPlace(&s);
+          static_argnames_interned.push_back(nb::steal<nb::str>(s));
+        }
+
+        xla::ThrowIfError(
+            ParseArguments(positional_args_span, keyword_args_span, kwnames,
+                           static_argnums, static_argnames_interned,
+                           pytree_registry, signature, flat_dynamic_args));
         return std::make_pair(std::move(signature),
                               std::move(flat_dynamic_args));
       },

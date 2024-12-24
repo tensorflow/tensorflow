@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: test_correctness %s
 
@@ -24,7 +24,7 @@ scatter {
     unique_indices=true,
     to_apply=add
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(th_x) -> (th_x floordiv 2)
 
 // CHECK-LABEL: func.func @main(
 // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
@@ -36,9 +36,9 @@ scatter {
 
 // CHECK:      %[[TH_X:.*]] = gpu.thread_id  x
 
-// CHECK:      %[[SLICE_ID:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[TH_X]]
+// CHECK:      %[[SLICE_ID:.*]] = xla.apply_indexing #[[$MAP]](%[[TH_X]]
 
-// CHECK:      %[[IND0_I32:.*]] = xla_gpu.pure_call @scatter_indices
+// CHECK:      %[[IND0_I32:.*]] = xla.pure_call @scatter_indices
 // CHECK-SAME:  (%[[OPERAND]], %[[UPDATES]], %[[SLICE_ID]], %[[C0]])
 
 
@@ -46,18 +46,18 @@ scatter {
 // CHECK:      %[[IN_BOUNDS:.*]] = arith.cmpi ule
 // CHECK:      scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
 
-// CHECK:      xla_gpu.loop
+// CHECK:      xla.loop
 // CHECK:      -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]]) in
 
-// CHECK:      %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update(
+// CHECK:      %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update(
 // CHECK-SAME:  %[[OPERAND]], %[[UPDATES]],
 // CHECK-SAME:  %[[RA]], %[[RB]], %[[RC]])
 
 // CHECK:       %[[IND0_RB:.*]] = arith.addi %[[RB]], %[[IND0]]
-// CHECK:       %[[CURRENT:.*]] = xla_gpu.pure_call @scatter_operand(
+// CHECK:       %[[CURRENT:.*]] = xla.pure_call @scatter_operand(
 // CHECK-SAME:    %[[OPERAND]], %[[UPDATES]], %[[IND0_RB]],
 // CHECK-SAME:    %[[RC]])
 // CHECK:        %[[COMBINED:.*]] = arith.addf %[[CURRENT]], %[[UPD_ELEM]]
 // CHECK:        %[[UPDATED:.*]] = tensor.insert %[[COMBINED]]
 // CHECK-SAME:     into %{{[a-z0-9]+}}[%{{.*}}, %[[RC]]] : tensor<10x5xf32>
-// CHECK:        xla_gpu.yield %[[UPDATED]] : tensor<10x5xf32>
+// CHECK:        xla.yield %[[UPDATED]] : tensor<10x5xf32>

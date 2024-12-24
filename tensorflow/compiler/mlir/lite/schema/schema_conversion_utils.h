@@ -20,8 +20,7 @@ limitations under the License.
 
 namespace tflite {
 
-int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(
-    const BuiltinOperator builtin_code);
+int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(BuiltinOperator builtin_code);
 
 // The following methods are for backward compatibility for the early version
 // three, which does not have an extended builtin code.

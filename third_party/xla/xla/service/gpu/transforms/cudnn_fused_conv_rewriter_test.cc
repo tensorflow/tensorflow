@@ -16,13 +16,11 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 
 #include <array>
+#include <initializer_list>
 #include <memory>
 #include <string>
-#include <string_view>
-#include <thread>  // NOLINT
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,33 +33,28 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/algebraic_simplifier.h"
-#include "xla/service/convert_mover.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/reshape_mover.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -74,36 +67,34 @@ namespace m = match;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
-// TODO: Use constexpr vector once XLA is compiled with C++20.
-const auto* kf16f32f64 = new std::vector<std::string>({"f16", "f32", "f64"});
-const auto* kf16f32 = new std::vector<std::string>({"f16", "f32"});
+static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
+                                                                 "f64"};
+static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 
 class CudnnFusedConvRewriterHloTest : public HloTestBase {
  public:
-  bool IsCuda() {
+  bool IsCuda() const {
     return std::holds_alternative<se::CudaComputeCapability>(
         backend()
             .default_stream_executor()
             ->GetDeviceDescription()
             .gpu_compute_capability());
   }
-  se::CudaComputeCapability GetCudaComputeCapability() {
+  se::CudaComputeCapability GetCudaComputeCapability() const {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  stream_executor::dnn::VersionInfo GetDnnVersion() {
+  stream_executor::dnn::VersionInfo GetDnnVersion() const {
     return GetDnnVersionInfoOrDefault(backend().default_stream_executor());
   }
 
-  int32_t GetToolkitVersion() const {
-#if GOOGLE_CUDA
-    return CUDA_VERSION;
-#elif TENSORFLOW_USE_ROCM
-    return TF_ROCM_VERSION;
-#endif
-    return 0;
+  se::SemanticVersion GetToolkitVersion() const {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .runtime_version();
   }
 
   CudnnFusedConvRewriterHloTest()
@@ -114,30 +105,28 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  public:
-  bool IsCuda() {
+  bool IsCuda() const {
     return std::holds_alternative<se::CudaComputeCapability>(
         backend()
             .default_stream_executor()
             ->GetDeviceDescription()
             .gpu_compute_capability());
   }
-  se::CudaComputeCapability GetCudaComputeCapability() {
+  se::CudaComputeCapability GetCudaComputeCapability() const {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  stream_executor::dnn::VersionInfo GetDnnVersion() {
+  stream_executor::dnn::VersionInfo GetDnnVersion() const {
     return GetDnnVersionInfoOrDefault(backend().default_stream_executor());
   }
 
-  int32_t GetToolkitVersion() const {
-#if GOOGLE_CUDA
-    return CUDA_VERSION;
-#elif TENSORFLOW_USE_ROCM
-    return TF_ROCM_VERSION;
-#endif
-    return 0;
+  stream_executor::SemanticVersion GetToolkitVersion() const {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .runtime_version();
   }
 
  protected:
@@ -167,7 +156,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : *(IsCuda() ? kf16f32f64 : kf16f32)) {
+    for (absl::string_view type : IsCuda() ? kf16f32f64 : kf16f32) {
       const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
@@ -205,7 +194,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : *(IsCuda() ? kf16f32f64 : kf16f32)) {
+    for (absl::string_view type : IsCuda() ? kf16f32f64 : kf16f32) {
       const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
@@ -253,8 +242,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                               ParseAndReturnVerifiedModule(pre_hlo_string));
       TF_ASSERT_OK_AND_ASSIGN(
-          bool changed,
-          RunHloPass(ConvRewriter(GetCudaComputeCapability()), module.get()));
+          bool changed, RunHloPass(ConvRewriter(se::CudaComputeCapability{
+                                       se::CudaComputeCapability::HOPPER, 0}),
+                                   module.get()));
       EXPECT_TRUE(changed);
       RunAndFilecheckHloRewrite(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
@@ -296,22 +286,17 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 };
 
-#if GOOGLE_CUDA
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
 #define MAYBE_SKIP_TEST(CAUSE)                                           \
   do {                                                                   \
-    if (absl::string_view(CAUSE) == "F8")                                \
+    if (absl::string_view(CAUSE) == "F8" && IsCuda() &&                  \
+        (GetToolkitVersion() < se::SemanticVersion{12, 0, 0} ||          \
+         GetDnnVersion() < se::dnn::VersionInfo(8, 9, 0))) {             \
       GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9."; \
+    }                                                                    \
+    if (!IsCuda()) {                                                     \
+      GTEST_SKIP() << CAUSE " fusion is only supported on CUDA.";        \
+    }                                                                    \
   } while (0)
-#else
-#define MAYBE_SKIP_TEST(CAUSE)
-#endif
-#else
-#define MAYBE_SKIP_TEST(CAUSE)                                \
-  do {                                                        \
-    GTEST_SKIP() << "ROCm does not support " CAUSE " fusion"; \
-  } while (0)
-#endif
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {
   // max(0, conv(x, w));
@@ -2212,7 +2197,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2239,7 +2224,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2266,7 +2251,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2292,7 +2277,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {

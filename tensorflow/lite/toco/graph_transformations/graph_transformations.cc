@@ -132,7 +132,7 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
 
 bool GraphTransformationsPass(int increment, Model* model,
                               const GraphTransformationsSet& transformations,
-                              tensorflow::Status* status) {
+                              absl::Status* status) {
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
@@ -193,12 +193,12 @@ bool GraphTransformationsPass(int increment, Model* model,
 
 }  // namespace
 
-tensorflow::Status RunGraphTransformationsWithStatus(
+absl::Status RunGraphTransformationsWithStatus(
     Model* model, const std::string& msg,
     const GraphTransformationsSet& transformations) {
   PrintModelStats(toco::port::StringF("Before %s", msg), *model);
   int pass_index = 0;
-  tensorflow::Status status;
+  absl::Status status;
   while (GraphTransformationsPass((pass_index % 2) ? -1 : 1, model,
                                   transformations, &status)) {
     pass_index++;

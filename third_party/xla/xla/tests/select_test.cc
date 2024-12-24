@@ -18,10 +18,11 @@ limitations under the License.
 
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -261,5 +262,17 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 5.0f}, {}, error_spec_);
 }
+
+TEST_F(SelectTest, SelectR1S4WithConstantR1PRED) {
+  XlaBuilder builder(TestName());
+  auto pred = ConstantR1<bool>(&builder, {false, true, false, true, false});
+  auto on_true = ConstantR1<s4>(&builder, {s4{1}, s4{2}, s4{3}, s4{4}, s4{5}});
+  auto on_false =
+      ConstantR1<s4>(&builder, {s4{-1}, s4{-2}, s4{-3}, s4{-4}, s4{-5}});
+  Select(pred, on_true, on_false);
+
+  ComputeAndCompareR1<s4>(&builder, {s4{-1}, s4{2}, s4{-3}, s4{4}, s4{-5}}, {});
+}
+
 }  // namespace
 }  // namespace xla

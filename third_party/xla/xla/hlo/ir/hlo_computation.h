@@ -48,9 +48,9 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -202,6 +202,39 @@ class HloComputation {
 
   ~HloComputation();
 
+  enum class InstructionType : uint8_t {
+    kUnset,
+    // This computation is a fusion computation. A fusion computation ordinarily
+    // also has a non-null instruction. However, if a fusion instruction
+    // is removed during compilation, the fusion computation becomes
+    // unreachable, and its instruction is set to null. We still need to regard
+    // such computations as fusion computations for HLO scheduling purposes.
+    kFusion,
+    // This computation is a custom-call computation.
+    kCustomCall,
+    // This computation is a collective computation.
+    kCollective,
+    // This computation is a while body computation.
+    kWhile,
+    // This computation is a conditional branch computation.
+    kConditional,
+    // Last Value for range checking.
+    kLast = kConditional,
+  };
+  static constexpr uintptr_t kInstructionTypeMask = 0b111;
+  static_assert(static_cast<int>(InstructionType::kUnset) == 0,
+                "kUnset must be 0.");
+
+  InstructionType instruction_type() const {
+    return static_cast<InstructionType>(instruction_and_type_ &
+                                        kInstructionTypeMask);
+  }
+
+  HloInstruction* instruction() const {
+    DCHECK(instruction_type() <= InstructionType::kLast);
+    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
+                                             ~kInstructionTypeMask);
+  }
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
@@ -256,24 +289,30 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
-  // users. Instruction is deallocated with this call.
+  // users. This call does not yet deallocate the instruction, but marks it as
+  // deleted, so that the next call to Cleanup() will deallocate it. If the
+  // instruction is a constant, its literal is cleared.
   absl::Status RemoveInstruction(HloInstruction* instruction);
 
   // Removes an instruction from the computation. The instruction must have no
-  // users. Instruction is deallocated with this call. The instruction will be
-  // removed even if it is marked as not removable.
+  // users. The instruction will be removed even if it is marked as not
+  // removable. This call does not yet deallocate the instruction, but marks it
+  // as deleted, so that the next call to Cleanup() will deallocate it. If the
+  // instruction is a constant, its literal is cleared.
   absl::Status ForceRemoveInstruction(HloInstruction* instruction);
 
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
-  // removing an instruction. The instruction must have no users. Instruction is
-  // deallocated with this call. If given, the cleanup routine is executed on a
-  // removed instruction before its deallocation. If ignore_control_dependencies
-  // is set to true, if will remove the unused operands even when they have
-  // control dependencies, and transitively pass the control dependencies from
-  // the predecessors to the succesors of the removed instructions, so that the
-  // logical exeuction order of the remaining unremoved instructions are
-  // preserved.
+  // removing an instruction. The instruction must have no users. This call does
+  // not yet deallocate the instruction, but marks it as deleted, so that the
+  // next call to Cleanup() will deallocate it. If the instruction is a
+  // constant, its literal is cleared. If given, the cleanup routine is executed
+  // on a removed instruction before its marked as deleted. If
+  // ignore_control_dependencies is set to true, if will remove the unused
+  // operands even when they have control dependencies, and transitively pass
+  // the control dependencies from the predecessors to the succesors of the
+  // removed instructions, so that the logical exeuction order of the remaining
+  // unremoved instructions are preserved.
   absl::Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
@@ -787,17 +826,23 @@ class HloComputation {
   }
 
   // Returns if this computation is a body computation of a while.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   bool IsWhileBodyComputation() const {
     return instruction_type() == InstructionType::kWhile;
   }
 
   // Returns the owning while call instruction, or nullptr if this is not a
   // while call body computation.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   HloInstruction* WhileCallInstruction() const {
     return instruction_type() == InstructionType::kWhile ? instruction()
                                                          : nullptr;
   }
 
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
     CHECK(while_call_instruction != nullptr);
     CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
@@ -805,17 +850,23 @@ class HloComputation {
   }
 
   // Returns if this computation is a branch computation of a conditional.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   bool IsConditionalBranchComputation() const {
     return instruction_type() == InstructionType::kConditional;
   }
 
   // Returns the owning conditional call instruction, or nullptr if this is not
   // a conditional branch computation.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   HloInstruction* ConditionalCallInstruction() const {
     return instruction_type() == InstructionType::kConditional ? instruction()
                                                                : nullptr;
   }
 
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   void SetConditionalCallInstruction(
       HloInstruction* conditional_call_instruction) {
     CHECK(conditional_call_instruction != nullptr);
@@ -825,6 +876,18 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const { return async_start_ != nullptr; }
+
+  // Returns true if this computation only contains send/recv instructions.
+  bool OnlyContainsSendRecv() {
+    for (const HloInstruction* instruction : this->instructions()) {
+      if (!HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kRecv,
+                            HloOpcode::kBitcast, HloOpcode::kParameter,
+                            HloOpcode::kTuple>(instruction)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   // Returns the owning async instruction. It's nullptr if this is not an async
   // computation.
@@ -931,37 +994,6 @@ class HloComputation {
 
   absl::Status RemoveInstructionImpl(HloInstruction* instruction,
                                      bool ignore_safety_check);
-
-  enum class InstructionType : uint8_t {
-    kUnset,
-    // This computation is a fusion computation. A fusion computation ordinarily
-    // also has a non-null instruction. However, if a fusion instruction
-    // is removed during compilation, the fusion computation becomes
-    // unreachable, and its instruction is set to null. We still need to regard
-    // such computations as fusion computations for HLO scheduling purposes.
-    kFusion,
-    // This computation is a custom-call computation.
-    kCustomCall,
-    // This computation is a collective computation.
-    kCollective,
-    // This computation is a while body computation.
-    kWhile,
-    // This computation is a conditional branch computation.
-    kConditional,
-  };
-  static constexpr uintptr_t kInstructionTypeMask = 0b111;
-  static_assert(static_cast<int>(InstructionType::kUnset) == 0,
-                "kUnset must be 0.");
-
-  InstructionType instruction_type() const {
-    return static_cast<InstructionType>(instruction_and_type_ &
-                                        kInstructionTypeMask);
-  }
-
-  HloInstruction* instruction() const {
-    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
-                                             ~kInstructionTypeMask);
-  }
 
   void SetInstruction(HloInstruction* instruction, InstructionType type);
 

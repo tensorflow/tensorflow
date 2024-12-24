@@ -15,14 +15,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
@@ -33,7 +34,7 @@ static void BM_TopKCustomCall_F32(benchmark::State& state) {
   int64_t length = state.range(2);
   CHECK_LE(k, length);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule topk_custom_call
 
     ENTRY test {
@@ -61,7 +62,7 @@ static void BM_TopK_BF16(benchmark::State& state) {
   int64_t length = state.range(2);
   CHECK_LE(k, length);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule topk
 
     ENTRY test {

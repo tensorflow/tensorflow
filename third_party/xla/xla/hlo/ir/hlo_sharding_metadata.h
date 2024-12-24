@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 #define XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"

@@ -24,11 +24,13 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 #include "tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -157,6 +159,15 @@ class CommandBuffer {
   //
   enum class Mode { kPrimary, kNested };
 
+  friend absl::string_view ModeToString(Mode mode) {
+    switch (mode) {
+      case CommandBuffer::Mode::kPrimary:
+        return "primary";
+      case CommandBuffer::Mode::kNested:
+        return "nested";
+    }
+  }
+
   //===--------------------------------------------------------------------===//
   // Command buffer API
   //===--------------------------------------------------------------------===//
@@ -227,9 +238,6 @@ class CommandBuffer {
                                     uint64_t size) {
     return MemcpyDeviceToDevice(kDefaulExecutionScope, dst, src, size);
   }
-
-  // Supported bit patterns for memset commands.
-  using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
 
   // Adds a memset command.
   virtual absl::Status Memset(ExecutionScopeId execution_scope_id,

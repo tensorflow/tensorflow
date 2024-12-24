@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/file_input_yielder.h"
 
+#include <cstddef>
 #include <memory>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -74,7 +76,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
   LOG(INFO) << "Loading model from " << filename;
 
   MetaGraphDef metagraph;
-  Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
+  absl::Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
   if (!s.ok()) {
     s = ReadTextProto(Env::Default(), filename, &metagraph);
   }

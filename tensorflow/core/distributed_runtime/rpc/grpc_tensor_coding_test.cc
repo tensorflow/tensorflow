@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -31,7 +33,8 @@ class GrpcTensorCodingTest : public ::testing::Test {
   void Validate(const Tensor& t, bool is_dead) {
     // Check by encoding to a ByteBuffer
     ::grpc::ByteBuffer buf;
-    grpc::EncodeTensorToByteBuffer(is_dead, t, false, &buf);
+    absl::Status s = grpc::EncodeTensorToByteBuffer(is_dead, t, false, &buf);
+    TF_EXPECT_OK(s);
 
     // Make a string
     std::vector<::grpc::Slice> slices;
@@ -65,7 +68,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
     }
   }
   void DoTestForStrings(DataType dt) {
-    gtl::InlinedVector<tstring, 4> v;
+    absl::InlinedVector<tstring, 4UL> v;
     for (int elems = 0; elems <= 10000; elems++) {
       if (elems < 100 || (elems % 1000 == 0)) {
         Tensor a(dt, TensorShape({1, static_cast<int64_t>(v.size())}));
@@ -99,5 +102,13 @@ TEST_F(GrpcTensorCodingTest, Simple) {
 }
 
 TEST_F(GrpcTensorCodingTest, StringTensor) { DoTestForStrings(DT_STRING); }
+
+TEST_F(GrpcTensorCodingTest, LargeTensor) {
+  Tensor t(DT_INT8, TensorShape({1, 1 + (1LL << 31)}));
+  ::grpc::ByteBuffer buf;
+  absl::Status s = grpc::EncodeTensorToByteBuffer(/*is_dead=*/false, t,
+                                                  /*require_ack=*/false, &buf);
+  EXPECT_EQ(s.code(), absl::StatusCode::kInternal);
+}
 
 }  // namespace tensorflow

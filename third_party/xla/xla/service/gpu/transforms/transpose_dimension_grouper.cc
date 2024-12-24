@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <numeric>
-#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -73,27 +73,19 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape &shape) {
                                                   dimensions);
 }
 
-std::optional<absl::InlinedVector<int64_t, 3>>
-GetNormalizedTransposeShapeHelper(
+absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
     const Shape &output_shape, absl::Span<int64_t const> output_to_input,
     absl::InlinedVector<int64_t, 3> &permutation) {
   absl::InlinedVector<size_t, 3> segments =
       ConsecutiveSegments(output_to_input);
-  // This means that after normalization there is actually no transpose.
-  if (segments.size() == 1) {
-    return std::nullopt;
-  }
   Shape normalized_shape = MergeDimensions(segments, output_shape);
-  if (segments.size() == 2) {
-    // If we have two segments, we know that exactly two dimensions are swapped.
-    // Insert a 1-dimension at the front and detect a 021 transpose.
-    // TODO(b/328656780): Don't insert the extra 1-dimension once the emitter
-    // supports any number of dimensions >= 2.
-    permutation = {0, 2, 1};
-    return absl::InlinedVector<int64_t, 3>{1, normalized_shape.dimensions(0),
-                                           normalized_shape.dimensions(1)};
+  absl::InlinedVector<int64_t, 3> normalized_dims(
+      normalized_shape.dimensions().begin(),
+      normalized_shape.dimensions().end());
+  if (segments.size() == 1) {
+    return normalized_dims;
   }
-  // We have at least 3 segments. Derive the permutation from the segments.
+  // Derive the permutation from the segments.
   std::vector<int64_t> segment_to_normalized_dim(output_shape.rank(), -1);
   for (size_t segment : segments) {
     segment_to_normalized_dim[output_to_input[segment]] = 0;
@@ -109,9 +101,6 @@ GetNormalizedTransposeShapeHelper(
     permutation.push_back(
         segment_to_normalized_dim[output_to_input[segments[i]]]);
   }
-  absl::InlinedVector<int64_t, 3> normalized_dims(
-      normalized_shape.dimensions().begin(),
-      normalized_shape.dimensions().end());
   return normalized_dims;
 }
 
@@ -126,8 +115,7 @@ GetNormalizedTransposeShapeHelper(
 // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the normalized
 // shapes. The original input/output shapes are called unnormalized shapes.
 //
-// 'output_shape' should have the default layout (descending minor to major),
-// otherwise std::nullopt is returned.
+// 'output_shape' should have the default layout (enforced by the caller).
 //
 // 'dimensions' specifies the kind of the unnormalized transpose and defines the
 // permutation of the input shape that will result in the provided output shape.
@@ -135,25 +123,18 @@ GetNormalizedTransposeShapeHelper(
 // 'dimensions'.
 //
 // 'permutation' is an output parameter and specifies the kind of the normalized
-// transpose. If the derived permutation is the identity permutation,
-// std::nullopt is returned.
+// transpose.
 //
-// The method returns the dimensions for the normalized transpose shape, or
-// std::nullopt in the cases mentioned above.
+// The method returns the dimensions for the normalized transpose shape.
 //
 // Example: Suppose the unnormalized output shape is [32, 1, 10, 11], and
 // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input shape
 // is [10, 1, 11, 32]. The normalized output shape is [32, 110] with
 // 'permutation' set to {1,0}.
-std::optional<absl::InlinedVector<int64_t, 3>>
-GetNormalizedLogicalTransposeShape(
+absl::InlinedVector<int64_t, 3> GetNormalizedLogicalTransposeShape(
     const Shape &output_shape, absl::Span<int64_t const> dimensions,
     absl::InlinedVector<int64_t, 3> &permutation) {
   permutation.clear();
-  if (!LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-    // Only works on default layouts.
-    return std::nullopt;
-  }
   // Drop degenerate dimensions.
   absl::InlinedVector<int64_t, 3> delta(output_shape.rank() + 1, 0);
   auto input_dimensions = ComposePermutations(output_shape.dimensions(),
@@ -180,21 +161,31 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
   absl::Status HandleTranspose(HloInstruction *transpose) override {
     VLOG(4) << "Input: " << transpose->ToString();
+    if (!LayoutUtil::IsMonotonicWithDim0Major(transpose->shape().layout()) ||
+        !LayoutUtil::IsMonotonicWithDim0Major(
+            transpose->operand(0)->shape().layout())) {
+      // TransposeDimensionGrouper runs almost immediately after
+      // LayoutNormalization. The passes in between have been verified to not
+      // introduce transposes with non-default layout.
+      return FailedPrecondition(
+          "Layout normalization should have assigned the default layout to "
+          "transpose and its operand");
+    }
     absl::InlinedVector<int64_t, 3> permutation;
     auto normalized_dims = GetNormalizedLogicalTransposeShape(
         transpose->shape(), transpose->dimensions(), permutation);
-    if (!normalized_dims.has_value() ||
+    if (normalized_dims.size() == 1 ||
         normalized_dims == transpose->shape().dimensions()) {
       return absl::OkStatus();
     }
     auto normalized_operand_dims =
-        ComposePermutations(*normalized_dims, InversePermutation(permutation));
+        ComposePermutations(normalized_dims, InversePermutation(permutation));
     Shape grouped_operand_shape = ShapeUtil::MakeShapeWithDescendingLayout(
         transpose->shape().element_type(), normalized_operand_dims);
     auto new_operand = transpose->AddInstruction(HloInstruction::CreateBitcast(
         grouped_operand_shape, transpose->mutable_operand(0)));
     Shape grouped_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-        transpose->shape().element_type(), *normalized_dims);
+        transpose->shape().element_type(), normalized_dims);
     auto new_transpose =
         transpose->AddInstruction(HloInstruction::CreateTranspose(
             grouped_shape, new_operand, permutation));

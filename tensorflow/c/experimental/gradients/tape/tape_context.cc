@@ -15,7 +15,11 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_function.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -36,10 +40,10 @@ TapeContext::~TapeContext() {
 TapeOperation* TapeContext::CreateOperation() {
   return new TapeOperation(parent_ctx_->CreateOperation(), tape_, registry_);
 }
-Status TapeContext::RegisterFunction(AbstractFunction* f) {
+absl::Status TapeContext::RegisterFunction(AbstractFunction* f) {
   return parent_ctx_->RegisterFunction(f);
 }
-Status TapeContext::RemoveFunction(const string& func) {
+absl::Status TapeContext::RemoveFunction(const string& func) {
   return parent_ctx_->RemoveFunction(func);
 }
 

@@ -1,4 +1,20 @@
 # PJRT C API changelog
+## 0.60
+* Added ``PJRT_Client_CreateBuffersForAsyncHostToDevice`` and ``PJRT_AsyncHostToDeviceTransferManager_TransferRawDataToSubBuffer``.
+
+## 0.59
+* Added ``PJRT_MemoryDescriptions_Extension``.
+
+## 0.57
+* Rearranged fields in the PJRT_Api
+* Update outdated struct sizes from previous changes to
+  ``PJRT_Client_TopologyDescription`` and ``PJRT_Buffer_CopyRawToHost``.
+
+## 0.56 (Nov 11, 2024)
+* Added ``PJRT_Buffer_CopyRawToHost``
+
+## 0.55
+* Added types F8E4M3 and F8E3M4.
 
 ## 0.54
 * Deprecated PJRT_Buffer_GetMemoryLayout.

@@ -42,7 +42,7 @@ class SimpleDevice : public tensorflow::DeviceBase {
   SimpleDevice();
   ~SimpleDevice() override;
 
-  tensorflow::Status MakeTensorFromProto(
+  absl::Status MakeTensorFromProto(
       const tensorflow::TensorProto& tensor_proto,
       const tensorflow::AllocatorAttributes alloc_attrs,
       tensorflow::Tensor* tensor) override;

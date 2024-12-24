@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -133,7 +134,7 @@ template <PrimitiveType PT>
 absl::Status ReduceScatter(ReductionKind reduction_kind,
                            absl::Span<const void* const> inputs, void* output,
                            int64_t num_elems) {
-  using T = typename primitive_util::PrimitiveTypeToNative<PT>::type;
+  using T = primitive_util::NativeTypeOf<PT>;
   T initial_value = GetInitialValue<T>(reduction_kind);
 
   absl::Span<T> out_chunk =
@@ -207,62 +208,17 @@ class CpuAllReduceRendezvous
                        chunk_offset);
     }
 
-    switch (me.primitive_type) {
-      case S8:
-        TF_RETURN_IF_ERROR(ReduceScatter<S8>(me.reduction_kind, inputs,
-                                             reduce_output, chunk_elems));
-        break;
-      case PRED:
-      case U8:
-        TF_RETURN_IF_ERROR(ReduceScatter<U8>(me.reduction_kind, inputs,
-                                             reduce_output, chunk_elems));
-        break;
-      case S16:
-        TF_RETURN_IF_ERROR(ReduceScatter<S16>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case U16:
-        TF_RETURN_IF_ERROR(ReduceScatter<U16>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case S32:
-        TF_RETURN_IF_ERROR(ReduceScatter<S32>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case U32:
-        TF_RETURN_IF_ERROR(ReduceScatter<U32>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case S64:
-        TF_RETURN_IF_ERROR(ReduceScatter<S64>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case U64:
-        TF_RETURN_IF_ERROR(ReduceScatter<U64>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case F16:
-        TF_RETURN_IF_ERROR(ReduceScatter<F16>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case F32:
-        TF_RETURN_IF_ERROR(ReduceScatter<F32>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case F64:
-        TF_RETURN_IF_ERROR(ReduceScatter<F64>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case C64:
-        TF_RETURN_IF_ERROR(ReduceScatter<C64>(me.reduction_kind, inputs,
-                                              reduce_output, chunk_elems));
-        break;
-      case C128:
-        TF_RETURN_IF_ERROR(ReduceScatter<C128>(me.reduction_kind, inputs,
-                                               reduce_output, chunk_elems));
-        break;
-      default:
-        return absl::UnimplementedError("Unexpected datatype");
+    if (primitive_util::IsArrayType(me.primitive_type)) {
+      TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+          [&](const auto constant_type) {
+            return ReduceScatter<constant_type>(me.reduction_kind, inputs,
+                                                reduce_output, chunk_elems);
+          },
+          me.primitive_type));
+    } else {
+      return absl::UnimplementedError(absl::StrCat(
+          "Unexpected datatype: ",
+          primitive_util::LowercasePrimitiveTypeName(me.primitive_type)));
     }
 
     // All-gather the reduced chunks.
@@ -443,64 +399,19 @@ class CpuReduceScatterRendezvous
                        chunk_offset);
     }
 
-    switch (me.element_type) {
-      case S8:
-        TF_RETURN_IF_ERROR(ReduceScatter<S8>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case PRED:
-      case U8:
-        TF_RETURN_IF_ERROR(ReduceScatter<U8>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case S16:
-        TF_RETURN_IF_ERROR(ReduceScatter<S16>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case U16:
-        TF_RETURN_IF_ERROR(ReduceScatter<U16>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case S32:
-        TF_RETURN_IF_ERROR(ReduceScatter<S32>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case U32:
-        TF_RETURN_IF_ERROR(ReduceScatter<U32>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case S64:
-        TF_RETURN_IF_ERROR(ReduceScatter<S64>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case U64:
-        TF_RETURN_IF_ERROR(ReduceScatter<U64>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case F16:
-        TF_RETURN_IF_ERROR(ReduceScatter<F16>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case F32:
-        TF_RETURN_IF_ERROR(ReduceScatter<F32>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case F64:
-        TF_RETURN_IF_ERROR(ReduceScatter<F64>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case C64:
-        TF_RETURN_IF_ERROR(ReduceScatter<C64>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      case C128:
-        TF_RETURN_IF_ERROR(ReduceScatter<C128>(
-            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
-        break;
-      default:
-        return absl::UnimplementedError("Unexpected datatype");
+    if (primitive_util::IsArrayType(me.element_type)) {
+      TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+          [&](const auto constant_type) {
+            return ReduceScatter<constant_type>(me.reduction_kind, inputs,
+                                                me.destination_buffer,
+                                                me.chunk_elems);
+          },
+          me.element_type));
+    } else {
+      return absl::UnimplementedError(absl::StrCat(
+          "Unexpected datatype: ",
+          primitive_util::LowercasePrimitiveTypeName(me.element_type)));
     }
-
     return nullptr;
   }
 };

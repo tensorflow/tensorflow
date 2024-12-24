@@ -1308,7 +1308,7 @@ class SyncOnReadVariable(DistributedVariable):
     with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       return super(SyncOnReadVariable, self)._get()
 
-  # TODO(b/154017756): Make assign behaivor in cross replica context consistent
+  # TODO(b/154017756): Make assign behavior in cross replica context consistent
   # with MirroredVariable.
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():

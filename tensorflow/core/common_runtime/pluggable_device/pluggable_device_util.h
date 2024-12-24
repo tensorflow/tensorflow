@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -39,12 +43,12 @@ class PluggableDeviceUtil {
   // Blocks until all operations queued on the stream associated with
   // 'device' at the time of the call have completed. Returns any
   // error pending on the stream at completion.
-  static Status Sync(Device* device);
+  static absl::Status Sync(Device* device);
 
   // Blocks until all operations queued on all streams associated with the
   // corresponding 'device' at the time of call have completed.
   // Returns any error pending on the stream at completion.
-  static Status SyncAll(Device* device);
+  static absl::Status SyncAll(Device* device);
 
   static void CopyCPUTensorToPluggableDevice(
       const Tensor* cpu_tensor, const DeviceContext* device_context,

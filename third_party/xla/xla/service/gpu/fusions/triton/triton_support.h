@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
 
@@ -20,7 +21,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -47,11 +50,28 @@ absl::Status EnsureTritonSupportsComputeCapability(
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
+// Returns `CodegenDecision`'s equivalent of `true` if all the instructions in
+// the parameter computation are supported by the Triton emitters for the given
+// compute capability.
+//
+// This function has the same caveats as `IsTritonSupportedInstruction` as
+// defined in the present namespace.
+CodegenDecision IsTritonSupportedComputation(
+    const HloComputation& computation,
+    const se::GpuComputeCapability& gpu_compute_capability);
+
 // Returns `true` if the parameter computation is a Triton fused computation,
 // i.e. the calling fusion instruction has `FusionKind::kCustom` and
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+namespace internal {
+// TODO(b/363981282): Remove the function below once all ops are tested via
+// HLOs. This is exposed for testing purposes only and will be removed in the
+// near future. Do not use. This functions only returns a partial result.
+bool IsTritonUnsupportedOpcode(HloOpcode opcode);
+}  // namespace internal
 
 }  // namespace gpu
 }  // namespace xla

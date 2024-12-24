@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 
+#include <cstddef>
+
+#include "grpcpp/impl/codegen/byte_buffer.h"
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/proto_encode_helper.h"
@@ -134,17 +138,17 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 #endif
 }
 
-void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
-                              ::grpc::ByteBuffer* result) {
+absl::Status EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
+                                      bool require_ack,
+                                      ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
   const int64_t kProtoBufLimitBytes = 1LL << 31;
 
   if (val.TotalBytes() > kProtoBufLimitBytes) {
     size_t exceeded_bytes = val.TotalBytes() - kProtoBufLimitBytes;
-    LOG(FATAL) << "Cannot encode a Tensor that exceeds the 2GB protobuf limit. "
-                  "Exceeded bytes: "
-               << exceeded_bytes
-               << ", tensor shape: " << val.shape().AsProto().DebugString();
+    return absl::InternalError(absl::StrCat(
+        "Cannot encode a Tensor that exceeds the 2GB protobuf limit. ",
+        "Exceeded bytes: ", exceeded_bytes));
   }
 
   RecvTensorResponse response;
@@ -164,7 +168,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
   } else {
     // skeleton is the encoded TensorProto contents (dtype and shape), but
     // not the actual data
-    gtl::InlinedVector<char, 128> skeleton(SkeletonEncodingSizeUpperBound(val));
+    absl::InlinedVector<char, 128UL> skeleton(
+        SkeletonEncodingSizeUpperBound(val));
     io::ProtoEncodeHelper e_skeleton(skeleton.data(), skeleton.size());
     EncodeSkeleton(val, &e_skeleton);
 
@@ -196,7 +201,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
 
     // Encode all but the actual "tdata", but including the tag and
     // varlength header for the "tdata"
-    gtl::InlinedVector<char, 1024> space(encoder_size);
+    absl::InlinedVector<char, 1024UL> space(encoder_size);
     io::ProtoEncodeHelper e(space.data(), space.size());
     // (A)
     e.WriteRawBytes(header);
@@ -248,6 +253,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
     ::grpc::ByteBuffer tmp(&slices[0], num_slices);
     result->Swap(&tmp);
   }
+  return absl::OkStatus();
 }
 
 }  // namespace grpc

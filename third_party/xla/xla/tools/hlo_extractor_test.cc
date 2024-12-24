@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -445,6 +446,64 @@ ENTRY %entry {
         op::Add(op::GetTupleElement(op::Tuple(op::Tuple(), op::Broadcast())),
                 op::Parameter()));
   }
+}
+
+TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
+  const char* hlo = R"(
+  HloModule test
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto extracted =
+      ExtractModule(module->entry_computation()->root_instruction(), -1,
+                    nullptr, nullptr, false, true);
+  EXPECT_THAT(extracted->entry_computation()->root_instruction(),
+              op::Tuple(op::Parameter(0), op::Parameter(0)));
+}
+
+TEST_F(HloExtractorTest, TestInvalidModule) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+computation {
+  ROOT arg.0 = s32[16] parameter(0)
+}
+
+ENTRY main {
+  arg.0 = s32[16] parameter(0)
+  ROOT call.0 = call(arg.0), to_apply=computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* arg0 =
+      FindComputation(module.get(), "computation")->root_instruction();
+  // Create invalid operand shape.
+  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
+
+  auto extracted =
+      ExtractModule(module->entry_computation()->root_instruction(), -1,
+                    nullptr, nullptr, false, false, false);
+
+  // Restore the operand shape to be valid.
+  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
 }
 
 }  // namespace

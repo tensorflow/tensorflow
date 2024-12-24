@@ -65,15 +65,15 @@ class TFRTOpKernelConstruction {
   explicit TFRTOpKernelConstruction(const tfrt::OpAttrsRef& attributes);
 
   template <class T>
-  Status GetAttr(StringPiece attr_name, T* value) const;
+  absl::Status GetAttr(StringPiece attr_name, T* value) const;
 
-  void CtxFailure(const Status& s);
-  void CtxFailureWithWarning(const Status& s);
-  void CtxFailure(const char* file, int line, const Status& s);
-  void CtxFailureWithWarning(const char* file, int line, const Status& s);
+  void CtxFailure(const absl::Status& s);
+  void CtxFailureWithWarning(const absl::Status& s);
+  void CtxFailure(const char* file, int line, const absl::Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const absl::Status& s);
 
-  Status MatchSignature(const DataTypeSlice expected_inputs,
-                        const DataTypeSlice expected_outputs) {
+  absl::Status MatchSignature(const DataTypeSlice expected_inputs,
+                              const DataTypeSlice expected_outputs) {
     // TODO(annarev): Move MatchSignatureHelper out of op_kernel.h
     // and call it here.
     return absl::OkStatus();
@@ -88,26 +88,26 @@ class TFRTOpKernelConstruction {
 };
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         std::string* value) const;
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               std::string* value) const;
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         DataType* value) const;
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               DataType* value) const;
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         Padding* value) const;
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               Padding* value) const;
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         std::vector<int32>* value) const;
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               std::vector<int32>* value) const;
 
-Status MissingAttributeError(StringPiece attr_name);
+absl::Status MissingAttributeError(StringPiece attr_name);
 
 template <class T>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         T* value) const {
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               T* value) const {
   bool success = attributes_.Get<T>(
       llvm::StringRef(attr_name.data(), attr_name.size()), value);
   if (!success) {
@@ -137,18 +137,19 @@ class TFRTOpKernelContext {
                                           Tensor** output) {
     return false;
   }
-  Status allocate_temp(DataType type, const TensorShape& shape,
-                       Tensor* out_temp);
-  Status allocate_output(int index, const TensorShape& shape, Tensor** tensor);
+  absl::Status allocate_temp(DataType type, const TensorShape& shape,
+                             Tensor* out_temp);
+  absl::Status allocate_output(int index, const TensorShape& shape,
+                               Tensor** tensor);
   DataType expected_output_dtype(int i) const;
 
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;
 
-  void CtxFailure(const Status& s);
-  void CtxFailureWithWarning(const Status& s);
-  void CtxFailure(const char* file, int line, const Status& s);
-  void CtxFailureWithWarning(const char* file, int line, const Status& s);
+  void CtxFailure(const absl::Status& s);
+  void CtxFailureWithWarning(const absl::Status& s);
+  void CtxFailure(const char* file, int line, const absl::Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const absl::Status& s);
 
  private:
   llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> inputs_;

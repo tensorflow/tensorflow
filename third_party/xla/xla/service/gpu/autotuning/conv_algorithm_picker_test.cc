@@ -20,26 +20,27 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla::gpu {
 namespace {
@@ -191,9 +192,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
   ASSERT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(CudnnFusedConvRewriter(GetCudaComputeCapability(),
-                                                 GetDnnVersion(), CUDA_VERSION),
-                          m.get()));
+      changed,
+      RunHloPass(CudnnFusedConvRewriter(
+                     GetCudaComputeCapability(), GetDnnVersion(),
+                     stream_exec->GetDeviceDescription().runtime_version()),
+                 m.get()));
   ASSERT_TRUE(changed);
 
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();

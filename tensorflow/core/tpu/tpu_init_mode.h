@@ -30,7 +30,7 @@ enum class TPUInitMode : int { kNone, kGlobal, kRegular };
 // IMPLEMENTATION DETAILS:
 // Used internally to record the current mode and type of API used for TPU
 // initialization in a global static variable.
-Status SetTPUInitMode(TPUInitMode mode);
+absl::Status SetTPUInitMode(TPUInitMode mode);
 
 // Returns the current TPUInitMode.
 TPUInitMode GetTPUInitMode();

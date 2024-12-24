@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
@@ -65,9 +66,9 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 }  // namespace impl
 
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloAllGatherInstruction* inst, std::vector<Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info, nccl_api,
+    ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
+    std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
+    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
                           IsSyncCollective(inst)),
       config_(impl::GetNcclAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
@@ -88,32 +89,33 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 
 absl::Status NcclAllGatherStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllGather(nccl_api(), device_buffers, stream,
-                                comm_wrapper.comm_handle);
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  return xla::gpu::RunAllGather(collectives, device_buffers, stream,
+                                comm_handle.comm);
 }
 
-absl::Status RunAllGather(NcclApi* nccl_api,
+absl::Status RunAllGather(GpuCollectives* collectives,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
+                          se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
-  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+  TF_RETURN_IF_ERROR(collectives->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
-    TF_RETURN_IF_ERROR(nccl_api->AllGather(
+    TF_RETURN_IF_ERROR(comm->AllGather(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, comm, &stream));
+        buffer.element_count, GpuCollectives::On(stream)));
   }
 
-  TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
+  TF_RETURN_IF_ERROR(collectives->GroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();

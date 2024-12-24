@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
@@ -70,9 +71,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -148,8 +151,12 @@ static std::string ImportGraphDefImpl(const std::string& proto,
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
-  auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
-  if (!module.ok()) {
+  GraphConstructorOptions options;
+  Graph graph(OpRegistry::Global());
+  absl::Status graph_status = ConvertGraphDefToGraph(options, graphdef, &graph);
+  auto module = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      graph, debug_info, graph.flib_def(), specs, &context);
+  if (!module.ok() || !graph_status.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";
   }
@@ -190,7 +197,15 @@ std::string ImportFunction(const std::string& functiondef_proto,
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
-  auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
+
+  tensorflow::GraphImportConfig specs;
+  specs.graph_func_name = fbody->record->fdef().signature().name();
+  specs.enable_shape_inference = false;
+  specs.graph_as_function = true;
+  for (const auto* control_ret_node : fbody->control_ret_nodes)
+    specs.control_outputs.push_back(control_ret_node->name());
+  auto module = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      *fbody->graph, {}, flib_def, specs, &context);
   if (!module.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";
@@ -439,7 +454,7 @@ void ExperimentalTFLiteToTosaBytecode(
     }
 
     auto buffer_view =
-        std::string_view(buffer->getBufferStart(), buffer->getBufferSize());
+        absl::string_view(buffer->getBufferStart(), buffer->getBufferSize());
     module = tflite::FlatBufferToMlir(
         buffer_view, &context, loc, use_external_constant, ordered_input_arrays,
         ordered_output_arrays);

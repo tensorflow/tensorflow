@@ -520,51 +520,51 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandlePower(const HloInstruction* power) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[power],
-        ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
-                                      ElementwiseT rhs_el) {
-          // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
-          // Branch Cuts for Complex Elementary Functions or Much Ado About
-          // Nothing's Sign Bit, W. Kahan, Section 10.
-          if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
-            return static_cast<ElementwiseT>(1);
-          }
-          // Case 1:
-          // 1. inf^(a + 0i) = inf, if a > 0.
-          // 2. inf^(a + 0i) = 0, if a < 0.
-          if constexpr (is_complex_v<ElementwiseT>) {
-            auto is_positive_infinity = [](ElementwiseT c) {
-              return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
-            };
-            auto is_positive_real = [](ElementwiseT c) {
-              return c.real() > 0 && c.imag() == 0;
-            };
-            auto is_negative_real = [](ElementwiseT c) {
-              return c.real() < 0 && c.imag() == 0;
-            };
-            if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el)) {
-              return static_cast<ElementwiseT>(lhs_el);
-            }
-            if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
-              return static_cast<ElementwiseT>(0);
-            }
-          }
-          // Case 2:
-          // Fallback to pow.
-          if constexpr (std::is_same_v<ElementwiseT, bool>) {
-            return lhs_el || !rhs_el;
-          } else if constexpr (std::is_integral_v<ElementwiseT>) {
-            if constexpr (std::is_signed_v<ElementwiseT>) {
-              if (rhs_el < static_cast<ElementwiseT>(0)) {
-                return static_cast<ElementwiseT>(
-                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+        ElementWiseBinaryOp(
+            power, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
+              // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
+              // Branch Cuts for Complex Elementary Functions or Much Ado About
+              // Nothing's Sign Bit, W. Kahan, Section 10.
+              if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
+                return static_cast<ElementwiseT>(1);
               }
-            }
-            return static_cast<ElementwiseT>(
-                IPow<std::make_unsigned_t<ElementwiseT>>(lhs_el, rhs_el));
-          } else {
-            return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
-          }
-        }));
+              // Case 1:
+              // 1. inf^(a + 0i) = inf, if a > 0.
+              // 2. inf^(a + 0i) = 0, if a < 0.
+              if constexpr (is_complex_v<ElementwiseT>) {
+                auto is_positive_infinity = [](ElementwiseT c) {
+                  return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
+                };
+                auto is_positive_real = [](ElementwiseT c) {
+                  return c.real() > 0 && c.imag() == 0;
+                };
+                auto is_negative_real = [](ElementwiseT c) {
+                  return c.real() < 0 && c.imag() == 0;
+                };
+                if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el)) {
+                  return static_cast<ElementwiseT>(lhs_el);
+                }
+                if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
+                  return static_cast<ElementwiseT>(0);
+                }
+              }
+              // Case 2:
+              // Fallback to pow.
+              if constexpr (std::is_same_v<ElementwiseT, bool>) {
+                return lhs_el || !rhs_el;
+              } else if constexpr (std::is_integral_v<ElementwiseT>) {
+                if constexpr (std::is_signed_v<ElementwiseT>) {
+                  if (rhs_el < static_cast<ElementwiseT>(0)) {
+                    return static_cast<ElementwiseT>(
+                        lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+                  }
+                }
+                return static_cast<ElementwiseT>(
+                    IPow<std::make_unsigned_t<ElementwiseT>>(lhs_el, rhs_el));
+              } else {
+                return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
+              }
+            }));
     return absl::OkStatus();
   }
 
@@ -1129,20 +1129,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    DimensionVector lhs_non_contracting_dims;
-    DimensionVector rhs_non_contracting_dims;
-    for (int64_t i = 0; i < lhs_rank; i++) {
-      if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
-          !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
-        lhs_non_contracting_dims.push_back(i);
-      }
-    }
-    for (int64_t i = 0; i < rhs_rank; i++) {
-      if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
-          !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
-        rhs_non_contracting_dims.push_back(i);
-      }
-    }
+    DimensionVector lhs_non_contracting_dims =
+        GetNonContractingDims(lhs_rank, dnums.lhs_contracting_dimensions(),
+                              dnums.lhs_batch_dimensions());
+    DimensionVector rhs_non_contracting_dims =
+        GetNonContractingDims(rhs_rank, dnums.rhs_contracting_dimensions(),
+                              dnums.rhs_batch_dimensions());
 
     DimensionVector contracting_dim_sizes;
     contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
@@ -1724,12 +1716,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
+extern template class HloEvaluatorTypedVisitor<u1, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u2, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u4, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
+extern template class HloEvaluatorTypedVisitor<s1, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s2, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s4, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;
@@ -1743,10 +1737,12 @@ extern template class HloEvaluatorTypedVisitor<complex64>;
 extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e3m4, float>;
 
 }  // namespace xla
 

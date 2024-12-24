@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
 #include <string>
 
 #include "fuzztest/fuzztest.h"
@@ -29,10 +28,10 @@ namespace {
 void FuzzTest(absl::StatusCode error_code, bool is_derived) {
   const std::string error_message = "ERROR";
   tensorflow::StatusGroup sg;
-  tensorflow::Status s = tensorflow::Status(error_code, error_message);
+  absl::Status s = absl::Status(error_code, error_message);
 
   if (is_derived) {
-    tensorflow::Status derived_s = tensorflow::StatusGroup::MakeDerived(s);
+    absl::Status derived_s = tensorflow::StatusGroup::MakeDerived(s);
     sg.Update(derived_s);
   } else {
     sg.Update(s);

@@ -19,8 +19,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
@@ -33,15 +37,23 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using std::nullopt;
+
+struct EmitReducePrecisionIrTestCase {
+  float input;
+  std::string expected_res;
+};
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:
@@ -68,7 +80,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
 class ElementalIrEmitterExecutionTestWithoutFastMinMax
     : public ElementalIrEmitterExecutionTest {
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         ElementalIrEmitterExecutionTest::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_enable_fast_min_max(false);
@@ -76,6 +88,23 @@ class ElementalIrEmitterExecutionTestWithoutFastMinMax
     return debug_options;
   }
 };
+
+template <typename T>
+class ElementalIrEmitterExecutionTypedTest
+    : public ElementalIrEmitterExecutionTest {
+ protected:
+  const std::string& TypeName() {
+    return primitive_util::LowercasePrimitiveTypeName(
+        primitive_util::NativeToPrimitiveType<T>());
+  }
+};
+
+using FloatTypes =
+    ::testing::Types<bfloat16, tsl::float8_e5m2, tsl::float8_e5m2fnuz,
+                     tsl::float8_e4m3, tsl::float8_e4m3fn, tsl::float8_e4m3fnuz,
+                     tsl::float8_e4m3b11fnuz, tsl::float8_e3m4>;
+
+TYPED_TEST_SUITE(ElementalIrEmitterExecutionTypedTest, FloatTypes);
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
   const std::string hlo_text = R"(
@@ -99,6 +128,192 @@ ENTRY main {
   Literal lhs = LiteralUtil::CreateR3<int32_t>({{{1}, {2}}});
   Literal rhs = LiteralUtil::CreateR3<int32_t>({{{3}, {4}}});
   RunTest(hlo_text, {&lhs, &rhs});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-14, "half 0xH0400"},
+      {0.250, "half 0xH3400"},
+      {1.0, "half 0xH3C00"},
+      {0x1.2p0, "half 0xH3C00"},
+      {0x1.Cp15, "half 0xH7B00"},
+      {-0x1.Cp15, "half 0xHFB00"},
+      {0x1.Dp15, "half 0xH7B00"},
+      {0x1.Ep15, "half 0xH7C00"},
+      {0x1.0p16, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7F00"},
+      {-snan, "half 0xHFF00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/primitive_util::ExponentWidth(F8E5M2),
+        /*dest_mantissa_bits=*/primitive_util::SignificandWidth(F8E5M2) - 1,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-6, "half 0xH2400"},
+      {0.125, "half 0xH3000"},
+      {1.0, "half 0xH3C00"},
+      {0x1.1p0, "half 0xH3C00"},
+      {0x1.Ep7, "half 0xH5B80"},
+      {-0x1.Ep7, "half 0xHDB80"},
+      {0x1.E8p7, "half 0xH5B80"},
+      {0x1.Fp7, "half 0xH7C00"},
+      {0x1.0p8, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7E00"},
+      {-snan, "half 0xHFE00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/4,
+        /*dest_mantissa_bits=*/3,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-2, "half 0xH3400"},
+      {0.5, "half 0xH3800"},
+      {1.0, "half 0xH3C00"},
+      {0x1.08p0, "half 0xH3C00"},
+      {0x1.Fp3, "half 0xH4BC0"},
+      {-0x1.Fp3, "half 0xHCBC0"},
+      {0x1.F4p3, "half 0xH4BC0"},
+      {0x1.F8p3, "half 0xH7C00"},
+      {0x1.0p4, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7E00"},
+      {-snan, "half 0xHFE00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/3,
+        /*dest_mantissa_bits=*/4,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest,
+           EmitReducePrecisionIR_F16ToF8e4m3fn) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-6, "half 0xH2400"},
+      {0.125, "half 0xH3000"},
+      {1.0, "half 0xH3C00"},
+      {0x1.1p0, "half 0xH3C00"},
+      {0x1.Cp8, "half 0xH5F00"},
+      {-0x1.Cp8, "half 0xHDF00"},
+      {0x1.Dp8, "half 0xH5F00"},
+      {0x1.Ep8, "half 0xH5F80"},
+      {0x1.0p9, "half 0xH6000"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
+    // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
+    // exponent reduction.
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/5,
+        /*dest_mantissa_bits=*/3,
+        /*quiet_nans=*/false, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
 }
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
@@ -229,473 +444,212 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToBF16) {
-  RunTypeConversionTest(R"(
-    HloModule convertToBF16
-    ENTRY ConvertToBF16
-        (f16_ f16[], f32_ f32[], f64_ f64[]) -> (bf16[], bf16[], bf16[]) {
-      f16_ = f16[] parameter(0)
-      f32_ = f32[] parameter(1)
-      f64_ = f64[] parameter(2)
-      converted_f16 = bf16[] convert(f16[] f16_)
-      converted_f32 = bf16[] convert(f32[] f32_)
-      converted_f64 = bf16[] convert(f64[] f64_)
-      ROOT tuple = (bf16[], bf16[], bf16[]) tuple(converted_f16, converted_f32,
-                                                  converted_f64)
-    }
-  )");
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
+  auto tname = this->TypeName();
+  const int n = 10;
+  if (std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
+    GTEST_SKIP() << "Skipping test for type " << tname;
+  }
+  const auto hlo_text =
+      absl::StrReplaceAll(R"(
+  HloModule m
+  ENTRY main {
+    f16_ = f16[$n] parameter(0)
+    f32_ = f32[$n] parameter(1)
+    f64_ = f64[$n] parameter(2)
+    bf16_ = bf16[$n] parameter(3)
+    converted_f16 = ${tname}[$n] convert(f16_)
+    converted_f32 = ${tname}[$n] convert(f32_)
+    converted_f64 = ${tname}[$n] convert(f64_)
+    converted_bf16 = ${tname}[$n] convert(bf16_)
+    ROOT tuple = (${tname}[$n], ${tname}[$n], ${tname}[$n], ${tname}[$n]) tuple(
+        converted_f16, converted_f32, converted_f64, converted_bf16)
+  }
+  )",
+                          {{"${tname}", tname}, {"$n", absl::StrCat(n)}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToBF16) {
-  RunTypeConversionTest(R"(
-    HloModule convertToBF16
-    ENTRY ConvertToBF16 (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
-        (bf16[], bf16[], bf16[], bf16[]) {
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertSignedToFloat) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+    HloModule m
+    ENTRY main {
       s8_ = s8[] parameter(0)
       s16_ = s16[] parameter(1)
       s32_ = s32[] parameter(2)
       s64_ = s64[] parameter(3)
-      converted_s8 = bf16[] convert(s8[] s8_)
-      converted_s16 = bf16[] convert(s16[] s16_)
-      converted_s32 = bf16[] convert(s32[] s32_)
-      converted_s64 = bf16[] convert(s64[] s64_)
-      ROOT tuple = (bf16[], bf16[], bf16[], bf16[]) tuple(
+      converted_s8 = ${tname}[] convert(s8_)
+      converted_s16 = ${tname}[] convert(s16_)
+      converted_s32 = ${tname}[] convert(s32_)
+      converted_s64 = ${tname}[] convert(s64_)
+      ROOT tuple = (${tname}[], ${tname}[], ${tname}[], ${tname}[]) tuple(
           converted_s8, converted_s16, converted_s32, converted_s64)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToBF16) {
-  RunTypeConversionTest(R"(
-    HloModule convertToBF16
-    ENTRY ConvertToBF16 (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
-        (bf16[], bf16[], bf16[], bf16[]) {
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertUnsignedToFloat) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+    HloModule m
+    ENTRY main {
       u8_ = u8[] parameter(0)
       u16_ = u16[] parameter(1)
       u32_ = u32[] parameter(2)
       u64_ = u64[] parameter(3)
-      converted_u8 = bf16[] convert(u8[] u8_)
-      converted_u16 = bf16[] convert(u16[] u16_)
-      converted_u32 = bf16[] convert(u32[] u32_)
-      converted_u64 = bf16[] convert(u64[] u64_)
-      ROOT tuple = (bf16[], bf16[], bf16[], bf16[]) tuple(
+      converted_u8 = ${tname}[] convert(u8_)
+      converted_u16 = ${tname}[] convert(u16_)
+      converted_u32 = ${tname}[] convert(u32_)
+      converted_u64 = ${tname}[] convert(u64_)
+      ROOT tuple = (${tname}[], ${tname}[], ${tname}[], ${tname}[]) tuple(
           converted_u8, converted_u16, converted_u32, converted_u64)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToFloat) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromBF16
-    ENTRY ConvertFromBF16
-        (to_f16 bf16[], to_f32 bf16[], to_f64 bf16[]) -> (f16[], f32[], f64[]) {
-      to_f16 = bf16[] parameter(0)
-      to_f32 = bf16[] parameter(1)
-      to_f64 = bf16[] parameter(2)
-      f16_ = f16[] convert(bf16[] to_f16)
-      f32_ = f32[] convert(bf16[] to_f32)
-      f64_ = f64[] convert(bf16[] to_f64)
-      ROOT tuple = (f16[], f32[], f64[]) tuple(f16_, f32_, f64_)
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToFloats) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+   HloModule m
+    ENTRY main {
+      to_f16 = ${tname}[] parameter(0)
+      to_f32 = ${tname}[] parameter(1)
+      to_f64 = ${tname}[] parameter(2)
+      to_bf16 = ${tname}[] parameter(3)
+      f16_ = f16[] convert(to_f16)
+      f32_ = f32[] convert(to_f32)
+      f64_ = f64[] convert(to_f64)
+      bf16_ = bf16[] convert(to_f64)
+      ROOT tuple = (f16[], f32[], f64[], bf16[]) tuple(f16_, f32_, f64_, bf16_)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToSigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromBF16
-    ENTRY ConvertFromBF16(to_s8 bf16[], to_s16 bf16[], to_s32 bf16[],
-                          to_s64 bf16[]) -> (s8[], s16[], s32[], s64[]) {
-      to_s8 = bf16[] parameter(0)
-      to_s16 = bf16[] parameter(1)
-      to_s32 = bf16[] parameter(2)
-      to_s64 = bf16[] parameter(3)
-      s8_ = s8[] convert(bf16[] to_s8)
-      s16_ = s16[] convert(bf16[] to_s16)
-      s32_ = s32[] convert(bf16[] to_s32)
-      s64_ = s64[] convert(bf16[] to_s64)
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToSigned) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+    HloModule m
+    ENTRY main {
+      to_s8 = ${tname}[] parameter(0)
+      to_s16 = ${tname}[] parameter(1)
+      to_s32 = ${tname}[] parameter(2)
+      to_s64 = ${tname}[] parameter(3)
+      s8_ = s8[] convert(to_s8)
+      s16_ = s16[] convert(to_s16)
+      s32_ = s32[] convert(to_s32)
+      s64_ = s64[] convert(to_s64)
       ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToUnsigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromBF16
-    ENTRY ConvertFromBF16(to_u8 bf16[], to_u16 bf16[], to_u32 bf16[],
-                          to_u64 bf16[]) -> (u8[], u16[], u32[], u64[]) {
-      to_u8 = bf16[] parameter(0)
-      to_u16 = bf16[] parameter(1)
-      to_u32 = bf16[] parameter(2)
-      to_u64 = bf16[] parameter(3)
-      u8_ = u8[] convert(bf16[] to_u8)
-      u16_ = u16[] convert(bf16[] to_u16)
-      u32_ = u32[] convert(bf16[] to_u32)
-      u64_ = u64[] convert(bf16[] to_u64)
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToUnsigned) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+    HloModule m
+    ENTRY main {
+      to_u8 = ${tname}[] parameter(0)
+      to_u16 = ${tname}[] parameter(1)
+      to_u32 = ${tname}[] parameter(2)
+      to_u64 = ${tname}[] parameter(3)
+      u8_ = u8[] convert(to_u8)
+      u16_ = u16[] convert(to_u16)
+      u32_ = u32[] convert(to_u32)
+      u64_ = u64[] convert(to_u64)
       ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToComplex) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromBF16
-    ENTRY ConvertFromBF16
-        (to_c64 bf16[], to_c128 bf16[]) -> (c64[], c128[]) {
-      to_c64 = bf16[] parameter(0)
-      to_c128 = bf16[] parameter(1)
-      c64_ = c64[] convert(bf16[] to_c64)
-      c128_ = c128[] convert(bf16[] to_c128)
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToComplex) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
+    HloModule m
+    ENTRY main {
+      to_c64 = ${tname}[] parameter(0)
+      to_c128 = ${tname}[] parameter(1)
+      c64_ = c64[] convert(to_c64)
+      c128_ = c128[] convert(to_c128)
       ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
     }
-  )");
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTypeConversionTest(hlo_text);
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareBF16) {
-  constexpr char hlo_text[] = R"(
-  HloModule compareBF16
-  ENTRY main {
-    p0 = bf16[4] parameter(0)
-    p1 = bf16[4] parameter(1)
-    ROOT cmp = pred[4] compare(p0, p1), direction=LT
-})";
-
-  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
-  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
-  lhs = LiteralUtil::ConvertF32ToBF16(lhs);
-  rhs = LiteralUtil::ConvertF32ToBF16(rhs);
-  RunTest(hlo_text, {&lhs, &rhs});
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaBF16) {
-  constexpr char hlo_text[] = R"(
-  HloModule IotaBF16
-  ENTRY main {
-    ROOT iota_ = bf16[4] iota(), iota_dimension=0
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, CompareFloat) {
+  auto tname = this->TypeName();
+  if (std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
+    GTEST_SKIP() << "Skipping test for type " << tname;
   }
-  )";
-
-  RunTest(hlo_text, {});
+  const auto hlo_text = absl::StrReplaceAll(R"(
+  HloModule m
+  ENTRY main {
+    p0 = ${tname}[4] parameter(0)
+    p1 = ${tname}[4] parameter(1)
+    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+})",
+                                            {{"${tname}", tname}});
+  Literal lhs = LiteralUtil::CreateR1<TypeParam>(
+      {TypeParam(1.), TypeParam(2.), TypeParam(3.), TypeParam(4.)});
+  Literal rhs = LiteralUtil::CreateR1<TypeParam>(
+      {TypeParam(4.), TypeParam(4.), TypeParam(2.), TypeParam(1.)});
+  ElementalIrEmitterExecutionTest::RunTest(hlo_text, {&lhs, &rhs});
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDotBF16) {
-  const char* const hlo_text = R"(
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, IotaFloat) {
+  auto tname = this->TypeName();
+  if (std::is_same<TypeParam, tsl::float8_e5m2>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
+      std::is_same<TypeParam, tsl::float8_e3m4>()) {
+    GTEST_SKIP() << "Skipping test for type " << tname;
+  }
+  const auto hlo_text = absl::StrReplaceAll(R"(
+  HloModule m
+  ENTRY main {
+    ROOT iota_ = ${tname}[4] iota(), iota_dimension=0
+  }
+  )",
+                                            {{"${tname}", tname}});
+  ElementalIrEmitterExecutionTest::RunTest(hlo_text, {});
+}
+
+TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
+  auto tname = this->TypeName();
+  const auto hlo_text = absl::StrReplaceAll(R"(
   HloModule matmul
 
   ENTRY main {
-    x = bf16[8,16] parameter(0)
-    y = bf16[8,16,32] parameter(1)
-    ROOT dot = bf16[8,32] dot(x, y), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    x = ${tname}[8,16] parameter(0)
+    y = ${tname}[8,16,32] parameter(1)
+    ROOT dot = ${tname}[8,32] dot(x, y), lhs_batch_dims={0},
+      rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
   }
-  )";
+  )",
+                                            {{"${tname}", tname}});
   HloModuleConfig config;
-  DebugOptions debug_options = GetDebugOptionsForTest();
+  DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToF8E4FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E4FNUZ
-    ENTRY ConvertToF8E4FNUZ
-        (f16_ f16[], f32_ f32[], f64_ f64[], bf16_ bf16[]) -> (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
-      f16_ = f16[] parameter(0)
-      f32_ = f32[] parameter(1)
-      f64_ = f64[] parameter(2)
-      bf16_ = bf16[] parameter(3)
-      converted_f16 = f8e4m3fnuz[] convert(f16[] f16_)
-      converted_f32 = f8e4m3fnuz[] convert(f32[] f32_)
-      converted_f64 = f8e4m3fnuz[] convert(f64[] f64_)
-      converted_bf16 = f8e4m3fnuz[] convert(bf16[] bf16_)
-      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
-          converted_f16, converted_f32, converted_f64, converted_bf16)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToF8E4FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E4FNUZ
-    ENTRY ConvertToF8E4FNUZ (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
-        (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
-      s8_ = s8[] parameter(0)
-      s16_ = s16[] parameter(1)
-      s32_ = s32[] parameter(2)
-      s64_ = s64[] parameter(3)
-      converted_s8 = f8e4m3fnuz[] convert(s8[] s8_)
-      converted_s16 = f8e4m3fnuz[] convert(s16[] s16_)
-      converted_s32 = f8e4m3fnuz[] convert(s32[] s32_)
-      converted_s64 = f8e4m3fnuz[] convert(s64[] s64_)
-      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
-          converted_s8, converted_s16, converted_s32, converted_s64)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToF8E4FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E4FNUZ
-    ENTRY ConvertToF8E4FNUZ (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
-        (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
-      u8_ = u8[] parameter(0)
-      u16_ = u16[] parameter(1)
-      u32_ = u32[] parameter(2)
-      u64_ = u64[] parameter(3)
-      converted_u8 = f8e4m3fnuz[] convert(u8[] u8_)
-      converted_u16 = f8e4m3fnuz[] convert(u16[] u16_)
-      converted_u32 = f8e4m3fnuz[] convert(u32[] u32_)
-      converted_u64 = f8e4m3fnuz[] convert(u64[] u64_)
-      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
-          converted_u8, converted_u16, converted_u32, converted_u64)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToFloat) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E4FNUZ
-    ENTRY ConvertFromF8E4FNUZ
-        (to_f16 f8e4m3fnuz[], to_f32 f8e4m3fnuz[], to_f64 f8e4m3fnuz[], to_bf16 f8e4m3fnuz[]) -> (f16[], f32[], f64[], bf16[]) {
-      to_f16 = f8e4m3fnuz[] parameter(0)
-      to_f32 = f8e4m3fnuz[] parameter(1)
-      to_f64 = f8e4m3fnuz[] parameter(2)
-      to_bf16 = f8e4m3fnuz[] parameter(3)
-      f16_ = f16[] convert(f8e4m3fnuz[] to_f16)
-      f32_ = f32[] convert(f8e4m3fnuz[] to_f32)
-      f64_ = f64[] convert(f8e4m3fnuz[] to_f64)
-      bf16_ = bf16[] convert(f8e4m3fnuz[] to_f64)
-      ROOT tuple = (f16[], f32[], f64[], bf16[]) tuple(f16_, f32_, f64_, bf16_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToSigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E4FNUZ
-    ENTRY ConvertFromF8E4FNUZ(to_s8 f8e4m3fnuz[], to_s16 f8e4m3fnuz[], to_s32 f8e4m3fnuz[],
-                          to_s64 f8e4m3fnuz[]) -> (s8[], s16[], s32[], s64[]) {
-      to_s8 = f8e4m3fnuz[] parameter(0)
-      to_s16 = f8e4m3fnuz[] parameter(1)
-      to_s32 = f8e4m3fnuz[] parameter(2)
-      to_s64 = f8e4m3fnuz[] parameter(3)
-      s8_ = s8[] convert(f8e4m3fnuz[] to_s8)
-      s16_ = s16[] convert(f8e4m3fnuz[] to_s16)
-      s32_ = s32[] convert(f8e4m3fnuz[] to_s32)
-      s64_ = s64[] convert(f8e4m3fnuz[] to_s64)
-      ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToUnsigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E4FNUZ
-    ENTRY ConvertFromF8E4FNUZ(to_u8 f8e4m3fnuz[], to_u16 f8e4m3fnuz[], to_u32 f8e4m3fnuz[],
-                          to_u64 f8e4m3fnuz[]) -> (u8[], u16[], u32[], u64[]) {
-      to_u8 = f8e4m3fnuz[] parameter(0)
-      to_u16 = f8e4m3fnuz[] parameter(1)
-      to_u32 = f8e4m3fnuz[] parameter(2)
-      to_u64 = f8e4m3fnuz[] parameter(3)
-      u8_ = u8[] convert(f8e4m3fnuz[] to_u8)
-      u16_ = u16[] convert(f8e4m3fnuz[] to_u16)
-      u32_ = u32[] convert(f8e4m3fnuz[] to_u32)
-      u64_ = u64[] convert(f8e4m3fnuz[] to_u64)
-      ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToComplex) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E4FNUZ
-    ENTRY ConvertFromF8E4FNUZ
-        (to_c64 f8e4m3fnuz[], to_c128 f8e4m3fnuz[]) -> (c64[], c128[]) {
-      to_c64 = f8e4m3fnuz[] parameter(0)
-      to_c128 = f8e4m3fnuz[] parameter(1)
-      c64_ = c64[] convert(f8e4m3fnuz[] to_c64)
-      c128_ = c128[] convert(f8e4m3fnuz[] to_c128)
-      ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareF8E4FNUZ) {
-  constexpr char hlo_text[] = R"(
-  HloModule compareF8E4FNUZ
-  ENTRY main {
-    p0 = f8e4m3fnuz[4] parameter(0)
-    p1 = f8e4m3fnuz[4] parameter(1)
-    ROOT cmp = pred[4] compare(p0, p1), direction=LT
-})";
-
-  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
-  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
-  lhs = LiteralUtil::ConvertF32ToF8E4M3FNUZ(lhs);
-  rhs = LiteralUtil::ConvertF32ToF8E4M3FNUZ(rhs);
-  RunTest(hlo_text, {&lhs, &rhs});
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E4FNUZ) {
-  constexpr char hlo_text[] = R"(
-  HloModule IotaF8E4FNUZ
-  ENTRY main {
-    ROOT iota_ = f8e4m3fnuz[4] iota(), iota_dimension=0
-  }
-  )";
-
-  RunTest(hlo_text, {});
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToF8E5FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E5FNUZ
-    ENTRY ConvertToF8E5FNUZ
-        (f16_ f16[], f32_ f32[], f64_ f64[], bf16_ bf16[]) -> (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
-      f16_ = f16[] parameter(0)
-      f32_ = f32[] parameter(1)
-      f64_ = f64[] parameter(2)
-      bf16_ = bf16[] parameter(3)
-      converted_f16 = f8e5m2fnuz[] convert(f16[] f16_)
-      converted_f32 = f8e5m2fnuz[] convert(f32[] f32_)
-      converted_f64 = f8e5m2fnuz[] convert(f64[] f64_)
-      converted_bf16 = f8e5m2fnuz[] convert(bf16[] bf16_)
-      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
-          converted_f16, converted_f32, converted_f64, converted_bf16)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToF8E5FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E5FNUZ
-    ENTRY ConvertToF8E5FNUZ (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
-        (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
-      s8_ = s8[] parameter(0)
-      s16_ = s16[] parameter(1)
-      s32_ = s32[] parameter(2)
-      s64_ = s64[] parameter(3)
-      converted_s8 = f8e5m2fnuz[] convert(s8[] s8_)
-      converted_s16 = f8e5m2fnuz[] convert(s16[] s16_)
-      converted_s32 = f8e5m2fnuz[] convert(s32[] s32_)
-      converted_s64 = f8e5m2fnuz[] convert(s64[] s64_)
-      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
-          converted_s8, converted_s16, converted_s32, converted_s64)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToF8E5FNUZ) {
-  RunTypeConversionTest(R"(
-    HloModule convertToF8E5FNUZ
-    ENTRY ConvertToF8E5FNUZ (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
-        (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
-      u8_ = u8[] parameter(0)
-      u16_ = u16[] parameter(1)
-      u32_ = u32[] parameter(2)
-      u64_ = u64[] parameter(3)
-      converted_u8 = f8e5m2fnuz[] convert(u8[] u8_)
-      converted_u16 = f8e5m2fnuz[] convert(u16[] u16_)
-      converted_u32 = f8e5m2fnuz[] convert(u32[] u32_)
-      converted_u64 = f8e5m2fnuz[] convert(u64[] u64_)
-      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
-          converted_u8, converted_u16, converted_u32, converted_u64)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToFloat) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E5FNUZ
-    ENTRY ConvertFromF8E5FNUZ
-        (to_f16 f8e5m2fnuz[], to_f32 f8e5m2fnuz[], to_f64 f8e5m2fnuz[]) -> (f16[], f32[], f64[]) {
-      to_f16 = f8e5m2fnuz[] parameter(0)
-      to_f32 = f8e5m2fnuz[] parameter(1)
-      to_f64 = f8e5m2fnuz[] parameter(2)
-      f16_ = f16[] convert(f8e5m2fnuz[] to_f16)
-      f32_ = f32[] convert(f8e5m2fnuz[] to_f32)
-      f64_ = f64[] convert(f8e5m2fnuz[] to_f64)
-      ROOT tuple = (f16[], f32[], f64[]) tuple(f16_, f32_, f64_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToSigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E5FNUZ
-    ENTRY ConvertFromF8E5FNUZ(to_s8 f8e5m2fnuz[], to_s16 f8e5m2fnuz[], to_s32 f8e5m2fnuz[],
-                          to_s64 f8e5m2fnuz[]) -> (s8[], s16[], s32[], s64[]) {
-      to_s8 = f8e5m2fnuz[] parameter(0)
-      to_s16 = f8e5m2fnuz[] parameter(1)
-      to_s32 = f8e5m2fnuz[] parameter(2)
-      to_s64 = f8e5m2fnuz[] parameter(3)
-      s8_ = s8[] convert(f8e5m2fnuz[] to_s8)
-      s16_ = s16[] convert(f8e5m2fnuz[] to_s16)
-      s32_ = s32[] convert(f8e5m2fnuz[] to_s32)
-      s64_ = s64[] convert(f8e5m2fnuz[] to_s64)
-      ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToUnsigned) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E5FNUZ
-    ENTRY ConvertFromF8E5FNUZ(to_u8 f8e5m2fnuz[], to_u16 f8e5m2fnuz[], to_u32 f8e5m2fnuz[],
-                          to_u64 f8e5m2fnuz[]) -> (u8[], u16[], u32[], u64[]) {
-      to_u8 = f8e5m2fnuz[] parameter(0)
-      to_u16 = f8e5m2fnuz[] parameter(1)
-      to_u32 = f8e5m2fnuz[] parameter(2)
-      to_u64 = f8e5m2fnuz[] parameter(3)
-      u8_ = u8[] convert(f8e5m2fnuz[] to_u8)
-      u16_ = u16[] convert(f8e5m2fnuz[] to_u16)
-      u32_ = u32[] convert(f8e5m2fnuz[] to_u32)
-      u64_ = u64[] convert(f8e5m2fnuz[] to_u64)
-      ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToComplex) {
-  RunTypeConversionTest(R"(
-    HloModule convertFromF8E5FNUZ
-    ENTRY ConvertFromF8E5FNUZ
-        (to_c64 f8e5m2fnuz[], to_c128 f8e5m2fnuz[]) -> (c64[], c128[]) {
-      to_c64 = f8e5m2fnuz[] parameter(0)
-      to_c128 = f8e5m2fnuz[] parameter(1)
-      c64_ = c64[] convert(f8e5m2fnuz[] to_c64)
-      c128_ = c128[] convert(f8e5m2fnuz[] to_c128)
-      ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
-    }
-  )");
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareF8E5FNUZ) {
-  constexpr char hlo_text[] = R"(
-  HloModule compareF8E5FNUZ
-  ENTRY main {
-    p0 = f8e5m2fnuz[4] parameter(0)
-    p1 = f8e5m2fnuz[4] parameter(1)
-    ROOT cmp = pred[4] compare(p0, p1), direction=LT
-})";
-
-  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
-  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
-  lhs = LiteralUtil::ConvertF32ToF8E5M2FNUZ(lhs);
-  rhs = LiteralUtil::ConvertF32ToF8E5M2FNUZ(rhs);
-  RunTest(hlo_text, {&lhs, &rhs});
-}
-
-XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E5FNUZ) {
-  constexpr char hlo_text[] = R"(
-  HloModule IotaF8E5FNUZ
-  ENTRY main {
-    ROOT iota_ = f8e5m2fnuz[4] iota(), iota_dimension=0
-  }
-  )";
-
-  RunTest(hlo_text, {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      HloTestBase::ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(
+      HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
 }
 
 XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,

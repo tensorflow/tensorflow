@@ -118,6 +118,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "xla/service/computation_placer.h"
@@ -147,7 +148,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast,
       bool enable_multicore_locking, bool use_nd_sharding_ops);
 
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
   // The following methods are public only for the use of unit tests.
 
@@ -283,7 +284,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // * xla_device_assignment: a mapping from [replica][core] to a linearized TPU
   //   coordinate.
   // TODO(phawkins): change tf_device_assignment to an xla::Array2D.
-  static Status BuildDeviceAssignment(
+  static absl::Status BuildDeviceAssignment(
       const tpu::TpuTopologyExternal& topology, int num_tpus_per_task,
       const std::vector<std::vector<Device*>>& tpu_devices, int num_replicas,
       int num_cores_per_replica, const std::string& topology_attr,
@@ -296,11 +297,10 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // `node`. `flr` is a FunctionLibraryRuntime to use when
   // instantiating the function body. Sets `*arg_types` and
   // `*retval_types` to the argument/return types of the function.
-  static Status GetComputationForTPUReplicateOp(const NameAttrList& function,
-                                                FunctionLibraryRuntime* flr,
-                                                Graph* computation,
-                                                DataTypeVector* arg_types,
-                                                DataTypeVector* retval_types);
+  static absl::Status GetComputationForTPUReplicateOp(
+      const NameAttrList& function, FunctionLibraryRuntime* flr,
+      Graph* computation, DataTypeVector* arg_types,
+      DataTypeVector* retval_types);
 
   // Returns the shapes of the argument tensors and return values of the
   // TPUReplicate operator `node` using the _output_shapes,
@@ -312,7 +312,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // Returns an error if the input shapes to `node` are not statically known.
   // Also verifies that all replicas have identical input shapes for their
   // per-replica inputs.
-  static Status GetArgAndRetvalShapes(
+  static absl::Status GetArgAndRetvalShapes(
       const GraphShapeInfo& shape_info, const Node& node,
       const ParameterInfo& params_info, std::vector<InferredShape>* arg_shapes,
       std::vector<InferredShape>* retval_shapes);
@@ -323,7 +323,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // argument/retval number.
   // `arg_fast_mem` is vector of fast_mem indication which is indexed by
   // argument number.
-  static Status AssignArgsAndRetvalsToCores(
+  static absl::Status AssignArgsAndRetvalsToCores(
       int num_cores_per_replica, const ParameterInfo& params_info,
       const DataTypeVector& arg_types,
       const std::vector<InferredShape>& arg_shapes,
@@ -346,19 +346,19 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
     // the output of 'variable', which is always DT_RESOURCE.
     DataType dtype;
   };
-  static Status FindVariableInputs(const Node& node,
-                                   const NameRangeMap& input_range_map,
-                                   std::vector<VariableInput>* variables);
+  static absl::Status FindVariableInputs(const Node& node,
+                                         const NameRangeMap& input_range_map,
+                                         std::vector<VariableInput>* variables);
 
   // Populates '*guaranteed_constants' with the "guaranteed_constants" inputs
   // to 'node'.
-  static Status FindGuaranteedConstantInputs(
+  static absl::Status FindGuaranteedConstantInputs(
       const Node& node, const NameRangeMap& input_range_map,
       std::vector<Node*>* guaranteed_constants);
 
   // Builds Shape nodes that compute the shapes of arguments whose shapes are
   // not statically known.
-  static Status BuildDynamicShapeNodes(
+  static absl::Status BuildDynamicShapeNodes(
       const Node& replicate_node, const std::vector<InferredShape>& arg_shapes,
       const ParameterInfo& params_info,
       const std::vector<Node*>& variable_reads, Graph* graph,
@@ -370,7 +370,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // the `nodes` must correspond to the computations assigned to TPU:0,
   // TPU:1, ... in order since XLA hard-codes the chip IDs in the generated
   // executables.
-  static Status BuildCompileNode(
+  static absl::Status BuildCompileNode(
       const Node* replicate_node, const NameAttrList& function,
       uint64_t library_fingerprint, const ParameterInfo& params_info,
       const std::vector<InferredShape>& arg_shapes,
@@ -388,16 +388,16 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Builds a TPUCompileSucceededAssert node that verifies that compilation
   // succeeded and replaces the TPUCompilationStatus node in the graph.
-  static Status BuildCompilationStatusReturnNodes(
+  static absl::Status BuildCompilationStatusReturnNodes(
       Node* replicate_node, Node* compile_node,
       absl::Span<const int> devices_to_lock, Node** control_after_compilation,
       Node** multilock_acquire, Graph* graph);
 
   // Builds ReadVariableOp nodes that read `variables`, with a control
   // edges that ensure they happen after `control_predecessor`.
-  static Status BuildVariableReads(absl::Span<const VariableInput> variables,
-                                   Node* control_predecessor, Graph* graph,
-                                   std::vector<Node*>* variable_reads);
+  static absl::Status BuildVariableReads(
+      absl::Span<const VariableInput> variables, Node* control_predecessor,
+      Graph* graph, std::vector<Node*>* variable_reads);
 
   // Returns true if graph or functions contain resource write op, otherwise
   // return false.
@@ -419,7 +419,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // Builds AssignVariableOp nodes that write `variables` with the values from
   // `variable_writes`, with control edges that ensure the writes happen before
   // `control_successor`.
-  static Status BuildVariableWrites(
+  static absl::Status BuildVariableWrites(
       absl::Span<const VariableInput> variables, Node* control_successor,
       absl::Span<const VariableWrite> variable_writes, Graph* graph);
 
@@ -448,7 +448,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   //   `control_predecessor` and another control edge to `control_successor`.
   // Populates '*variable_writes' with information about variable values to
   // write back.
-  static Status BuildExecuteNodes(
+  static absl::Status BuildExecuteNodes(
       const ParameterInfo& params_info, int num_tasks,
       int num_cores_per_replica, const Node& replicate_node,
       const std::vector<std::string>& arg_names,
@@ -471,9 +471,9 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // host
   // * transfer nodes in the original graph.
   // * `graph` is the graph being rewritten.
-  static Status ConnectHostComputeNodes(Node* compile_node,
-                                        Node* key_placeholder_node,
-                                        Graph* graph);
+  static absl::Status ConnectHostComputeNodes(Node* compile_node,
+                                              Node* key_placeholder_node,
+                                              Graph* graph);
 
   // Map from a Node in an outside_compilation cluster in the original graph to
   // the list of Nodes, one for each replica, that it is expanded into during
@@ -490,7 +490,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Copies the outside_compilation nodes in a cluster to create replica
   // replica_index.
-  static Status CopyOutsideCompilationNodes(
+  static absl::Status CopyOutsideCompilationNodes(
       int replica_index, const std::vector<Node*>& outside_compilation_nodes,
       const DeviceNameUtils::ParsedName& tpu_device,
       const DeviceNameUtils::ParsedName& partial_device,
@@ -498,7 +498,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Replicates all the nodes in outside_compilation clusters in a compiled
   // computation.
-  static Status ReplicateOutsideCompilationNodes(
+  static absl::Status ReplicateOutsideCompilationNodes(
       const std::vector<std::vector<std::string>>& tf_device_assignment,
       const HostComputeCoreMap& host_compute_core,
       const OutsideCompilationNodeMap& outside_compilation_nodes,
@@ -506,7 +506,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Lifts the edges between original outside_compilation nodes in a cluster
   // onto their replicas.
-  static Status CopyOutsideCompilationEdges(
+  static absl::Status CopyOutsideCompilationEdges(
       const std::vector<Node*>& outside_compilation_nodes,
       const NodeToNodeReplicasMap& node_images,
       std::unordered_map<std::string, Node*> outside_compilation_inputs,
@@ -514,7 +514,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Lifts all the edges in outside_compilation clusters in a compiled
   // computation to their replicas.
-  static Status ReplicateOutsideCompilationEdges(
+  static absl::Status ReplicateOutsideCompilationEdges(
       const OutsideCompilationNodeMap& outside_compilation_nodes,
       const NodeToNodeReplicasMap& node_images,
       std::unordered_map<std::string, Node*> outside_compilation_inputs,
@@ -522,26 +522,26 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Removes all the original outside_compilation nodes from the graph,
   // following replication.
-  static Status RemoveOutsideCompilationNodes(
+  static absl::Status RemoveOutsideCompilationNodes(
       const NodeToNodeReplicasMap& node_images, Graph* graph);
 
   // Lowers outside compilation functional nodes (If/While/function call).
   // Otherwise, when we have multiple workers, device placer will not be able to
   // place nodes if outside compilation has DT_RESOURCE inputs (e.g. a
   // DT_RESOURCE input fed into multiple While nodes on different devices).
-  static Status LowerOutsideCompilationFunctionalNodes(
+  static absl::Status LowerOutsideCompilationFunctionalNodes(
       Graph* g, FunctionLibraryDefinition& flib_def,
       const TPUReplicateDeviceNamesMapping& tpu_replicate_device_names_mapping);
 
   // Parses the 'host_compute_core' attribute on replicate_node to get the
   // replicated core id of each outside_compilation cluster.
-  static Status ParseHostComputeCores(
+  static absl::Status ParseHostComputeCores(
       const Node& replicate_node,
       const OutsideCompilationNodeMap& outside_compilation_nodes,
       HostComputeCoreMap* host_compute_core);
 
   // Gets the physical topology information about the TPU system.
-  static Status GetDeviceTopology(
+  static absl::Status GetDeviceTopology(
       const DeviceSet& device_set, const Node& replicate_node,
       int* num_replicas, int* num_cores_per_replica, int* num_tasks,
       std::vector<std::vector<std::string>>* tf_device_assignment,
@@ -550,14 +550,14 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       std::string* tpu_compilation_device);
 
   // Gets the types of args, retvals, and parameters.
-  static Status GetIOTypes(
+  static absl::Status GetIOTypes(
       int num_replicas, const Node& replicate_node, FunctionLibraryRuntime* flr,
       Graph* graph, NameRangeMap* input_name_map, const NameAttrList** function,
       std::unique_ptr<Graph>* computation, DataTypeVector* arg_types,
       DataTypeVector* retval_types, ParameterInfo* params_info);
 
   // Find known constants and deals with variable reads.
-  static Status DealWithConstantsAndVariables(
+  static absl::Status DealWithConstantsAndVariables(
       const Node& replicate_node, const NameRangeMap& input_name_map,
       Graph* graph, Node* host_transfer_sequencer, Node* control_before,
       Node* control_after, absl::Span<const VariableInput> variable_nodes,
@@ -565,14 +565,13 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       std::vector<Node*>* variable_reads);
 
   // Adds NoOp nodes for sequencing computation and variable reads/writes.
-  static Status BuildSequencingNodes(const std::string& tpu_compilation_device,
-                                     const Node& replicate_node, Graph* graph,
-                                     Node** host_transfer_sequencer,
-                                     Node** control_before,
-                                     Node** control_after);
+  static absl::Status BuildSequencingNodes(
+      const std::string& tpu_compilation_device, const Node& replicate_node,
+      Graph* graph, Node** host_transfer_sequencer, Node** control_before,
+      Node** control_after);
 
   // Performs the pass's rewrite on a TPUReplicate node `node`.
-  static Status RewriteTPUReplicateNode(
+  static absl::Status RewriteTPUReplicateNode(
       const std::string& session_handle, const DeviceSet& device_set,
       Node* replicate_node, FunctionLibraryDefinition* flib_def,
       FunctionLibraryRuntime* flr, Node* host_compute_key_placeholder_node,
@@ -587,19 +586,19 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // node is inside a while loop, then model weight variables can be sharded
   // in XLA preferred layout and then unsharded only at the very last iteration
   // to reduce the number of all_gather.
-  static Status PerformHostTrainingLoopOptimization(
+  static absl::Status PerformHostTrainingLoopOptimization(
       Graph* graph, FunctionLibraryDefinition* flib_def,
       FunctionLibraryRuntime* flr);
 
   // Heuristically place some nodes with unassigned devices on TPUs for
   // performance reasons.
-  static Status PlaceUnassignedDeviceNodesOnTPUIfPossible(Graph* graph);
+  static absl::Status PlaceUnassignedDeviceNodesOnTPUIfPossible(Graph* graph);
 
   // Updates the head and tail outside compiled nodes so that nodes have the
   // correct device and removes the replication and outside compilation
   // attributes so that these nodes do not trigger further graph optimization
   // passes.
-  static Status UpdateHeadTailOutsideCompilation(
+  static absl::Status UpdateHeadTailOutsideCompilation(
       const std::vector<std::vector<std::string>>& tf_device_assignment,
       const std::vector<Node*>& head_tail_outside_compilation_nodes);
 
@@ -612,7 +611,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static bool enable_xla_param_broadcast_;
   static bool enable_multicore_locking_;
   static bool use_nd_sharding_ops_;
-  Status InternalRun(const GraphOptimizationPassOptions& options);
+  absl::Status InternalRun(const GraphOptimizationPassOptions& options);
 };
 
 }  // namespace tensorflow

@@ -317,8 +317,8 @@ void ConvertComplexElementsAttr(const mlir::DenseElementsAttr attr,
 }
 
 // Converts an Tensor proto attribute to a TensorFlow tensor proto.
-Status ConvertTensorProtoAttr(const mlir::TF::TensorProtoAttr attr,
-                              TensorProto* output_tensor) {
+absl::Status ConvertTensorProtoAttr(const mlir::TF::TensorProtoAttr attr,
+                                    TensorProto* output_tensor) {
   auto mangled_tensor = attr.getValue();
   absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
   return mangling_util::DemangleTensor(tensor_view, output_tensor);
@@ -420,7 +420,8 @@ void ConvertFloat8ElementsAttr(const mlir::DenseElementsAttr attr,
   }
 }
 
-Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
+absl::Status ConvertToTensorProto(const ElementsAttr attr,
+                                  TensorProto* output) {
   auto type = attr.getShapedType();
   auto shape = type.getShape();
   DataType output_dtype;
@@ -525,7 +526,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   return absl::OkStatus();
 }
 
-Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
+absl::Status ConvertToTensor(const mlir::ElementsAttr attr,
+                             Tensor* output_tensor) {
   TensorProto tensor_proto;
   TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor_proto));
   if (!output_tensor->FromProto(tensor_proto)) {

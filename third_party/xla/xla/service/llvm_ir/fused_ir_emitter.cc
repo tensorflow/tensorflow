@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
@@ -67,7 +68,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
         // LLVM's CSE or GVN should be able to easily merge common
         // subexpressions that would be regenerated without caching. But this
         // might increase the JIT compilation time.
-        llvm::IRBuilder<>* b = elemental_emitter_.b();
+        llvm::IRBuilderBase* b = elemental_emitter_.b();
 
         if (bb == b->GetInsertBlock()) {
           VLOG(3) << "The cached generated value is reused.";
@@ -91,7 +92,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
 FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
     const HloInstruction& constant) {
   llvm::Module* module = elemental_emitter_.module();
-  llvm::IRBuilder<>* b = elemental_emitter_.b();
+  llvm::IRBuilderBase* b = elemental_emitter_.b();
 
   // Explicitly set global addrspace for SPIR backend.
   int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 1 : 0;
@@ -108,7 +109,8 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
       /*isExternallyInitialized=*/false);
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 
-  llvm::Type* shape_type = llvm_ir::ShapeToIrType(constant.shape(), module);
+  llvm::Type* shape_type =
+      llvm_ir::ShapeToIrType(constant.shape(), module->getContext());
   IrArray array(global, shape_type, constant.shape());
 
   return [&, b, array = std::move(array)](const IrArray::Index& index) {
@@ -122,10 +124,11 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   element_ir_types.reserve(tuple.operand_count());
   for (const HloInstruction* operand : tuple.operands()) {
     element_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
-        operand->shape().element_type(), elemental_emitter_.module()));
+        operand->shape().element_type(),
+        elemental_emitter_.module()->getContext()));
   }
 
-  llvm::IRBuilder<>* b = elemental_emitter_.b();
+  llvm::IRBuilderBase* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
   return absl::StatusOr<IndexedGenerator>([&, b,

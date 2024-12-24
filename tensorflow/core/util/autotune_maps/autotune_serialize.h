@@ -27,6 +27,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -34,11 +36,11 @@ namespace tensorflow {
 // TODO(b/189530096) Support autotune maps for more ops.
 // Loads autotune maps from string output by SerializeAutotuneMaps and uses
 // them to update the runtime autotune maps.
-Status LoadSerializedAutotuneMaps(absl::string_view s);
+absl::Status LoadSerializedAutotuneMaps(absl::string_view s);
 
 // Serializes all the autotune maps into a string that can be decoded by
 // LoadSerializedAutotuneMaps.
-Status SerializeAutotuneMaps(std::string* output);
+absl::Status SerializeAutotuneMaps(std::string* output);
 
 // Resets all autotune maps. For test use only.
 void ResetAutotuneMaps();

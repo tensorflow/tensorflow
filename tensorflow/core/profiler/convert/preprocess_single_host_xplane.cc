@@ -16,17 +16,18 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/preprocess_xplane.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/group_events.h"
-#include "tsl/profiler/utils/preprocess_xplane.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
-                                bool derived_timeline) {
+void PreprocessSingleHostXSpace(
+    XSpace* space, bool step_grouping, bool derived_timeline,
+    tsl::profiler::GroupMetadataMap* group_metadata_map) {
   if (step_grouping && !tsl::profiler::IsXSpaceGrouped(*space)) {
     // Grouping (i.e. marking step number) events in the XSpace.
     std::vector<XPlane*> device_traces;
@@ -55,6 +56,10 @@ void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
     if (derived_timeline) {
       // Generated miscellaneous derived time lines for device planes.
       GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);
+    }
+
+    if (group_metadata_map != nullptr) {
+      *group_metadata_map = event_forest.GetGroupMetadataMap();
     }
   }
 }

@@ -14,8 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
 
-#include "tensorflow/c/eager/abstract_context.h"
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -36,7 +55,7 @@ TapeOperation::~TapeOperation() {
   // TODO(b/172003047): Consider making AbstractOperation RefCounted.
   // parent_op->Unref();
 }
-Status TapeOperation::Reset(const char* op, const char* raw_device_name) {
+absl::Status TapeOperation::Reset(const char* op, const char* raw_device_name) {
   forward_op_.op_name = op;
   forward_op_.attrs.Reset(op);
   forward_op_.inputs.clear();
@@ -47,15 +66,15 @@ const string& TapeOperation::Name() const { return parent_op_->Name(); }
 const string& TapeOperation::DeviceName() const {
   return parent_op_->DeviceName();
 }
-Status TapeOperation::SetDeviceName(const char* name) {
+absl::Status TapeOperation::SetDeviceName(const char* name) {
   return parent_op_->SetDeviceName(name);
 }
-Status TapeOperation::AddInput(AbstractTensorHandle* input) {
+absl::Status TapeOperation::AddInput(AbstractTensorHandle* input) {
   TF_RETURN_IF_ERROR(parent_op_->AddInput(input));
   forward_op_.inputs.push_back(input);
   return absl::OkStatus();
 }
-Status TapeOperation::AddInputList(
+absl::Status TapeOperation::AddInputList(
     absl::Span<AbstractTensorHandle* const> inputs) {
   TF_RETURN_IF_ERROR(parent_op_->AddInputList(inputs));
   for (auto input : inputs) {
@@ -63,29 +82,30 @@ Status TapeOperation::AddInputList(
   }
   return absl::OkStatus();
 }
-Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
-                                    size_t length) {
+absl::Status TapeOperation::SetAttrString(const char* attr_name,
+                                          const char* data, size_t length) {
   forward_op_.attrs.Set(attr_name, StringPiece(data, length));
   return parent_op_->SetAttrString(attr_name, data, length);
 }
-Status TapeOperation::SetAttrInt(const char* attr_name, int64_t value) {
+absl::Status TapeOperation::SetAttrInt(const char* attr_name, int64_t value) {
   forward_op_.attrs.Set(attr_name, static_cast<int64_t>(value));
   return parent_op_->SetAttrInt(attr_name, value);
 }
-Status TapeOperation::SetAttrFloat(const char* attr_name, float value) {
+absl::Status TapeOperation::SetAttrFloat(const char* attr_name, float value) {
   forward_op_.attrs.Set(attr_name, value);
   return parent_op_->SetAttrFloat(attr_name, value);
 }
-Status TapeOperation::SetAttrBool(const char* attr_name, bool value) {
+absl::Status TapeOperation::SetAttrBool(const char* attr_name, bool value) {
   forward_op_.attrs.Set(attr_name, value);
   return parent_op_->SetAttrBool(attr_name, value);
 }
-Status TapeOperation::SetAttrType(const char* attr_name, DataType value) {
+absl::Status TapeOperation::SetAttrType(const char* attr_name, DataType value) {
   forward_op_.attrs.Set(attr_name, value);
   return parent_op_->SetAttrType(attr_name, value);
 }
-Status TapeOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
-                                   const int num_dims) {
+absl::Status TapeOperation::SetAttrShape(const char* attr_name,
+                                         const int64_t* dims,
+                                         const int num_dims) {
   if (num_dims > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
                                    num_dims,
@@ -104,25 +124,27 @@ Status TapeOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
   forward_op_.attrs.Set(attr_name, proto);
   return parent_op_->SetAttrShape(attr_name, dims, num_dims);
 }
-Status TapeOperation::SetAttrFunction(const char* attr_name,
-                                      const AbstractOperation* value) {
+absl::Status TapeOperation::SetAttrFunction(const char* attr_name,
+                                            const AbstractOperation* value) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunction has not been implemented yet.");
 }
-Status TapeOperation::SetAttrFunctionName(const char* attr_name,
-                                          const char* value, size_t length) {
+absl::Status TapeOperation::SetAttrFunctionName(const char* attr_name,
+                                                const char* value,
+                                                size_t length) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunctionName has not been implemented "
       "yet.");
 }
-Status TapeOperation::SetAttrTensor(const char* attr_name,
-                                    AbstractTensorInterface* tensor) {
+absl::Status TapeOperation::SetAttrTensor(const char* attr_name,
+                                          AbstractTensorInterface* tensor) {
   return tensorflow::errors::Unimplemented(
       "SetAttrTensor has not been implemented yet.");
 }
-Status TapeOperation::SetAttrStringList(const char* attr_name,
-                                        const void* const* values,
-                                        const size_t* lengths, int num_values) {
+absl::Status TapeOperation::SetAttrStringList(const char* attr_name,
+                                              const void* const* values,
+                                              const size_t* lengths,
+                                              int num_values) {
   std::vector<StringPiece> v(num_values);
   for (int i = 0; i < num_values; ++i) {
     v[i] = StringPiece(static_cast<const char*>(values[i]), lengths[i]);
@@ -130,28 +152,31 @@ Status TapeOperation::SetAttrStringList(const char* attr_name,
   forward_op_.attrs.Set(attr_name, v);
   return parent_op_->SetAttrStringList(attr_name, values, lengths, num_values);
 }
-Status TapeOperation::SetAttrFloatList(const char* attr_name,
-                                       const float* values, int num_values) {
+absl::Status TapeOperation::SetAttrFloatList(const char* attr_name,
+                                             const float* values,
+                                             int num_values) {
   forward_op_.attrs.Set(attr_name,
                         gtl::ArraySlice<const float>(values, num_values));
   return parent_op_->SetAttrFloatList(attr_name, values, num_values);
 }
-Status TapeOperation::SetAttrIntList(const char* attr_name,
-                                     const int64_t* values, int num_values) {
+absl::Status TapeOperation::SetAttrIntList(const char* attr_name,
+                                           const int64_t* values,
+                                           int num_values) {
   forward_op_.attrs.Set(
       attr_name, gtl::ArraySlice<const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
-Status TapeOperation::SetAttrTypeList(const char* attr_name,
-                                      const DataType* values, int num_values) {
+absl::Status TapeOperation::SetAttrTypeList(const char* attr_name,
+                                            const DataType* values,
+                                            int num_values) {
   forward_op_.attrs.Set(attr_name,
                         gtl::ArraySlice<const DataType>(values, num_values));
   return parent_op_->SetAttrTypeList(attr_name, values, num_values);
 }
-Status TapeOperation::SetAttrBoolList(const char* attr_name,
-                                      const unsigned char* values,
-                                      int num_values) {
+absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
+                                            const unsigned char* values,
+                                            int num_values) {
   std::unique_ptr<bool[]> b(new bool[num_values]);
   for (int i = 0; i < num_values; ++i) {
     b[i] = values[i];
@@ -160,9 +185,10 @@ Status TapeOperation::SetAttrBoolList(const char* attr_name,
                         gtl::ArraySlice<const bool>(b.get(), num_values));
   return parent_op_->SetAttrBoolList(attr_name, values, num_values);
 }
-Status TapeOperation::SetAttrShapeList(const char* attr_name,
-                                       const int64_t** dims,
-                                       const int* num_dims, int num_values) {
+absl::Status TapeOperation::SetAttrShapeList(const char* attr_name,
+                                             const int64_t** dims,
+                                             const int* num_dims,
+                                             int num_values) {
   std::unique_ptr<TensorShapeProto[]> proto(new TensorShapeProto[num_values]);
   for (int i = 0; i < num_values; ++i) {
     const auto num_dims_i = num_dims[i];
@@ -187,15 +213,15 @@ Status TapeOperation::SetAttrShapeList(const char* attr_name,
       attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
   return parent_op_->SetAttrShapeList(attr_name, dims, num_dims, num_values);
 }
-Status TapeOperation::SetAttrFunctionList(
+absl::Status TapeOperation::SetAttrFunctionList(
     const char* attr_name, absl::Span<const AbstractOperation*> values) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunctionList has not been "
       "implemented yet.");
 }
 AbstractOperation* TapeOperation::GetBackingOperation() { return parent_op_; }
-Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
-                              int* num_retvals) {
+absl::Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
+                                    int* num_retvals) {
   TF_RETURN_IF_ERROR(parent_op_->Execute(retvals, num_retvals));
   for (int i = 0; i < *num_retvals; i++) {
     // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.

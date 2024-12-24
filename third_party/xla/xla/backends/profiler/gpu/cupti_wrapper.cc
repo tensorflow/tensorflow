@@ -137,6 +137,10 @@ CUptiResult CuptiWrapper::GetGraphExecId(CUgraphExec graph_exec,
   return GetGraphId(reinterpret_cast<CUgraph>(graph_exec), graph_id);
 }
 
+CUptiResult CuptiWrapper::SetThreadIdType(CUpti_ActivityThreadIdType type) {
+  return cuptiSetThreadIdType(type);
+}
+
 CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
                                         uint8_t per_thread_stream,
                                         uint32_t* stream_id) {

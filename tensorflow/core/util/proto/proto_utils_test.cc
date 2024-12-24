@@ -34,7 +34,7 @@ TEST(ParseTextFormatFromStringTest, Success) {
 
 TEST(ParseTextFormatFromStringTest, ErrorOnInvalidSyntax) {
   protobuf::DescriptorProto output;
-  Status status = ParseTextFormatFromString("name: foo", &output);
+  absl::Status status = ParseTextFormatFromString("name: foo", &output);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_THAT(status.message(), ContainsRegex("foo"));
   EXPECT_FALSE(output.has_name());
@@ -42,7 +42,7 @@ TEST(ParseTextFormatFromStringTest, ErrorOnInvalidSyntax) {
 
 TEST(ParseTextFormatFromStringTest, ErrorOnUnknownFieldName) {
   protobuf::DescriptorProto output;
-  Status status = ParseTextFormatFromString("badname: \"foo\"", &output);
+  absl::Status status = ParseTextFormatFromString("badname: \"foo\"", &output);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_THAT(status.message(), ContainsRegex("badname"));
   EXPECT_FALSE(output.has_name());

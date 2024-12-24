@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+
 #include "nanobind/nanobind.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
@@ -64,9 +67,38 @@ XLA_FFI_DEFINE_HANDLER(kSubtractCst, SubtractCst,
                            .Ret<BufferR0<DataType::F32>>()
                            .Attr<float>("cst"));
 
+// XLA FFI calls can also be stateful.
+struct TestFfiState {
+  static TypeId id;
+  explicit TestFfiState(int32_t value) : value(value) {}
+  int32_t value;
+};
+TypeId TestFfiState::id = {};
+
+static ErrorOr<std::unique_ptr<TestFfiState>> StateInstantiate() {
+  return std::make_unique<TestFfiState>(42);
+}
+
+static Error StateExecute(TestFfiState* state,
+                          Result<BufferR0<DataType::S32>> out) {
+  *out->typed_data() = state->value;
+  return Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER(kStateInstantiate, StateInstantiate,
+                       Ffi::BindInstantiate());
+XLA_FFI_DEFINE_HANDLER(
+    kStateExecute, StateExecute,
+    Ffi::Bind().Ctx<State<TestFfiState>>().Ret<BufferR0<DataType::S32>>());
+
 template <typename T>
 static auto BindFunction(T* fn) {
   return nb::capsule(reinterpret_cast<void*>(fn));
+}
+
+template <typename T>
+static auto BindTypeId(T* typeId) {
+  return nb::capsule(reinterpret_cast<void*>(typeId));
 }
 
 // Custom calls registration library that exports function pointers to XLA FFI
@@ -78,7 +110,18 @@ NB_MODULE(custom_calls_testlib, m) {
     dict["always_succeed"] = BindFunction(kAlwaysSucceed);
     dict["subtract_f32"] = BindFunction(kSubtract);
     dict["subtract_f32_cst"] = BindFunction(kSubtractCst);
+
+    nb::dict bundle;
+    bundle["instantiate"] = BindFunction(kStateInstantiate);
+    bundle["execute"] = BindFunction(kStateExecute);
+    dict["stateful"] = bundle;
+
     return dict;
+  });
+  m.def("type_ids", []() {
+    nb::dict type_ids;
+    type_ids["test_ffi_state"] = BindTypeId(&TestFfiState::id);
+    return type_ids;
   });
 }
 

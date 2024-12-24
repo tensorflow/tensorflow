@@ -27,9 +27,9 @@ template <typename Device, typename T>
 void TileSimpleImpl(const Device& d, Tensor* out, const Tensor& in) {
   const int ndims = in.dims();
   const int64_t nelem = out->NumElements();
-  gtl::InlinedVector<int64_t, 8> in_strides =
+  absl::InlinedVector<int64_t, 8UL> in_strides =
       ComputeStride<int64_t>(in.shape());
-  gtl::InlinedVector<int64_t, 8> out_strides =
+  absl::InlinedVector<int64_t, 8UL> out_strides =
       ComputeStride<int64_t>(out->shape());
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();

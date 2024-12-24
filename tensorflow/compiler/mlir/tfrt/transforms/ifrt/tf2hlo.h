@@ -16,24 +16,48 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/client/compile_only_client.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/topology.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
+struct Tf2HloArg {
+  mlir::ModuleOp module;
+  absl::Span<const DtypeAndShape> input_dtypes_and_shapes;
+  absl::string_view entry_function_name;
+  tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn;
+  std::shared_ptr<xla::ifrt::Topology> topology;
+  absl::string_view platform_name;
+
+  absl::StatusOr<uint64_t> Fingerprint() const;
+};
+
 struct Tf2HloResult {
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module;
+  xla::HloModuleProto hlo_module_proto;
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tf2xla::HostComputeMetadata host_compute_metadata;
+  Tf2HLOResultProto ToProto() const;
 };
 
 absl::Status UpdateCompileMetadata(
@@ -43,13 +67,17 @@ absl::Status UpdateCompileMetadata(
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client);
 
-// A class that convert tf module to hlo
-// TODO(b/304839793): provide wrap persistent compilation cache.
-absl::StatusOr<Tf2HloResult> CompileTfToHlo(
-    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
-    absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
-    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-    tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn);
+class TfToHloCompiler {
+ public:
+  TfToHloCompiler() = default;
+  virtual ~TfToHloCompiler() = default;
+
+  // Returns a cache key that can be used to identify the result of
+  // CompileTfToHlo.
+  virtual absl::StatusOr<std::string> Key(const Tf2HloArg& arg);
+
+  virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg);
+};
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_ROCM_COLLECTOR_H_
 #define XLA_BACKENDS_PROFILER_GPU_ROCM_COLLECTOR_H_
 
+#include <cstdint>
+#include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
-#include "tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
 
 namespace xla {
 namespace profiler {
@@ -114,7 +117,7 @@ enum class RocmTracerEventDomain {
   HIP_OPS,
 };
 const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain);
-// RocmTracerSyncTypes forward decleration
+// RocmTracerSyncTypes forward declaration
 enum class RocmTracerSyncTypes;
 
 struct SynchronizationDetails {
@@ -124,8 +127,8 @@ struct SynchronizationDetails {
 struct RocmTracerEvent {
   static constexpr uint32_t kInvalidDeviceId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr uint32_t kInvalidThreadId =
-      std::numeric_limits<uint32_t>::max();
+  static constexpr uint64_t kInvalidThreadId =
+      std::numeric_limits<uint64_t>::max();
   static constexpr uint32_t kInvalidCorrelationId =
       std::numeric_limits<uint32_t>::max();
   static constexpr uint64_t kInvalidStreamId =
@@ -142,7 +145,7 @@ struct RocmTracerEvent {
   uint64_t end_time_ns = 0;
   uint32_t device_id = kInvalidDeviceId;
   uint32_t correlation_id = kInvalidCorrelationId;
-  uint32_t thread_id = kInvalidThreadId;
+  uint64_t thread_id = kInvalidThreadId;
   int64_t stream_id = kInvalidStreamId;
   union {
     MemcpyDetails memcpy_info;                    // If type == Memcpy*

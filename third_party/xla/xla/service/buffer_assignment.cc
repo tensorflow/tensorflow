@@ -18,42 +18,54 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/buffer_value_containers.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -91,8 +103,8 @@ BuildIdToLogicalBufferMap(
         << "Expected logical buffer to have location information in the proto.";
     TF_RET_CHECK(id_to_hlo_instruction.contains(
         logical_buffer_proto.defined_at().instruction_id()))
-        << "Expected hlo instruction "
-        << "with the id '" << logical_buffer_proto.defined_at().instruction_id()
+        << "Expected hlo instruction " << "with the id '"
+        << logical_buffer_proto.defined_at().instruction_id()
         << "' in the proto to also exist in the "
            "HLO module.";
     // Assumption: An hlo module loaded from an hlo proto
@@ -128,7 +140,7 @@ absl::Status GatherComputationsByAllocationType(
   // be thread-local.
   std::deque<std::pair<const HloComputation*, bool>> worklist;
   worklist.push_back(std::make_pair(module->entry_computation(),
-                                    /*is_thread_local*/ false));
+                                    /*is_thread_local=*/false));
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
@@ -179,18 +191,9 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kAsyncStart:
           case HloOpcode::kAsyncUpdate:
           case HloOpcode::kAsyncDone:
-            // Call, conditional, while, and async operations must be called
-            // from a computation with global allocations as they may return
-            // references to buffers inside the called computation which cannot
-            // be thread-local.
-            if (is_thread_local) {
-              return InvalidArgument(
-                  "computation %s cannot contain call/while op because it "
-                  "requires thread-local buffer allocations",
-                  computation->name());
-            }
-            worklist.push_back(std::make_pair(subcomputation,
-                                              false));  // Not thread local.
+            // Call, conditional, while, and async operations inherit their
+            // thread-locality from their parent computation.
+            worklist.push_back(std::make_pair(subcomputation, is_thread_local));
             break;
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
@@ -204,12 +207,11 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kSort:
           case HloOpcode::kFusion:
             // Map/reduce etc computations are always thread-local.
-            worklist.push_back(std::make_pair(subcomputation,
-                                              true));  // Thread local.
+            worklist.push_back(std::make_pair(subcomputation, true));
             break;
           default:
             return Internal("Unexpected calling opcode: %s",
-                                 HloOpcodeString(instruction->opcode()));
+                            HloOpcodeString(instruction->opcode()));
         }
       }
     }
@@ -340,9 +342,14 @@ static const HloInstruction* GetOutputInstruction(
   return nullptr;
 }
 
-std::string BufferAllocation::ToShortString() const {
+std::string BufferAllocation::ToShortString(bool human_readable_size) const {
   std::string output;
-  StrAppendFormat(&output, "allocation %d: size %d", index_, size());
+  if (human_readable_size) {
+    StrAppendFormat(&output, "allocation %d: size %s", index_,
+                    HumanReadableNumBytes(size()));
+  } else {
+    StrAppendFormat(&output, "allocation %d: size %d", index_, size());
+  }
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
   }
@@ -649,7 +656,7 @@ void BufferAssignment::CombineTempAllocations(
         // size constraint.
         VLOG(1) << "Combined temp allocation for color " << color
                 << " is: " << temp_allocation;
-        combined_allocations.emplace_back(temp_allocation);
+        combined_allocations.push_back(temp_allocation);
         combined_allocation_map.emplace(color, &combined_allocations.back());
         continue;
       }
@@ -659,7 +666,7 @@ void BufferAssignment::CombineTempAllocations(
         // combined_it.
         VLOG(1) << "Due to size constraint, reset temp allocation for color "
                 << color << " to: " << temp_allocation;
-        combined_allocations.emplace_back(temp_allocation);
+        combined_allocations.push_back(temp_allocation);
         combined_allocation_map.emplace(color, &combined_allocations.back());
         continue;
       }
@@ -740,7 +747,7 @@ void BufferAssignment::CombineTempAllocations(
   }
 }
 
-absl::Status BufferAssignment::ComputeSummaryStats() {
+void BufferAssignment::ComputeSummaryStats() {
   for (auto& allocation : Allocations()) {
     if (allocation.is_entry_computation_parameter()) {
       stats_.parameter_allocation_count++;
@@ -761,7 +768,10 @@ absl::Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_allocation_count++;
     stats_.total_allocation_bytes += allocation.size();
   }
+}
 
+absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes()
+    const {
   // Only compute total fragmentation if all computations have schedules.
   HloSchedule schedule(module_);
   bool schedule_complete = true;
@@ -781,37 +791,44 @@ absl::Status BufferAssignment::ComputeSummaryStats() {
     TF_ASSIGN_OR_RETURN(
         const int64_t min_size,
         HeapSimulator::MinimumMemoryForModule(schedule, buffer_size_));
-    stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
+    return stats_.total_allocation_bytes - min_size;
   }
-
-  return absl::OkStatus();
+  return -1;
 }
 
-std::string BufferAssignment::Stats::ToString() const {
+std::string BufferAssignment::StatsString(
+    bool report_total_fragmentation) const {
   std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
-                  HumanReadableNumBytes(parameter_allocation_bytes));
+                  HumanReadableNumBytes(stats_.parameter_allocation_bytes));
   StrAppendFormat(&s, "              constant allocation: %10s\n",
-                  HumanReadableNumBytes(constant_allocation_bytes));
-  StrAppendFormat(&s, "        maybe_live_out allocation: %10s\n",
-                  HumanReadableNumBytes(maybe_live_out_allocation_bytes));
-  StrAppendFormat(&s, "     preallocated temp allocation: %10s\n",
-                  HumanReadableNumBytes(preallocated_temp_allocation_bytes));
-  if (preallocated_temp_fragmentation_bytes >= 0) {
-    const double percent = 100. * preallocated_temp_fragmentation_bytes /
-                           preallocated_temp_allocation_bytes;
+                  HumanReadableNumBytes(stats_.constant_allocation_bytes));
+  StrAppendFormat(
+      &s, "        maybe_live_out allocation: %10s\n",
+      HumanReadableNumBytes(stats_.maybe_live_out_allocation_bytes));
+  StrAppendFormat(
+      &s, "     preallocated temp allocation: %10s\n",
+      HumanReadableNumBytes(stats_.preallocated_temp_allocation_bytes));
+  if (stats_.preallocated_temp_fragmentation_bytes >= 0) {
+    const double percent = 100. * stats_.preallocated_temp_fragmentation_bytes /
+                           stats_.preallocated_temp_allocation_bytes;
     StrAppendFormat(
         &s, "  preallocated temp fragmentation: %10s (%.2f%%)\n",
-        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes), percent);
+        HumanReadableNumBytes(stats_.preallocated_temp_fragmentation_bytes),
+        percent);
   }
   StrAppendFormat(&s, "                 total allocation: %10s\n",
-                  HumanReadableNumBytes(total_allocation_bytes));
-  if (total_fragmentation_bytes >= 0) {
-    const double percent =
-        100. * total_fragmentation_bytes / total_allocation_bytes;
-    StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
-                    HumanReadableNumBytes(total_fragmentation_bytes), percent);
+                  HumanReadableNumBytes(stats_.total_allocation_bytes));
+  if (report_total_fragmentation) {
+    auto total_fragmentation_bytes = ComputeTotalFragmentationBytes();
+    if (total_fragmentation_bytes.ok() && *total_fragmentation_bytes >= 0) {
+      const double percent =
+          100. * *total_fragmentation_bytes / stats_.total_allocation_bytes;
+      StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
+                      HumanReadableNumBytes(*total_fragmentation_bytes),
+                      percent);
+    }
   }
   return s;
 }
@@ -835,6 +852,151 @@ std::string BufferAssignment::ToString() const {
   for (const HloValue* value : used_values) {
     absl::StrAppend(&output, value->ToString());
   }
+  return output;
+}
+
+std::string BufferAssignment::MemoryUsageReport(float percentile,
+                                                int64_t more_than_k) const {
+  std::string output;
+  int64_t total_size = 0;
+  for (auto& allocation : allocations_) {
+    total_size += allocation.size();
+  }
+  absl::StrAppend(&output, "Total bytes used: ", total_size, " (",
+                  HumanReadableNumBytes(total_size), ")\n");
+
+  absl::StrAppend(&output, "\nAllocations sorted by size:\n\n");
+  auto allocations = allocations_;
+  std::sort(allocations.begin(), allocations.end(),
+            [](const BufferAllocation& a, const BufferAllocation& b) {
+              if (a.size() > b.size()) return true;
+              if (a.size() < b.size()) return false;
+              return a.index() < b.index();
+            });
+
+  int64_t cumulative_size = 0;
+  absl::StrAppend(
+      &output, "cumulative_size; total_size - cumulative_size; allocation\n");
+  absl::StrAppend(&output,
+                  "------------------------------------------------------------"
+                  "------------------\n");
+  int64_t index = 0;
+  for (auto& allocation : allocations) {
+    cumulative_size += allocation.size();
+    absl::StrAppend(
+        &output,
+        absl::StrFormat("%10s(%3.0f%%); %10s; %s",
+                        HumanReadableNumBytes(cumulative_size),
+                        100. * cumulative_size / total_size,
+                        HumanReadableNumBytes(total_size - cumulative_size),
+                        allocation.ToShortString(true)));
+
+    // Skip the rest of the allocations if they are less than percentile of the
+    // total size and not more than k.
+    if (++index > more_than_k &&
+        total_size - cumulative_size < total_size * percentile) {
+      absl::StrAppend(
+          &output,
+          absl::StrFormat(
+              "The rest %d allocations are less than %d%% of the total "
+              "size and not shown.\n",
+              allocations.size() - index, static_cast<int>(percentile * 100)));
+      break;
+    }
+  }
+
+  absl::StrAppend(&output,
+                  "\n\nAllocations sorted by size with their values:\n");
+  for (auto& allocation : allocations) {
+    if (allocation.assigned_buffers().size() == 1) {
+      absl::StrAppend(&output, allocation.ToShortString(true));
+    } else {
+      StrAppendFormat(
+          &output, "%s\n%s\n", allocation.ToShortString(true),
+          allocation.MemoryUsageReport("\t", percentile, more_than_k));
+    }
+  }
+  return output;
+}
+
+std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
+                                                float percentile,
+                                                int64_t more_than_k) const {
+  std::string output;
+
+  struct OffsetInfo {
+    std::vector<const HloValue*> values;
+    OffsetSize offset_size;
+  };
+
+  // Group the values by their offset in the allocation.
+  absl::flat_hash_map<int64_t, OffsetInfo> offset_to_buffers;
+  for (const auto& element : assigned_buffers_) {
+    const HloValue* value = element.first;
+    OffsetInfo& offset_info = offset_to_buffers[element.second.offset];
+    offset_info.values.push_back(value);
+    offset_info.offset_size.offset = element.second.offset;
+    offset_info.offset_size.size =
+        std::max(offset_info.offset_size.size, element.second.size);
+  }
+
+  // Sort the offset infos by the max size of the values in the group.
+  std::vector<OffsetInfo> sorted_offset_infos;
+  int64_t total_size = 0;
+  for (auto& element : offset_to_buffers) {
+    total_size += element.second.offset_size.size;
+    sorted_offset_infos.push_back(std::move(element.second));
+  }
+  absl::c_sort(sorted_offset_infos,
+               [](const OffsetInfo& a, const OffsetInfo& b) {
+                 return a.offset_size.size > b.offset_size.size;
+               });
+
+  StrAppend(&output, prefix,
+            "cumulative_size;       size;       offset; used_by_n_values; "
+            "shapes_list\n");
+  StrAppend(&output, prefix,
+            "------------------------------------------------------------\n");
+  int64_t cumulative_size = 0;
+  int64_t index = 0;
+  for (const auto& offset_info : sorted_offset_infos) {
+    cumulative_size += offset_info.offset_size.size;
+    StrAppendFormat(&output, "%s%9s(%3.0f%%); %10s; %12d; %16d; ", prefix,
+                    xla::HumanReadableNumBytes(cumulative_size),
+                    100. * cumulative_size / total_size,
+                    xla::HumanReadableNumBytes(offset_info.offset_size.size),
+                    offset_info.offset_size.offset, offset_info.values.size());
+
+    // Count the number of values with the same shape and append them at the end
+    // of the line.
+    absl::flat_hash_map<std::string, int64_t> shapes;
+    for (auto& value : offset_info.values) shapes[value->shape().ToString()]++;
+
+    StrAppend(
+        &output,
+        absl::StrJoin(shapes, ", ", [](std::string* out, const auto& pair) {
+          if (pair.second == 1) {
+            return absl::StrAppend(out, pair.first);
+          }
+          return absl::StrAppend(out, pair.second, "×", pair.first);
+        }));
+
+    StrAppend(&output, "\n");
+
+    // Skip the rest of the values if they are less than percentile of the
+    // total size and not more than k.
+    if (++index > more_than_k &&
+        total_size - cumulative_size < total_size * percentile) {
+      StrAppendFormat(
+          &output,
+          "%sThe rest %d values are less than %d%% of the total size and not "
+          "shown.\n",
+          prefix, sorted_offset_infos.size() - index,
+          static_cast<int>(percentile * 100));
+      break;
+    }
+  }
+
   return output;
 }
 
@@ -868,7 +1030,8 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
 std::string BufferAssignment::ToVerboseString(
     size_t max_buffers_to_show) const {
   std::string output =
-      absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
+      absl::StrCat("BufferAssignment OOM Debugging.\n",
+                   StatsString(/*report_total_fragmentation=*/true));
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
       TopKPeakBuffers(max_buffers_to_show, allocations_);
@@ -2127,8 +2290,9 @@ BufferAssigner::CreateAssignment(
   assignment->CombineTempAllocations(private_stack_colors, temp_buffer_color);
 
   XLA_VLOG_LINES(2, assignment->ToString());
-  TF_RETURN_IF_ERROR(assignment->ComputeSummaryStats());
-  XLA_VLOG_LINES(1, assignment->GetStats().ToString());
+  assignment->ComputeSummaryStats();
+  XLA_VLOG_LINES(1,
+                 assignment->StatsString(/*report_total_fragmentation=*/true));
   VLOG(1) << "Buffer assignment done.";
   return std::move(assignment);
 }

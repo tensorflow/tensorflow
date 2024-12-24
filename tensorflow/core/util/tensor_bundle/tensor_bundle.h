@@ -72,6 +72,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/buffered_file.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -87,7 +88,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
-#include "tsl/lib/io/buffered_file.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -125,7 +125,7 @@ class BundleWriter {
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
-  Status Add(absl::string_view key, const Tensor& val);
+  absl::Status Add(absl::string_view key, const Tensor& val);
 
   // Partitioned variables support.
   // A slice of a full tensor is stored in two entries in the metadata table:
@@ -143,14 +143,15 @@ class BundleWriter {
   // consistent entry for "full_tensor_key" is produced.
   //
   // Returns an error if the same slice is added the second time.
-  Status AddSlice(absl::string_view full_tensor_key,
-                  const TensorShape& full_tensor_shape,
-                  const TensorSlice& slice_spec, const Tensor& slice_tensor);
+  absl::Status AddSlice(absl::string_view full_tensor_key,
+                        const TensorShape& full_tensor_shape,
+                        const TensorSlice& slice_spec,
+                        const Tensor& slice_tensor);
 
   // Finishes the writer and flushes.
-  Status Finish() TF_MUST_USE_RESULT;
+  absl::Status Finish() TF_MUST_USE_RESULT;
 
-  Status status() const { return status_; }
+  absl::Status status() const { return status_; }
 
  private:
   Env* const env_;  // Not owned.
@@ -162,7 +163,7 @@ class BundleWriter {
   std::unique_ptr<tsl::BufferedWritableFile> out_;
   int64_t size_;  // Number of bytes written into out_.
   std::map<std::string, BundleEntryProto> entries_;
-  Status status_;
+  absl::Status status_;
 
   BundleWriter(const BundleWriter&) = delete;
   void operator=(const BundleWriter&) = delete;
@@ -190,9 +191,9 @@ class BundleWriter {
 //
 // Returns a NotFoundError when "allow_missing_files" is set to false and
 // any data file named in "prefixes" does not exist.
-Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
-                    absl::string_view merged_prefix,
-                    bool allow_missing_files = false);
+absl::Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
+                          absl::string_view merged_prefix,
+                          bool allow_missing_files = false);
 
 class BundleCache;
 
@@ -219,7 +220,7 @@ class BundleReader {
 
   // Is ok() iff the reader construction is successful (completed the read of
   // the metadata).
-  Status status() const { return status_; }
+  absl::Status status() const { return status_; }
 
   // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
   // internally, so this call invalidates the reader's current position.
@@ -235,20 +236,20 @@ class BundleReader {
   //
   // REQUIRES: status().ok()
   template <class T>
-  Status SortForSequentialAccess(
+  absl::Status SortForSequentialAccess(
       std::vector<T>& container,
       absl::FunctionRef<std::string(const T&)> get_key);
 
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
-  Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
-                             TensorShape* shape) TF_MUST_USE_RESULT;
+  absl::Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
+                                   TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
-  Status LookupTensorShape(absl::string_view key,
-                           TensorShape* shape) TF_MUST_USE_RESULT;
+  absl::Status LookupTensorShape(absl::string_view key,
+                                 TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
   // tensor, attempts to look up the full contents using all stored slices.
@@ -262,7 +263,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  Status Lookup(absl::string_view key, Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status Lookup(absl::string_view key, Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up the tensor pointed to by the internal iterator.
   //
@@ -270,7 +271,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok() && Valid()
-  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
@@ -279,17 +280,17 @@ class BundleReader {
   // a slice with a larger start index in some dimension could come before
   // another slice with a smaller start index in the same dimension.
   // REQUIRES: status().ok()
-  Status LookupTensorSlices(absl::string_view key,
-                            std::vector<TensorSlice>* slices)
+  absl::Status LookupTensorSlices(absl::string_view key,
+                                  std::vector<TensorSlice>* slices)
       TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
   // namely "slice_spec" is a subset of the union of the stored slices.
   // REQUIRES: status().ok()
-  Status LookupSlice(absl::string_view full_tensor_key,
-                     const TensorSlice& slice_spec,
-                     Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status LookupSlice(absl::string_view full_tensor_key,
+                           const TensorSlice& slice_spec,
+                           Tensor* val) TF_MUST_USE_RESULT;
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
@@ -314,28 +315,28 @@ class BundleReader {
   // Seeks for "key" and reads the metadata proto.
   // On non-OK return, clears "entry" for the caller.
   // REQUIRES: status().ok()
-  Status GetBundleEntryProto(absl::string_view key,
-                             BundleEntryProto* entry) TF_MUST_USE_RESULT;
+  absl::Status GetBundleEntryProto(absl::string_view key,
+                                   BundleEntryProto* entry) TF_MUST_USE_RESULT;
 
   // Reads the tensor value described by the metadata proto "entry".
   // Usage for "val" follows the comment of "Lookup()".
-  Status GetValue(const BundleEntryProto& entry,
-                  Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status GetValue(const BundleEntryProto& entry,
+                        Tensor* val) TF_MUST_USE_RESULT;
 
   // Reads the slice described by "slice_spec".  The corresponding full tensor
   // has key "ful_tensor_key" and metadata proto "full_tensor_entry".
   // REQUIRES: full_tensor_entry.slices_size() > 0
-  Status GetSliceValue(absl::string_view full_tensor_key,
-                       const BundleEntryProto& full_tensor_entry,
-                       const TensorSlice& slice_spec,
-                       Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status GetSliceValue(absl::string_view full_tensor_key,
+                             const BundleEntryProto& full_tensor_entry,
+                             const TensorSlice& slice_spec,
+                             Tensor* val) TF_MUST_USE_RESULT;
 
   Env* env_;  // Not owned.
   const std::string prefix_;
   std::unique_ptr<BundleCache> owned_cache_;  // may be null
   BundleCache* cache_;  // Not owned, or owned_cache_.get()
 
-  Status status_;
+  absl::Status status_;
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Cache* index_cache_;
@@ -365,7 +366,7 @@ class BundleReader {
 };
 
 template <class T>
-Status BundleReader::SortForSequentialAccess(
+absl::Status BundleReader::SortForSequentialAccess(
     std::vector<T>& container,
     absl::FunctionRef<std::string(const T&)> get_key) {
   struct FileOffset {
@@ -399,7 +400,7 @@ class BundleCache {
 
   // Get the underlying file object for fname. The result will remain valid
   // while the BundleCache lives.
-  Status GetFile(const std::string& fname, RandomAccessFile** file);
+  absl::Status GetFile(const std::string& fname, RandomAccessFile** file);
 
  private:
   // State for each opened file (opened on first read).
@@ -407,7 +408,7 @@ class BundleCache {
     absl::once_flag once;  // Ensures file is opened exactly once.
 
     std::unique_ptr<RandomAccessFile> file;
-    Status open_status;  // Records any error encountered on open
+    absl::Status open_status;  // Records any error encountered on open
   };
 
   FileState* EnsureOpened(std::string name);

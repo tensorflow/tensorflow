@@ -31,6 +31,7 @@ limitations under the License.
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_GPU(X) X
 #define DISABLED_ON_GPU_A100(X) X
+#define DISABLED_ON_GPU_H100(X) X
 #define DISABLED_ON_GPU_ROCM(X) X
 #define DISABLED_ON_INTERPRETER(X) X
 #define DISABLED_ON_INTERPRETER_TSAN(X) X
@@ -70,6 +71,11 @@ limitations under the License.
 # undef DISABLED_ON_GPU_A100
 # define DISABLED_ON_GPU_A100(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU_A100
+
+#ifdef XLA_TEST_BACKEND_GPU_H100
+# undef DISABLED_ON_GPU_H100
+# define DISABLED_ON_GPU_H100(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_GPU_H100
 
 #ifdef XLA_TEST_BACKEND_INTERPRETER
 # undef DISABLED_ON_INTERPRETER
@@ -111,11 +117,6 @@ limitations under the License.
 // clang-format on
 
 namespace xla {
-
-inline const char** DisabledManifestPath() {
-  static const char* disabled_manifest_path = nullptr;
-  return &disabled_manifest_path;
-}
 
 inline const char** TestPlatform() {
   static const char* test_platform = nullptr;

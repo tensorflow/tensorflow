@@ -16,45 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_GATHER_COMBINER_H_
 #define XLA_SERVICE_ALL_GATHER_COMBINER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Combines small non-dependent AllGather ops into larger combined
-// AllGather ops. A typical AllGather implementation has a minimum
-// latency-induced time for a AllGather op so a single combined op can be
-// more efficient than many small ones.
-class AllGatherCombiner : public HloModulePass {
- public:
-  AllGatherCombiner(int64_t combine_threshold_in_bytes,
-                    int64_t combine_threshold_count, bool combine_by_dim,
-                    bool combine_different_dtypes = true);
-
-  absl::string_view name() const override { return "all-gather-combiner"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  // Combine all gather ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine all gather ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
-
-  // Combine only all-gather ops with the same gather dimension.
-  bool combine_by_dim_;
-
-  // Combine all-gather ops with different dtypes.
-  bool combine_different_dtypes_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/all_gather_combiner.h"
 
 #endif  // XLA_SERVICE_ALL_GATHER_COMBINER_H_

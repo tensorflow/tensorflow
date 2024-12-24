@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <string_view>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -95,8 +94,8 @@ void BuildRetBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
 }
 
 static absl::Status BuildAndCallFfi(
-    const xla::ExecutableRunOptions* run_options, std::string_view target_name,
-    std::string_view backend_config, absl::Span<void* const> outputs,
+    const xla::ExecutableRunOptions* run_options, absl::string_view target_name,
+    absl::string_view backend_config, absl::Span<void* const> outputs,
     absl::Span<void* const> inputs, absl::Span<const int32_t> result_types,
     int64_t* result_dims, absl::Span<const int32_t> operand_types,
     int64_t* operand_dims) {
@@ -114,7 +113,7 @@ static absl::Status BuildAndCallFfi(
   }
 
   // For FFI handlers backend config must be a compatible MLIR dictionary.
-  ffi::CallFrameBuilder::FlatAttributesMap attributes;
+  ffi::CallFrameBuilder::AttributesMap attributes;
   if (!backend_config.empty() && backend_config != "{}") {
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.

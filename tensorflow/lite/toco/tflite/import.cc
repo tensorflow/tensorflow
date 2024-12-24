@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/import.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 

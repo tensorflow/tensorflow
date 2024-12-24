@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

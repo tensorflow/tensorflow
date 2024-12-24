@@ -63,6 +63,14 @@ cuda_header_library(
     ],
 )
 
+# See comment on identically named target in hermetic/BUILD.tpl. This is here
+# to keep users who have still not migrated from hermetic cuda from being
+# broken.
+alias(
+  name = "implicit_cuda_headers_dependency",
+  actual = ":cuda_headers",
+)
+
 cc_library(
     name = "cudart_static",
     srcs = ["cuda/lib/%{cudart_static_lib}"],

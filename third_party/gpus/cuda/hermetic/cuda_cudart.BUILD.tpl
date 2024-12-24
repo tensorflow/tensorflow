@@ -1,4 +1,8 @@
 licenses(["restricted"])  # NVIDIA proprietary license
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 
 exports_files([
     "version.txt",
@@ -10,9 +14,8 @@ filegroup(
     visibility = ["@local_config_cuda//cuda:__pkg__"],
 )
 %{multiline_comment}
-# TODO: Replace system provided library with hermetic NVIDIA driver library.
 cc_import(
-    name = "cuda_driver_shared_library",
+    name = "cuda_stub",
     interface_library = "lib/stubs/libcuda.so",
     system_provided = 1,
 )
@@ -25,16 +28,19 @@ cc_import(
 %{multiline_comment}
 cc_library(
     name = "cuda_driver",
-    %{comment}deps = [":cuda_driver_shared_library"],
+    %{comment}deps = [":cuda_stub"],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart",
-    %{comment}deps = [
-        %{comment}":cuda_driver",
+    %{comment}deps = select({
+        %{comment}"@cuda_driver//:forward_compatibility": ["@cuda_driver//:nvidia_driver"],
+        %{comment}"//conditions:default": [":cuda_driver"],
+    %{comment}}) + [
         %{comment}":cudart_shared_library",
     %{comment}],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cuda_runtime/lib"),
     visibility = ["//visibility:public"],
 )
 

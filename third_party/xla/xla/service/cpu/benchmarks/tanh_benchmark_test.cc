@@ -15,15 +15,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -32,7 +33,7 @@ namespace xla::cpu {
 static void BM_TanhF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule tanh_f32_$d0
 
     ENTRY e {
@@ -53,7 +54,7 @@ static void BM_TanhF32(benchmark::State& state) {
 static void BM_TanhF64(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule tanh_f64_$d0
 
     ENTRY e {

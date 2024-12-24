@@ -112,7 +112,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.

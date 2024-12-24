@@ -12,6 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -19,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -37,8 +43,9 @@ class ToTFRecordOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "tf_data_to_tf_record") {}
 
   template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
+  absl::Status ParseScalarArgument(OpKernelContext* ctx,
+                                   const StringPiece& argument_name,
+                                   T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
@@ -58,7 +65,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
  private:
-  Status DoCompute(OpKernelContext* ctx) {
+  absl::Status DoCompute(OpKernelContext* ctx) {
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     metrics::RecordTFDataFetchOp("ToTFRecordOp");

@@ -53,7 +53,7 @@ struct PoolParameters {
                  TensorFormat data_format, const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
-  Status forward_output_shape(TensorShape* shape);
+  absl::Status forward_output_shape(TensorShape* shape);
 
   int depth;
 
@@ -107,11 +107,13 @@ class MaxPoolingOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
-    for (int i = 0; i < ksize_.size(); ++i) {
-      OP_REQUIRES(context, ksize_[i] > 0,
-                  errors::InvalidArgument("Sliding window ksize for dimension ",
-                                          i, " was zero."));
-    }
+    OP_REQUIRES(
+        context,
+        ksize_[0] > 0 && ksize_[1] > 0 && ksize_[2] > 0 && ksize_[3] > 0,
+        errors::InvalidArgument(
+            absl::StrCat("Sliding window ksize must be positive. The "
+                         "specified or inferred ksize is: ",
+                         absl::StrJoin(ksize_, ","))));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "

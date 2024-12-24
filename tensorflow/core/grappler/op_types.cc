@@ -682,7 +682,7 @@ bool IsPersistent(const NodeDef& node) {
 
 bool HasRefInput(const NodeDef& node) {
   const OpDef* op_def;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  absl::Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -702,10 +702,10 @@ bool IsDataset(const NodeDef& node) {
          op == "DatasetToSingleElement" || op == "ReduceDataset";
 }
 
-bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+bool IsStateful(const NodeDef& node, const OpRegistryInterface* op_registry) {
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  absl::Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to lookup OpDef for " << op_name
                  << ". Error: " << status.message();
@@ -714,7 +714,7 @@ bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
   return op_def->is_stateful();
 }
 
-bool IsStateful(const NodeDef node) {
+bool IsStateful(const NodeDef& node) {
   return IsStateful(node, OpRegistry::Global());
 }
 
@@ -726,7 +726,7 @@ bool IsFreeOfSideEffect(const NodeDef& node,
   }
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  absl::Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }

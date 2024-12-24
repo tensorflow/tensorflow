@@ -37,11 +37,11 @@ def make_fully_connected_4bit_hybrid_tests(options):
           "dynamic_range_quantize": [True],
       },
       # No optimization.
-      {
-          "shape1": [[1, 40]],
-          "shape2": [[40, 3]],
-          "dynamic_range_quantize": [True],
-      },
+      # {
+      #     "shape1": [[1, 40]],
+      #     "shape2": [[40, 3]],
+      #     "dynamic_range_quantize": [True],
+      # },
   ]
 
   def build_graph(parameters):

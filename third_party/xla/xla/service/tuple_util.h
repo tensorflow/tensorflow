@@ -85,6 +85,12 @@ class TupleUtil {
   static HloInstruction* AssembleTupleInstruction(
       HloComputation* computation, ShapeTree<HloInstruction*> elements,
       absl::string_view name = "");
+
+  // Returns the tuple instruction at the given ShapeIndex `target_index`.
+  // Returns nullptr if there does not exist a tuple instruction at the given
+  // index, or if the index is invalid.
+  static HloInstruction* GetTupleInstructionAtIndex(
+      HloInstruction& tuple, const ShapeIndex& target_index);
 };
 }  // namespace xla
 

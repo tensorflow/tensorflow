@@ -111,7 +111,7 @@ absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
   return reduction;
 }
 
-Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
+absl::Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
     return errors::InvalidArgument(
@@ -205,7 +205,7 @@ class SparseReduceOp : public OpKernel {
 
     // Compute strides, and use it to convert coords to flat index.  The
     // coordinates returned by .group() have the same ndims as group_by_dims.
-    gtl::InlinedVector<int64_t, 8> output_strides(reduction.group_by_dims.size());
+    absl::InlinedVector<int64_t, 8UL> output_strides(reduction.group_by_dims.size());
     if (!output_strides.empty()) {  // Do this iff we don't reduce all.
       output_strides.back() = 1;
       for (int d = output_strides.size() - 2; d >= 0; --d) {

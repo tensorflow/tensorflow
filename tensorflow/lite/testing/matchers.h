@@ -25,13 +25,15 @@ limitations under the License.
 #include <limits>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -130,7 +132,7 @@ class TensorMatcher {
     return false;
   }
 
-  void Describe(std::ostream* os, std::string_view prefix) const {
+  void Describe(std::ostream* os, absl::string_view prefix) const {
     *os << prefix;
     if (comp_.float_comp == FloatComparison::kApproximate) {
       *os << "approximately ";
@@ -237,6 +239,34 @@ class TensorMatcher {
 };
 
 }  // namespace internal
+
+// A struct that simplifies the creation and management of constant
+// `TfLiteTensor` objects, automatically deallocating the memory (including
+// dims) at destruction time.
+//
+// Example:
+//  float data[] = {2.71828f, 3.14159f};
+//  SimpleConstTensor a(TfLiteType::kTfLiteFloat32, {1, 2},
+//    absl::MakeSpan(data));
+struct SimpleConstTensor : public TfLiteTensor {
+  template <typename T>
+  SimpleConstTensor(TfLiteType dtype, const std::vector<int>& shape,
+                    absl::Span<T> buf) {
+    type = dtype;
+    dims = TfLiteIntArrayCreate(shape.size());
+    std::memcpy(dims->data, shape.data(), shape.size() * sizeof(int));
+    data = {.data = buf.data()};
+    bytes = buf.size() * sizeof(T);
+    sparsity = nullptr;
+  }
+  ~SimpleConstTensor() { TfLiteIntArrayFree(dims); }
+};
+
+// Delegate pretty print to PrintTo(TfLiteTensor&).
+inline void PrintTo(const SimpleConstTensor& tensor,
+                    std::ostream* os) {  // NOLINT
+  PrintTo(absl::implicit_cast<const TfLiteTensor&>(tensor), os);
+}
 
 inline PolymorphicMatcher<internal::TensorMatcher> EqualsTensor(
     const TfLiteTensor& expected) {

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -23,13 +26,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -49,8 +53,17 @@ class TritonFusionNumericsVerifier : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  using FusionCacheKey = std::string;
+
+  int CacheHitsForTestingOnly() const { return cache_hits_; }
+
  private:
   AutotuneConfig config_;
+
+  // In some models there are many identical fusions. These are cached to avoid
+  // expensive recomputations.
+  absl::flat_hash_map<FusionCacheKey, absl::Status> fusion_result_cache_;
+  int cache_hits_ = 0;  // used for testing only.
 };
 
 namespace triton_fusion_numerics_pass_internal {
@@ -58,7 +71,7 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const AutotuneConfig& config, const DebugOptions& debug_opts,
-    bool clear_backend_config);
+    bool disable_triton);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
                             const Shape& shape, const HloModuleConfig& config,

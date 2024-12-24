@@ -43,11 +43,11 @@ template <typename T>
 using StringPieceMap = std::unordered_map<StringPiece, T, StringPieceHasher>;
 }  // namespace
 
-Status ReplaceSendRecvs(const GraphDef& original_graph_def,
-                        const GraphDef& rewritten_graph_def,
-                        const std::vector<string>& inputs,
-                        const std::vector<string>& outputs,
-                        GraphDef* output_graph_def) {
+absl::Status ReplaceSendRecvs(const GraphDef& original_graph_def,
+                              const GraphDef& rewritten_graph_def,
+                              const std::vector<string>& inputs,
+                              const std::vector<string>& outputs,
+                              GraphDef* output_graph_def) {
   // recv_node_names serves as a string storage for recv node names.
   std::vector<string> recv_node_names(inputs.size());
   StringPieceMap<TensorId> recv_node_map;
@@ -113,11 +113,11 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
     output_graph_def->add_node()->MergeFrom(removed_node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
-                                   GraphDef* graph_def) {
+absl::Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
+                                         GraphDef* graph_def) {
   std::unordered_set<string> input_names;
   for (const string& input_name : context.input_names) {
     input_names.emplace(ParseTensorName(input_name).first);
@@ -138,12 +138,12 @@ Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
           node.op());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RemoveUnusedNodes(const GraphDef& input_graph_def,
-                         const TransformFuncContext& context,
-                         GraphDef* output_graph_def) {
+absl::Status RemoveUnusedNodes(const GraphDef& input_graph_def,
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def) {
   StringPieceMap<const NodeDef*> node_map;
   for (const NodeDef& node : input_graph_def.node()) {
     node_map.emplace(node.name(), &node);
@@ -191,15 +191,15 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       output_graph_def);
   TF_RETURN_IF_ERROR(RewriteInputsAsPlaceholders(context, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts a shape inference handle to a PartialTensorShape.
-Status ShapeHandleToTensorShape(const shape_inference::ShapeHandle& handle,
-                                shape_inference::InferenceContext* context,
-                                PartialTensorShape* shape) {
+absl::Status ShapeHandleToTensorShape(
+    const shape_inference::ShapeHandle& handle,
+    shape_inference::InferenceContext* context, PartialTensorShape* shape) {
   // The default is already unknown.
-  if (!context->RankKnown(handle)) return OkStatus();
+  if (!context->RankKnown(handle)) return absl::OkStatus();
 
   std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0; i < dims.size(); ++i) {
@@ -210,9 +210,9 @@ Status ShapeHandleToTensorShape(const shape_inference::ShapeHandle& handle,
 
 // Converts any sub-graphs that can be resolved into constant expressions into
 // single Const ops.
-Status FoldConstants(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def) {
+absl::Status FoldConstants(const GraphDef& input_graph_def,
+                           const TransformFuncContext& context,
+                           GraphDef* output_graph_def) {
   Graph input_graph(OpRegistry::Global());
   TF_RETURN_IF_ERROR(input_graph.AddFunctionLibrary(input_graph_def.library()));
 
@@ -330,7 +330,7 @@ Status FoldConstants(const GraphDef& input_graph_def,
                                       &send_recvs_replaced));
   TF_RETURN_IF_ERROR(
       RemoveUnusedNodes(send_recvs_replaced, context, output_graph_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fold_constants", FoldConstants);

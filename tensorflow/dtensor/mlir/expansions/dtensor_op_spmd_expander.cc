@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -52,8 +51,8 @@ namespace {
 // 3. Src/target layouts are from different mesh.
 // 4. One of scr/target layout is from host mesh cluster.
 // 5. CPU host cluster mesh has 1 device.
-Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
-                                           mlir::TF::DTensorRecv dtensor_recv) {
+absl::Status ValidateSendRecvLayoutConfiguration(
+    mlir::TF::DTensorSend dtensor_send, mlir::TF::DTensorRecv dtensor_recv) {
   // If either one of the send/recv ops has already been lowered, then send/recv
   // configuration has already been verified.
   if (!dtensor_send || !dtensor_recv) return absl::OkStatus();

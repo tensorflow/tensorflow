@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -279,7 +280,8 @@ std::string PinnedAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "PinnedAllocation in ", memory_space_str, " defined at ",
@@ -303,7 +305,8 @@ CopyAllocation::CopyAllocation(
     std::optional<HeapSimulator::Chunk> chunk,
     int64_t copy_start_schedule_after_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
-    std::optional<int64_t> cross_program_prefetch_index)
+    std::optional<int64_t> cross_program_prefetch_index,
+    HloInstruction* sync_mem_op)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -312,7 +315,8 @@ CopyAllocation::CopyAllocation(
           /*is_scoped_allocation=*/false, cross_program_prefetch_index),
       prev_allocation_(prev_allocation),
       copy_start_schedule_after_(copy_start_schedule_after_time),
-      copy_done_schedule_before_(copy_done_schedule_before_time) {}
+      copy_done_schedule_before_(copy_done_schedule_before_time),
+      sync_mem_op_(sync_mem_op) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -323,11 +327,31 @@ absl::Status CopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
-      producing_instruction, cross_program_prefetch_index()));
-  copy_done_ = computation->AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
+    TF_ASSIGN_OR_RETURN(copy_done_,
+                        computation->CreateAsyncInstructions(
+                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
+                            HloInstruction::kMainExecutionThread, false));
+    copy_start_ = copy_done_->mutable_operand(0);
+    // If the shape of the copy start operand is not compatible with the
+    // shape of the producing instruction, we insert a bitcast to make them
+    // compatible.
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(
+            producing_instruction->shape(), copy_start_->operand(0)->shape())) {
+      producing_instruction =
+          computation->AddInstruction(HloInstruction::CreateBitcast(
+              copy_start_->operand(0)->shape(), producing_instruction));
+    }
+    TF_RETURN_IF_ERROR(
+        copy_start_->ReplaceOperandWith(0, producing_instruction));
+  } else {
+    copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+        ShapeUtil::MakeTupleShape(
+            {shape, shape, ShapeUtil::MakeShape(U32, {})}),
+        producing_instruction, cross_program_prefetch_index()));
+    copy_done_ = computation->AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  }
   VLOG(4) << "Created " << copy_start_->name()
           << " for copy allocation: " << ToString();
 
@@ -353,13 +377,15 @@ std::string CopyAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat("Copy Allocation in ", memory_space_str,
                       ", start_time:", start_time(), ", end_time:", end_time(),
                       ", copy_start_after_time: ", copy_start_schedule_after(),
                       ", copy_done_before_time: ", copy_done_schedule_before(),
-                      ", uses: ", UsesToString(uses()), ", from ",
+                      ", uses: ", UsesToString(uses()), ", sync_mem_op: ",
+                      sync_mem_op_ ? sync_mem_op_->name() : "none", ", from ",
                       prev_allocation_.ToString());
 }
 
@@ -412,7 +438,8 @@ SlicedCopyAllocation::SlicedCopyAllocation(
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
     const SlicedPrefetchOptions& sliced_prefetch_options,
-    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn)
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn,
+    HloInstruction* sync_mem_op)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
           GetSlicedCopyAllocationChunk(
@@ -427,7 +454,8 @@ SlicedCopyAllocation::SlicedCopyAllocation(
       original_shape_to_slice_(prev_allocation.defining_position().shape()),
       prev_allocation_(prev_allocation),
       sliced_prefetch_options_(sliced_prefetch_options),
-      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn) {
+      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn),
+      sync_mem_op_(sync_mem_op) {
   CHECK_GE(slice_decisions_sorted_by_exclusive_start_time.size(), 2);
   slice_details_sorted_by_exclusive_start_time_.reserve(
       slice_decisions_sorted_by_exclusive_start_time.size());
@@ -621,7 +649,9 @@ std::string SlicedCopyAllocation::ToString() const {
       slice_details_sorted_by_start_time().front().copy_start_after_time,
       ", last_slice_copy_done_before_time: ",
       slice_details_sorted_by_start_time().back().copy_done_before_time,
-      ", uses: ", UsesToString(uses()), ", from ", prev_allocation_.ToString());
+      ", uses: ", UsesToString(uses()),
+      ", sync_mem_op: ", sync_mem_op_ ? sync_mem_op_->name() : "none",
+      ", from ", prev_allocation_.ToString());
 }
 
 absl::Status SlicedCopyAllocation::CreateBitcastConcat(
@@ -894,14 +924,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
   layout.set_memory_space(options_.alternate_memory_space);
   *shape.mutable_layout() = layout;
 
-  // Insert a new parameter in the fused computation.
-  HloComputation* fused_computation =
-      use_instruction->fused_instructions_computation();
-  const int64_t num_parameters = fused_computation->num_parameters();
-  std::string name = absl::StrCat("window-buffer.", num_parameters);
-  HloInstruction* param = fused_computation->AddParameter(
-      HloInstruction::CreateParameter(num_parameters, shape, name));
-
   // Insert async WindowPrefetch instructions as operands to the fusion.
   HloInstruction* prefetch =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -910,24 +932,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
                       computation->CreateAsyncInstructions(prefetch, {}));
   use_instruction->AppendOperand(prefetch_instruction_);
 
-  // Insert instruction to consume the added operands and forwards the original
-  // fusion output.
-  auto get_or_create_consumer =
-      [](HloComputation* computation) -> HloInstruction* {
-    HloInstruction* root = computation->root_instruction();
-    // If the root is already a WindowPrefetchBuffer, we don't need to create
-    // a new one.
-    if (root->IsCustomCall("WindowPrefetchBuffer")) {
-      return root;
-    }
-    HloInstruction* new_root =
-        computation->AddInstruction(HloInstruction::CreateCustomCall(
-            root->shape(), {root}, "WindowPrefetchBuffer"));
-    computation->set_root_instruction(new_root);
-    return new_root;
-  };
-  HloInstruction* consumer = get_or_create_consumer(fused_computation);
-  consumer->AppendOperand(param);
   return absl::OkStatus();
 }
 
@@ -1024,6 +1028,84 @@ std::vector<Allocation*> GetAllocationSequenceInRawPointers(
     allocations_in_raw_pointers.push_back(allocation.get());
   }
   return allocations_in_raw_pointers;
+}
+
+namespace {
+
+struct AllocationSummary {
+  static void Add(const Allocation& allocation,
+                  std::vector<AllocationSummary>& data) {
+    if (!allocation.is_sliced_copy_allocation()) {
+      data.push_back(
+          AllocationSummary{allocation.chunk(), allocation.start_time(),
+                            allocation.end_time(), GetName(allocation)});
+      return;
+    }
+    const SlicedCopyAllocation& sliced_copy_allocation =
+        dynamic_cast<const SlicedCopyAllocation&>(allocation);
+    for (size_t i = 0;
+         i < sliced_copy_allocation.slice_details_sorted_by_start_time().size();
+         ++i) {
+      const SlicedCopyAllocation::SliceDetail& slice_detail =
+          sliced_copy_allocation.slice_details_sorted_by_start_time()[i];
+      data.push_back(AllocationSummary{
+          slice_detail.slice_decision.chunk,
+          ExclusiveToInclusiveStartTime(
+              slice_detail.slice_decision.exclusive_start_time),
+          sliced_copy_allocation.end_time(), GetName(allocation, i)});
+    }
+  }
+
+  static std::string GetName(const Allocation& allocation,
+                             std::optional<size_t> slice_index = std::nullopt) {
+    std::vector<std::string> attributes;
+    if (slice_index.has_value()) {
+      attributes.push_back(absl::StrCat("slice ", *slice_index));
+    }
+    if (allocation.is_scoped_allocation()) {
+      attributes.push_back("scoped");
+    }
+    if (allocation.cross_program_prefetch_index().has_value()) {
+      attributes.push_back("cross-program prefetch");
+    }
+    if (attributes.empty()) {
+      return allocation.defining_position().ToString();
+    }
+    return absl::StrCat(allocation.defining_position().ToString(), " (",
+                        absl::StrJoin(attributes, ", "), ")");
+  }
+
+  HeapSimulator::Chunk chunk;
+  int64_t start_time_inclusive;
+  int64_t end_time_inclusive;
+  std::string name;
+};
+
+}  // namespace
+
+void AllocationSequenceDebugging::LogAltMemAllocationsAt(
+    const AllocationSequence& allocations, int64_t time) {
+  std::vector<AllocationSummary> data_vector;
+  for (const std::unique_ptr<Allocation>& allocation : allocations) {
+    if (allocation->start_time() <= time && allocation->end_time() >= time &&
+        allocation->is_in_alternate_mem()) {
+      AllocationSummary::Add(*allocation, data_vector);
+    }
+  }
+  absl::c_sort(data_vector,
+               [](const AllocationSummary& a, const AllocationSummary& b) {
+                 if (a.chunk.offset != b.chunk.offset) {
+                   return a.chunk.offset < b.chunk.offset;
+                 }
+                 return a.start_time_inclusive < b.start_time_inclusive;
+               });
+  LOG(INFO) << "Live allocations in alternate mem at instruction time " << time
+            << " (before MSA alters the graph):";
+  for (const AllocationSummary& data : data_vector) {
+    LOG(INFO) << "Alt mem allocation in chunk " << data.chunk.ToString()
+              << " during [" << data.start_time_inclusive << ","
+              << data.end_time_inclusive << "], holding " << data.name;
+  }
 }
 
 }  // namespace xla::memory_space_assignment

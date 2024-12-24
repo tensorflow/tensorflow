@@ -595,5 +595,62 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
           self._delegate_file, options={'fail': 'fail'})
 
 
+class InterpreterMultiSignatureTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(InterpreterMultiSignatureTest, self).setUp()
+    self._single_signature_file = resource_loader.get_path_to_datafile(
+        'testdata/permute_float.tflite'
+    )
+    self._double_signature_file = resource_loader.get_path_to_datafile(
+        'testdata/two_signatures.tflite'
+    )
+
+  def testNumSubgraphsSingleSignature(self):
+    single_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._single_signature_file
+    )
+    self.assertEqual(single_signature_interpreter.num_subgraphs(), 1)
+
+  def testNumSubgraphsDoubleSignature(self):
+    double_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._double_signature_file
+    )
+    self.assertEqual(double_signature_interpreter.num_subgraphs(), 2)
+
+  def testGetTensorDetailsSingleSignature(self):
+    single_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._single_signature_file
+    )
+    tensor_details = single_signature_interpreter.get_tensor_details()
+    self.assertLen(tensor_details, 3)
+    self.assertEqual(tensor_details[0]['name'], 'input')
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      single_signature_interpreter.get_tensor_details(subgraph_index=1)
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      single_signature_interpreter.get_tensor_details(subgraph_index=-1)
+
+  def testGetTensorDetailsDoubleSignature(self):
+    double_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._double_signature_file
+    )
+    subgraph0_tensor_details = double_signature_interpreter.get_tensor_details(
+        subgraph_index=0
+    )
+    self.assertLen(subgraph0_tensor_details, 3)
+    self.assertEqual(subgraph0_tensor_details[0]['name'], 'add_x:0')
+
+    subgraph1_tensor_details = double_signature_interpreter.get_tensor_details(
+        subgraph_index=1
+    )
+    self.assertLen(subgraph1_tensor_details, 3)
+    self.assertEqual(subgraph1_tensor_details[0]['name'], 'multiply_x:0')
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      double_signature_interpreter.get_tensor_details(subgraph_index=3)
+
+
 if __name__ == '__main__':
   test.main()

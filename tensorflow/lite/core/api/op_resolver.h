@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>

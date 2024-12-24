@@ -18,7 +18,9 @@ limitations under the License.
 #include <cmath>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace strings {
@@ -26,29 +28,28 @@ namespace strings {
 // NOTE: most of the routines in numbers.h are tested indirectly through
 // strcat_test.cc in this directory.
 
-// Test StrCat of ints and longs of various sizes and signdedness.
+// Test StrCat of ints and longs of various sizes and signedness.
 TEST(FpToString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
       uint64 fp = (1ull << s) + delta;
       string s = FpToString(fp);
       uint64 fp2;
-      EXPECT_TRUE(StringToFp(s, &fp2));
+      EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2);
     }
   }
   Fprint dummy;
-  EXPECT_FALSE(StringToFp("", &dummy));
-  EXPECT_FALSE(StringToFp("xyz", &dummy));
-  EXPECT_FALSE(StringToFp("0000000000000000xyz", &dummy));
+  EXPECT_FALSE(HexStringToUint64("", &dummy));
+  EXPECT_FALSE(HexStringToUint64("xyz", &dummy));
+  EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
 }
 
 TEST(Uint64ToHexString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
       uint64 fp = (1ull << s) + delta;
-      char buf[kFastToBufferSize];
-      absl::string_view s = Uint64ToHexString(fp, buf);
+      std::string s = absl::StrCat(absl::Hex(fp, absl::kZeroPad16));
       uint64 fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2) << s;
@@ -353,7 +354,7 @@ TEST(safe_strtod, Double) {
   EXPECT_TRUE(safe_strtod("\t82.0\t ", &result));
   EXPECT_EQ(82.0, result);
 
-  EXPECT_FALSE(safe_strtod("infinity", &result));
+  EXPECT_TRUE(safe_strtod("infinity", &result));
 
   EXPECT_TRUE(safe_strtod("-inf", &result));
   EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);

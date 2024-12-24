@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/tools/hlo_extractor.h"
 
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/call_inliner.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -42,7 +47,6 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/test_utils.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -164,13 +168,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     // Rename HLOs so that their name matches the original. By default,
     // HLOs get new unique names when adding a new entry computation to
     // a module.
-    for (auto computation : old_module_->MakeComputationPostOrder()) {
-      for (auto old_instruction : computation->MakeInstructionPostOrder()) {
-        if (auto new_instruction =
-                clone_context_.FindInstruction(old_instruction)) {
-          new_instruction->SetAndSanitizeName(old_instruction->name());
-        }
-      }
+    for (const auto& instruction_mapping :
+         clone_context_.cloned_instructions()) {
+      auto old_instruction = instruction_mapping.first;
+      auto new_instruction = instruction_mapping.second;
+      new_instruction->SetAndSanitizeName(old_instruction->name());
     }
     // For the extra created instructions (e.g., the ones created when replacing
     // with broadcasted zeros), we make sure they have unique names without
@@ -323,12 +325,30 @@ void ComputeBoundary(const HloInstruction* root, int64_t limit,
   }
 }
 
+absl::Status Inline(HloModule* module) {
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+            instruction, HloInstruction::CreateCall(
+                             instruction->shape(), instruction->operands(),
+                             instruction->fused_instructions_computation())));
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
+  TF_RETURN_IF_ERROR(
+      AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
+  TF_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height,
     ExtractSelector extract_selector, ReplaceTypeSelector replace_type_selector,
-    bool cross_computation) {
+    bool cross_computation, bool inline_calls_and_fusions, bool run_verifier) {
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
@@ -342,6 +362,12 @@ std::unique_ptr<HloModule> ExtractModule(
   TF_CHECK_OK(instruction->Accept(&visitor, /*call_finish_visit=*/true,
                                   /*ignore_control_predecessors=*/false,
                                   /*cross_computation=*/cross_computation));
+
+  // Inline called computations and fusions if the flag
+  // `inline_calls_and_fusions` is true.
+  if (inline_calls_and_fusions) {
+    TF_CHECK_OK(Inline(visitor.module()));
+  }
 
   // The first pass may leave unused parameter instructions in the entry
   // computation. Do another extraction pass to remove unused parameters in the
@@ -358,9 +384,11 @@ std::unique_ptr<HloModule> ExtractModule(
       /*ignore_control_predecessors=*/false,
       /*cross_computation=*/false));
 
-  HloVerifier verifier(/*layout_sensitive=*/false,
-                       /*allow_mixed_precision=*/true);
-  TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  if (run_verifier) {
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  }
   return cleanup_visitor.ConsumeModule();
 }
 

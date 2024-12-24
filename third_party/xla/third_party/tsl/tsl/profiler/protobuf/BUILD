@@ -1,14 +1,14 @@
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # Placeholder: load py_proto_library
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
-load("//tsl/platform:build_config.bzl", "tf_proto_library")
+load("@local_xla//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 package_group(
     name = "friends",
     includes = [
-        "//tsl/profiler:friends",
+        "@local_xla//xla/tsl/profiler:friends",
     ],
 )
 
@@ -71,7 +71,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "trace_events_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":trace_events_proto"],
 # )
@@ -91,7 +90,7 @@ tf_proto_library(
     srcs = ["profile.proto"],
     visibility = internal_visibility([
         "@local_xla//xla/python:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
 )
 
@@ -111,7 +110,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xplane_py_pb2",
-#     api_version = 2,
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xplane_proto"],
 # )

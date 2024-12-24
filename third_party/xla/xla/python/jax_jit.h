@@ -19,10 +19,10 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -60,7 +60,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> enable_memories;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -134,14 +133,14 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
     const auto& static_arg = s.static_args[i];
     Py_hash_t hash;
     try {
-      hash = xla::nb_hash(static_arg);
+      hash = nanobind::hash(static_arg);
     } catch (const nanobind::python_error& e) {
       if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occurred "
           "while trying to hash an object of type ",
-          nanobind::cast<std::string_view>(nanobind::str(static_arg.type())),
-          ", ", nanobind::cast<std::string_view>(nanobind::str(static_arg)),
+          nanobind::cast<absl::string_view>(nanobind::str(static_arg.type())),
+          ", ", nanobind::cast<absl::string_view>(nanobind::str(static_arg)),
           ". The error was:\n", e.what(), "\n"));
     }
     h = H::combine(std::move(h), hash);
@@ -160,7 +159,7 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
 // kwnames: either None or a tuple containing the keyword argument names
 // static_argnums: the indices of the static arguments in the positional
 //   arguments
-// static_argnames: the names of the static arguments
+// static_argnames: the names of the static arguments, which must be interned.
 // pytree_registry: the registry to use to convert the arguments to pytrees
 // signature: output; describes the static arguments and the identities of the
 //  dynamic arguments.
@@ -185,7 +184,7 @@ absl::Status ParseArguments(
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
   // Not part of the signature, but we need it for error messages.
-  std::string_view function_name;
+  absl::string_view function_name;
 
   ArgumentSignature arg_signature;
 
@@ -193,9 +192,11 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
 
-  // The sharding of the jax.Array arguments. This is only used by pjit with
-  // jax.Array enabled.
+  // The sharding of the jax.Array arguments.
   std::vector<nanobind::object> dynamic_arg_shardings;
+
+  // The layout of the jax.Array arguments.
+  std::vector<std::shared_ptr<xla::PjRtLayout>> dynamic_arg_layouts;
 
   absl::InlinedVector<bool, 2> committed_args;
 
@@ -204,7 +205,6 @@ struct CallSignature {
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_enable_memories = false;
 
   // For JIT on PJIT, we need to fallback to python whenever default_device
   // changes.
@@ -213,6 +213,8 @@ struct CallSignature {
   // Opaque additional context that should be included as part of the cache key.
   std::optional<nanobind::object> global_extra_jit_context;
   std::optional<nanobind::object> thread_local_extra_jit_context;
+
+  std::vector<nanobind::object> configs;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -229,12 +231,20 @@ H AbslHashValue(H h, const CallSignature& s) {
   DCHECK(s.dynamic_arg_shardings.empty() ||
          s.dynamic_arg_shardings.size() == s.dynamic_arg_signatures.size());
 
+  DCHECK(s.dynamic_arg_layouts.empty() ||
+         s.dynamic_arg_layouts.size() == s.dynamic_arg_signatures.size());
+
   // TODO(chky): For now, we are only hashing the pointer of shardings to avoid
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
-    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-    h = H::combine(std::move(h), ShardingHash(sharding.ptr()));
+    h = H::combine(std::move(h), ShardingHash(sharding));
+  }
+
+  for (const auto& layout : s.dynamic_arg_layouts) {
+    if (layout != nullptr) {
+      h = H::combine(std::move(h), *layout);
+    }
   }
 
   h = H::combine(std::move(h), s.committed_args, s.device, s.jax_enable_x64);

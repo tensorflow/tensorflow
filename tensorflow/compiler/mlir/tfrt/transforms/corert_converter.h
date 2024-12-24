@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

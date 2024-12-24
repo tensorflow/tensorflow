@@ -22,11 +22,14 @@ limitations under the License.
 #endif  // XLA_FFI_FFI_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -70,10 +73,12 @@ enum class DataType : uint8_t {
   C128 = XLA_FFI_DataType_C128,
   TOKEN = XLA_FFI_DataType_TOKEN,
   F8E5M2 = XLA_FFI_DataType_F8E5M2,
+  F8E4M3 = XLA_FFI_DataType_F8E4M3,
   F8E4M3FN = XLA_FFI_DataType_F8E4M3FN,
   F8E4M3B11FNUZ = XLA_FFI_DataType_F8E4M3B11FNUZ,
   F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
+  F8E3M4 = XLA_FFI_DataType_F8E3M4,
 };
 
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
@@ -95,10 +100,12 @@ inline constexpr DataType C64 = DataType::C64;
 inline constexpr DataType C128 = DataType::C128;
 inline constexpr DataType TOKEN = DataType::TOKEN;
 inline constexpr DataType F8E5M2 = DataType::F8E5M2;
+inline constexpr DataType F8E4M3 = DataType::F8E4M3;
 inline constexpr DataType F8E4M3FN = DataType::F8E4M3FN;
 inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
 inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
 inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
+inline constexpr DataType F8E3M4 = DataType::F8E3M4;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -114,10 +121,12 @@ constexpr size_t ByteWidth(DataType dtype) {
     case DataType::S8:
     case DataType::U8:
     case DataType::F8E5M2:
+    case DataType::F8E4M3:
     case DataType::F8E4M3FN:
     case DataType::F8E4M3B11FNUZ:
     case DataType::F8E5M2FNUZ:
     case DataType::F8E4M3FNUZ:
+    case DataType::F8E3M4:
       return 1;
     case DataType::S16:
     case DataType::U16:
@@ -297,6 +306,146 @@ class ErrorOr : public Expected<T, Error> {
 };
 
 //===----------------------------------------------------------------------===//
+// Future
+//===----------------------------------------------------------------------===//
+
+// A Promise and a Future are loosely based on `std::promise` and `std::future`,
+// with an API similar to `tsl::AsyncValue`. Implementation is based on a
+// simplified version of an AsyncValue with at most one waiter.
+
+// A promise to complete execution with a success or an error.
+class Promise;
+
+// A future that becomes available when a corresponding promise is completed.
+class Future {
+ public:
+  explicit Future(const Promise& promise);
+
+  Future(Future&&) = default;
+  Future& operator=(Future&&) = default;
+
+  template <typename F>
+  void OnReady(F&& f);
+
+ private:
+  friend class Promise;
+
+  using Waiter = std::function<void(const std::optional<Error>& error)>;
+
+  enum class State : uint8_t { kPending, kAvailable, kError };
+
+  struct WaiterAndState {
+    static_assert(alignof(std::max_align_t) >= 8 && sizeof(Waiter*) == 8);
+
+    static constexpr uint64_t kStateMask = (1ull << 2) - 1;
+    static constexpr uint64_t kPointerMask = ~kStateMask;
+
+    WaiterAndState(Waiter* ptr, State state) {
+      value = (reinterpret_cast<uintptr_t>(ptr) & kPointerMask) |
+              (static_cast<uintptr_t>(state) & kStateMask);
+    }
+
+    WaiterAndState() : WaiterAndState(nullptr, State::kPending) {}
+
+    State state() const { return static_cast<State>(value & kStateMask); }
+
+    Waiter* waiter() const {
+      return reinterpret_cast<Waiter*>(value & kPointerMask);
+    }
+
+    uintptr_t value;
+  };
+
+  static_assert(std::atomic<WaiterAndState>::is_always_lock_free,
+                "WaiterAndState atomic must be lock-free");
+
+  struct Data {
+    std::atomic<WaiterAndState> waiter_and_state = WaiterAndState();
+    std::optional<Error> error;
+  };
+
+  std::shared_ptr<Data> data_;
+};
+
+class Promise {
+ public:
+  Promise() : data_(std::make_shared<Future::Data>()) {}
+
+  Promise(Promise&&) = default;
+  Promise& operator=(Promise&&) = default;
+
+  void SetAvailable();
+  void SetError(Error error);
+
+ private:
+  friend class Future;
+
+  void SetCompleted(Future::State state);
+
+  std::shared_ptr<Future::Data> data_;
+};
+
+inline Future::Future(const Promise& promise) : data_(promise.data_) {
+  assert(data_.use_count() == 2 &&
+         "Promise can be used to create at most one Future");
+}
+
+template <typename F>
+void Future::OnReady(F&& f) {
+  static_assert(std::is_invocable_v<F, const std::optional<Error>&>,
+                "F must be compatible with Waiter signature");
+
+  WaiterAndState old_value =
+      data_->waiter_and_state.load(std::memory_order_acquire);
+
+  // If future is already completed, just run the waiter.
+  if (old_value.state() != State::kPending) {
+    f(data_->error);
+    return;
+  }
+
+  // Otherwise, add the waiter to the future.
+  auto* waiter = new Waiter(std::forward<F>(f));
+  auto new_value = WaiterAndState(waiter, State::kPending);
+
+  while (!data_->waiter_and_state.compare_exchange_weak(
+      old_value, new_value, std::memory_order_acq_rel,
+      std::memory_order_acquire)) {
+    // Another thread completed the future, just run the waiter.
+    if (old_value.state() != State::kPending) {
+      assert(old_value.waiter() == nullptr);
+      (*waiter)(data_->error);
+      delete waiter;
+      return;
+    }
+  }
+
+  // If CAS succeeded the future must be in the pending state.
+  assert(old_value.state() == State::kPending);
+}
+
+inline void Promise::SetAvailable() { SetCompleted(Future::State::kAvailable); }
+
+inline void Promise::SetError(Error error) {
+  assert(error.errc() != ErrorCode::kOk);
+  assert(data_->error == std::nullopt);
+  data_->error = std::move(error);
+
+  SetCompleted(Future::State::kError);
+}
+
+inline void Promise::SetCompleted(Future::State state) {
+  Future::WaiterAndState old_value = data_->waiter_and_state.exchange(
+      {nullptr, state}, std::memory_order_acq_rel);
+  assert(old_value.state() == Future::State::kPending);
+
+  if (Future::Waiter* waiter = old_value.waiter()) {
+    (*waiter)(data_->error);
+    delete waiter;
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // Arguments
 //===----------------------------------------------------------------------===//
 
@@ -327,6 +476,22 @@ class AnyBuffer {
   }
 
   void* untyped_data() const { return buf_->data; }
+
+  template <typename T>
+  T* typed_data() const {
+    assert(internal::NativeTypeToCApiDataType<T>() == buf_->dtype &&
+           "Template type must match the underlying buffer dtype");
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
+  template <typename T>
+  T* reinterpret_data() const {
+    assert(sizeof(T) == ByteWidth(element_type()) &&
+           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)) &&
+           "Requested type must have the same byte width and alignment as the "
+           "underlying buffer type");
+    return reinterpret_cast<T*>(buf_->data);
+  }
 
  private:
   const XLA_FFI_Buffer* buf_;
@@ -728,6 +893,22 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
 #undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
 
+template <>
+struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
+  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
+                                                void* attr,
+                                                DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_STRING << " but got " << type;
+    }
+
+    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
+    return std::string_view(span->ptr, span->len);
+  }
+};
+
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>
 struct Pointer {};
@@ -868,6 +1049,63 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
     }
 
     return internal::CreateError(api, state.error());
+  }
+};
+
+// Encodes `Future` as an asynchronous FFI result.
+template <ExecutionStage stage>
+struct ResultEncoding<stage, Future> {
+  static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
+    // Create XLA_FFI_Future object that will signal completion to the runtime.
+    XLA_FFI_Future_Create_Args args;
+    args.struct_size = XLA_FFI_Future_Create_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.future = nullptr;
+
+    if (auto* err = api->XLA_FFI_Future_Create(&args)) {
+      return err;
+    }
+
+    assert(args.future != nullptr && "XLA_FFI_Future_Create failed");
+
+    future.OnReady([api, f = args.future](const std::optional<Error>& error) {
+      // When the OnReady callback is invoked, we no longer have access to the
+      // diagnostics, and can't signal an error to the runtime. We chose to
+      // abort execution, because otherwise it will lead to a deadlock. However
+      // we should never get to this point, because execution must be aborted on
+      // a synchronous path when checking XLA FFI version compatibility.
+      auto abort_on_error = [api](XLA_FFI_Error* err) {
+        if (XLA_FFI_PREDICT_TRUE(err == nullptr)) {
+          return;
+        }
+
+        std::cerr << "Failed to signal XLA_FFI_Future completion: "
+                  << internal::GetErrorMessage(api, err) << std::endl;
+        internal::DestroyError(api, err);
+        std::abort();
+      };
+
+      if (XLA_FFI_PREDICT_FALSE(error.has_value())) {
+        XLA_FFI_Future_SetError_Args args;
+        args.struct_size = XLA_FFI_Future_SetError_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+        args.error = internal::CreateError(api, *error);
+
+        abort_on_error(api->XLA_FFI_Future_SetError(&args));
+
+      } else {
+        XLA_FFI_Future_SetAvailable_Args args;
+        args.struct_size = XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+
+        abort_on_error(api->XLA_FFI_Future_SetAvailable(&args));
+      }
+    });
+
+    return args.future;
   }
 };
 
@@ -1036,6 +1274,23 @@ class ThreadPool {
     }
   }
 
+  int64_t num_threads() const {
+    int64_t num_threads = 0;
+
+    XLA_FFI_ThreadPool_NumThreads_Args args;
+    args.struct_size = XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx_;
+    args.num_threads = &num_threads;
+
+    // Silently ignore errors if we can't get the number of threads.
+    if (XLA_FFI_Error* error = api_->XLA_FFI_ThreadPool_NumThreads(&args)) {
+      internal::DestroyError(api_, error);
+    }
+
+    return num_threads;
+  }
+
  private:
   friend struct CtxDecoding<ThreadPool>;
 
@@ -1071,30 +1326,14 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 // Type Registration
 //===----------------------------------------------------------------------===//
 
-namespace internal {
-
-inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
-                                   std::string_view name,
-                                   XLA_FFI_TypeId* type_id) {
-  XLA_FFI_TypeId_Register_Args args;
-  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
-  args.type_id = type_id;
-  return api->XLA_FFI_TypeId_Register(&args);
-}
-
-}  // namespace internal
-
 #define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
   XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)                 \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                 \
-      xla_ffi_type_##N##_registered_ = [] {                            \
-        return ::xla::ffi::internal::RegisterType(API, NAME, TYPE_ID); \
-      }()
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N) \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
+      xla_ffi_type_##N##_registered_ =                 \
+          [] { return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID); }()
 
 //===----------------------------------------------------------------------===//
 // UserData

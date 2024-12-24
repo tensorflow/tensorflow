@@ -19,7 +19,7 @@ package xla;
 
 import "google/protobuf/duration.proto";
 import "xla/service/hlo.proto";
-import "tsl/protobuf/status.proto";
+import "xla/tsl/protobuf/status.proto";
 
 // Statistics on how long various parts of compilation took.
 // Not all durations may be relevant for all producers of this message, in

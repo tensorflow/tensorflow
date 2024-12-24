@@ -57,7 +57,7 @@ TEST_P(ArraySpecTest, ToFromProto) {
   const auto* sharding =
       llvm::dyn_cast<ConcreteEvenSharding>(array_spec_copy.sharding.get());
   ASSERT_NE(sharding, nullptr);
-  EXPECT_EQ(sharding->devices(), spec.sharding->devices());
+  EXPECT_EQ(*sharding->devices(), *spec.sharding->devices());
   EXPECT_EQ(sharding->memory_kind(), spec.sharding->memory_kind());
   EXPECT_EQ(sharding->shape(), shape);
   EXPECT_EQ(sharding->shard_shape(), shard_shape);

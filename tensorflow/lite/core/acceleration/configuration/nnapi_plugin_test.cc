@@ -15,12 +15,13 @@ limitations under the License.
 #include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -29,6 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 // Tests for checking that the NNAPI Delegate plugin correctly handles all the
 // options from the flatbuffer.

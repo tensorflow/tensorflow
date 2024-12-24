@@ -19,7 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,24 +31,24 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/overflow_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_pass_fix.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/tuple_simplifier.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -67,7 +66,7 @@ using hlo_query::ContainsInstrWithOpcode;
 // Helper function to create a condition for a single iteration while loop in
 // the form of 'i <= init_value' where i is the induction variable.
 std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
-    HloInstruction* while_op, std::string_view name, int64_t induction_idx,
+    HloInstruction* while_op, absl::string_view name, int64_t induction_idx,
     int64_t init_value) {
   auto condition_builder = HloComputation::Builder(name);
 
@@ -285,7 +284,7 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
         computation->AddInstruction(HloInstruction::CreateCall(
             while_op->shape(), call_operands, unrolled_body));
     call_operands.clear();
-    call_operands.emplace_back(unrolled_body_call_op);
+    call_operands.push_back(unrolled_body_call_op);
   }
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(while_op, unrolled_body_call_op));
@@ -327,7 +326,7 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
         absl::StrCat(while_op->name(), "-unrolled-body-call-", i));
 
     call_operands.clear();
-    call_operands.emplace_back(unrolled_body_call_op);
+    call_operands.push_back(unrolled_body_call_op);
   }
   HloComputation* new_body =
       module->AddEmbeddedComputation(body_builder.Build(unrolled_body_call_op));
@@ -476,7 +475,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
   const HloInstruction* operand = instr->operand(0);
-  if (operand != input) {
+  if (input != nullptr && operand != input) {
     VLOG(3) << "Input of dynamic index instruction is not the given operand.";
     return std::nullopt;
   }
@@ -514,11 +513,29 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  // The shape's broadcast_dim must be exactly equal to the loop trip count.
   if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
-    VLOG(3) << "The shape's broadcast_dim must be exactly equal to the loop "
-               "trip count.";
+    VLOG(3) << "The dynamic_index dimension size of the operand must be equal "
+               "to the loop trip count.";
     return std::nullopt;
+  }
+
+  if (opcode == HloOpcode::kDynamicSlice) {
+    const Shape& result_shape = instr->shape();
+    if (result_shape.dimensions(dynamic_index) != 1) {
+      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+      return std::nullopt;
+    }
+
+    const Shape& operand_shape = operand->shape();
+    CHECK_EQ(result_shape.dimensions_size(), operand_shape.dimensions_size());
+    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+      if (i != dynamic_index &&
+          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
+        VLOG(3) << "The slice sizes must match the operand-shape on "
+                   "non-dynamic-index dimensions.";
+        return std::nullopt;
+      }
+    }
   }
 
   return dynamic_index;
@@ -665,7 +682,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
 WhileLoopUnroller::GetUnrollableLoops(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const UnrollConfig& unroll_config) {
+    std::optional<UnrollConfig> unroll_config) {
   // Processing the while loops in the reverse topological order. If the body
   // of while loop A calls while loop B, B comes before A.
   std::vector<HloInstruction*> all_while_ops;
@@ -676,13 +693,16 @@ WhileLoopUnroller::GetUnrollableLoops(
   std::vector<std::pair<HloInstruction*, WhileLoopConfig>> while_loop_configs;
   for (HloInstruction* instr : all_while_ops) {
     std::optional<WhileLoopConfig> config = IsLoopUnrollable(instr);
-    if (config.has_value()) {
-      if (!InitialFeasibilityCheck(instr, config.value(), unroll_config)) {
-        VLOG(3) << "Initial feasibility check failed for " << instr->name();
-        continue;
-      }
-      while_loop_configs.emplace_back(instr, config.value());
+    if (!config.has_value()) {
+      continue;
     }
+    if (unroll_config.has_value() &&
+        !InitialFeasibilityCheck(instr, config.value(),
+                                 unroll_config.value())) {
+      VLOG(3) << "Initial feasibility check failed for " << instr->name();
+      continue;
+    }
+    while_loop_configs.emplace_back(instr, config.value());
   }
   return while_loop_configs;
 }
@@ -764,8 +784,8 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
   // unroll. We do this ahead of time so we don't have to worry about mutating
   // the lists of computations or instructions while we iterate.
   std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
-      unrollable_while_ops =
-          GetUnrollableLoops(module, execution_threads, unroll_config_);
+      unrollable_while_ops = GetUnrollableLoops(
+          module, execution_threads, /*unroll_config=*/unroll_config_);
   VLOG(3) << "Number of while instructions in the module to unroll: "
           << unrollable_while_ops.size();
 

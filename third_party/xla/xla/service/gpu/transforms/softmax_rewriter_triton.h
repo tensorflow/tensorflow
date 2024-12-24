@@ -20,34 +20,41 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
-struct DiamondChainDescriptor {
+struct DiamondDescriptor {
   HloInstruction* root = nullptr;
   HloInstruction* producer = nullptr;
 };
 
 using DiamondMatchingDecision = std::variant<FusionDecision, HloInstruction*>;
 
-// Rewrite compatible Softmax into a custom fusion region to be code-generated
-// with the Triton-based Softmax emitter.
+// Rewrites compatible normalization diamonds into custom fusions to be
+// code-generated with the Triton fusion emitter.
+//
+// If `only_fuse_if_profitable` is set to `true`, the rewriter will use the Cost
+// Model to the estimate the run time of the fused and unfused versions of the
+// normalization diamond. If the fused version is slower, the diamond will not
+// be fused.
 class SoftmaxRewriterTriton : public HloModulePass {
  public:
   explicit SoftmaxRewriterTriton(const se::DeviceDescription& device_info,
-                                 HloCostAnalysis::ShapeSizeFunction shape_size)
-      : device_info_(device_info), shape_size_(shape_size) {}
+                                 HloCostAnalysis::ShapeSizeFunction shape_size,
+                                 bool only_fuse_if_profitable = false)
+      : device_info_(device_info),
+        shape_size_(shape_size),
+        use_cost_model_to_evaluate_fusions_(only_fuse_if_profitable) {}
 
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
@@ -56,21 +63,22 @@ class SoftmaxRewriterTriton : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // Finds and returns all the fusible diamond chains in the module. The
+  // Finds and returns all the fusible normalization diamonds in the module. The
   // resulting vector is sorted according to a post-order matching (i.e. within
   // the same computation, producer diamonds appear before consumer diamonds).
-  absl::StatusOr<std::vector<DiamondChainDescriptor>>
-  FindAllFusibleDiamondChains(
+  absl::StatusOr<std::vector<DiamondDescriptor>>
+  FindAllFusibleNormalizationDiamonds(
       HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  // Constructs a Softmax fusion containing all the instructions between the
-  // root and the producer of a diamond chain. The producer is excluded from the
+  // Constructs a normalization fusion containing all the instructions between
+  // the root and the producer of a diamond. The producer is excluded from the
   // fusion.
-  // Returns `true` if the diamond chain was successfully fused. Otherwise,
+  //
+  // Returns `true` if the diamond was successfully fused. Otherwise,
   // returns `false` if, for example, the resulting fusion cannot be tiled.
-  absl::StatusOr<bool> MaybeFuseDiamondChain(
-      const DiamondChainDescriptor& diamond_chain);
+  absl::StatusOr<bool> MaybeFuseNormalizationDiamond(
+      const DiamondDescriptor& diamond_chain);
 
   // Return the producer of the following pattern:
   //
@@ -95,6 +103,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
  private:
   const se::DeviceDescription& device_info_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_;
+  bool use_cost_model_to_evaluate_fusions_;
   mlir::MLIRContext mlir_context_;
 };
 

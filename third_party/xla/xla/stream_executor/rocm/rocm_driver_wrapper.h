@@ -20,12 +20,9 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 
 namespace stream_executor {
@@ -47,22 +44,21 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                            \
-  template <typename... Args>                                              \
-  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) { \
-    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;    \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char *kName = TO_STR(hipSymbolName);                    \
-      void *f;                                                             \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
-          stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
-              .value(),                                                    \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in HIP DSO; dlerror: " << s.message();            \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
+#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                             \
+  template <typename... Args>                                               \
+  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) {  \
+    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;     \
+    static FuncPtrT loaded = []() -> FuncPtrT {                             \
+      static const char *kName = TO_STR(hipSymbolName);                     \
+      void *f;                                                              \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                   \
+          tsl::internal::CachedDsoLoader::GetHipDsoHandle().value(), kName, \
+          &f);                                                              \
+      CHECK(s.ok()) << "could not find " << kName                           \
+                    << " in HIP DSO; dlerror: " << s.message();             \
+      return reinterpret_cast<FuncPtrT>(f);                                 \
+    }();                                                                    \
+    return loaded(args...);                                                 \
   }
 #endif
 

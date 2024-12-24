@@ -375,7 +375,6 @@ def _impl(ctx):
 
         compiler_param_file_feature = feature(
             name = "compiler_param_file",
-            enabled = True,
         )
 
         copy_dynamic_libraries_to_binary_feature = feature(

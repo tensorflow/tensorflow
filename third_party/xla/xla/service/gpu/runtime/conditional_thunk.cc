@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <variant>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/status_macros.h"
@@ -114,7 +115,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
                      [](bool* pred) { return *pred ? 0 : 1; }},
       branch_index_or_pred);
 
-  std::string_view branch_kind =
+  absl::string_view branch_kind =
       std::visit(VariantVisitor{[](int32_t*) { return "index"; },
                                 [](bool*) { return "pred"; }},
                  branch_index_or_pred);
@@ -132,6 +133,15 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
       config_.branch_thunks[branch_index]->ExecuteOnStream(params));
 
   return absl::OkStatus();
+}
+
+void ConditionalThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  for (const std::unique_ptr<SequentialThunk>& branch_thunk :
+       config_.branch_thunks) {
+    branch_thunk->ForAllThunks(fn);
+  }
 }
 
 }  // namespace gpu

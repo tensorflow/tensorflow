@@ -2365,5 +2365,14 @@ TEST_F(OpLevelCostEstimatorTest, CropAndResizeExecutionTime) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, GetDeviceInfo_EmptyCpu) {
+  OpLevelCostEstimator estimator;
+  DeviceProperties device_properties;
+  device_properties.set_type("CPU");
+  const auto device_info = estimator.GetDeviceInfo(device_properties);
+  EXPECT_GT(device_info.gigaops, 0);
+  EXPECT_GT(device_info.gb_per_sec, 0);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

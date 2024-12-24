@@ -15,14 +15,30 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -44,7 +60,9 @@ class FakeDevice : public Device {
   explicit FakeDevice(const DeviceAttributes& device_attributes)
       : Device(nullptr, device_attributes) {}
 
-  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+  absl::Status Sync() override {
+    return errors::Unimplemented("FakeDevice::Sync()");
+  }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
@@ -59,8 +77,8 @@ class FakeDevice : public Device {
 const char* kHostName = "/job:worker/replica:0/task:0/device:CPU:0";
 const char* kDeviceName = "/job:worker/replica:0/task:0/device:GPU:0";
 
-Status IncreaseDynamismForAutoJit(const Scope& s,
-                                  std::unique_ptr<Graph>* result) {
+absl::Status IncreaseDynamismForAutoJit(const Scope& s,
+                                        std::unique_ptr<Graph>* result) {
   std::vector<std::unique_ptr<Device>> devices;
   devices.push_back(FakeDevice::Make(kDeviceName, DEVICE_GPU));
   devices.push_back(FakeDevice::Make(kHostName, DEVICE_CPU));

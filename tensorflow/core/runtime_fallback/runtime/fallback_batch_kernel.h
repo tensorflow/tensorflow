@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,7 +53,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
  protected:
   // Validates 'allowed_batch_sizes_'. The entries must increase monotonically,
   // and the last one must equal 'max_batch_size_'.
-  Status ValidateAllowedBatchSizes() const;
+  absl::Status ValidateAllowedBatchSizes() const;
 
   // Initialize vars by reading from op-kernel-construction.
   // Vars
@@ -265,7 +267,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
   auto create_batch_task_fn = [c]() {
     return BatchResourceType::CreateBatchTask(c);
   };
-  Status status;
+  absl::Status status;
   if (serving::ShouldWarmupAllBatchSizes(c)) {
     status = (*br)->get()->RegisterWarmupInputs(guid, c, batcher_queue_,
                                                 create_batch_task_fn, done);

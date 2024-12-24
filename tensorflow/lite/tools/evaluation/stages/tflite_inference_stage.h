@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <memory>
 #include <vector>
 
 #include "xla/tsl/util/stats_calculator.h"

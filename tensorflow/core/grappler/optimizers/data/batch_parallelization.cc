@@ -55,10 +55,9 @@ NodeDef MakeParallelBatch(const string& name, MutableGraphView* graph) {
 
 }  // namespace
 
-Status BatchParallelization::OptimizeAndCollectStats(Cluster* cluster,
-                                                     const GrapplerItem& item,
-                                                     GraphDef* output,
-                                                     OptimizationStats* stats) {
+absl::Status BatchParallelization::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   if (!autotune_) {
     VLOG(1) << "The optimization batch_parallelization is not applied if "

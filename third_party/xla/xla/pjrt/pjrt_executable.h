@@ -295,7 +295,7 @@ struct CompiledMemoryStats {
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
 
-  CompiledMemoryStatsProto ToProto();
+  CompiledMemoryStatsProto ToProto() const;
 
   static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
 

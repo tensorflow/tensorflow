@@ -14,6 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_converter.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <limits>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -27,7 +36,7 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-Status TensorValueAt(Tensor t, int64_t i, T* out) {
+absl::Status TensorValueAt(Tensor t, int64_t i, T* out) {
 #define CASE(I)                            \
   case DataTypeToEnum<I>::value:           \
     *out = static_cast<T>(t.flat<I>()(i)); \
@@ -71,9 +80,10 @@ typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
 // differently in the float and uint8 cases: the float case needs a temporary
 // buffer which can be shared across calls to ith_image, but the uint8 case
 // does not.
-Status AddImages(const string& tag, int max_images, int batch_size, int w,
-                 int h, int depth,
-                 const std::function<Uint8Image(int)>& ith_image, Summary* s) {
+absl::Status AddImages(const string& tag, int max_images, int batch_size, int w,
+                       int h, int depth,
+                       const std::function<Uint8Image(int)>& ith_image,
+                       Summary* s) {
   const int N = std::min<int>(max_images, batch_size);
   for (int i = 0; i < N; ++i) {
     Summary::Value* v = s->add_value();
@@ -177,10 +187,10 @@ void NormalizeFloatImage(int hw, int depth,
 }
 
 template <class T>
-Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h, int w,
-                             int hw, int depth, int batch_size,
-                             const string& base_tag, Tensor bad_color_tensor,
-                             Summary* s) {
+absl::Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h,
+                                   int w, int hw, int depth, int batch_size,
+                                   const string& base_tag,
+                                   Tensor bad_color_tensor, Summary* s) {
   // For float and half images, nans and infs are replaced with bad_color.
   if (bad_color_tensor.dim_size(0) < depth) {
     return errors::InvalidArgument(
@@ -204,8 +214,8 @@ Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h, int w,
 
 }  // namespace
 
-Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
-                                  Summary* s) {
+absl::Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
+                                        Summary* s) {
   Summary::Value* v = s->add_value();
   v->set_tag(tag);
   float value;
@@ -214,8 +224,8 @@ Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
   return absl::OkStatus();
 }
 
-Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
-                                     Summary* s) {
+absl::Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
+                                           Summary* s) {
   Summary::Value* v = s->add_value();
   v->set_tag(tag);
   histogram::Histogram histo;
@@ -234,9 +244,9 @@ Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
   return absl::OkStatus();
 }
 
-Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
-                                 int max_images, const Tensor& bad_color,
-                                 Summary* s) {
+absl::Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
+                                       int max_images, const Tensor& bad_color,
+                                       Summary* s) {
   if (!(tensor.dims() == 4 &&
         (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
          tensor.dim_size(3) == 4))) {
@@ -283,9 +293,9 @@ Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
   return absl::OkStatus();
 }
 
-Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
-                                 int max_outputs, float sample_rate,
-                                 Summary* s) {
+absl::Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
+                                       int max_outputs, float sample_rate,
+                                       Summary* s) {
   if (sample_rate <= 0.0f) {
     return errors::InvalidArgument("sample_rate must be > 0");
   }

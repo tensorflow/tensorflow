@@ -23,7 +23,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -40,6 +39,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -57,9 +57,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tsl/util/env_var.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -491,7 +492,6 @@ static void InitializeTypedBuffer(se::Stream* stream,
     // Nothing more to do
     return;
   }
-#ifdef GOOGLE_CUDA
   // Repeat the host_buffer_size elements at the start of `buf` to the end
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
@@ -512,7 +512,6 @@ static void InitializeTypedBuffer(se::Stream* stream,
                                  se::BlockDim(blocks_per_grid, 1, 1), *kernel,
                                  buffer, host_buffer_bytes,
                                  static_cast<int64_t>(buffer.size())));
-#endif
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
@@ -641,7 +640,7 @@ std::vector<AutotuneResult> KeepNonFailures(
 }
 
 absl::Status AllAlgorithmsFailedInternalError(
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     absl::Span<AutotuneResult const> profile_results) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
@@ -659,7 +658,7 @@ absl::Status AllAlgorithmsFailedInternalError(
 }
 
 absl::Status NoAlgorithmSuppliedInternalError(
-    std::optional<std::string_view> instr_str) {
+    std::optional<absl::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
     msg << "There are no algorithm candidates for computing: \n  "
@@ -703,7 +702,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
 
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
   if (profile_results.empty()) {
     return NoAlgorithmSuppliedInternalError(instr_str);

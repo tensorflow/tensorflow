@@ -1,4 +1,4 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,12 +22,12 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
-        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["testing_pipeline.h"],
     deps = [
         ":mhlo_to_hlo_to_mhlo",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@llvm-project//mlir:Pass",
     ],

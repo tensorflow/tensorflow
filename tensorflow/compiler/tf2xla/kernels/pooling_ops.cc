@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/pooling.h"
-#include "xla/client/padding.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/pooling.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -54,7 +56,7 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-static Status ValidateKernelSizes(const T& ksizes) {
+static absl::Status ValidateKernelSizes(const T& ksizes) {
   for (size_t i = 0; i < ksizes.size(); ++i) {
     if (ksizes[i] <= 0) {
       return errors::InvalidArgument(
@@ -66,7 +68,7 @@ static Status ValidateKernelSizes(const T& ksizes) {
 }
 
 template <typename T>
-static Status ValidateStrides(const T& strides) {
+static absl::Status ValidateStrides(const T& strides) {
   for (size_t i = 0; i < strides.size(); ++i) {
     if (strides[i] <= 0) {
       return errors::InvalidArgument(

@@ -19,6 +19,95 @@ message GenericStepBreakdown {
   map<string, uint64> category_ps = 2;
 }
 
+// Breakdown of step-time on TPU.
+// Next ID: 20
+message TpuStepBreakdown {
+  // The infeed duration (host to TensorCore) in picoseconds.
+  uint64 infeed_duration_ps = 1;
+
+  // The outfeed duration (TensorCore to host) in picoseconds.
+  uint64 host_outfeed_ps = 2;
+
+  // The TensorCore time that is waiting for SparseCoreV0 in picoseconds.
+  uint64 wait_for_scv0_duration_ps = 3;
+
+  // The TensorCore time spent transforming activations in SparseCoreV0 layout
+  // into XLA layout.
+  uint64 scv0_infeed_transform_ps = 4;
+
+  // The outfeed duration (TensorCore to SparseCoreV0) in picoseconds.
+  uint64 scv0_outfeed_ps = 5;
+
+  // The time spent on all-reduce (used to be cross-replica-sum) in picoseconds.
+  uint64 crs_duration_ps = 6;
+
+  // The percentage of the SparseCoreV0 time that spends on infeed from host
+  // (including both data and instruction).
+  double scv0_infeed_percent = 7;
+
+  // The time spent on send operation.
+  uint64 send_duration_ps = 8;
+
+  // The time spent on recv operation.
+  uint64 recv_duration_ps = 9;
+
+  // The time spent on host send operation.
+  uint64 host_send_duration_ps = 15;
+
+  // The time spent on host recv operation.
+  uint64 host_recv_duration_ps = 16;
+
+  // Megacore fusion runs different operations on each core, e.g., a convolution
+  // on one core and an all-reduce on the other core. This is the time that the
+  // core executing the faster operation waits for the core executing the slower
+  // operation to reach the synchronization point.
+  uint64 wait_for_megacore_fusion_peer_duration_ps = 14;
+
+  // The time waiting for overlay DMAs in picoseconds.
+  uint64 overlay_wait_duration_ps = 11;
+
+  // The time spent running high flops ops, such as convolution and output
+  // fusion.
+  uint64 high_flops_compute_ps = 12;
+
+  // The time that the Tensorcore is idle but not waiting for input or
+  // SparseCoreV0.
+  uint64 tc_idle_ps = 13;
+
+  // The TensorCore time that is busy in picoseconds.
+  uint64 tc_busy_ps = 17;
+
+  // The SparseCoreV0 time that is busy in picoseconds (equal to
+  // SparseCoreV0 time - HOST_INSTRUCTION_STALL - HOST_DATA_STALL -
+  // TENSOR_CORE_STALL).
+  uint64 scv0_busy_ps = 18;
+
+  // SparseCoreV0 step time in picoseconds (equal to SparseCoreV0 time -
+  // TENSOR_CORE_STALL).
+  uint64 scv0_step_ps = 19;
+
+  reserved 10;
+}
+
+// Breakdown of step-time on SparseCore.
+message SparseCoreStepBreakdown {
+  // SparseCore step time in picoseconds (equal to SparseCore time - sc_idle -
+  // sc_wait_time).
+  uint64 sc_compute_ps = 1;
+
+  // Host to sparse core time in picoseconds.
+  uint64 sc_infeed_ps = 2;
+
+  // SparseCore to host time in picoseconds.
+  uint64 sc_outfeed_ps = 3;
+
+  // Idle time but not waiting for input in picoseconds.
+  uint64 sc_idle_ps = 4;
+
+  // SparseCore busy time in picoseconds.
+  uint64 sc_busy_ps = 5;
+}
+
 // Information about memory transfer to/from device memory.
 message DeviceMemoryTransfer {
   uint64 occurrence = 1;

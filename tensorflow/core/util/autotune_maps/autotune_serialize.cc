@@ -26,13 +26,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace tensorflow {
 
@@ -173,7 +173,7 @@ Status PopulateConvMap(
 }  // namespace
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-Status SerializeAutotuneMaps(std::string *output) {
+absl::Status SerializeAutotuneMaps(std::string *output) {
   AutotuneMapsProto proto;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(*proto.mutable_conv_map(),
@@ -185,7 +185,7 @@ Status SerializeAutotuneMaps(std::string *output) {
   return absl::OkStatus();
 }
 
-Status LoadSerializedAutotuneMaps(absl::string_view s) {
+absl::Status LoadSerializedAutotuneMaps(absl::string_view s) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   AutotuneMapsProto proto;
   // The explicit string conversion here is a workaround for

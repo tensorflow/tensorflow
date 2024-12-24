@@ -247,10 +247,11 @@ bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
       return false;
     }
     int64_t stride = strides[i];
-    int64_t input_size = mlir::cast<ShapedType>(conv_op.getLhs().getType())
-                             .getDimSize(input_spatial_dims[i]);
-    int64_t output_size = mlir::cast<ShapedType>(conv_op.getType())
-                              .getDimSize(output_spatial_dims[i]);
+
+    auto input_shape = mlir::cast<ShapedType>(conv_op.getLhs().getType());
+    int64_t input_dim_size = input_shape.getDimSize(input_spatial_dims[i]);
+    int64_t output_dim_size = mlir::cast<ShapedType>(conv_op.getType())
+                                  .getDimSize(output_spatial_dims[i]);
     // The reason for the below check is as follows:
     // When computing the output, we have the following relation between
     // o - output dim size, i - input dim size, s - stride, P - total pads
@@ -260,7 +261,10 @@ bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
     // and P is a term that captures the total padding. After expanding we get
     // o = si + k - s + 2 + P
     // Here JAX sets P to cancel k-s+2, leading to the expression below
-    if (output_size != input_size * stride) {
+
+    // Check only if the dimension is not dynamic.
+    if (!input_shape.isDynamicDim(i) &&
+        (output_dim_size != input_dim_size * stride)) {
       return false;
     }
   }

@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_INSTRUCTION_HOISTER_H_
 #define XLA_SERVICE_INSTRUCTION_HOISTER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// HLO pass that hoists parameters and constants to increase opportunities for
-// prefetching.
-class InstructionHoister : public HloModulePass {
- public:
-  explicit InstructionHoister(bool hoist_parameters = true,
-                              bool host_constants = true)
-      : hoist_parameters_(hoist_parameters), host_constants_(host_constants) {}
-
-  ~InstructionHoister() override = default;
-
-  absl::string_view name() const override { return "instruction-hoister"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  bool hoist_parameters_;
-  bool host_constants_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 
 #endif  // XLA_SERVICE_INSTRUCTION_HOISTER_H_

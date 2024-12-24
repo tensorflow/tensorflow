@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/sharding_param.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -92,10 +95,21 @@ class ShardingParam {
     void ToDeviceList(llvm::SmallVectorImpl<int>& out_devices) const;
   };
 
-  ShardingParam(llvm::ArrayRef<int64_t> dim_shards, MinorToMajor minor_to_major)
-      : dim_shards_(dim_shards), minor_to_major_(minor_to_major) {}
+  ShardingParam(std::vector<int64_t> dim_shards, MinorToMajor minor_to_major)
+      : dim_shards_(std::move(dim_shards)),
+        minor_to_major_(std::move(minor_to_major)) {}
 
   static mlir::FailureOr<ShardingParam> Parse(mlir::AsmParser& ods_parser);
+
+  // Parses V1 of ShardingParam. This method is meant to be used in the VIFRT
+  // dialect to parse versioned ShardingParams.
+  static mlir::FailureOr<ShardingParam> ParseV1(mlir::AsmParser& ods_parser);
+
+  // Prints V1 of ShardingParam. This method is meant to be used in the VIFRT
+  // dialect to print versioned ShardingParams.
+  static void PrintV1(mlir::AsmPrinter& ods_printer,
+                      const ShardingParam& sharding);
+
   absl::Status verify() const;
   mlir::LogicalResult verify(
       llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
@@ -134,8 +148,15 @@ class ShardingParam {
 
   std::string DebugString() const;
 
+  // Returns a `ShardingParamProto` representation.
+  absl::StatusOr<ShardingParamProto> ToProto() const;
+
+  // Constructs `ShardingParam` from `ShardingParamProto`.
+  static absl::StatusOr<ShardingParam> FromProto(
+      const ShardingParamProto& proto);
+
  private:
-  llvm::SmallVector<int64_t, 4> dim_shards_;
+  std::vector<int64_t> dim_shards_;
   MinorToMajor minor_to_major_;
 };
 

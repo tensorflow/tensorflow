@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "Eigen/Core"  // from @eigen_archive
@@ -42,6 +43,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -51,12 +53,13 @@ limitations under the License.
 #include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -410,6 +413,24 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
   }
 };
 
+struct SetAsymmetricQuantizeInput : public OpRewritePattern<FullyConnectedOp> {
+  using OpRewritePattern<FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FullyConnectedOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getAsymmetricQuantizeInputs() == std::nullopt ||
+        op.getAsymmetricQuantizeInputs() == false) {
+      auto new_op = rewriter.create<FullyConnectedOp>(
+          op.getLoc(), op.getOutput().getType(), op.getInput(), op.getFilter(),
+          op.getBias(), op.getFusedActivationFunction(), op.getWeightsFormat(),
+          op.getKeepNumDims(), rewriter.getBoolAttr(true));
+      rewriter.replaceOp(op, new_op.getOutput());
+      return success();
+    }
+    return failure();
+  }
+};
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.getOutput().getType());
@@ -485,6 +506,48 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   }
   return false;
 }
+
+class FlatIndHelper {
+ public:
+  explicit FlatIndHelper(mlir::ShapedType type) : type_(type) {}
+
+  llvm::SmallVector<int64_t> GetShapedInd(int64_t flat_ind) const {
+    llvm::SmallVector<int64_t> result;
+    result.reserve(type_.getRank());
+
+    auto num_els = type_.getNumElements();
+
+    for (auto d : type_.getShape()) {
+      num_els /= d;
+      result.push_back(flat_ind / num_els);
+      flat_ind %= num_els;
+    }
+
+    return result;
+  }
+
+  int64_t GetFlatInd(llvm::ArrayRef<int64_t> shaped_ind) const {
+    int64_t result = 0;
+
+    auto num_els = type_.getNumElements();
+    for (auto [max_dim, ind_dim] : llvm::zip(type_.getShape(), shaped_ind)) {
+      num_els /= max_dim;
+      result += num_els * ind_dim;
+    }
+
+    return result;
+  }
+
+  static void AddOffset(llvm::SmallVector<int64_t>& target,
+                        const llvm::SmallVector<int64_t>& offset) {
+    for (auto [ind, val] : llvm::enumerate(offset)) {
+      target[ind] += val;
+    }
+  }
+
+ private:
+  mlir::ShapedType type_;
+};
 
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
@@ -1190,6 +1253,120 @@ LogicalResult GatherOp::verify() {
   return mlir::success();
 }
 
+OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
+  // Get the params tensor type/shape/data
+  auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
+  if (!params) {
+    return {};
+  }
+  auto params_type = params.getType();
+  auto params_shape = params_type.getShape();
+  auto params_data = params.getValues<Attribute>();
+  // Get the indices tensor type/shape/data
+  auto indices =
+      mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+  if (!indices) {
+    return {};
+  }
+  auto indices_type = indices.getType();
+  auto indices_shape = indices_type.getShape();
+  auto indices_data = indices.getValues<IntegerAttr>();
+  // Get the axis value
+  int64_t axis = adaptor.getAxisAttr().getInt();
+  if (axis < 0) {
+    axis += params_shape.size();
+  }
+  // Get the batch_dims value
+  int64_t batch_dims = adaptor.getBatchDimsAttr().getInt();
+  if (axis < 0 || axis >= params_shape.size()) {
+    return {};
+  }
+  if (batch_dims < 0) {
+    batch_dims += params_shape.size();
+  }
+  // Check the values are valid
+  if (batch_dims < 0) return {};
+  if (batch_dims >= params_shape.size()) return {};
+  if (batch_dims >= indices_shape.size()) return {};
+  if (axis < batch_dims) return {};
+  for (int i = 0; i < batch_dims; ++i) {
+    if (params_shape[i] != indices_shape[i]) return {};
+  }
+
+  // Figure out the result shape. It will have this structure:
+  // [batch dims.. , outer dims.., indexed dims.., inner dims..]
+  // Where:
+  // - batch dims are the first common batch_dims dimensions of params and
+  //     indices
+  // - outer dims are dimensions of params from batch_dims to the indexed axis
+  // - indexed dims are all dimensions of indices
+  // - inner dims are the dimensions of params after the indexed axis
+  llvm::SmallVector<int64_t> result_shape;
+  // batch dims:
+  int64_t batch_flat_size = 1;
+  for (int64_t i = 0; i < batch_dims; ++i) {
+    batch_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // outer dims:
+  int64_t outer_flat_size = 1;
+  for (int64_t i = batch_dims; i < axis; ++i) {
+    outer_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // indexed dims:
+  const int64_t params_axis_size = params_shape[axis];
+  int64_t indices_flat_size = 1;
+  for (int64_t i = batch_dims; i < indices_shape.size(); ++i) {
+    indices_flat_size *= indices_shape[i];
+    result_shape.push_back(indices_shape[i]);
+  }
+  // inner dims:
+  int64_t inner_flat_size = 1;
+  for (int64_t i = axis + 1; i < params_shape.size(); ++i) {
+    inner_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // flat size of the params tensor (used by a check below):
+  int64_t params_flat_size = 1;
+  for (auto params_dim : params_shape) {
+    params_flat_size *= params_dim;
+  }
+  // flat size of the results tensor:
+  int64_t results_flat_size = 1;
+  for (auto result_dim : result_shape) {
+    results_flat_size *= result_dim;
+  }
+  // Result type is the params element type with the result shape
+  auto result_type = params_type.clone(result_shape);
+
+  // Figure out the result value:
+  // Follow the reference TFLite kernel implementation at
+  // tensorflow/lite/kernels/internal/reference/gather.h
+  std::vector<Attribute> result_values;
+  result_values.reserve(results_flat_size);
+  for (int64_t batch = 0; batch < batch_flat_size; ++batch) {
+    for (int64_t outer = 0; outer < outer_flat_size; ++outer) {
+      for (int64_t indices_idx = 0; indices_idx < indices_flat_size;
+           ++indices_idx) {
+        int64_t params_idx =
+            indices_data[batch * indices_flat_size + indices_idx].getInt();
+        int64_t from_pos =
+            (((batch * outer_flat_size) + outer) * params_axis_size +
+             params_idx) *
+            inner_flat_size;
+
+        if (from_pos < 0 || from_pos + inner_flat_size > params_flat_size) {
+          return {};
+        }
+        std::copy_n(params_data.begin() + from_pos, inner_flat_size,
+                    std::back_inserter(result_values));
+      }
+    }
+  }
+  return DenseElementsAttr::get(result_type, result_values);
+}
+
 //===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
@@ -1400,10 +1577,16 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
+  auto is_foldable = [](llvm::ArrayRef<int64_t> shape) {
+    return shape.size() == 1 || (shape.size() == 2 && shape.front() == 1);
+  };
+
+  const bool weights_foldable = weights_type.getShape().size() == 2;
+  const bool bias_foldable = !has_bias || is_foldable(bias_type.getShape());
+
   // Folding only implemented for 1D input, 2D weights and 1D bias
-  if (input_type.getShape().size() != 1 ||
-      weights_type.getShape().size() != 2 ||
-      (has_bias && bias_type.getShape().size() != 1)) {
+  if (!is_foldable(input_type.getShape()) || !bias_foldable ||
+      !weights_foldable) {
     return failure();
   }
 
@@ -1459,6 +1642,7 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
 void FullyConnectedOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
   results.add<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+  results.add<SetAsymmetricQuantizeInput>(context);
 }
 
 int64_t FullyConnectedOp::GetArithmeticCount(Operation* op) {
@@ -1593,7 +1777,7 @@ int64_t Conv2DOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
-// DepthwiseConv2DO
+// DepthwiseConv2DOp
 //===----------------------------------------------------------------------===//
 
 void DepthwiseConv2DOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -2380,6 +2564,108 @@ void PackOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
+
+llvm::SmallVector<int64_t> UnpackIndexOperand(Attribute operand) {
+  auto data = cast<DenseIntElementsAttr>(operand);
+
+  const bool is_i32 = data.getElementType().isSignlessInteger(32);
+
+  if (data.isSplat()) {
+    int64_t splat_val;
+
+    if (is_i32) {
+      splat_val = data.getSplatValue<int32_t>();
+    } else {
+      splat_val = data.getSplatValue<int64_t>();
+    }
+
+    return llvm::SmallVector<int64_t>(data.getShapedType().getNumElements(),
+                                      splat_val);
+  }
+
+  if (!is_i32) {
+    return llvm::to_vector(data.getValues<int64_t>());
+  }
+
+  return llvm::to_vector(llvm::map_range(data.getValues<int32_t>(), [](auto v) {
+    return static_cast<int64_t>(v);
+  }));
+}
+
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  if (!getType().hasStaticShape()) {
+    return {};
+  }
+
+  auto input_type = getInput().getType();
+  if (input_type == getType()) {
+    return getInput();
+  }
+
+  auto input = adaptor.getInput();
+  if (!input) {
+    return {};
+  }
+  auto begin = adaptor.getBegin();
+  if (!begin) {
+    return {};
+  }
+  auto size = adaptor.getSize();
+  if (!size) {
+    return {};
+  }
+
+  auto begin_type = getBegin().getType();
+  auto size_type = getSize().getType();
+
+  if (size_type.getRank() != 1 || begin_type.getRank() != 1) {
+    return {};
+  }
+
+  if (begin_type.getDimSize(0) != input_type.getRank() ||
+      size_type.getDimSize(0) != input_type.getRank()) {
+    return {};
+  }
+
+  auto begin_vals = UnpackIndexOperand(begin);
+  auto size_vals = UnpackIndexOperand(size);
+
+  if (size_vals != getType().getShape()) {
+    return {};
+  }
+
+  for (auto [begin, size, dim] :
+       llvm::zip(begin_vals, size_vals, input_type.getShape())) {
+    if (size < 0) {
+      // TODO: b/351437662 - Add support for this case.
+      return {};
+    }
+    if (begin + size > dim) {
+      return {};
+    }
+  }
+
+  auto input_dense = cast<DenseElementsAttr>(input);
+  std::vector<Attribute> input_data(input_dense.value_begin<Attribute>(),
+                                    input_dense.value_end<Attribute>());
+
+  const FlatIndHelper write_inds(getType());
+  const FlatIndHelper read_inds(input_type);
+
+  std::vector<Attribute> result_data(getType().getNumElements());
+
+  for (int w_flat_ind = 0; w_flat_ind < getType().getNumElements();
+       ++w_flat_ind) {
+    auto write_shaped_ind = write_inds.GetShapedInd(w_flat_ind);
+
+    FlatIndHelper::AddOffset(write_shaped_ind, begin_vals);
+    const auto read_flat_ind = read_inds.GetFlatInd(write_shaped_ind);
+
+    result_data[w_flat_ind] = input_data[read_flat_ind];
+  }
+
+  return DenseElementsAttr::get(getType(), result_data);
+}
 
 mlir::LogicalResult SliceOp::verify() {
   SliceOp op = *this;
@@ -3317,11 +3603,19 @@ OpFoldResult ReluOp::fold(FoldAdaptor adaptor) {
 OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
-  // Only constant fold for float tensors of the same type is implemented.
-  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
   auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
   auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), adaptor.getOperands(),
+        [](APFloat a, APFloat b) { return llvm::maximum(a, b); },
+        [](APInt a, APInt b) { return a.slt(b) ? b : a; });
+  }
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
   if (lhs && lhs.isSplat()) {
     APFloat lhs_value = lhs.getSplatValue<APFloat>();
     lhs_value.changeSign();
@@ -3342,11 +3636,18 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
 OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
-  // Only constant fold for float tensors of the same type is implemented.
-  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
   auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
   auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), adaptor.getOperands(),
+        [](APFloat a, APFloat b) { return llvm::minimum(a, b); },
+        [](APInt a, APInt b) { return a.slt(b) ? a : b; });
+  }
+
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
   if (lhs && lhs.isSplat()) {
     auto splat = lhs.getSplatValue<APFloat>();
     if (splat.isLargest() || splat.isInfinity()) return getRhs();
@@ -3368,6 +3669,11 @@ OpFoldResult LessOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs < rhs; });
   }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs < rhs; });
+  }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3381,6 +3687,11 @@ OpFoldResult LessEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs <= rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs <= rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3396,6 +3707,11 @@ OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs > rhs; });
   }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs > rhs; });
+  }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3409,6 +3725,11 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs >= rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs >= rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3424,6 +3745,11 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getX(), adaptor.getY(),
         [](int32_t lhs, int32_t rhs) { return lhs == rhs; });
   }
+  if (getX().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getX(), adaptor.getY(),
+        [](int64_t lhs, int64_t rhs) { return lhs == rhs; });
+  }
   if (getX().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getX(), adaptor.getY(),
@@ -3437,6 +3763,11 @@ OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs != rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs != rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3523,6 +3854,84 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   }
 
   return DenseElementsAttr::get(out_type, results);
+}
+
+//===----------------------------------------------------------------------===//
+// SumOp
+//===----------------------------------------------------------------------===//
+
+static size_t GetOutputFlatIndex(size_t input_flat_ind,
+                                 const FlatIndHelper& input_flat_ind_helper,
+                                 const FlatIndHelper& output_flat_ind_helper,
+                                 const absl::flat_hash_set<int32_t>& axes_set,
+                                 bool keep_dims) {
+  auto input_shaped_ind = input_flat_ind_helper.GetShapedInd(input_flat_ind);
+
+  std::vector<int64_t> output_shaped_ind;
+  for (int dim = 0; dim < input_shaped_ind.size(); ++dim) {
+    bool is_reduced_dim = axes_set.contains(dim);
+    if (is_reduced_dim && keep_dims) {
+      output_shaped_ind.push_back(0);
+    } else if (!is_reduced_dim) {
+      output_shaped_ind.push_back(input_shaped_ind[dim]);
+    }
+  }
+
+  return output_flat_ind_helper.GetFlatInd(output_shaped_ind);
+}
+
+OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
+  auto input = adaptor.getInput();
+  auto axes = adaptor.getAxes();
+
+  if (!input || !axes) {
+    return {};
+  }
+
+  auto input_type = getInput().getType();
+  if (!input_type.getElementType().isF32()) {
+    return {};
+  }
+
+  const auto input_rank = input_type.getRank();
+  auto axes_data = llvm::cast<DenseIntElementsAttr>(axes);
+  absl::flat_hash_set<int32_t> axes_set(axes_data.getValues<int32_t>().begin(),
+                                        axes_data.getValues<int32_t>().end());
+
+  llvm::SmallVector<int64_t> out_shape;
+  for (int input_dim = 0; input_dim < input_rank; ++input_dim) {
+    bool is_reduced_dim = axes_set.contains(input_dim);
+
+    if (is_reduced_dim && adaptor.getKeepDims()) {
+      out_shape.push_back(1);
+    } else if (!is_reduced_dim) {
+      out_shape.push_back(input_type.getDimSize(input_dim));
+    }
+  }
+
+  auto out_type = RankedTensorType::get(out_shape, input_type.getElementType());
+  int64_t output_size = std::accumulate(out_shape.begin(), out_shape.end(), 1,
+                                        std::multiplies<int64_t>());
+
+  std::vector<float> out_data(output_size, 0.0);
+  FlatIndHelper input_flat_ind_helper(input_type);
+  FlatIndHelper output_flat_ind_helper(out_type);
+
+  auto in_data = llvm::cast<DenseFPElementsAttr>(input);
+
+  size_t input_flat_ind = 0;
+  for (auto it = in_data.value_begin<float>(); it < in_data.value_end<float>();
+       ++it) {
+    // Find the corresponding reduced output index.
+    size_t output_flat_ind = GetOutputFlatIndex(
+        input_flat_ind, input_flat_ind_helper, output_flat_ind_helper, axes_set,
+        adaptor.getKeepDims());
+
+    out_data[output_flat_ind] += *it;
+    input_flat_ind++;
+  }
+
+  return DenseFPElementsAttr::get(out_type, out_data);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3634,14 +4043,17 @@ OpFoldResult CastIntToInt(DenseIntElementsAttr data, IntegerType in_type,
 
 OpFoldResult CastFloatToInt(DenseFPElementsAttr data, FloatType in_type,
                             IntegerType out_type) {
-  const bool from_f32 = in_type.isF32();
-  const bool to_i32 = out_type.isSignlessInteger(32);
-  if (!from_f32 || !to_i32) {
+  if (!in_type.isF32()) {
+    return {};
+  }
+
+  const auto out_width = out_type.getWidth();
+  if (out_width != 64 && out_width != 32) {
     return {};
   }
 
   auto cast = [&](APFloat value) -> APInt {
-    APSInt result(32, false);
+    APSInt result(out_width, false);
     bool is_exact;
     value.convertToInteger(result, llvm::RoundingMode::TowardZero, &is_exact);
     return result;
@@ -4586,6 +4998,45 @@ int64_t MaxPool2DOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReverseV2Op
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReverseV2Op::fold(FoldAdaptor adaptor) {
+  auto input = adaptor.getInput();
+  auto axis = adaptor.getAxis();
+
+  if (!input || !axis) {
+    return {};
+  }
+
+  auto axis_val = llvm::cast<DenseIntElementsAttr>(axis);
+  llvm::SetVector<int32_t> axis_set(axis_val.value_begin<int32_t>(),
+                                    axis_val.value_end<int32_t>());
+
+  auto input_type = getInput().getType();
+  const FlatIndHelper helper(input_type);
+
+  std::vector<Attribute> new_data(input_type.getNumElements());
+  auto input_data = llvm::cast<DenseElementsAttr>(input);
+
+  for (auto [i, val] : llvm::enumerate(input_data.getValues<Attribute>())) {
+    auto shaped_ind = helper.GetShapedInd(i);
+
+    for (int d = 0; d < shaped_ind.size(); ++d) {
+      if (!axis_set.contains(d)) {
+        continue;
+      }
+
+      shaped_ind[d] = input_type.getDimSize(d) - 1 - shaped_ind[d];
+    }
+
+    new_data[helper.GetFlatInd(shaped_ind)] = val;
+  }
+
+  return DenseElementsAttr::get(getType(), new_data);
+}
+
+//===----------------------------------------------------------------------===//
 // L2NormalizationOp
 //===----------------------------------------------------------------------===//
 
@@ -4610,6 +5061,39 @@ OpFoldResult PadOp::fold(FoldAdaptor) {
     return getInput();
 
   return {};
+}
+
+// When padding amounts are constants, cast them to i32. XNN can only
+// consume i32 pad amounts in some cases.
+struct CastConstPadAmounts : public OpRewritePattern<PadOp> {
+  using OpRewritePattern<PadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PadOp op,
+                                PatternRewriter& rewriter) const override {
+    auto padding_amount_op = op.getPadding().getDefiningOp();
+    if (!padding_amount_op ||
+        !padding_amount_op->hasTrait<OpTrait::ConstantLike>()) {
+      return failure();
+    }
+
+    auto padding_type = op.getPadding().getType();
+    if (!padding_type.getElementType().isSignlessInteger(64)) {
+      return failure();
+    }
+
+    auto cast = rewriter.createOrFold<CastOp>(
+        padding_amount_op->getLoc(),
+        padding_type.clone(rewriter.getIntegerType(32)), op.getPadding());
+
+    rewriter.modifyOpInPlace(op, [&]() { op->setOperand(1, cast); });
+
+    return success();
+  }
+};
+
+void PadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<CastConstPadAmounts>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4813,13 +5297,12 @@ Attribute ConstBytesAttr::parse(AsmParser& parser, Type type) {
   if (parser.parseString(&data)) {
     return nullptr;
   }
-  if (data.size() < 2 || data.substr(0, 2) != "0x") {
-    parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
-    return nullptr;
+  if (data.size() >= 2 && data.substr(0, 2) == "0x") {
+    std::string bytes_data = absl::HexStringToBytes(data.substr(2));
+    return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
   }
 
-  std::string bytes_data = absl::HexStringToBytes(data.substr(2));
-  return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
+  return ConstBytesAttr::get(parser.getBuilder().getContext(), data);
 }
 
 void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {

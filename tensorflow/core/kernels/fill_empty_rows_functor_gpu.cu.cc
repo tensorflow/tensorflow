@@ -30,14 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_activation.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
-#endif
-
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -343,7 +335,8 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
         // Ensure that within the callback, the proper GPU settings are
         // configured.
         auto stream = context->op_device_context()->stream();
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
         int first_invalid_index = *first_invalid_index_host.data();
         OP_REQUIRES_ASYNC(
@@ -399,7 +392,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                                output_indices, output_values),
               done);
         }
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
       done();

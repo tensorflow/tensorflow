@@ -66,6 +66,25 @@ extern const char kXlaTableId[];
 // XLA frontend attribute for buffer placement.
 extern const char kXlaBufferPlacementAttr[];
 extern const char kXlaBufferPlacementParam[];
+
+// XLA frontend attribute for stream annotation.
+extern const char kXlaStreamAnnotationAttr[];
+
+// XLA frontend attribute for collective matmul control.
+extern const char kXlaCollectiveMatmulAttr[];
+
+// XLA frontend attribute values for kXlaCollectiveMatmulAttr
+extern const char kXlaCollectiveMatmulLhsAg[];
+extern const char kXlaCollectiveMatmulRhsAg[];
+extern const char kXlaCollectiveMatmulRs[];
+extern const char kXlaCollectiveMatmulNone[];
+
+// XLA frontend attribute for specifying the number of sends this recv should
+// match.
+extern const char kXlaMultiRecvCountAttr[];
+
+// XLA frontend attribute for specifying the scheduling group id annotations.
+extern const char kXlaSchedulingGroupIdAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

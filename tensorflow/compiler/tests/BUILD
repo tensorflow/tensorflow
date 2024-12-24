@@ -93,9 +93,8 @@ py_strict_test(
 # If you add a new tf_xla_py_strict_test please either add the test file to one of the combined test
 # targets that matches in all tags and other settings or add a new combined test target.
 
-# Combined test for ops which do not enable the mlir bridge.
 tf_xla_combined_py_test(
-    name = "ops_test_mlir_false",
+    name = "combined_ops_test_a",
     size = "medium",
     package = "tensorflow.compiler.tests",
     python_version = "PY3",
@@ -107,11 +106,132 @@ tf_xla_combined_py_test(
         ":adadelta_test_lib",
         ":adagrad_test_lib",
         ":bincount_op_test_lib",
+        ":bucketize_op_test_lib",
+        ":clustering_test_lib",
         ":const_arg_test_lib",
+        ":conv2d_test_lib",
+        ":conv3d_test_lib",
+        ":data_format_ops_test_lib",
+        ":dynamic_slice_ops_test_lib",
+        ":dynamic_stitch_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_b",
+    size = "medium",
+    timeout = "long",
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":extract_image_patches_op_test_lib",
+        ":fake_quant_ops_test_lib",
+        ":fifo_queue_test_lib",
+        ":ftrl_test_lib",
+        ":function_test_lib",
+        ":fused_batchnorm_test_lib",
+        ":gather_nd_op_test_lib",
+        ":lrn_ops_test_lib",
+        ":manip_ops_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_c",
+    size = "medium",
+    timeout = "long",
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":matrix_inverse_op_test_lib",
+        ":matrix_solve_op_test_lib",
+        ":momentum_test_lib",
+        ":nary_ops_test_lib",
+        ":nullary_ops_test_lib",
+        ":placeholder_test_lib",
+        ":pooling_ops_3d_test_lib",
+        ":pooling_ops_test_lib",
         ":proximal_adagrad_test_lib",
         ":proximal_gradient_descent_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_d",
+    size = "medium",
+    timeout = "long",
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
         ":quantized_ops_test_lib",
+        ":random_ops_test_lib",
+        ":reduce_ops_test_lib",
+        ":reduce_window_test_lib",
+        ":reverse_ops_test_lib",
         ":rmsprop_test_lib",
+        ":searchsorted_op_test_lib",
+        ":spacetobatch_op_test_lib",
+        ":sparse_to_dense_op_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_e",
+    size = "medium",
+    timeout = "long",
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_cuda_asan",  # times out in individual tests
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # times out consistently from 2023-08-24
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":adagrad_da_test_lib",
+        ":adam_test_lib",
+        ":argminmax_test_lib",
+        ":listdiff_op_test_lib",
+        ":slice_ops_test_lib",
+        ":unary_ops_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_f",
+    size = "medium",
+    timeout = "long",
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":add_n_test_lib",
+        ":cond_test_lib",
+        ":while_test_lib",
         # go/keep-sorted end
     ],
 )
@@ -166,6 +286,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -187,6 +308,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -210,11 +332,10 @@ tf_xla_py_strict_test(
     # #TODO(b/286470564): Remove once the bug is fixed.
     # disable_tpu_tfrt = True,
     # copybara:uncomment_end
-    # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -236,6 +357,7 @@ tf_xla_py_strict_test(
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  # times out consistently from 2023-08-24
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -254,7 +376,6 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -308,6 +429,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -346,11 +468,7 @@ tf_xla_py_strict_test(
     name = "cholesky_op_test",
     size = "medium",
     srcs = ["cholesky_op_test.py"],
-    enabled_backends = [
-        "cpu",
-        "gpu",
-        "gpu_a100",
-    ],
+    disabled_backends = ["gpu_h100"],  # TODO: b/362907482 - Re-enable after fixing.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -381,6 +499,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -430,6 +549,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -474,6 +594,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -494,6 +615,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -513,7 +635,6 @@ tf_xla_py_strict_test(
     srcs = ["matrix_triangular_solve_op_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss",  # TODO(b/295649328): fix failed nightly tests
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -537,6 +658,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -582,6 +704,7 @@ tf_xla_py_strict_test(
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":test_utils",
@@ -627,6 +750,7 @@ tf_xla_py_strict_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":test_utils",
@@ -676,6 +800,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -718,6 +843,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -736,6 +862,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -754,6 +881,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -808,6 +936,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -849,6 +978,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -868,6 +998,7 @@ tf_xla_py_strict_test(
     shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -908,6 +1039,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -934,7 +1066,6 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_oss",  # TODO(b/282033702): Re-enable this test in OSS.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -960,6 +1091,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -977,6 +1109,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -998,6 +1131,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1057,6 +1191,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1078,6 +1213,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1097,6 +1233,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1115,6 +1252,7 @@ tf_xla_py_strict_test(
     shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1139,6 +1277,7 @@ tf_xla_py_strict_test(
     shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1255,6 +1394,7 @@ tf_xla_py_strict_test(
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1277,6 +1417,7 @@ tf_xla_py_strict_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1298,6 +1439,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1317,6 +1459,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1442,6 +1585,7 @@ tf_xla_py_strict_test(
     shard_count = 3,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1461,6 +1605,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1698,6 +1843,7 @@ tf_xla_py_strict_test(
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  #times out
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1723,6 +1869,7 @@ tf_xla_py_strict_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":test_utils",
@@ -1780,6 +1927,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1874,6 +2022,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1941,6 +2090,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1980,6 +2130,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1998,6 +2149,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -2389,7 +2541,6 @@ tpu_py_strict_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
     disable_experimental = False,
-    tags = ["no_oss"],
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
@@ -2608,6 +2759,7 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
@@ -2904,7 +3056,6 @@ tpu_py_strict_test(
     # TODO(b/188995810): Add an optimization in MLIR importer to not
     # materialize giant splat constants.
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",

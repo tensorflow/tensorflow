@@ -17,6 +17,7 @@
 # pylint: disable=g-bad-name
 import contextlib
 import functools
+from typing import Any
 import weakref
 
 from absl import logging
@@ -857,7 +858,8 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
         and self._xla_sharding is not None
     ):
       sharding_string = self._xla_sharding.SerializeToString()
-      result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
+      with ops.colocate_with(result):
+        result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
       # pylint: disable=protected-access
       result.op._set_attr(
           "_XlaSharding",
@@ -2843,3 +2845,8 @@ def write_object_proto_for_resource_variable(resource_variable,
   ):
     if hasattr(resource_variable, "device"):
       proto.variable.device = resource_variable.device
+
+
+def get_xla_sharding(var: BaseResourceVariable) -> Any:
+  """Returns the XLA sharding associated with the variable."""
+  return var._get_xla_sharding()  # pylint: disable=protected-access

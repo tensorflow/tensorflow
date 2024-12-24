@@ -17,20 +17,22 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_MODULE_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -38,16 +40,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/xla.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -55,65 +60,6 @@ namespace xla {
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
-
-// Helper class to maintain a copy-on-write storage of an object of the
-// specified type. Logically Variant<MutableOwned, ImmutableShared>.
-template <typename T>
-class CopyOnWrite {
- public:
-  static_assert(!std::is_const_v<T>);
-  explicit CopyOnWrite(
-      std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ptr)
-      : ownership_(std::move(ptr)), ptr_([&]() -> decltype(ptr_) {
-          if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-            return owned->get();
-          }
-          return std::get<std::shared_ptr<const T>>(ownership_).get();
-        }()) {}
-
-  // Obtains a const reference to the read-only copy of the object, could be
-  // sharing the storage with other CopyOnWrite<T> instances.
-  const T& get() const { return *ptr_; }
-
-  // Obtains a mutable reference to an exclusively owned copy of the object. If
-  // the object was sharing storage with other CopyOnWrite<T> instances, make a
-  // deep copy inline and transform into exclusively owned copy.
-  T& get_mutable() {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      return **owned;
-    }
-    auto& shared = std::get<std::shared_ptr<const T>>(ownership_);
-    DeepCopyToNewUnique(T(*shared));
-    return const_cast<T&>(*ptr_);
-  }
-  // Deep copies the provided value into an exclusively owned copy of the
-  // object.
-  void set(T&& value) {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      **owned = std::forward<T>(value);
-    } else {
-      DeepCopyToNewUnique(std::forward<T>(value));
-    }
-  }
-  // If the instance is in MutableOwned state, move the storage into
-  // ImmutableShared state.
-  // If the instance is in ImmutableShared state, returns the shared storage.
-  const std::shared_ptr<const T>& FreezeAndShare() const {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      ownership_ = std::shared_ptr<const T>(std::move(*owned));
-    }
-    return std::get<std::shared_ptr<const T>>(ownership_);
-  }
-
- private:
-  void DeepCopyToNewUnique(T&& value) {
-    auto owned = std::make_unique<T>(std::forward<T>(value));
-    ptr_ = owned.get();
-    ownership_ = std::move(owned);
-  }
-  mutable std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ownership_;
-  const T* ptr_;
-};
 
 // Describes a compilation unit at the HLO level.
 //
@@ -131,16 +77,15 @@ class CopyOnWrite {
 // attached to.
 class HloModule {
  public:
-  // Constructor.
   HloModule(const std::string& name, HloModuleConfig config);
-  // REQUIRED:
-  // - comp_envs must not be null.
+  // REQUIRED: comp_envs must not be null.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
+
+  // You can share a config from other modules by passing
+  // HloModule::shared_config()
   HloModule(const std::string& name,
-            std::variant<std::unique_ptr<HloModuleConfig>,
-                         std::shared_ptr<const HloModuleConfig>>
-                config,
+            std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
   virtual ~HloModule() = default;
 
@@ -200,13 +145,11 @@ class HloModule {
   // the names of instructions within the computations are unchanged.
   void MoveComputationsFrom(HloModule* module, bool make_names_unique = false);
 
-  // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
-  std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
-                                   const std::string& suffix = "clone") const;
+  // Returns a deep copy of this module including all reachable computations.
+  // Optionally, a custom config can be provided.
   std::unique_ptr<HloModule> Clone(
-      std::shared_ptr<const HloModuleConfig> config,
-      const std::string& suffix = "clone") const;
+      const std::string& suffix = "clone",
+      std::optional<const HloModuleConfig> config = std::nullopt) const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -238,11 +181,11 @@ class HloModule {
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
-    return config_.get_mutable().mutable_entry_computation_layout();
+    return mutable_config().mutable_entry_computation_layout();
   }
 
   const ComputationLayout& entry_computation_layout() const {
-    return config_.get().entry_computation_layout();
+    return config().entry_computation_layout();
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
@@ -287,7 +230,8 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    h = H::combine(std::move(h), module.entry_computation_layout());
+    if (module.config().has_entry_computation_layout())
+      h = H::combine(std::move(h), module.entry_computation_layout());
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().
@@ -417,12 +361,29 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  HloModuleConfig& mutable_config() { return config_.get_mutable(); }
-  const HloModuleConfig& config() const { return config_.get(); }
-  void set_config(HloModuleConfig config) { config_.set(std::move(config)); }
+  // Returns a config for modifications in current module. If the config is
+  // shared with other modules, it creates a copy.
+  HloModuleConfig& mutable_config() {
+    if (config_.use_count() > 1) {
+      config_ = std::make_shared<const HloModuleConfig>(*config_);
+    }
+    return const_cast<HloModuleConfig&>(*config_);
+  }
 
-  const std::shared_ptr<const HloModuleConfig>& shared_config() const {
-    return config_.FreezeAndShare();
+  // Returns a config for read-only purposes assuming the config won't be
+  // changed during the life time of the returned object.
+  const HloModuleConfig& config() const { return *config_; }
+
+  void set_config(HloModuleConfig config) {
+    config_ = std::make_shared<const HloModuleConfig>(std::move(config));
+  }
+
+  // Shares the config which can be used in other HloModules,
+  // thus reducing the memory footprint. It can also be used to access the
+  // config for read-only purposes. Modules can modify their own config
+  // afterwards through mutable_config().
+  std::shared_ptr<const HloModuleConfig> shared_config() const {
+    return config_;
   }
 
   bool is_dynamic() const { return is_dynamic_; }
@@ -686,7 +647,7 @@ class HloModule {
   }
 
   bool has_module_autofdo_profiles() const {
-    return !autofdo_profile_keys_.empty();
+    return !profile_info_list_.empty();
   }
 
   void set_relative_speedup(double relative_speedup) {
@@ -710,8 +671,8 @@ class HloModule {
 
   // Describes a stack frame.
   struct StackFrame {
-    std::string_view file_name;
-    std::string_view function_name;
+    absl::string_view file_name;
+    absl::string_view function_name;
     int line = 0;
     int column = 0;
 
@@ -734,7 +695,11 @@ class HloModule {
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
   std::string name_;
-  CopyOnWrite<HloModuleConfig> config_;
+
+  // Sharabled copy-on-write instance.
+  // If you want to modify it, use mutable_config().
+  std::shared_ptr<const HloModuleConfig> config_;
+
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
@@ -816,8 +781,7 @@ class HloModule {
 
   // Compilation environments (protos that carry command line flags and
   // environment variables).
-  std::unique_ptr<CompilationEnvironments> comp_envs_ =
-      std::make_unique<CompilationEnvironments>();
+  std::unique_ptr<CompilationEnvironments> comp_envs_;
 
   // Stack frame indexes flat representation.
   std::optional<StackFrameIndexProto> stack_frame_index_;

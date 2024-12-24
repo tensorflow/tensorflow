@@ -24,8 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
@@ -35,17 +33,8 @@ namespace xla {
 namespace gpu {
 
 class GpuHloCostAnalysisTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
-  HloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
-                                    /*per_second_rates=*/{},
-                                    /*count_multiple_input_accesses=*/true};
+  HloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   GpuHloCostAnalysis analysis_{options_};
   GpuHloCostAnalysisTest() : HloTestBase() {}
 };
@@ -319,8 +308,8 @@ f {
   m0 = s8[10] multiply(n0, n0)
   a0 = s8[10] add(n0, n0)
   s0 = s8[5] slice(a0), slice={[0:5]}
-  s1 = s8[2] slice(n0), slice={[4:6]}
-  n1 = s8[2] negate(s1)
+  svar1 = s8[2] slice(n0), slice={[4:6]}
+  n1 = s8[2] negate(svar1)
   ROOT c0 = s8[17] concatenate(s0, m0, n1), dimensions={0}
 }
 

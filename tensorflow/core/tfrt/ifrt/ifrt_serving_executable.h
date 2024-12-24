@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -33,10 +35,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
@@ -71,7 +76,9 @@ class IfrtServingExecutable {
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      tsl::protobuf::Message* compilation_environment_proto);
+      tsl::protobuf::Message* compilation_environment_proto,
+      TfToHloCompiler* tf_to_hlo_compiler,
+      IfrtPersistentCompilationCache* persistent_compilation_cache);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -98,6 +105,7 @@ class IfrtServingExecutable {
   }
 
  private:
+  friend class IfrtBackendCompilerTest;
   // In memory cache key.
   struct Key {
     std::vector<tensorflow::TensorShape> input_shapes;
@@ -143,8 +151,10 @@ class IfrtServingExecutable {
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
-      xla::ifrt::DeviceList assigned_device_list,
-      tsl::protobuf::Message* compilation_environment_proto)
+      tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list,
+      tsl::protobuf::Message* compilation_environment_proto,
+      TfToHloCompiler* tf_to_hlo_compiler,
+      IfrtPersistentCompilationCache* persistent_compilation_cache)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -159,7 +169,9 @@ class IfrtServingExecutable {
         device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)),
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
-        compilation_environment_proto_(compilation_environment_proto) {}
+        compilation_environment_proto_(compilation_environment_proto),
+        tf_to_hlo_compiler_(tf_to_hlo_compiler),
+        persistent_compilation_cache_(persistent_compilation_cache) {}
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
@@ -172,7 +184,7 @@ class IfrtServingExecutable {
   // test portable execution condition even if the Module itself is already
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
-  const xla::ifrt::DeviceList assigned_device_list_;
+  const tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   tsl::thread::ThreadPool& thread_pool_;
@@ -193,16 +205,25 @@ class IfrtServingExecutable {
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
 
+  // The tf_to_hlo_compiler_ is not owned by this executable. It is expected to
+  // be alive during the lifetime of the executable.
+  TfToHloCompiler* tf_to_hlo_compiler_;
+
+  // The persistent compilation cache is a global cache and is not owned by
+  // this executable. When it is nullptr, the persistent compilation cache is
+  // disabled at ifrt serving level.
+  IfrtPersistentCompilationCache* persistent_compilation_cache_;
+
   // Asynchronously load the restored variable tensors to Ifrt array.
   absl::Status AsyncLoadIfrtArray(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
-      const xla::ifrt::DeviceList& devices);
+      const tsl::RCReference<xla::ifrt::DeviceList>& devices);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,
-      const xla::ifrt::DeviceList& device_list,
+      const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(

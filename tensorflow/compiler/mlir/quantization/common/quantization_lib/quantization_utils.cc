@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -209,10 +209,63 @@ bool IsOpQuantizable(Operation* op) {
       op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
 
+  const bool attr_output_quantized = QuantizableOpSupportsFloatOutputType(op);
+
   const bool trait_enforced_quantizable =
       op->hasTrait<OpTrait::quant::QuantizableResult>();
 
-  return attr_enforced_quantizable || trait_enforced_quantizable;
+  return attr_enforced_quantizable || trait_enforced_quantizable ||
+         attr_output_quantized;
+}
+
+// Checks if an op has specific attributes that enable quantized inputs with
+// float outputs.
+bool QuantizableOpSupportsFloatOutputType(Operation* op) {
+  static constexpr char kOutputTypes[] = "_output_types";
+  static constexpr char kSupportOutputTypeFloat[] =
+      "_support_output_type_float_in_quantized_op";
+
+  if (!(op->hasAttrOfType<mlir::BoolAttr>(kOutputQuantized) &&
+        op->getAttrOfType<mlir::BoolAttr>(kOutputQuantized).getValue())) {
+    return false;
+  }
+
+  if (!(op->hasAttrOfType<mlir::BoolAttr>(kSupportOutputTypeFloat) &&
+        op->getAttrOfType<mlir::BoolAttr>(kSupportOutputTypeFloat)
+            .getValue())) {
+    return false;
+  }
+
+  if (!op->hasAttrOfType<mlir::ArrayAttr>(kOutputTypes)) {
+    return false;
+  }
+
+  auto output_types_attr = op->getAttrOfType<mlir::ArrayAttr>(kOutputTypes);
+
+  if (output_types_attr.size() != op->getResultTypes().size()) {
+    return false;
+  }
+
+  for (const auto [attr_element, result_type] :
+       llvm::zip_equal(output_types_attr, op->getResultTypes())) {
+    auto type_attr = mlir::dyn_cast_or_null<TypeAttr>(attr_element);
+
+    if (!type_attr) {
+      return false;
+    }
+
+    auto tensor_type = mlir::dyn_cast_or_null<TensorType>(result_type);
+
+    if (!tensor_type) {
+      return false;
+    }
+
+    if (type_attr.getValue() != tensor_type.getElementType()) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Returns the quantized type for the

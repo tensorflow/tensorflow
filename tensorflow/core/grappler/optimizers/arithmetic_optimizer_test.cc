@@ -104,7 +104,7 @@ TEST_F(ArithmeticOptimizerTest, NoOp) {
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   VerifyGraphsMatch(item.graph, output, __LINE__);
 }
@@ -4496,7 +4496,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
     } else if (node.name() == "pc_slice_out") {
       ASSERT_EQ(node.input_size(), 1);
       EXPECT_EQ(node.input(0), "c");
-    } else if (str_util::EndsWith(node.name(), "_out")) {
+    } else if (absl::EndsWith(node.name(), "_out")) {
       ASSERT_EQ(node.input_size(), 1);
       EXPECT_EQ(
           absl::StrCat(node.input(0), "_out"),

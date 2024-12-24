@@ -284,7 +284,7 @@ Int64OrError CombineSplitDimMajorPartSizeReqs(int64_t a, int64_t b) {
   if (a == kNoSplitRequirement) {
     return b;
   }
-  return FusionDecision("Conflicting splits of splittable dimension");
+  return FusionDecision::Forbid("Conflicting splits of splittable dimension");
 }
 
 }  // namespace
@@ -318,7 +318,7 @@ DotRequirementsOrError GetRequirementsIfSupportedOrder(
     CHECK(!dim_fragments.empty());
     for (int i = 0; i < dim_fragments.size() - 1; ++i) {
       if (tensor_dim_fragments[dim_fragments[i]].is_sliced()) {
-        return "Sliced non-major-most fragment.";
+        return FusionDecision::Forbid("Sliced non-major-most fragment.");
       }
     }
     int group_counter = 0;
@@ -342,7 +342,7 @@ DotRequirementsOrError GetRequirementsIfSupportedOrder(
       }
 
       if (last_seen_group_last_fragment_index > *fragment_it) {
-        return "Transpose within a dimension.";
+        return FusionDecision::Forbid("Transpose within a dimension.");
       }
 
       ++group_counter;
@@ -356,14 +356,16 @@ DotRequirementsOrError GetRequirementsIfSupportedOrder(
           if (group_counter == 2) {
             if (split_dim_major_part != kNoSplitRequirement &&
                 split_dim_major_part != grouped_size) {
-              return "Conflicting splits of splittable dimension";
+              return FusionDecision::Forbid(
+                  "Conflicting splits of splittable dimension");
             }
             split_dim_major_part = grouped_size;
           } else if (group_counter > 2) {
-            return "2nd split of a splittable dimension.";
+            return FusionDecision::Forbid(
+                "2nd split of a splittable dimension.");
           }
         } else {
-          return "Unsupported split of a dimension.";
+          return FusionDecision::Forbid("Unsupported split of a dimension.");
         }
       }
 
@@ -479,7 +481,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
     };
     if (dst_remaining_size >= src_dim->full_count()) {
       if (dst_remaining_size % src_dim->full_count()) {
-        return "Unsupported bitcast";
+        return FusionDecision::Forbid("Unsupported bitcast");
       }
       // Source dimension fragment completely fits into the destination one:
       // just copy it as is.
@@ -497,7 +499,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
         // If there is a remaining fragment of a previous destination dimension
         // assign it first.
         if (src_remaining_size % dst_remaining_size || (src_dim->is_sliced())) {
-          return "Unsupported bitcast";
+          return FusionDecision::Forbid("Unsupported bitcast");
         }
         add_new_fragment(
             Fragment{src_dim->dst_dim_number(), dst_remaining_size});
@@ -515,13 +517,13 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
           // size assign the remainder of the source and carry over the
           // remainder of the destination.
           if (dst_dim_size % src_remaining_size) {
-            return "Unsupported bitcast";
+            return FusionDecision::Forbid("Unsupported bitcast");
           }
           dst_remaining_size = dst_dim_size / src_remaining_size;
           new_fragment_size = src_remaining_size;
         }
         if (src_dim->is_sliced()) {
-          return "Unsupported bitcast";
+          return FusionDecision::Forbid("Unsupported bitcast");
         }
         add_new_fragment(
             Fragment{src_dim->dst_dim_number(), new_fragment_size});
@@ -537,7 +539,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
   // give up.
   while (dst_dim_it != dst_dim_end) {
     if (dst_shape.dimensions(*dst_dim_it) != 1) {
-      return "Unsupported bitcast";
+      return FusionDecision::Forbid("Unsupported bitcast");
     }
     if (!dst_fragments_order.empty()) {
       dst_fragments_order.push_back(
@@ -582,7 +584,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
   Fragments src_fragments_order = src_dim_order.TensorFragmentsOrder();
   if (hlo.opcode() == HloOpcode::kSlice &&
       ShapeUtil::IsEffectiveScalar(hlo.shape())) {
-    return FusionDecision("Slice to scalar is not implemented yet.");
+    return FusionDecision::Forbid("Slice to scalar is not implemented yet.");
   }
   // Every HLO dimension can correspond to a group of subdimensions in
   // dim_order_. For the easier handling of permutations: group dim_order_ by
@@ -595,7 +597,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     // It's not supported currently to further propagate dimensions after
     // reaching a trivial sized tensor. We could probably support it, but now we
     // just prevent crashing here.
-    return FusionDecision("Cannot propagate further from trivial sized tensor");
+    return FusionDecision::Forbid(
+        "Cannot propagate further from trivial sized tensor");
   }
   auto src_fragment_it = src_fragments_order.begin();
   for (int64_t dim_index : src.shape().layout().minor_to_major()) {
@@ -652,17 +655,17 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       dst_logical.resize(src_logical.size() + reduce->dimensions().size());
 
       if (reduce->dimensions().size() != 1) {
-        return FusionDecision("Unsupported reduction.");
+        return FusionDecision::Forbid("Unsupported reduction.");
       } else if (reduce->dimensions().front() !=
                  reduce->operand(0)->shape().rank() - 1) {
-        return FusionDecision("Only row reductions are supported.");
+        return FusionDecision::Forbid("Only row reductions are supported.");
       }
     } else if (hlo.opcode() == HloOpcode::kConcatenate) {
       dst_logical.resize(src_logical.size());
       for (int i = 0; i < src_logical.size(); ++i) {
         if (i == hlo.concatenate_dimension()) {
           if (src_logical[i].size() != 1 || src_logical[i][0]->is_sliced()) {
-            return FusionDecision("Unsupported concatenation.");
+            return FusionDecision::Forbid("Unsupported concatenation.");
           }
           const Fragment& src_fragment = *src_logical[i][0];
           Fragment& dst_fragment = new_fragments.emplace_back(
@@ -733,7 +736,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         if (slice->slice_limits(dim) - slice->slice_starts(dim) !=
             dst->shape().dimensions(dim)) {
           if (dst_logical[dim].size() > 1) {
-            return FusionDecision("Slicing of fragmented dimension.");
+            return FusionDecision::Forbid("Slicing of fragmented dimension.");
           }
           auto fragment = dst_logical[dim].front();
           fragment->set_count(dst->shape().dimensions(dim));
@@ -755,7 +758,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         dst_logical[dim] = src_logical[dim];
         if (dynamic_slice->slice_sizes(dim) != dst->shape().dimensions(dim)) {
           if (dst_logical[dim].size() > 1) {
-            return FusionDecision("Slicing of fragmented dimension.");
+            return FusionDecision::Forbid("Slicing of fragmented dimension.");
           }
           auto fragment = dst_logical[dim].front();
           fragment->set_count(dst->shape().dimensions(dim));
@@ -767,7 +770,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         }
       }
     } else {
-      return FusionDecision("Function called on a wrong instruction.");
+      return FusionDecision::Forbid("Function called on a wrong instruction.");
     }
     // Destination logical -> destination physical and ungroup subdimensions.
     // Map original fragments to the resulting ones to derive their new
@@ -776,14 +779,17 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
     FragmentOrders& dst_dim_fragments_order =
         dst_dim_order.DimFragmentsOrders();
-    // Remember which dimensions are present before a broadcast;
-    // skip cases when already present dimension is being expanded.
-    absl::flat_hash_set<int> dim_numbers_present_in_dst;
+    // Remember which nontrivial dimensions are present before a broadcast to
+    // skip cases expanding already present nontrivial dimensions.
+    absl::flat_hash_set<int> nontrivial_dim_numbers_present_in_dst;
     for (const int64_t dim_idx : dst->shape().layout().minor_to_major()) {
       for (const Fragment* subdim : dst_logical[dim_idx]) {
         dst_fragments_order.push_back(*subdim);
         src_to_dst[subdim] = dst_fragments_order.size() - 1;
-        dim_numbers_present_in_dst.insert(subdim->dst_dim_number());
+        if (subdim->full_count() > 1) {
+          nontrivial_dim_numbers_present_in_dst.insert(
+              subdim->dst_dim_number());
+        }
       }
     }
     for (const auto& [dim_index, dim_sequence] :
@@ -793,8 +799,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         if (it == src_to_dst.cend()) {
           if (hlo.opcode() == HloOpcode::kBroadcast &&
               src_fragments_order[fragment_number].full_count() > 1 &&
-              dim_numbers_present_in_dst.contains(dim_index)) {
-            return FusionDecision("Unsupported broadcast");
+              nontrivial_dim_numbers_present_in_dst.contains(dim_index)) {
+            return FusionDecision::Forbid("Unsupported broadcast");
           }
           continue;
         }
@@ -818,7 +824,8 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
         return (user->opcode() == HloOpcode::kConcatenate ||
                 user->opcode() == HloOpcode::kDynamicSlice);
       })) {
-    return "No fusion into concatenations or dynamic slice.";
+    return FusionDecision::Forbid(
+        "No fusion into concatenations or dynamic slice.");
   }
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(&hlo)) {
@@ -830,7 +837,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kBroadcast) {
     if (direction != TransformDirection::kOutputToInput) {
-      return "Unsupported broadcast direction.";
+      return FusionDecision::Forbid("Unsupported broadcast direction.");
     }
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
@@ -838,7 +845,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     // Pad ops are only supported when they are generated as part of the split-k
     // transform of dot fusions.
     if (direction != TransformDirection::kOutputToInput) {
-      return "Unsupported pad direction.";
+      return FusionDecision::Forbid("Unsupported pad direction.");
     }
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
@@ -852,7 +859,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
   } else if (hlo.opcode() == HloOpcode::kSlice) {
     // TODO(b/316637896) Add support for slices in softmax.
     if (direction != TransformDirection::kOutputToInput) {
-      return "Unsupported slice direction.";
+      return FusionDecision::Forbid("Unsupported slice direction.");
     }
 
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
@@ -870,7 +877,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kReshape) {
     if (!ShapeUtil::ReshapeIsBitcast(hlo.operand(0)->shape(), hlo.shape())) {
-      return "Non-bitcast reshape.";
+      return FusionDecision::Forbid("Non-bitcast reshape.");
     }
     return GetPropagatedDimOrdersForBitcast(hlo, direction, src_dim_order,
                                             properties);
@@ -885,15 +892,16 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     if (noncontracting_dim_fragment_order_it !=
         src_dim_fragments_orders.end()) {
       if (noncontracting_dim_fragment_order_it->second.size() > 1) {
-        return "Concatenations on split non-contracting dimensions are "
-               "unsupported.";
+        return FusionDecision::Forbid(
+            "Concatenations on split non-contracting dimensions are "
+            "unsupported.");
       }
     }
 
     auto dim = LogicalIndexOfLabeledDimension(hlo.shape(), src_dim_order,
                                               noncontracting_dim_label);
     if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
-      return "Unsupported concatenation.";
+      return FusionDecision::Forbid("Unsupported concatenation.");
     }
     if (absl::c_any_of(hlo.operands(), [&hlo](const HloInstruction* operand) {
           // In the current simple implementation of concatenation the size of
@@ -907,13 +915,13 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
                      kMinConcatFragmentSize !=
                  0;
         })) {
-      return FusionDecision(
+      return FusionDecision::Forbid(
           "At least one operand of concatenation can not be perfectly tiled.");
     }
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   }
-  return "Unimplemented instruction.";
+  return FusionDecision::Forbid("Unimplemented instruction.");
 }
 
 // Difference of input and output data volumes of an instruction.
@@ -966,9 +974,9 @@ FusionDecision IsConversionWorthFusing(const HloInstruction& input,
   // output fusion - then it should be fused here anyway!
   if (ShapeUtil::ByteSizeOf(input.operand(0)->shape()) >
       ShapeUtil::ByteSizeOf(input.shape())) {
-    return "Narrowing conversion.";
+    return FusionDecision::Forbid("Narrowing conversion.");
   }
-  return FusionDecision{};
+  return FusionDecision::Allow();
 }
 
 }  // namespace
@@ -1004,13 +1012,16 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
 
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
-    return "Unsupported instruction.";
+    return FusionDecision::Forbid("Unsupported instruction.");
   }
-  if (hlo.opcode() == HloOpcode::kReduce) {
-    return "Reductions are not fused yet.";
+  if (hlo.opcode() == HloOpcode::kReduce ||
+      hlo.opcode() == HloOpcode::kAllReduce ||
+      hlo.opcode() == HloOpcode::kAllReduceStart ||
+      hlo.opcode() == HloOpcode::kAllReduceDone) {
+    return FusionDecision::Forbid("Reductions are not fused yet.");
   }
   if (hlo.opcode() == HloOpcode::kPad) {
-    return "Pads are not fused yet.";
+    return FusionDecision::Forbid("Pads are not fused yet.");
   }
   if (auto decision =
           legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
@@ -1020,7 +1031,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   DimOrdersAndReqsOrError result_or_error =
       GetPropagatedDimOrdersAndRequirements(hlo, src_dim_order,
                                             transform_direction, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(result_or_error)) {
+  if (std::holds_alternative<FusionDecision>(result_or_error)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(result_or_error).Explain();
     return result_or_error;
   }
   DimOrdersAndReqs dim_orders_and_requirements =
@@ -1036,7 +1050,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           return decision;
         }
       } else if (hlo.IsElementwise() && hlo.opcode() != HloOpcode::kCopy) {
-        return "Ignored elementwise operation";
+        return FusionDecision::Forbid("Ignored elementwise operation");
       }
     } else {
       // Exception for binary elementwise operations: in most cases these are
@@ -1062,12 +1076,14 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
         }
       }
       if (!accepted && !IsInputWorthFusing(hlo)) {
-        return "Not obviously profitable to fuse as input.";
+        return FusionDecision::Forbid(
+            "Not obviously profitable to fuse as input.");
       }
     }
   } else {
     if (fusion_level < 2) {
-      return "Skipping fusing outputs at low fusion levels.";
+      return FusionDecision::Forbid(
+          "Skipping fusing outputs at low fusion levels.");
     }
     for (int i = 0; i < hlo.operand_count(); ++i) {
       const HloInstruction* operand = hlo.operand(i);
@@ -1075,17 +1091,24 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       if (i == *src_operand_index) {
         continue;
       }
-      // Currently only broadcasts of scalars or parameters are accepted as
-      // other inputs of non-unary operations in the output fusion.
+      // Currently only
+      //  - effective parameters
+      //  - broadcasts of effective parameters
+      //  - broadcasts of scalars
+      // are accepted as other inputs of non-unary operations in
+      // the output fusion.
       if ((operand->opcode() == HloOpcode::kBroadcast &&
-           ShapeUtil::IsScalar(operand->operand(0)->shape())) ||
-          operand->opcode() == HloOpcode::kParameter) {
+           (ShapeUtil::IsScalar(operand->operand(0)->shape()) ||
+            hlo_query::IsEffectiveParameter(*operand->operand(0)))) ||
+          hlo_query::IsEffectiveParameter(*operand)) {
         continue;
       }
-      return "Has multiple inputs - not properly analyzed yet.";
+      return FusionDecision::Forbid(
+          "Has multiple inputs - not properly analyzed yet.");
     }
     if (!IsOutputWorthFusing(hlo)) {
-      return "Not obviously profitable to fuse as output.";
+      return FusionDecision::Forbid(
+          "Not obviously profitable to fuse as output.");
     }
   }
   return dim_orders_and_requirements;

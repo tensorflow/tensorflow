@@ -22,10 +22,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <variant>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -40,19 +40,19 @@ namespace interpreter {
 
 namespace {
 struct TypeStr {
-  static std::string_view Get(bool) { return "i1"; }
-  static std::string_view Get(int64_t) { return "i64"; }
-  static std::string_view Get(int32_t) { return "i32"; }
-  static std::string_view Get(int16_t) { return "i16"; }
-  static std::string_view Get(int8_t) { return "i8"; }
-  static std::string_view Get(uint64_t) { return "ui64"; }
-  static std::string_view Get(uint32_t) { return "ui32"; }
-  static std::string_view Get(uint16_t) { return "ui16"; }
-  static std::string_view Get(uint8_t) { return "ui8"; }
-  static std::string_view Get(float) { return "f32"; }
-  static std::string_view Get(double) { return "f64"; }
-  static std::string_view Get(std::complex<float>) { return "complex<f32>"; }
-  static std::string_view Get(std::complex<double>) { return "complex<f64>"; }
+  static absl::string_view Get(bool) { return "i1"; }
+  static absl::string_view Get(int64_t) { return "i64"; }
+  static absl::string_view Get(int32_t) { return "i32"; }
+  static absl::string_view Get(int16_t) { return "i16"; }
+  static absl::string_view Get(int8_t) { return "i8"; }
+  static absl::string_view Get(uint64_t) { return "ui64"; }
+  static absl::string_view Get(uint32_t) { return "ui32"; }
+  static absl::string_view Get(uint16_t) { return "ui16"; }
+  static absl::string_view Get(uint8_t) { return "ui8"; }
+  static absl::string_view Get(float) { return "f32"; }
+  static absl::string_view Get(double) { return "f64"; }
+  static absl::string_view Get(std::complex<float>) { return "complex<f32>"; }
+  static absl::string_view Get(std::complex<double>) { return "complex<f64>"; }
 };
 
 struct InterpreterValuePrinter {

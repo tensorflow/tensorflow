@@ -21,9 +21,10 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -43,13 +44,11 @@ constexpr double kDefaultTolerance = 0.1;
 
 class BufferComparatorTest : public testing::Test {
  protected:
-  BufferComparatorTest()
-#if GOOGLE_CUDA
-      : platform_(se::PlatformManager::PlatformWithName("CUDA").value()),
-#elif TENSORFLOW_USE_ROCM
-      : platform_(se::PlatformManager::PlatformWithName("ROCM").value()),
-#endif
-        stream_exec_(platform_->ExecutorForDevice(0).value()) {
+  BufferComparatorTest() {
+    auto name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+    platform_ = se::PlatformManager::PlatformWithName(name).value();
+    stream_exec_ = platform_->ExecutorForDevice(0).value();
   }
 
   // Take floats only for convenience. Still uses ElementType internally.
@@ -182,7 +181,7 @@ TEST_F(BufferComparatorTest, TestInfs) {
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {-20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {-20}));
-#if GOOGLE_CUDA
+
   EXPECT_TRUE(
       CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {std::nanf("")}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {inf}));
@@ -202,7 +201,6 @@ TEST_F(BufferComparatorTest, TestInfs) {
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-20}));
-#endif  // GOOGLE_CUDA
 }
 
 TEST_F(BufferComparatorTest, TestNumbers) {
@@ -242,7 +240,7 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({90}, {100}));
   EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({100}, {90}));
   EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({-128}, {127}));
-#if GOOGLE_CUDA
+
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {20.1}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {23.0}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {23.0}, 0.2));
@@ -260,7 +258,6 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({0.9}, {1}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({11}, {12}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({12}, {11}));
-#endif  // GOOGLE_CUDA
 
   // Rerunning tests with increased relative tolerance
   const double tol = 0.001;
@@ -341,7 +338,6 @@ TEST_F(BufferComparatorTest, TestMultiple) {
       rhs[i] = 0;
     }
   }
-#if GOOGLE_CUDA
   {
     EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>(
         {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
@@ -375,7 +371,6 @@ TEST_F(BufferComparatorTest, TestMultiple) {
       rhs[i] = 0;
     }
   }
-#endif  // GOOGLE_CUDA
 }
 
 TEST_F(BufferComparatorTest, BF16) {

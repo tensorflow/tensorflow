@@ -21,13 +21,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 

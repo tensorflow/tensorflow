@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
@@ -56,9 +57,9 @@ class CondBuilder {
 
   // Returns the Switch node to feed a value of the given type into the
   // conditional.
-  Status AddInput(const std::string& input_name, const DataType& type,
-                  const std::string& device, const NodeDebugInfo& debug,
-                  Node** input);
+  absl::Status AddInput(const std::string& input_name, const DataType& type,
+                        const std::string& device, const NodeDebugInfo& debug,
+                        Node** input);
 
  private:
   Node* control_successor_;

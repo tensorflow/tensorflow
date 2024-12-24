@@ -1,0 +1,144 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -split-input-file %s -o - | FileCheck %s
+
+HloModule dot_algorithm_f8_f8_f32, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f8_f8_f32
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f8E5M2, rhs_precision_type = f8E5M2, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_any_f8_any_f8_f32, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:1 offset " source_line=7}
+}
+
+// -----
+
+
+HloModule dot_algorithm_f8_f8_f32_fast_accum, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f8_f8_f32_fast_accum
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f8E5M2, rhs_precision_type = f8E5M2, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = true>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_any_f8_any_f8_f32_fast_accum, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:23 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_f16_f16_f16, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f16_f16_f16
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f16, rhs_precision_type = f16, accumulation_type = f16, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f16_f16_f16, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:45 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_f16_f16_f32, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f16_f16_f32
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f16, rhs_precision_type = f16, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f16_f16_f32, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:67 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_bf16, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->bf16[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_bf16
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = bf16, rhs_precision_type = bf16, accumulation_type = bf16, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> bf16[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = bf16[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:89 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_f32, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->bf16[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_f32
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = bf16, rhs_precision_type = bf16, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> bf16[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = bf16[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_f32, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:111 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_f32_x3, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->bf16[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_f32_x3
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = bf16, rhs_precision_type = bf16, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 3, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> bf16[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = bf16[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_f32_x3, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:133 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_f32_x6, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->bf16[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_f32_x6
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = bf16, rhs_precision_type = bf16, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 6, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> bf16[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = bf16[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_f32_x6, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:155 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_tf32_tf32_f32, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_tf32_tf32_f32
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_tf32_tf32_f32, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:177 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_tf32_tf32_f32_x3, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_tf32_tf32_f32_x3
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 3, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_tf32_tf32_f32_x3, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:199 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_f32_f32_f32, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f32_f32_f32
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f32, rhs_precision_type = f32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f32[2,2,2], Arg_1.2: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  %Arg_1.2 = f32[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(f32[2,2,2] %Arg_0.1, f32[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:221 offset " source_line=7}
+}
+
+// -----
+
+HloModule dot_algorithm_f64_f64_f64, entry_computation_layout={(f64[2,2,2]{2,1,0}, f64[2,2,2]{2,1,0})->f64[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_f64_f64_f64
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f64, rhs_precision_type = f64, accumulation_type = f64, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: f64[2,2,2], Arg_1.2: f64[2,2,2]) -> f64[2,2,2] {
+  %Arg_0.1 = f64[2,2,2] parameter(0)
+  %Arg_1.2 = f64[2,2,2] parameter(1)
+  ROOT %dot.3 = f64[2,2,2] dot(f64[2,2,2] %Arg_0.1, f64[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f64_f64_f64, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:243 offset " source_line=7}
+}

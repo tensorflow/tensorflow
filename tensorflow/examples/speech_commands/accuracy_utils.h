@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_ACCURACY_UTILS_H_
 #define TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_ACCURACY_UTILS_H_
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -40,8 +43,8 @@ struct StreamingAccuracyStats {
 
 // Takes a file name, and loads a list of expected word labels and times from
 // it, as comma-separated variables.
-Status ReadGroundTruthFile(const string& file_name,
-                           std::vector<std::pair<string, int64_t>>* result);
+absl::Status ReadGroundTruthFile(
+    const string& file_name, std::vector<std::pair<string, int64_t>>* result);
 
 // Given ground truth labels and corresponding predictions found by a model,
 // figure out how many were correct. Takes a time limit, so that only

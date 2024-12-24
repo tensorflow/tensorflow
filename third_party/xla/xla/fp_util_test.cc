@@ -19,8 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/numeric/bits.h"
+#include "xla/bit_cast.h"
 #include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -110,56 +112,109 @@ INSTANTIATE_TEST_SUITE_P(DoublePrecisionInputs, FixedValueTest,
                                          0x1.fffffffffffffp-127,
                                          0x1.aaaaaaaaaaaaap-127));
 
-TEST(FPDistanceTest, F8E4M3FNDistance) {
+// Test F8E4M3 floating-point types (F8E4M3, F8E4M3FN)
+template <typename T>
+class FP8E4M3DistanceTest : public ::testing::Test {};
+
+using F8E4M3Types = ::testing::Types<tsl::float8_e4m3, tsl::float8_e4m3fn>;
+TYPED_TEST_SUITE(FP8E4M3DistanceTest, F8E4M3Types);
+
+TEST(FPDistanceTest, F8E3M4Distance) {
   // a & b are equal
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                tsl::float8_e4m3fn(8.0), tsl::float8_e4m3fn(8.0)),
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(tsl::float8_e3m4(8.0),
+                                                        tsl::float8_e3m4(8.0)),
             0);
 
   // a & b have the same exponents
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                tsl::float8_e4m3fn(8.0), tsl::float8_e4m3fn(13)),
-            5);
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(tsl::float8_e3m4(8.0),
+                                                        tsl::float8_e3m4(15.5)),
+            15);
 
   // a & b have different exponents
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                tsl::float8_e4m3fn(8.0), tsl::float8_e4m3fn(6.0)),
-            4);
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(tsl::float8_e3m4(8.0),
+                                                        tsl::float8_e3m4(6)),
+            8);
 
   // 1 from 0 in the positive direction
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                std::numeric_limits<tsl::float8_e4m3fn>::denorm_min(),
-                tsl::float8_e4m3fn(0)),
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(
+                std::numeric_limits<tsl::float8_e3m4>::denorm_min(),
+                tsl::float8_e3m4(0)),
             1);
 
   // 1 from 0 in the negative direction
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                -std::numeric_limits<tsl::float8_e4m3fn>::denorm_min(),
-                tsl::float8_e4m3fn(0)),
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(
+                -std::numeric_limits<tsl::float8_e3m4>::denorm_min(),
+                tsl::float8_e3m4(0)),
             1);
 
   // a & b have different signs
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                -std::numeric_limits<tsl::float8_e4m3fn>::denorm_min(),
-                std::numeric_limits<tsl::float8_e4m3fn>::denorm_min()),
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(
+                -std::numeric_limits<tsl::float8_e3m4>::denorm_min(),
+                std::numeric_limits<tsl::float8_e3m4>::denorm_min()),
             2);
 
   // 1 non denorm from 0 in the positive direction
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                std::numeric_limits<tsl::float8_e4m3fn>::min(),
-                tsl::float8_e4m3fn(0)),
+  EXPECT_EQ(
+      CalculateDistanceInFloats<tsl::float8_e3m4>(
+          std::numeric_limits<tsl::float8_e3m4>::min(), tsl::float8_e3m4(0)),
+      16);
+
+  // 1 non denorm from 0 in the negative direction
+  EXPECT_EQ(
+      CalculateDistanceInFloats<tsl::float8_e3m4>(
+          -std::numeric_limits<tsl::float8_e3m4>::min(), tsl::float8_e3m4(0)),
+      16);
+
+  // a & b have different signs
+  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e3m4>(
+                -std::numeric_limits<tsl::float8_e3m4>::min(),
+                std::numeric_limits<tsl::float8_e3m4>::min()),
+            32);
+}
+
+TYPED_TEST(FP8E4M3DistanceTest, F8E4M3Distance) {
+  // a & b are equal, distance should be 0
+  EXPECT_EQ(
+      CalculateDistanceInFloats<TypeParam>(TypeParam(8.0), TypeParam(8.0)), 0);
+
+  // a & b have the same exponents
+  EXPECT_EQ(
+      CalculateDistanceInFloats<TypeParam>(TypeParam(8.0), TypeParam(15.0)), 7);
+
+  // a & b have different exponents
+  EXPECT_EQ(
+      CalculateDistanceInFloats<TypeParam>(TypeParam(8.0), TypeParam(6.0)), 4);
+
+  // 1 from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                std::numeric_limits<TypeParam>::denorm_min(), TypeParam(0)),
+            1);
+
+  // 1 from 0 in the negative direction
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                -std::numeric_limits<TypeParam>::denorm_min(), TypeParam(0)),
+            1);
+
+  // a & b have different signs
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                -std::numeric_limits<TypeParam>::denorm_min(),
+                std::numeric_limits<TypeParam>::denorm_min()),
+            2);
+
+  // 1 non denorm from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                std::numeric_limits<TypeParam>::min(), TypeParam(0)),
             8);
 
   // 1 non denorm from 0 in the negative direction
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                -std::numeric_limits<tsl::float8_e4m3fn>::min(),
-                tsl::float8_e4m3fn(0)),
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                -std::numeric_limits<TypeParam>::min(), TypeParam(0)),
             8);
 
   // a & b have different signs
-  EXPECT_EQ(CalculateDistanceInFloats<tsl::float8_e4m3fn>(
-                -std::numeric_limits<tsl::float8_e4m3fn>::min(),
-                std::numeric_limits<tsl::float8_e4m3fn>::min()),
+  EXPECT_EQ(CalculateDistanceInFloats<TypeParam>(
+                -std::numeric_limits<TypeParam>::min(),
+                std::numeric_limits<TypeParam>::min()),
             16);
 }
 
@@ -214,6 +269,61 @@ TEST(FPDistanceTest, F8E5M2Distance) {
                 -std::numeric_limits<tsl::float8_e5m2>::min(),
                 std::numeric_limits<tsl::float8_e5m2>::min()),
             8);
+}
+
+TEST(FPDistanceTest, F64Distance) {
+  // a & b are equal
+  EXPECT_EQ(CalculateDistanceInFloats<double>(8.0, 8.0), 0);
+
+  // a & b have the same exponents
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::denorm_min(),
+                std::nextafter(std::numeric_limits<double>::denorm_min(), 1.0)),
+            1);
+
+  // a & b have different exponents
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::min(),
+                std::numeric_limits<double>::denorm_min()),
+            (1ULL << 52) - 1);
+
+  // 1 from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::denorm_min(), 0.0),
+            1);
+
+  // 1 from 0 in the negative direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::denorm_min(), 0.0),
+            1);
+
+  // a & b have different signs
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::denorm_min(),
+                std::numeric_limits<double>::denorm_min()),
+            2);
+
+  // 1 non denorm from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::min(), 0.0),
+            1ULL << 52);
+
+  // 1 non denorm from 0 in the negative direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::min(), 0.0),
+            1ULL << 52);
+
+  // a & b have different signs
+  EXPECT_EQ(
+      CalculateDistanceInFloats<double>(-std::numeric_limits<double>::min(),
+                                        std::numeric_limits<double>::min()),
+      2 * (1ULL << 52));
+
+  // signed integer arithmetic would overflow.
+  EXPECT_EQ(
+      CalculateDistanceInFloats<double>(BitCast<double>(0x7fffffffffffffff),
+                                        BitCast<double>(0xffffffffffffffff)),
+      2);
 }
 
 }  // namespace

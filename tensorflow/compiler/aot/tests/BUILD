@@ -130,7 +130,6 @@ genrule(
 # suffix, mlir_component
 tfcompile_test_dep_configs = [
     ("", "None"),
-    ("_mlir_bridge", "Bridge"),
 ]
 
 [
@@ -459,44 +458,6 @@ tf_cc_test(
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:test",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/service:hlo_profile_printer",
-    ],
-)
-
-tf_cc_test(
-    name = "tfcompile_test_mlir_bridge",
-    srcs = ["tfcompile_test.cc"],
-    extra_copts = ["-DENABLE_MLIR_BRIDGE_TEST"],
-    tags = [
-        "manual",
-        "no_mac",  # TODO(b/228273415)
-        "not_run:arm",
-    ],
-    deps = [
-        ":test_graph_tfadd_mlir_bridge",
-        ":test_graph_tfadd_with_ckpt_mlir_bridge",
-        ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
-        ":test_graph_tfassert_eq_mlir_bridge",
-        ":test_graph_tfcond_mlir_bridge",
-        ":test_graph_tffunction_mlir_bridge",
-        ":test_graph_tfgather_mlir_bridge",
-        ":test_graph_tfmatmul_mlir_bridge",
-        ":test_graph_tfmatmulandadd_mlir_bridge",
-        ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
-        ":test_graph_tfsplits_mlir_bridge",
-        ":test_graph_tftop_k_mlir_bridge",
-        ":test_graph_tfvariable_mlir_bridge",
-        ":test_graph_tfvariable_readonly_mlir_bridge",
-        ":test_graph_tfvariable_sequential_updates_mlir_bridge",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

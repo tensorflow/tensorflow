@@ -34,7 +34,8 @@ namespace hlo_query {
 
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
-         op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
+         op == HloOpcode::kAllToAll || op == HloOpcode::kRaggedAllToAll ||
+         op == HloOpcode::kCollectivePermute ||
          op == HloOpcode::kCollectiveBroadcast ||
          op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
          op == HloOpcode::kAllGatherStart ||
@@ -177,6 +178,13 @@ bool IsBroadcastOfParameter(const HloInstruction& instr) {
          instr.operand(0)->opcode() == HloOpcode::kParameter;
 }
 
+bool IsEffectiveParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kParameter ||
+         ((instr.opcode() == HloOpcode::kBitcast ||
+           instr.opcode() == HloOpcode::kGetTupleElement) &&
+          IsEffectiveParameter(*instr.operand(0)));
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();
@@ -280,36 +288,21 @@ HloComputation* FindComputation(HloModule* module, absl::string_view name) {
   return *it;
 }
 
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, absl::string_view name) {
-  int current_index = 0;
-  for (auto* instruction : computation->instructions()) {
-    if (instruction->name() == name) {
-      return {instruction, current_index};
-      break;
-    }
-    current_index++;
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                absl::string_view name) {
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->name() == name) return instruction;
   }
-  return {nullptr, -1};
+  return nullptr;
 }
 
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, HloOpcode opcode) {
-  int current_index = 0;
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                HloOpcode opcode) {
   for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == opcode) {
-      return {instruction, current_index};
-      break;
-    }
-    current_index++;
+    if (instruction->opcode() == opcode) return instruction;
   }
-  return {nullptr, -1};
+  return nullptr;
 }
 
-bool IsBeforeInComputation(const HloComputation* computation,
-                           absl::string_view inst1, absl::string_view inst2) {
-  return FindFirstInstruction(computation, inst1).second <
-         FindFirstInstruction(computation, inst2).second;
-}
 }  // namespace hlo_query
 }  // namespace xla

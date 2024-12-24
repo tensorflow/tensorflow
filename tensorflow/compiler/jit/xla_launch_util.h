@@ -49,7 +49,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx);
 absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
     OpKernelContext* ctx);
 
-Status SetOutputForConstant(
+absl::Status SetOutputForConstant(
     OpKernelContext* ctx, bool requires_copy_to_device,
     const XlaCompiler::CompilationResult* compilation_result, int output_num);
 
@@ -78,7 +78,7 @@ Status SetOutputForConstant(
 // complete. Therefore we put the newly created PjRtBuffer into `owned_args`.
 // Caller is responsible to ensure `owned_args` lives till the end of XLA
 // computation.
-Status PreparePjRtExecutableArguments(
+absl::Status PreparePjRtExecutableArguments(
     int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
@@ -95,7 +95,7 @@ Status PreparePjRtExecutableArguments(
 // Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
 // compilation_result are missing in `inputs` and adjusts indexing into `inputs`
 // accordingly.
-Status PopulateCtxOutputsFromPjRtExecutableOutputs(
+absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -118,7 +118,7 @@ DeviceType GetDeviceType(OpKernelContext* ctx);
 // `variables` are the input arguments to the computation, usually read from the
 // OpKernelContext, `ctx`. Requires the device-appropriate `pjrt_client` and the
 // `compilation_result` used to build the `executable`.
-Status RunPjRtExecutable(
+absl::Status RunPjRtExecutable(
     const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -132,7 +132,7 @@ Status RunPjRtExecutable(
 // Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
 // compilation_result are missing in `inputs` and adjusts indexing into `inputs`
 // accordingly.
-Status RunPjRtExecutable(
+absl::Status RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,
@@ -202,7 +202,7 @@ class XlaComputationLaunchContext {
   //
   // Assumes that the first `missing_ctx_input_prefix` inputs to the
   // compilation_result are missing and adjusts input indices accordingly.
-  Status PopulateOutputs(
+  absl::Status PopulateOutputs(
       OpKernelContext* ctx,
       const XlaCompiler::CompilationResult* compilation_result,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,

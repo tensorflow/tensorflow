@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
+#include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -62,15 +65,18 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
-#include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -243,9 +249,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
-
-    case HloOpcode::kSelectAndScatter:
-      return EmitSelectAndScatterThunk(instruction);
 
     // ReplicaId and PartitionId identify the location of the current device in
     // a logical grid of communicating devices.
@@ -811,9 +814,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
 
-      return ThunkSequence::Of<DotThunk>(
-          ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
-          rhs->shape(), out_slice, instruction->shape());
+      // Decide whether to use XNNPACK or Eigen.
+      bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
+      if (use_xnn) {
+        TF_ASSIGN_OR_RETURN(
+            use_xnn, XnnDotThunk::IsSupported(dnums, lhs->shape(), rhs->shape(),
+                                              instruction->shape()));
+      }
+
+      if (use_xnn) {
+        return ThunkSequence::Of<XnnDotThunk>(
+            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+            rhs->shape(), out_slice, instruction->shape());
+      } else {
+        return ThunkSequence::Of<DotThunk>(
+            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+            rhs->shape(), out_slice, instruction->shape());
+      }
     }
   }
 }
@@ -963,13 +980,24 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   }
 
   // Get backend config and buffer assignments.
-  auto backend_config = custom_call->opaque();
+  auto backend_config = custom_call->backend_config<BackendConfig>();
+  if (!backend_config.ok()) {
+    VLOG(3) << "Unable to parse backend config for custom call: "
+            << backend_config.status().message() << "\n"
+            << "Fall back to parse the opaque str.";
+  }
+  auto& backend_config_str =
+      !backend_config.ok()
+          ? custom_call->opaque()
+          : ((version == API_VERSION_TYPED_FFI)
+                 ? backend_config->custom_call_config().attributes()
+                 : backend_config->custom_call_config().opaque());
   TF_ASSIGN_OR_RETURN(auto op_buffers,
                       GetCustomCallOpBuffers(instruction, buffer_assignment_));
 
   return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
                                             custom_call_target, op_buffers,
-                                            backend_config, version);
+                                            backend_config_str, version);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
@@ -981,15 +1009,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
   return MakeKernelThunkSequence(
       instruction, buffers, kernel,
       /*min_alignment=*/cpu_function_runtime::MinAlign());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSelectAndScatterThunk(
-    const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      ir_emitter_.EmitSelectAndScatterHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
@@ -1009,11 +1028,59 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
   return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
+// Parse the sort comparator to determine the sort direction. Comparator is
+// expected to be an HloOpcode::kCompare with two parameters.
+std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
+    const HloComputation* hlo_comparator) const {
+  namespace m = match;
+  std::optional<SortThunk::SortDirection> direction = std::nullopt;
+
+  // TODO(tsilytskyi): Handle more than two input parameters.
+  if (hlo_comparator->root_instruction()->opcode() == HloOpcode::kCompare &&
+      hlo_comparator->root_instruction()->operand(0)->opcode() ==
+          HloOpcode::kParameter &&
+      hlo_comparator->root_instruction()->operand(1)->opcode() ==
+          HloOpcode::kParameter &&
+      hlo_comparator->num_parameters() == 2) {
+    auto* compare =
+        Cast<HloCompareInstruction>(hlo_comparator->root_instruction());
+
+    // Take into account the order of the parameters. If they are swapped,
+    // the sort direction will be reversed.
+    const bool expected_param_order =
+        (Match(compare, m::Op()
+                            .WithOperand(0, m::Parameter(0))
+                            .WithOperand(1, m::Parameter(1))));
+    switch (compare->comparison_direction()) {
+      case ComparisonDirection::kGe:
+        direction = (expected_param_order)
+                        ? SortThunk::SortDirection::kDescending
+                        : SortThunk::SortDirection::kAscending;
+        break;
+      case ComparisonDirection::kLt:
+        direction = (expected_param_order)
+                        ? SortThunk::SortDirection::kAscending
+                        : SortThunk::SortDirection::kDescending;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return direction;
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     const HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
 
-  TF_ASSIGN_OR_RETURN(auto comparator, ir_emitter_.EmitSortComparator(sort));
+  HloComputation* hlocomparator = sort->to_apply();
+
+  const std::optional<SortThunk::SortDirection> direction =
+      MatchSortDirection(hlocomparator);
+
+  TF_ASSIGN_OR_RETURN(auto comparator,
+                      ir_emitter_.EmitSortComparator(hlocomparator));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1046,7 +1113,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   TF_ASSIGN_OR_RETURN(
       thunks.emplace_back(),
       SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name));
+                        sort->is_stable(), comparator.name, direction));
 
   return thunks;
 }

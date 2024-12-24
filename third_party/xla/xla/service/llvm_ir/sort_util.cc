@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/sort_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -62,7 +63,7 @@ absl::Status EmitCompareLoopBody(
     std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b, bool needs_bounds_checks = true) {
+    llvm::IRBuilderBase* b, bool needs_bounds_checks = true) {
   auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
@@ -130,8 +131,8 @@ absl::Status EmitCompareLoopBody(
       values_to_compare_types.push_back(
           element_address_pointee_type(i, current_keys_index));
     }
-    llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-    llvm::Type* pred_type = llvm_ir::PrimitiveTypeToIrType(PRED, module);
+    llvm::Type* pred_type =
+        llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext());
     llvm::Value* compare_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
         pred_type, "compare_return_buffer", b);
     TF_RETURN_IF_ERROR(
@@ -164,7 +165,7 @@ absl::Status EmitTiledCompareLoop(
     const std::vector<llvm::GlobalVariable*>& param_shmem_buffers,
     int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilderBase* b) {
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
@@ -326,7 +327,7 @@ absl::Status EmitTiledCompareLoop(
 absl::Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, const int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback) {
   // Iterate through the keys shape in physical order, but skip the dimension to
@@ -365,7 +366,7 @@ absl::Status EmitSortInPlace(
     for (int64_t i = 0; i < values_arrays.size(); ++i) {
       llvm::Type* tile_type = llvm::ArrayType::get(
           llvm_ir::PrimitiveTypeToIrType(
-              values_arrays[i].GetShape().element_type(), module),
+              values_arrays[i].GetShape().element_type(), b->getContext()),
           std::max(tile_size, static_cast<int64_t>(64)));
       param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(
           module, tile_type, absl::StrCat(name, "_tile_param_", i));

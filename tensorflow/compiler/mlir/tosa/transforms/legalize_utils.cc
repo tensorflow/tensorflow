@@ -611,7 +611,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     ip_size = ip_size < 0 ? f_size * dim_dilation : ip_size;
     int64_t op_size, pad_before_tf,
         pad_after_tf;  // Complains if using int64_T
-    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
+    absl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
         ip_size, f_size, dim_dilation, dim_stride, tf_pad, &op_size,
         &pad_before_tf, &pad_after_tf);
     if (!status.ok()) return false;

@@ -56,7 +56,7 @@ using ResultElementTypeFn = llvm::function_ref<Type(int)>;
 // Extracts the attributes of a MLIR operation and populates the converted
 // attributes in a proto map<string, AttrValue>. This is used by operation
 // defined in TF dialect which has different attributes format than TFG dialect.
-using GetAttrValuesFn = llvm::function_ref<tensorflow::Status(
+using GetAttrValuesFn = llvm::function_ref<absl::Status(
     Operation*, llvm::StringRef, const tensorflow::OpRegistrationData*, bool,
     tensorflow::AttrValueMap*)>;
 

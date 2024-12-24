@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_COMPUTE_ENGINE_METADATA_CLIENT_H_
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_COMPUTE_ENGINE_METADATA_CLIENT_H_
 
+#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/cloud/compute_engine_metadata_client.h"
 
 namespace tensorflow {
 using tsl::ComputeEngineMetadataClient;  // NOLINT(misc-unused-using-decls)

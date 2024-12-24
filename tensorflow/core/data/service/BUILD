@@ -409,7 +409,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -845,6 +845,17 @@ cc_library(
 )
 
 cc_library(
+    name = "test_data_transfer",
+    testonly = True,
+    srcs = ["test_data_transfer.cc"],
+    deps = [
+        ":data_transfer",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],
@@ -1135,7 +1146,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:status_to_from_proto",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -1159,6 +1170,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:mutex",
@@ -1176,7 +1188,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )

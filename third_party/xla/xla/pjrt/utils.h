@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/service/computation_placer.h"
@@ -70,18 +70,6 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     mlir::ModuleOp module);
 
-// Populates the frontend attributes "arg_layout_mode" and "out_layout_mode" in
-// xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
-absl::Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation);
-
-// Populates the frontend attributes "arg_memory_kinds" and "out_memory_kinds"
-// in xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
-absl::Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation);
-
 // Returns the LayoutMode for each argument of the computations. Checks for the
 // "arg_layout_mode" frontend attribute, and if not present, assumes
 // LayoutMode::Mode::kDefault.
@@ -101,6 +89,13 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 // the "out_memory_kind" frontend attribute, and if not present, assumes 0.
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     const XlaComputation& computation);
+
+// Returns xla shape with layout set to reflect the given layout mode.
+absl::StatusOr<Shape> LayoutModeToXlaShape(
+    const LayoutMode& layout_mode, const Shape& unsharded_shape,
+    const Shape& sharded_shape, MemorySpaceColor memory_space,
+    std::function<absl::StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function);
 
 // Returns (arg shapes, output shape) with properly-set Layouts that can
 // be passed to XLA to reflect arg_layout_modes and out_layout_modes.

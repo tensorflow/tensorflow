@@ -106,7 +106,7 @@ class DeviceExecutablePersistor {
   // pipeline and persists that to disk.
   // TODO(b/255826209): Take in Signature instead hash and string once cache
   // is refactored.
-  virtual Status TryToPersistExecutable(
+  virtual absl::Status TryToPersistExecutable(
       uint64 signature_hash, const std::string& signature_str,
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
@@ -138,7 +138,7 @@ class DeviceExecutablePersistor {
 
   // Saves the cache entry in the file directory supplied during the
   // construction of this class. Overwrites existing entries.
-  Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry) const;
+  absl::Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry) const;
 
   // Tries to read a cache entry given a `key` by searching the file directory
   // supplied during the construction of this class. Returns std::nullopt if no
@@ -147,9 +147,9 @@ class DeviceExecutablePersistor {
   TryToReadSerializedEntry(const XlaSerializedCacheKey& key) const;
 
   // Checks if the loaded `entry` matches the expected `key` and `hlo_module`.
-  Status VerifyLoadedCacheEntry(const XlaSerializedCacheKey& key,
-                                const xla::HloModuleProto& hlo_module,
-                                const XlaSerializedCacheEntry& entry) const;
+  absl::Status VerifyLoadedCacheEntry(
+      const XlaSerializedCacheKey& key, const xla::HloModuleProto& hlo_module,
+      const XlaSerializedCacheEntry& entry) const;
 
   std::string GetFilePath(const XlaSerializedCacheKey& key) const;
 
@@ -233,7 +233,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToReadSerializedEntry(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
     const XlaSerializedCacheKey& key, const xla::HloModuleProto& hlo_module,
     const XlaSerializedCacheEntry& entry) const {
@@ -267,7 +267,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::SaveSerializedEntry(
     const XlaSerializedCacheEntry& entry) const {
   Env* env = Env::Default();
@@ -374,7 +374,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToLoadExecutable(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
     uint64 signature_hash, const std::string& signature_str,
     const XlaCompiler::Options& options,

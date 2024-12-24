@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
@@ -38,9 +38,9 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

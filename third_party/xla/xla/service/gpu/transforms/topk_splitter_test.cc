@@ -28,11 +28,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -43,6 +42,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 using TopkSplitterTest = HloTestBase;
 
@@ -203,6 +203,26 @@ ENTRY cluster {
     EXPECT_TRUE(HloDCE().Run(module).status().ok());
   };
   EXPECT_TRUE(RunAndCompare(std::move(module), std::nullopt, round_trip));
+}
+
+TEST_F(TopkSplitterTest, HandlesDimensionsEqualToThresholdCorrectly) {
+  // This test was added since initially TopkSplitter was going into an
+  // infinite loop when the split threshold was equal to the dimension of the
+  // input.
+  const std::string hlo_string = absl::Substitute(R"(
+HloModule module
+$0
+ENTRY cluster {
+  %arg.1 = f32[1,1024] parameter(0)
+  ROOT %topk.1 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
+})",
+                                                  kComparator);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()), IsOk());
+  // We expect idempotency - No change on the second run.
+  EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()),
+              IsOkAndHolds(false));
 }
 
 }  // namespace

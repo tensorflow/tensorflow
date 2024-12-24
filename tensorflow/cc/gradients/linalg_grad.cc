@@ -356,9 +356,9 @@ Output EinsumGradWrt(const Scope& scope, Output output_grad,
                                  input_shape, reduced_label_set);
 }
 
-Status EinsumGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status EinsumGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   if (grad_inputs.size() != 1) {
     return errors::InvalidArgument("Expect 1 grad input.");
   }

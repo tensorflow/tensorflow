@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -71,12 +71,14 @@ class TiledHloInstruction {
   // Returns the tile sizes. The number of tile sizes is equal to the rank of
   // the output shape.
   const llvm::SmallVector<int64_t>& tile_sizes() const { return tile_sizes_; }
+  int64_t tile_size(int64_t dim_idx) const { return tile_sizes_[dim_idx]; }
 
   // Returns the tile strides. The number of tile strides is equal to the rank
   // of the output shape.
   const llvm::SmallVector<int64_t>& tile_strides() const {
     return tile_strides_;
   }
+  int64_t tile_stride(int64_t dim_idx) const { return tile_strides_[dim_idx]; }
 
   // Returns the indexing map from tile multi-index to tile offsets. The map has
   // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number

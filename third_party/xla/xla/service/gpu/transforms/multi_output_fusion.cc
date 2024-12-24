@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -86,14 +86,16 @@ const HloSliceInstruction* FindUniqueSlice(const HloInstruction* parent,
 FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
                                                 const HloInstruction& instr2,
                                                 const HloInstruction* parent) {
-  if (parent->shape().IsTuple()) return {};
+  if (parent->shape().IsTuple()) return FusionDecision::Allow();
   // Allow MOF if the parameter is small, even if there's no overlap. 1024 bytes
   // were arbitrarily chosen as the threshold.
-  if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) return {};
+  if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) {
+    return FusionDecision::Allow();
+  }
 
   const HloSliceInstruction* slice1 = FindUniqueSlice(parent, &instr1);
   const HloSliceInstruction* slice2 = FindUniqueSlice(parent, &instr2);
-  if (!slice1 || !slice2) return {};
+  if (!slice1 || !slice2) return FusionDecision::Allow();
 
   // TODO(jreiffers): Check strides as well.
   auto& starts1 = slice1->slice_starts();
@@ -104,10 +106,10 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
   for (int64_t dim = 0; dim < parent->shape().rank(); ++dim) {
     bool overlap = starts1[dim] < limits2[dim] && starts2[dim] < limits1[dim];
     if (!overlap) {
-      return "slices are non-overlapping";
+      return FusionDecision::Forbid("slices are non-overlapping");
     }
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 FusionDecision LegalToFuse(const HloInstruction& instr1,
@@ -125,7 +127,7 @@ FusionDecision LegalToFuse(const HloInstruction& instr1,
       (instr2.opcode() == HloOpcode::kFusion &&
        instr2.fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
-    return "can't fuse multiple DUSs";
+    return FusionDecision::Forbid("can't fuse multiple DUSs");
   }
 
   // Do this check last, as it may be expensive.
@@ -140,7 +142,7 @@ int FusionPriority(const HloInstruction* instr) {
   if (instr->IsMultiOutputFusion()) {
     return 2;
   }
-  if (instr->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
     return 1;
   }
   return 0;
@@ -168,18 +170,18 @@ FusionDecision OperandReachableFromProducer(
     // map, it has been created by fusion in this pass. Simply move
     // on to its operand, which is in the reachability map.
     if (!reachability.IsPresent(operand) &&
-        operand->opcode() == HloOpcode::kGetTupleElement) {
+        HloPredicateIsOp<HloOpcode::kGetTupleElement>(operand)) {
       operand = operand->operand(0);
     }
     CHECK(reachability.IsPresent(operand) && reachability.IsPresent(&producer))
         << "Reachability map is incomplete. This should never "
            "happen.";
     if (&producer != operand && reachability.IsReachable(&producer, operand)) {
-      return {
-          absl::StrCat(producer.name(), " would introduce a cycle when fused")};
+      return FusionDecision::Forbid(
+          absl::StrCat(producer.name(), " would introduce a cycle when fused"));
     }
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 FusionDecision ProducerCandidateIsFusible(
@@ -187,12 +189,13 @@ FusionDecision ProducerCandidateIsFusible(
     const HloDfsReachability& reachability, FusionInfoCache* fusion_info_cache,
     const se::DeviceDescription& device_info,
     GpuHloCostAnalysis* cost_analysis) {
-  if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
-    return "consumer not eligible as multi-output fusion root.";
+  if (!IsFusibleAsMultiOutputFusionRoot(consumer, device_info)) {
+    return FusionDecision::Forbid(
+        "consumer not eligible as multi-output fusion root.");
   }
 
   RETURN_IF_NOT_FUSIBLE(
-      ShapesCompatibleForMultiOutputFusion(consumer, producer));
+      ShapesCompatibleForMultiOutputFusion(consumer, producer, device_info));
 
   RETURN_IF_NOT_FUSIBLE(
       OperandReachableFromProducer(producer, consumer, reachability));
@@ -202,19 +205,17 @@ FusionDecision ProducerCandidateIsFusible(
       /*is_consumer_producer_fusion=*/false, fusion_info_cache));
 
   if (cost_analysis->ProducerConsumerMergedTooLarge(producer, consumer)) {
-    return "will generate too large IR";
+    return FusionDecision::Forbid("will generate too large IR");
   }
 
-  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      &producer, device_info, cost_analysis,
-      GpuPerformanceModelOptions::Default(),
-      /*fused_consumers=*/{&consumer},
-      /*multi_output=*/true);
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
+          &producer, &consumer, device_info, cost_analysis);
   if (t.time_fused > t.time_unfused) {
-    return "will execute slower if fused";
+    return FusionDecision::Forbid("will execute slower if fused");
   }
 
-  return {};
+  return FusionDecision::Allow();
 }
 
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
@@ -230,7 +231,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 
   // If the producer is not a valid candidate for MOF, no need to check any of
   // its users.
-  if (!IsProducerMultiOutputFusible(*producer)) {
+  if (!IsProducerMultiOutputFusible(*producer, device_info)) {
     return fusion_candidates;
   }
 
@@ -262,18 +263,19 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   return fusion_candidates;
 }
 
-bool IsSiblingFusionCandidate(const HloInstruction* instr) {
-  if (instr->users().empty() || !IsFusibleAsMultiOutputFusionRoot(*instr) ||
-      IsNestableVariadicReduction(*instr)) {
+bool IsSiblingFusionCandidate(const HloInstruction* instr,
+                              const se::DeviceDescription& device_info) {
+  if (instr->users().empty() ||
+      !IsFusibleAsMultiOutputFusionRoot(*instr, device_info) ||
+      IsNestableVariadicReduction(*instr, device_info)) {
     return false;
   }
   // Check if the users of multioutput fusion is not a get-tuple-element.
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.
   return (!instr->IsMultiOutputFusion() ||
-          absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
-            return user->opcode() == HloOpcode::kGetTupleElement;
-          }));
+          absl::c_all_of(instr->users(),
+                         HloPredicateIsOp<HloOpcode::kGetTupleElement>));
 }
 
 FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
@@ -283,12 +285,13 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
                                FusionInfoCache* fusion_info_cache,
                                const se::DeviceDescription& device_info) {
   if (reachability.IsConnected(&sibling_consumer_1, &sibling_consumer_2)) {
-    return {absl::StrCat(sibling_consumer_1.name(), " and ",
-                         sibling_consumer_2.name(), " are connected")};
+    return FusionDecision::Forbid(
+        absl::StrCat(sibling_consumer_1.name(), " and ",
+                     sibling_consumer_2.name(), " are connected"));
   }
 
   RETURN_IF_NOT_FUSIBLE(ShapesCompatibleForMultiOutputFusion(
-      sibling_consumer_1, sibling_consumer_2));
+      sibling_consumer_1, sibling_consumer_2, device_info));
 
   // Technically, this check is order-dependent (e.g. siblings A, B, C where
   // {A, B} and {B, C} overlap, but {A, C} do not. If the priority order is
@@ -302,7 +305,7 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
   // This check should be last, as it may be expensive.
   RETURN_IF_NOT_FUSIBLE(LegalToFuse(sibling_consumer_1, sibling_consumer_2,
                                     device_info, fusion_info_cache));
-  return {};
+  return FusionDecision::Allow();
 }
 
 }  // namespace
@@ -327,7 +330,9 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
   std::vector<HloInstruction*> siblings;
   // Only consider siblings that are fusion candidates.
   absl::c_copy_if(parent->users(), std::back_inserter(siblings),
-                  IsSiblingFusionCandidate);
+                  [&](const HloInstruction* instr) {
+                    return IsSiblingFusionCandidate(instr, device_info_);
+                  });
   // Sort the siblings such that multi-output fusion ops occur first, followed
   // by fusion ops, followed by unfused ops.
   absl::c_stable_sort(siblings,
@@ -380,7 +385,7 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
                                    "| inside multi-output fusion"),
                       /*producer=*/fused);
 
-      if (fused->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(fused)) {
         remaining->MergeFusionInstructionIntoMultiOutput(fused);
         if (fused->IsInputFusion()) {
           remaining->set_fusion_kind(HloInstruction::FusionKind::kInput);
@@ -407,20 +412,21 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
                                     /*per_second_rates=*/{},
+                                    /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
   TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
-  FusionInfoCache fusion_info_cache;
+  FusionInfoCache fusion_info_cache(device_info_);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
     auto* producer = *it;
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
-    if (producer->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(producer)) {
       VLOG(3) << producer->name() << " is a constant.";
       continue;
     }
@@ -455,14 +461,14 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
-    if (consumer_for_fusion->opcode() == HloOpcode::kFusion) {
+    if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
       input_fusion = consumer_for_fusion;
       VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
           consumer_for_fusion->shape(),
-          ChooseFusionKind(*producer, *consumer_for_fusion),
+          ChooseFusionKind(*producer, *consumer_for_fusion, device_info_),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
@@ -477,7 +483,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                  "| inside multi-output fusion"),
                     /*producer=*/producer);
 
-    if (producer->opcode() == HloOpcode::kFusion) {
+    if (HloPredicateIsOp<HloOpcode::kFusion>(producer)) {
       input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
     } else {
       input_fusion->FuseInstructionIntoMultiOutput(producer);

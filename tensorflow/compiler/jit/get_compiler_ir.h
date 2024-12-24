@@ -18,9 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -32,6 +35,8 @@ class TensorHandle;
 class EagerContext;
 
 enum class IrExportStage {
+  STABLEHLO,
+  STABLEHLO_SERIALIZED,
   HLO,
   HLO_NO_METADATA,
   HLO_SERIALIZED,

@@ -22,10 +22,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Converts thunk sequence to a command buffer cmd sequence. If `force_barrier`
-// is true we automatically insert barriers between all commands in a sequence.
-// Otherwise we use buffer usage aliasing to allow commands to run concurrently
-// and insert barriers only when needed for correctness.
+// Converts thunk sequence to a command buffer cmd sequence. If
+// `synchronization_mode` is kSerialize, we automatically insert barriers
+// between all commands in a sequence. Otherwise we use buffer usage aliasing to
+// allow commands to run concurrently and insert barriers only when needed for
+// correctness.
 absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence,
     CommandBufferCmdSequence::SynchronizationMode synchronization_mode);

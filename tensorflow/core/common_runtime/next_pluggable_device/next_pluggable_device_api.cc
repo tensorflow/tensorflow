@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 
-#include <string>
-
+#include "absl/status/statusor.h"
 #include "xla/tsl/c/tsl_status_internal.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
 #include "tsl/platform/errors.h"

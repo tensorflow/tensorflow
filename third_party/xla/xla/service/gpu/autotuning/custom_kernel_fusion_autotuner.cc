@@ -35,17 +35,18 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -96,13 +97,12 @@ absl::StatusOr<std::vector<std::tuple<int, absl::Duration>>> ProfileKernels(
                             *fusion_instruction, autotune_config, debug_options,
                             RedzoneBuffers::kAllInputs));
 
-    std::optional<ScopedShapedBuffer> reference_buffer;
-    std::optional<AutotunerCompileUtil::ProfilingOutput> profiling_output;
-    TF_ASSIGN_OR_RETURN(profiling_output, compile_util.ProfileExecutable(
-                                              executable->get(), stream,
-                                              rz_buffers.input_buffers(),
-                                              rz_buffers.input_shapes()));
-    results.push_back({i, profiling_output->duration});
+    TF_ASSIGN_OR_RETURN(
+        AutotunerCompileUtil::ProfilingOutput profiling_output,
+        compile_util.ProfileExecutable(executable->get(), stream,
+                                       rz_buffers.input_buffers(),
+                                       rz_buffers.input_shapes()));
+    results.push_back({i, profiling_output.duration});
   }
   return results;
 }
@@ -190,23 +190,50 @@ absl::StatusOr<bool> AutotuneCustomKernelFusion(
 
   return previous_kernel_index != fastest_kernel_index;
 }
+
+bool IsCustomFusion(const HloComputation* computation) {
+  if (!computation->IsFusionComputation()) {
+    return false;
+  }
+
+  HloInstruction* instruction = computation->FusionInstruction();
+  absl::StatusOr<GpuBackendConfig> gpu_backend_config =
+      instruction->backend_config<GpuBackendConfig>();
+  if (!gpu_backend_config.ok()) {
+    return false;
+  }
+
+  if (instruction->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+
+  if (!gpu_backend_config->has_fusion_backend_config()) {
+    return false;
+  }
+
+  return gpu_backend_config->fusion_backend_config().kind() ==
+         kCustomFusionKind;
+}
 }  // namespace
 
 absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (config_.IsDeviceless()) {
+    return false;
+  }
+
   const DebugOptions& debug_options = module->config().debug_options();
-  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> compile_util,
+  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
-  TF_RET_CHECK(compile_util.has_value());
 
   bool hlo_changed = false;
   for (const HloComputation* computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
+    if (IsCustomFusion(computation)) {
       TF_ASSIGN_OR_RETURN(
           bool instruction_changed,
           AutotuneCustomKernelFusion(computation->FusionInstruction(), config_,
-                                     compile_util.value(), debug_options));
+                                     compile_util, debug_options));
       if (instruction_changed) {
         hlo_changed = true;
       }

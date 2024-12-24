@@ -29,24 +29,36 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/tensor_array_side_effect_analysis.h"
@@ -58,10 +70,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
@@ -1863,8 +1880,8 @@ static void CreateTfExecutorToTfrtPipelineHelper(
 // If verbose logging is on, dump the output of each pass to a file directory,
 // set via env var TF_DUMP_GRAPH_PREFIX. e.g.:
 // export TF_DUMP_GRAPH_PREFIX=/tmp/mlir
-Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
-                                      const TfrtPipelineOptions &options) {
+absl::Status CreateTfExecutorToTfrtPipeline(
+    mlir::PassManager &pm, const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
@@ -1872,8 +1889,8 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
   return absl::OkStatus();
 }
 
-Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
-                                    const TfrtPipelineOptions &options) {
+absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
+                                          const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);

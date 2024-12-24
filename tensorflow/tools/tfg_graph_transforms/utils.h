@@ -36,10 +36,9 @@ namespace graph_transforms {
 // If the format of proto cannot be identified based on the file extension,
 // attempts to load in a binary format first and then in a text format.
 template <class T>
-tensorflow::Status ReadModelProto(const std::string& input_file,
-                                  T& model_proto) {
+absl::Status ReadModelProto(const std::string& input_file, T& model_proto) {
   // Proto might be either in binary or text format.
-  tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
+  absl::string_view extension = tensorflow::io::Extension(input_file);
   bool binary_extenstion = !extension.compare("pb");
   bool text_extension = !extension.compare("pbtxt");
 
@@ -76,8 +75,7 @@ tensorflow::Status ReadModelProto(const std::string& input_file,
 bool IsTextProto(const std::string& input_file);
 
 template <class T>
-tensorflow::Status SerializeProto(T model_proto,
-                                  const std::string& output_file) {
+absl::Status SerializeProto(T model_proto, const std::string& output_file) {
   auto output_dir = tensorflow::io::Dirname(output_file);
 
   TF_RETURN_IF_ERROR(tensorflow::Env::Default()->RecursivelyCreateDir(
@@ -97,11 +95,11 @@ tensorflow::Status SerializeProto(T model_proto,
 }
 
 // Read and write to the experimental SavedModel Image format.
-tensorflow::Status ReadSavedModelImageFormat(
-    const std::string& input_file, tensorflow::SavedModel& model_proto);
-tensorflow::Status WriteSavedModelImageFormat(
-    tensorflow::SavedModel* model_proto, const std::string& output_file,
-    int debug_max_size);
+absl::Status ReadSavedModelImageFormat(const std::string& input_file,
+                                       tensorflow::SavedModel& model_proto);
+absl::Status WriteSavedModelImageFormat(tensorflow::SavedModel* model_proto,
+                                        const std::string& output_file,
+                                        int debug_max_size);
 
 }  // namespace graph_transforms
 }  // namespace tfg

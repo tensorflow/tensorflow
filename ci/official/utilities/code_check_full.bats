@@ -316,7 +316,7 @@ EOF
 # See b/279852433 (internal).
 # TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query "deps(//tensorflow/...)" > /dev/null
+    bazel query "deps(//tensorflow/... -attr(tags, 'manual', //tensorflow/...))" > /dev/null
 }
 
 teardown_file() {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TEXT_LITERAL_WRITER_H_
 #define XLA_TEXT_LITERAL_WRITER_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/types.h"

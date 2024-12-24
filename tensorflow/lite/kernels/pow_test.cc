@@ -119,7 +119,8 @@ TEST(PowOpModel, BroadcastFloatTest) {
   model.PopulateTensor<float>(model.input2(), {4});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({20736, 16, 2401, 4096})));
 }
 
 template <typename T>

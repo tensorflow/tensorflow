@@ -28,12 +28,14 @@ Pod::Spec.new do |s|
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
     # TODO: Remove this after adding support for arm64 simulator.
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 
   s.default_subspec = 'Core'
@@ -53,7 +55,7 @@ Pod::Spec.new do |s|
     core.exclude_files = [
       objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',
     ]
-    core.dependency 'TensorFlowLiteC', "#{s.version}"
+    core.dependency "${C_POD_NAME}", "#{s.version}"
     core.dependency "#{s.name}/Privacy", "#{s.version}"
 
     core.test_spec 'Tests' do |ts|
@@ -72,8 +74,8 @@ Pod::Spec.new do |s|
       objc_dir + '{apis,sources}/TFLCoreMLDelegate.{h,m}',
     ]
     coreml.ios.deployment_target = '12.0'
-    coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
-    coreml.dependency 'TensorFlowLiteObjC/Core', "#{s.version}"
+    coreml.dependency "${C_POD_NAME}/CoreML", "#{s.version}"
+    coreml.dependency "#{s.name}/Core", "#{s.version}"
     coreml.dependency "#{s.name}/Privacy", "#{s.version}"
 
     coreml.test_spec 'Tests' do |ts|
@@ -88,8 +90,8 @@ Pod::Spec.new do |s|
     metal.source_files = [
       objc_dir + '{apis,sources}/TFLMetalDelegate.{h,m}',
     ]
-    metal.dependency 'TensorFlowLiteC/Metal', "#{s.version}"
-    metal.dependency 'TensorFlowLiteObjC/Core', "#{s.version}"
+    metal.dependency "${C_POD_NAME}/Metal", "#{s.version}"
+    metal.dependency "#{s.name}/Core", "#{s.version}"
     metal.dependency "#{s.name}/Privacy", "#{s.version}"
 
     metal.test_spec 'Tests' do |ts|

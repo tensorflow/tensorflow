@@ -21,10 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
@@ -36,10 +37,10 @@ limitations under the License.
 namespace xla::gpu {
 
 NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloCollectiveBroadcastInstruction* instr, std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
+    std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclCollectiveBroadcastStart, thunk_info,
-                          nccl_api, IsSyncCollective(instr)),
+                          IsSyncCollective(instr)),
       config_(GetNcclCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 
@@ -57,29 +58,29 @@ NcclCollectiveBroadcastStartThunk::GetGroupMode(
 
 absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  return ::xla::gpu::RunCollectiveBroadcast(
-      device_buffers, stream, comm_wrapper.comm_handle, nccl_api());
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
+                                            comm_handle.comm, collectives);
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream,
-                                    NcclApi::NcclCommHandle comm,
-                                    NcclApi* nccl_api) {
-  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+                                    se::Stream& stream, Communicator* comm,
+                                    GpuCollectives* collectives) {
+  TF_RETURN_IF_ERROR(collectives->GroupStart());
   for (auto buffer : buffers) {
     se::DeviceMemoryBase src_addr = buffer.source_buffer;
     se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
-    TF_RETURN_IF_ERROR(nccl_api->Broadcast(
+    TF_RETURN_IF_ERROR(comm->Broadcast(
         // Always use rank 0 since we always broadcast from the first id in
         // replica_groups
-        src_addr, dest_addr, buffer.element_type, buffer.element_count, 0, comm,
-        &stream));
+        src_addr, dest_addr, buffer.element_type, buffer.element_count, 0,
+        GpuCollectives::On(stream)));
   }
-  return nccl_api->GroupEnd();
+  return collectives->GroupEnd();
 }
 
 }  // namespace xla::gpu

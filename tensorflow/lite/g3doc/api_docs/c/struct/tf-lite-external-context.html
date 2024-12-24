@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteExternalContext Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteExternalContext</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>An external context is a collection of information unrelated to the TF Lite framework, but useful to a subset of the ops. </p>
+  <h2>Summary</h2>
+  <p>TF Lite knows very little about the actual contexts, but it keeps a list of them, and is able to refresh them if configurations like the number of recommended threads change. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_external_context_1ab74f92fa424495126f964a409d0bba10">Refresh</a>)(struct TfLiteContext *context)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_external_context_1a22bbe8229d57cd397e4ef3f8b9a03e61">type</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1ga6d1d3582ab46e837f9f108839232dc03">TfLiteExternalContextType</a></code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_external_context_1ab74f92fa424495126f964a409d0bba10">
+    <h3>Refresh</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteExternalContext::Refresh)(struct TfLiteContext *context)</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_external_context_1a22bbe8229d57cd397e4ef3f8b9a03e61">
+    <h3>type</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1ga6d1d3582ab46e837f9f108839232dc03">TfLiteExternalContextType</a> TfLiteExternalContext::type</pre>
+    <div />
+  </div>
+</body>
+</html>

@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>

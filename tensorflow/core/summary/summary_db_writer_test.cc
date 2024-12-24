@@ -14,16 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_db_writer.h"
 
-#include "tensorflow/core/summary/schema.h"
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <utility>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/summary/schema.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -65,7 +74,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   int64_t QueryInt(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return -1;
@@ -76,7 +85,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   double QueryDouble(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return -1;
@@ -87,7 +96,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   string QueryString(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return "MISSINGNO";

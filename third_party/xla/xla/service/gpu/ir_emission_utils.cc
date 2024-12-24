@@ -50,10 +50,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -82,13 +82,6 @@ bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 1;
 }
 
-bool IsMlirTransposeEmitterEnabled(const HloInstruction& hlo) {
-  return hlo.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_mlir_emitter_level() >= 3;
-}
-
 }  // namespace
 
 bool IsMatrixMultiplication(const HloInstruction& dot) {
@@ -101,7 +94,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
+       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F8E4M3FNUZ ||
        output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
        output_primitive_type == BF16 || output_primitive_type == F32 ||
@@ -213,152 +207,7 @@ bool IsContiguousSlice(const HloInstruction& instr) {
   return false;
 }
 
-// Helper function to emit call to AMDGPU shfl_down function.
-llvm::Value* EmitAMDGPUShflDown(llvm::Value* value, llvm::Value* offset,
-                                llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  auto* i32_ty = b->getInt32Ty();
-  llvm::FunctionCallee shfl_fn = module->getOrInsertFunction(
-      llvm_ir::AsStringRef("__ockl_readuplane_i32"),
-      llvm::FunctionType::get(/*Result=*/i32_ty, {i32_ty, i32_ty},
-                              /*isVarArg=*/false));
-  // AMDGPU device function requires first argument as i32.
-  llvm::Value* result =
-      b->CreateCall(shfl_fn, {b->CreateBitCast(value, i32_ty), offset});
-  // AMDGPU device function always returns an i32 type.
-  return b->CreateBitCast(result, value->getType());
-}
-
-llvm::Value* EmitAMDGPUShflDownSwizzle(llvm::Value* value, llvm::Value* offset,
-                                       llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  auto* i32_ty = b->getInt32Ty();
-
-  llvm::Function* intrinsic = llvm::cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(
-              "llvm.amdgcn.ds.swizzle",
-              llvm::FunctionType::get(/*Result=*/i32_ty, {i32_ty, i32_ty},
-                                      /*isVarArg=*/false))
-          .getCallee());
-
-  // Ensure that the first argument to the AMDGPU intrinsic is i32.
-  llvm::Value* bitcast_value = b->CreateBitCast(value, i32_ty);
-
-  // Calculate the control value for the swizzle operation.
-  llvm::Value* control_value =
-      b->CreateAdd(b->CreateMul(offset, b->getInt32(0x20)), b->getInt32(0x1f));
-
-  // Create the call to the intrinsic function.
-  llvm::Value* result =
-      b->CreateCall(intrinsic, {bitcast_value, control_value});
-
-  // Bitcast the result back to the original type of the input value.
-  return b->CreateBitCast(result, value->getType());
-}
-
-// Helper function to emit call to NVPTX shfl_down intrinsic.
-llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
-                               llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::Intrinsic::ID llvm_intrinsic_id;
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  if (value->getType()->isFloatTy()) {
-    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_f32;
-  } else {
-    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_i32;
-  }
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, llvm_intrinsic_id, {});
-  return b->CreateCall(
-      intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
-}
-
-// Helper function to emit call to SPIR shfl_down intrinsic.
-llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
-                              llvm::IRBuilder<>* b) {
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  if (value->getType()->isFloatTy()) {
-    return EmitDeviceFunctionCall(
-        "_Z34__spirv_GroupNonUniformShuffleDownffj",
-        {b->getInt32(3), value, offset}, {U32, F32, U32}, F32,
-        llvm::AttrBuilder(b->getContext())
-            .addAttribute(llvm::Attribute::NoUnwind)
-            .addAttribute(llvm::Attribute::Convergent),
-        b);
-  } else {
-    return EmitDeviceFunctionCall(
-        "_Z34__spirv_GroupNonUniformShuffleDownjjj",
-        {b->getInt32(3), value, offset}, {U32, U32, U32}, U32,
-        llvm::AttrBuilder(b->getContext())
-            .addAttribute(llvm::Attribute::NoUnwind)
-            .addAttribute(llvm::Attribute::Convergent),
-        b);
-  }
-}
-
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
-    const se::DeviceDescription& gpu_device_info) {
-  int bit_width = value->getType()->getPrimitiveSizeInBits();
-  llvm::Module* module = builder->GetInsertBlock()->getModule();
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-
-  // Special case for efficiency
-  if (value->getType()->isFloatTy() && bit_width == 32) {
-    if (target_triple.isNVPTX()) {
-      return EmitNVPTXShflDown(value, offset, builder);
-    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-      if (gpu_device_info.rocm_compute_capability().gfx9_mi100_or_later()) {
-        return EmitAMDGPUShflDownSwizzle(value, offset, builder);
-      }
-      return EmitAMDGPUShflDown(value, offset, builder);
-    } else if (target_triple.isSPIR()) {
-      return EmitSPIRShflDown(value, offset, builder);
-    } else {
-      LOG(FATAL) << "Invalid triple " << target_triple.str();
-    }
-  }
-
-  // We must split values wider than 32 bits as the "shfl" instruction operates
-  // on 32-bit values.
-  int num_segments = CeilOfRatio(bit_width, 32);
-  llvm::Value* x = builder->CreateBitCast(
-      builder->CreateZExt(
-          builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
-          builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
-  for (int i = 0; i < num_segments; ++i) {
-    llvm::Value* insert_val;
-    if (target_triple.isNVPTX()) {
-      insert_val = EmitNVPTXShflDown(builder->CreateExtractElement(x, i),
-                                     offset, builder);
-    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-      if (gpu_device_info.rocm_compute_capability().gfx9_mi100_or_later()) {
-        insert_val = EmitAMDGPUShflDownSwizzle(
-            builder->CreateExtractElement(x, i), offset, builder);
-      } else {
-        insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
-                                        offset, builder);
-      }
-    } else if (target_triple.isSPIR()) {
-      insert_val = EmitSPIRShflDown(builder->CreateExtractElement(x, i), offset,
-                                    builder);
-    } else {
-      LOG(FATAL) << "Invalid triple " << target_triple.str();
-    }
-    x = builder->CreateInsertElement(x, insert_val, i);
-  }
-  return builder->CreateBitCast(
-      builder->CreateTrunc(
-          builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
-          builder->getIntNTy(bit_width)),
-      value->getType());
-}
-
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
   llvm::Value* is_thread0 = b->CreateICmpEQ(
       b->getInt32(0),
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
@@ -498,6 +347,9 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
               user_start_indices != dus_start_indices) {
             return false;
           }
+        } else if (user != dus &&
+                   user.opcode() == HloOpcode::kDynamicUpdateSlice) {
+          return false;
         } else if (user != dus && !user.instruction().IsElementwise() &&
                    user.opcode() != HloOpcode::kBitcast &&
                    user.opcode() != HloOpcode::kTuple) {
@@ -557,36 +409,24 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
-      permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
-    if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled) ||
-        (dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-         dimensions.back() * operand_most_minor_dim >=
-             kMinTotalDimensionsToTransposeTiled)) {
+  if (permutation.back() == dimensions.size() - 1) {
+    operand_most_minor_dim =
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+    auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
+    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
+        byte_width * dimensions.back() *
+                std::min(operand_most_minor_dim,
+                         dimensions[dimensions.size() - 2]) >=
+            kMinDimensionToTransposeTiled) {
       return TransposeDescription{&hero, dimensions, permutation};
     }
-  } else if (IsMlirTransposeEmitterEnabled(hero)) {
-    if (permutation.back() == dimensions.size() - 1) {
-      operand_most_minor_dim =
-          hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-      auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
-      if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-          byte_width * dimensions.back() *
-                  std::min(operand_most_minor_dim,
-                           dimensions[dimensions.size() - 2]) >=
-              kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&hero, dimensions, permutation};
-      }
-    } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-                dimensions.back() >= kMinDimensionToTransposeTiled) ||
-               (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-                dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-                operand_most_minor_dim * dimensions.back() >=
-                    kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&hero, dimensions, permutation};
-    }
+  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
+              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * dimensions.back() >=
+                  kMinTotalDimensionsToTransposeTiled)) {
+    return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
 }
@@ -714,7 +554,7 @@ void VerifyModule(const llvm::Module& module) {
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b) {
+                                  int64_t launch_size, llvm::IRBuilderBase* b) {
   // Find the unnested hlo instruction for which the kernel is generated for.
   const HloInstruction* unnested_hlo = hlo;
   const HloComputation* computation = hlo->parent();
@@ -764,14 +604,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
   }
 
   return b->getInt32Ty();
-}
-
-bool IsAMDGPU(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isAMDGPU();
-}
-
-bool IsSPIR(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isSPIR();
 }
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(

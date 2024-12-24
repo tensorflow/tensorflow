@@ -351,7 +351,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
   return "<Unknown AttrValue type>";  // Prevent missing return warning
 }
 
-Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
+absl::Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   int num_set = 0;
 
 #define VALIDATE_FIELD(name, type_string, oneof_case)                         \

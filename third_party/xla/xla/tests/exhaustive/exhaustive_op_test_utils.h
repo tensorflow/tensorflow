@@ -19,11 +19,10 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iomanip>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -34,43 +33,246 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"
-#include "xla/bit_cast.h"
-#include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
-#include "xla/executable_run_options.h"
-#include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/shaped_buffer.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tsl/util/command_line_flags.h"
+#include "xla/tests/exhaustive/error_spec.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace exhaustive_op_test {
 
-// Access this through GetEupVersion.
-extern int eup_version;
+// The primitive type used to compute the reference output.
+constexpr PrimitiveType Ref(PrimitiveType T) {
+  return (!primitive_util::IsFloatingPointType(T) || T == F64) ? T : F32;
+}
 
-// Get the TPU EUP version (if it was provided).
-int GetEupVersion();
+// The primitive type of the component of T. If T is not complex, then
+// ComponentT = T.
+constexpr PrimitiveType Component(PrimitiveType T) {
+  return primitive_util::IsComplexType(T)
+             ? primitive_util::ComplexComponentType(T)
+             : T;
+}
 
-// Return if the user specified dumping all tested values with their expected
-// and actual results.
-bool ShouldDumpValues();
+// Associates constants and types with a PrimitiveType (T) and number of test
+// arguments (N) for the exhaustive test infrastructure.
+template <PrimitiveType T, size_t N>
+class ExhaustiveOpTestTraits {
+ public:
+  static constexpr PrimitiveType kT = T;
+  static constexpr size_t kN = N;
 
-void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
+  static constexpr bool kIsComplex = primitive_util::IsComplexType(T);
+  static constexpr PrimitiveType kRef = Ref(T);
+
+  static constexpr PrimitiveType kComponent = Component(T);
+  static constexpr PrimitiveType kComponentRef = Component(kRef);
+  // The PrimitiveType of the associated unsigned integer to use T with
+  // bitcasting.
+  static constexpr PrimitiveType kComponentIntegral =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(kComponent));
+  static constexpr PrimitiveType kComponentIntegralRef =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(kComponentRef));
+
+  using NativeT = primitive_util::NativeTypeOf<T>;
+  using NativeRefT = primitive_util::NativeTypeOf<kRef>;
+  using ComponentNativeT = primitive_util::NativeTypeOf<kComponent>;
+  using ComponentNativeRefT = primitive_util::NativeTypeOf<kComponentRef>;
+  using ComponentIntegralNativeT =
+      primitive_util::NativeTypeOf<kComponentIntegral>;
+  using ComponentIntegralNativeRefT =
+      primitive_util::NativeTypeOf<kComponentIntegralRef>;
+
+  using NativeInputs = std::array<NativeT, N>;
+  // N spans corresponding to the list of literal data values.
+  using NativeListInputs = std::array<absl::Span<const NativeT>, N>;
+  using NativeRefInputs = std::array<NativeRefT, N>;
+  using LiteralInputs = std::array<Literal, N>;
+  using XlaInputs = std::array<XlaOp, N>;
+
+  using EnqueueOp = std::conditional_t<
+      N == 1, std::function<XlaOp(XlaOp)>,
+      std::conditional_t<N == 2, std::function<XlaOp(XlaOp, XlaOp)>,
+                         std::enable_if_t<N == 1 || N == 2, void>>>;
+  using EvaluateOp = std::conditional_t<
+      N == 1, NativeRefT (*)(NativeRefT),
+      std::conditional_t<N == 2, NativeRefT (*)(NativeRefT, NativeRefT),
+                         std::enable_if_t<N == 1 || N == 2, void>>>;
+  using OutputRangeCheck = std::function<bool(NativeInputs, NativeT)>;
+
+  using ErrorSpecGen = std::conditional_t<
+      N == 1, std::function<ErrorSpec(NativeT)>,
+      std::conditional_t<N == 2, std::function<ErrorSpec(NativeT, NativeT)>,
+                         std::enable_if_t<N == 1 || N == 2, void>>>;
+  using ErrorSpecGenFnPtr = std::conditional_t<
+      N == 1, ErrorSpec (*)(NativeT),
+      std::conditional_t<N == 2, ErrorSpec (*)(NativeT, NativeT),
+                         std::enable_if_t<N == 1 || N == 2, void>>>;
+
+  // Returns an ErrorSpecGen that sets no error tolerances.
+  //
+  // The intention of this default is to force test writers to tighten bounds at
+  // least somewhat and not rely on overly large default tolerances.
+  static ErrorSpecGen FallbackErrorSpecGen();
+};
+
+template <PrimitiveType T, size_t N>
+ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestTraits<T, N>::NativeT);
+
+template <PrimitiveType T, size_t N>
+ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestTraits<T, N>::NativeT,
+                               typename ExhaustiveOpTestTraits<T, N>::NativeT);
+
+// The following two constants set the default absolute and relative error
+// tolerance in units of the smallest normalized value and the relative accuracy
+// of the format, respectively. Notice that setting an absolute tolerance above
+// the value of the smallest normalized float means that we effectively ignore
+// relative errors in values at or below the subnormal boundary (e.g. for values
+// less than ~1e-38 for FP32).
+static constexpr float kDefaultAbsoluteToleranceSlackFactor = 2;
+static constexpr float kDefaultRelativeToleranceSlackFactor = 20;
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<C128, 1>(xla::complex128) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<double>::min();  // NOLINT
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<C64, 1>(xla::complex64) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<float>::min();  // NOLINT
+  double rtol = 40 * std::numeric_limits<float>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F64, 1>(double) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<double>::min();  // NOLINT
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F32, 1>(float) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<float>::min();  // NOLINT
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<float>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F16, 1>(xla::half) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<Eigen::half>::min();  // NOLINT
+  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<BF16, 1>(xla::bfloat16) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<bfloat16>::min();  // NOLINT
+  // epsilon for BF16 is quite large, so a slack factor of 2 suffices.
+  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E4M3FN, 1>(tsl::float8_e4m3fn) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E5M2, 1>(tsl::float8_e5m2) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<double>::min();  // NOLINT
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F32, 2>(float, float) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<float>::min();  // NOLINT
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<float>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F16, 2>(xla::half, xla::half) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<Eigen::half>::min();  // NOLINT
+  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<bfloat16>::min();  // NOLINT
+  // epsilon for BF16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
+  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E4M3FN, 2>(tsl::float8_e4m3fn,
+                                                   tsl::float8_e4m3fn) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E5M2, 2>(tsl::float8_e5m2,
+                                                 tsl::float8_e5m2) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <PrimitiveType T, size_t N>
+typename ExhaustiveOpTestTraits<T, N>::ErrorSpecGen GetDefaultSpecGenerator() {
+  // Select overload by casting to fn ptr type.
+  return static_cast<typename ExhaustiveOpTestTraits<T, N>::ErrorSpecGenFnPtr>(
+      DefaultSpecGenerator<T, N>);
+}
+
+template <typename Traits>
+typename Traits::ErrorSpecGen PickFirstErrorSpecGenPresent(
+    std::initializer_list<typename Traits::ErrorSpecGen> error_specs) {
+  typename Traits::ErrorSpecGen ret = Traits::FallbackErrorSpecGen();
+  for (auto it = error_specs.begin(); it != error_specs.end(); it++) {
+    // Check if the ErrorSpecGen is nullptr to indicate it is not set. Replace
+    // ret with the first non-nullptr ErrorSpecGen.
+    if (*it != nullptr) {
+      ret = *it;
+      break;
+    }
+  }
+  return ret;
+}
 
 // Determines if the real component of the complex number is subnormal (either
 // sign).
@@ -129,7 +331,7 @@ bool IsMinNormal(NativeT value) {
                 std::is_same_v<NativeT, xla::complex128>) {
     return IsMinNormalReal(value) || IsMinNormalImaginary(value);
   } else {
-    return std::abs(value) == std::numeric_limits<NativeT>::min();
+    return std::abs(value) == std::numeric_limits<NativeT>::min();  // NOLINT
   }
 }
 
@@ -142,595 +344,6 @@ template <typename NativeT>
 bool IsSubnormalOrMinNormal(NativeT value) {
   return IsSubnormal(value) || IsMinNormal(value);
 }
-
-// Get the floating point distance (number of floating point values between)
-// expected and actual.
-//
-// This is a wrapper around xla::CalculateDistanceInFloats for most types. For
-// complex types, this returns the maximum distance between the real and
-// imaginary components.
-template <typename NativeT>
-int64_t GetDistanceErr(NativeT expected, NativeT actual) {
-  if constexpr (std::is_same_v<NativeT, xla::complex64> ||
-                std::is_same_v<NativeT, xla::complex128>) {
-    return std::max(
-        CalculateDistanceInFloats(expected.real(), actual.real()),
-        CalculateDistanceInFloats(expected.imag(), expected.imag()));
-  } else {
-    return CalculateDistanceInFloats(expected, actual);
-  }
-}
-
-class ErrorSpecBuilder;
-
-struct ErrorSpec {
-  using Builder = ErrorSpecBuilder;
-
-  double abs_err = 0.0;
-  double rel_err = 0.0;
-  // The acceptable amount of floating point values between the expected and
-  // actual (also calling floating point distance).
-  //
-  // This is similar to absolute error, but the same distance_err can have
-  // different floating point values as the exponent changes. In some way, it is
-  // a hybrid of absolute and relative error, as it allows a fixed binary
-  // difference (like abs_err), but that has a varied floating point value based
-  // on the number (like rel_err).
-  int64_t distance_err = 0;
-  // If true, will consider -0 not near to +0 and vice versa.  Note that
-  // +epsilon may still be considered close to -0, depending on the error
-  // spec; this only covers the case when both `expected` and `actual` are
-  // equal to 0.
-  bool strict_signed_zeros = false;
-  // If true, this will skip comparing the output of the test to the expected
-  // value. This should be used only as a last resort, since it is effectively
-  // turning off the test for a specific input value set.
-  bool skip_comparison = false;
-};
-
-// Builder pattern to construct an ErrorSpec without a proliferation of
-// constructors or requiring extensive argument name comments.
-//
-// You can use an lvalue or rvalue to call the setter functions, but you can
-// only build (explicitly or implicitly) using an rvalue from std::move.
-class ErrorSpecBuilder {
- public:
-  ErrorSpecBuilder() : spec_() {}
-
-  ErrorSpecBuilder& abs_err(double abs_err) &;
-  ErrorSpecBuilder& rel_err(double rel_err) &;
-  ErrorSpecBuilder& distance_err(int64_t distance_err) &;
-  ErrorSpecBuilder& strict_signed_zeros(bool strict_signed_zeros = true) &;
-  ErrorSpecBuilder& skip_comparison(bool skip_comparison = true) &;
-
-  ErrorSpecBuilder&& abs_err(double abs_err) &&;
-  ErrorSpecBuilder&& rel_err(double rel_err) &&;
-  ErrorSpecBuilder&& distance_err(int64_t distance_err) &&;
-  ErrorSpecBuilder&& strict_signed_zeros(bool strict_signed_zeros = true) &&;
-  ErrorSpecBuilder&& skip_comparison(bool skip_comparison = true) &&;
-
-  ErrorSpec build() &&;
-
-  explicit operator ErrorSpec() &&;
-
- private:
-  ErrorSpec spec_;
-};
-
-// Representations of the reference function passed in by the user.
-template <typename NativeRefT, size_t K>
-struct EvaluateOpWrapper {};
-template <typename NativeRefT>
-struct EvaluateOpWrapper<NativeRefT, 1> {
-  using type = NativeRefT (*)(NativeRefT);
-};
-template <typename NativeRefT>
-struct EvaluateOpWrapper<NativeRefT, 2> {
-  using type = NativeRefT (*)(NativeRefT, NativeRefT);
-};
-
-// Representations of the reference function passed in by the user.
-template <typename XlaInputs, size_t K>
-struct EnqueueOpWrapper {};
-template <typename XlaInputs>
-struct EnqueueOpWrapper<XlaInputs, 1> {
-  using type = std::function<XlaOp(XlaOp)>;
-  static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
-    return ty(inputs[0]);
-  }
-};
-template <typename XlaInputs>
-struct EnqueueOpWrapper<XlaInputs, 2> {
-  using type = std::function<XlaOp(XlaOp, XlaOp)>;
-  static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
-    return ty(inputs[0], inputs[1]);
-  }
-};
-
-// Representations of the ErrorSpecGen function passed in by the user.
-template <PrimitiveType T, size_t K>
-struct ErrorSpecGenWrapper {};
-template <PrimitiveType T>
-struct ErrorSpecGenWrapper<T, 1> {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
-  using type = ErrorSpec (*)(NativeT);
-};
-template <PrimitiveType T>
-struct ErrorSpecGenWrapper<T, 2> {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
-  using type = ErrorSpec (*)(NativeT, NativeT);
-};
-
-template <PrimitiveType T, size_t N>
-typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator();
-
-// The primitive type used to compute the reference output.
-constexpr PrimitiveType Ref(PrimitiveType T) {
-  return !primitive_util::IsFloatingPointType(T) || T == F64 ? T : F32;
-}
-
-// The primitive type of the component of T. If T is not complex, then
-// ComponentT = T.
-constexpr PrimitiveType Component(PrimitiveType T) {
-  return primitive_util::IsComplexType(T)
-             ? primitive_util::ComplexComponentType(T)
-             : T;
-}
-
-// T: The primitive type being tested.
-// N: The number of operands that the function being tested takes.
-template <PrimitiveType T, size_t N>
-class ExhaustiveOpTestBase : public ClientLibraryTestBase {
- public:
-  // Definitions depending on the primitive type T.
-  static constexpr bool kIsComplex = primitive_util::IsComplexType(T);
-  static constexpr PrimitiveType kComponent = Component(T);
-  static constexpr PrimitiveType kRef = Ref(T);
-  // Same as kComponent, but for the kRef primitive type.
-  static constexpr PrimitiveType kComponentRef = Component(kRef);
-
-  // The primitive type of an unsigned integer that can be bitcasted to and
-  // from ComponentT.
-  static constexpr PrimitiveType kComponentIntegral =
-      primitive_util::UnsignedIntegralTypeForBitWidth(
-          primitive_util::BitWidth(kComponent));
-
-  // Native types that correspond to the primitive types above.
-  using NativeT = primitive_util::NativeTypeOf<T>;
-  using NativeRefT = primitive_util::NativeTypeOf<kRef>;
-  using ComponentNativeT = primitive_util::NativeTypeOf<kComponent>;
-  using ComponentNativeRefT = primitive_util::NativeTypeOf<kComponentRef>;
-  using ComponentIntegralNativeT =
-      primitive_util::NativeTypeOf<kComponentIntegral>;
-
-  using InputLiterals = std::array<Literal, N>;
-
-  // N data items representing a single input to an XLA function.
-  using NativeInputs = std::array<NativeT, N>;
-
- private:
-  // N spans corresponding to the list of literal data values.
-  using NativeInputsList = std::array<absl::Span<const NativeT>, N>;
-
-  // N data items representing a single input to an interpreter backend
-  // function.
-  using NativeRefInputs = std::array<NativeRefT, N>;
-
-  // N data items representing a single input to an XLA function.
-  using XlaInputs = std::array<XlaOp, N>;
-
- public:
-  using ErrorSpecGen = typename ErrorSpecGenWrapper<T, N>::type;
-  using EvaluateOp = typename EvaluateOpWrapper<NativeRefT, N>::type;
-  using EnqueueOp = typename EnqueueOpWrapper<XlaInputs, N>::type;
-  using OutputRangeCheck = std::function<bool(NativeInputs, NativeT)>;
-
-  explicit ExhaustiveOpTestBase()
-      : ty_(T),
-        platform_(client_->platform()->Name()),
-        eup_version_(xla::exhaustive_op_test::GetEupVersion()),
-        should_dump_values_(xla::exhaustive_op_test::ShouldDumpValues()) {
-    SetFastMathDisabled(true);
-
-    // Run all HLO passes.  In particular, constant folding is disabled by
-    // default for tests, but we need to run it in order to tickle some bugs.
-    mutable_debug_options()->clear_xla_disable_hlo_passes();
-  }
-
-  // Enable debug logging for the invocation of the lambda.
-  //
-  // This is intended to be used to wrap a call to `Run`, which will then log
-  // extra debug information for a failure such as the calculated absolute,
-  // relative, and distance errors. In addition, in an effort to reduce output
-  // log size, this will trigger an ASSERT failure to early return from a test
-  // at the first failure.
-  template <typename Callable,
-            std::enable_if_t<std::is_invocable_r_v<void, Callable>, int> = 0>
-  void EnableDebugLoggingForScope(Callable&& work) {
-    should_emit_debug_logging_ = true;
-    work();
-    should_emit_debug_logging_ = false;
-  }
-
-  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
-           OutputRangeCheck check_valid_range = nullptr) {
-    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>(),
-        check_valid_range);
-  }
-
-  // A helper for implementing the Run method for exhaustive op tests. It
-  // constructs the HLO module, compiles and runs the module and checks the
-  // result.
-  //
-  // We use a function pointer for evaluate_op for performance because it is
-  // called each time an output element is compared inside a loop in routine
-  // ExpectNear.
-  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
-           ErrorSpecGen error_spec_gen,
-           OutputRangeCheck check_valid_range = nullptr) {
-    InputLiterals input_literals = CreateInputLiterals();
-    FillInput(&input_literals);
-
-    XlaBuilder builder(TestName());
-    XlaInputs xla_inputs;
-    for (int i = 0; i < N; ++i) {
-      xla_inputs[i] =
-          Parameter(&builder, i, input_literals[i].shape(), "input");
-    }
-    EnqueueOpWrapper<XlaInputs, N>::BuildFromInputs(xla_inputs, enqueue_op);
-
-    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
-    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                            RunComputationHelper(comp, input_literals));
-
-    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen,
-               check_valid_range);
-  }
-
-  absl::StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
-                                               const Literal& literal) {
-    return RunComputation(comp, {&literal});
-  }
-
-  absl::StatusOr<Literal> RunComputationHelper(
-      const XlaComputation& comp, const std::array<Literal, N>& literals) {
-    std::array<const Literal*, N> lit_ptrs;
-    for (int i = 0; i < N; ++i) {
-      lit_ptrs[i] = &literals[i];
-    }
-    return RunComputation(comp, lit_ptrs);
-  }
-
-  // We essentially reimplement LiteralTestUtil::Near here because
-  //  a) this streamlined implementation is much faster, and
-  //  b) we can print out better error messages (namely, we can print out
-  //     which floating-point value input failed, while LiteralTestUtil::Near
-  //     can only print out the input index that failed).
-  //  c) we need special handling of certain inputs.  For example, we say that
-  //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
-  //     and just needs to be close to one of them.
-  // check_valid_range can be used to provide a function that is called with
-  // the result to check whether it is in the expected range.
-  void ExpectNear(const InputLiterals& input_literals,
-                  const Literal& result_literal, EvaluateOp evaluate_op,
-                  ErrorSpecGen error_spec_gen,
-                  OutputRangeCheck check_valid_range = nullptr);
-
-  // Builds and runs the computation using the LocalClient API, rather than the
-  // plain Client API, which is used by ClientLibraryTestBase.  This is because
-  // the plain Client API results does more memcpys to/from Literals, and that's
-  // slow given that we're touching a lot of data here.
-  absl::StatusOr<Literal> RunComputation(
-      const XlaComputation& computation,
-      absl::Span<const Literal* const> input_literals) {
-    // Copy debug options from ClientLibraryTestBase.  In particular, we're
-    // interested in disabling constant folding.
-    ExecutableBuildOptions build_opts;
-    *build_opts.mutable_debug_options() = *mutable_debug_options();
-
-    std::vector<ScopedShapedBuffer> input_buffers;
-    absl::c_transform(input_literals, std::back_inserter(input_buffers),
-                      [&](const Literal* input_literal) {
-                        return client_
-                            ->LiteralToShapedBuffer(*input_literal,
-                                                    /*device_ordinal=*/0)
-                            .value();
-                      });
-    std::vector<const Shape*> input_shapes;
-    absl::c_transform(input_buffers, std::back_inserter(input_shapes),
-                      [&](const ScopedShapedBuffer& buffer) {
-                        return &buffer.on_device_shape();
-                      });
-
-    TF_ASSIGN_OR_RETURN(
-        auto executables,
-        client_->Compile(computation, input_shapes, build_opts));
-
-    std::vector<const ShapedBuffer*> input_buffer_pointers;
-    absl::c_transform(
-        input_buffers, std::back_inserter(input_buffer_pointers),
-        [&](const ScopedShapedBuffer& buffer) { return &buffer; });
-
-    ExecutableRunOptions run_opts;
-    run_opts.set_allocator(client_->backend().memory_allocator());
-    run_opts.set_intra_op_thread_pool(
-        client_->backend().eigen_intra_op_thread_pool_device());
-    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executables[0]->Run(input_buffer_pointers, run_opts));
-
-    TF_ASSIGN_OR_RETURN(Literal result_literal,
-                        client_->ShapedBufferToLiteral(result));
-    return std::move(result_literal);
-  }
-
-  const std::string& Platform() { return platform_; }
-
-  bool IsGpu(const std::string& platform) const { return platform == "CUDA"; }
-  bool IsCpu(const std::string& platform) const { return platform == "Host"; }
-  bool IsTpu(const std::string& platform) const {
-    return !IsGpu(platform) && !IsCpu(platform);
-  }
-
-  int EupVersion() const { return eup_version_; }
-  bool IsPreV5Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 2;
-  }
-  bool IsPreV6Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 3;
-  }
-
-  // Returns the number of elements in each input literal.
-  virtual int64_t GetInputSize() = 0;
-
-  // Fills the literals with values to test for.
-  virtual void FillInput(InputLiterals* literals) = 0;
-
-  // Replace infinites with max value to help compute errors.
-  static ComponentNativeRefT ReplaceInfWithMax(ComponentNativeRefT value) {
-    if (std::isinf(value)) {
-      return std::copysign(std::numeric_limits<ComponentNativeRefT>::max(),
-                           value);
-    }
-    return value;
-  }
-
-  // Returns true if both components are 0, but their sign bits differ.
-  static bool CheckSignedZeroError(ComponentNativeRefT expected,
-                                   ComponentNativeRefT actual) {
-    return expected == 0 && actual == 0 &&
-           std::signbit(expected) != std::signbit(actual);
-  }
-
-  // Sets the components to 0 if both are NaNs.
-  static void RemoveCorrespondingNaNs(ComponentNativeRefT* expected,
-                                      ComponentNativeRefT* actual) {
-    if (std::isnan(*expected) && std::isnan(*actual)) {
-      *expected = 0;
-      *actual = 0;
-    }
-  }
-
-  // The Implementation of the functions above, except for complex inputs.
-
-  static std::complex<ComponentNativeRefT> ReplaceInfWithMax(
-      std::complex<ComponentNativeRefT> value) {
-    value.real(ReplaceInfWithMax(value.real()));
-    value.imag(ReplaceInfWithMax(value.imag()));
-    return value;
-  }
-
-  static bool CheckSignedZeroError(std::complex<ComponentNativeRefT> expected,
-                                   std::complex<ComponentNativeRefT> actual) {
-    return CheckSignedZeroError(expected.real(), actual.real()) ||
-           CheckSignedZeroError(expected.imag(), actual.imag());
-  }
-
-  static void RemoveCorrespondingNaNs(
-      std::complex<ComponentNativeRefT>* expected,
-      std::complex<ComponentNativeRefT>* actual) {
-    ComponentNativeRefT expected_real = expected->real();
-    ComponentNativeRefT expected_imag = expected->imag();
-    ComponentNativeRefT actual_real = actual->real();
-    ComponentNativeRefT actual_imag = actual->imag();
-    RemoveCorrespondingNaNs(&expected_real, &actual_real);
-    RemoveCorrespondingNaNs(&expected_imag, &actual_imag);
-    expected->real(expected_real);
-    expected->imag(expected_imag);
-    actual->real(actual_real);
-    actual->imag(actual_imag);
-  }
-
-  // Returns a list of inputs that should be tested for closeness given some
-  // original input values.
-  //
-  // For denormal component inputs, we accept answers that are close to any of:
-  //
-  //   - evaluate_op(input)
-  //   - evaluate_op(+/-0), where the sign of 0 equal to the sign of
-  //     `input`,
-  //   - evaluate_op(+/-min_normal_float), where the sign of
-  //     min_normal_float matches `input`.
-  //   - if relaxed_denormal_signs_, evaluate_op(-/+0), where the sign of
-  //     0 is the opposite of `input`.
-  //
-  // (In particular, the XLA:CPU implementation of log flushes positive
-  // denormals to min-normal-float.  This seems kind of reasonable if our
-  // goal is to avoid infinities because they cause nans?)
-  std::vector<ComponentNativeRefT> GetTestValuesWithSubnormalSubstitutions(
-      ComponentNativeRefT value) {
-    std::vector<ComponentNativeRefT> test_values;
-    if (std::fpclassify(value) == FP_SUBNORMAL) {
-      test_values.reserve(relaxed_denormal_signs_ ? 3 : 2);
-      test_values.push_back(std::copysign(0, value));
-      test_values.push_back(std::copysign(
-          std::numeric_limits<ComponentNativeRefT>::min(), value));
-      if (relaxed_denormal_signs_) {
-        test_values.push_back(std::copysign(0, -value));
-      }
-    } else {
-      test_values.push_back(value);
-    }
-    return test_values;
-  }
-
-  // Similar to complex numbers, we only need to test the components that are
-  // subnormal. We can find the subnormal testing values for each component,
-  // then take the Cartesian product of each set of component values.
-  std::vector<std::complex<ComponentNativeRefT>>
-  GetTestValuesWithSubnormalSubstitutions(
-      std::complex<ComponentNativeRefT> value) {
-    using complex = std::complex<ComponentNativeRefT>;
-
-    auto real_values = GetTestValuesWithSubnormalSubstitutions(value.real());
-    auto imag_values = GetTestValuesWithSubnormalSubstitutions(value.imag());
-
-    std::vector<complex> test_values;
-    test_values.reserve(real_values.size() * imag_values.size());
-    for (auto real : real_values) {
-      for (auto imag : imag_values) {
-        test_values.push_back(complex(real, imag));
-      }
-    }
-
-    return test_values;
-  }
-
-  // The test values for an XLA function with N operands are the Cartesian
-  // product of the test values for each of the N operands.
-  std::vector<std::array<NativeRefT, N>>
-  GetTestValuesWithSubnormalSubstitutions(
-      const std::array<NativeRefT, N>& value) {
-    std::vector<std::array<NativeRefT, N>> test_values;
-
-    std::array<std::vector<NativeRefT>, N> component_test_values;
-    int total = 1;
-    for (int i = 0; i < N; ++i) {
-      component_test_values[i] =
-          GetTestValuesWithSubnormalSubstitutions(value[i]);
-      if (!component_test_values.empty()) {
-        total *= component_test_values[i].size();
-      }
-    }
-
-    // If total == 1, then value has no subnormal components, so we can just
-    // return a vector with value in it.
-    if (total == 1) {
-      test_values.push_back(value);
-      return test_values;
-    }
-
-    test_values.reserve(total);
-
-    // Perform a Cartesian product of the vectors in component_test_values.
-    // We can calculate this by uniquely mapping each integer from 0 to
-    // (total - 1) to a list of component indices. The function that maps an
-    // integer z to the index of component j is:
-    //    component_index(j) =  (i / NumValues(0, j-1)) % NumValues(j, j)
-    // and NumIndices(x, y) is the number of values in the Cartesian product of
-    // component_test_values[x], component_test_values[x+1], ...
-    // component_test_values[y].
-    for (int i = 0; i < total; ++i) {
-      int accumulated_num_values = 1;
-      std::array<NativeRefT, N> test_value;
-      for (int j = 0; j < N; ++j) {
-        int num_indices = component_test_values[j].size();
-        int component_index = (i / accumulated_num_values) % num_indices;
-        test_value[j] = component_test_values[j][component_index];
-        accumulated_num_values *= num_indices;
-      }
-      test_values.push_back(std::move(test_value));
-    }
-    return test_values;
-  }
-
-  InputLiterals CreateInputLiterals() {
-    InputLiterals literals;
-    for (int i = 0; i < N; ++i) {
-      literals[i] = LiteralUtil::CreateFromDimensions(T, {GetInputSize()});
-    }
-    return std::move(literals);
-  }
-
-  // Determines if two output values are sufficiently close to each other based
-  // on an error spec.
-  bool IsClose(NativeRefT expected, NativeRefT actual, ErrorSpec spec) {
-    // When two corresponding values are a NaN, they can be considered to have
-    // the same value, so the values are just set to 0.
-    RemoveCorrespondingNaNs(&expected, &actual);
-
-    if (spec.strict_signed_zeros) {
-      if (CheckSignedZeroError(expected, actual)) {
-        return false;
-      }
-    }
-
-    // Replace Inf with Max when calculating absolute or relative errors. This
-    // allows the test to pass when another value are close to Inf and the
-    // specified absolute or relative errors are not zero.
-    double abs_err =
-        std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
-    double rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
-    // N.B.: For sub-32-bit floats, NativeRefT is `float`, so ULP comparisons
-    // will be wildly off. We convert back to NativeT for this comparison.
-    int64_t distance_err = GetDistanceErr(NativeT(expected), NativeT(actual));
-
-    bool passed = abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
-                  distance_err <= spec.distance_err;
-    if (should_emit_debug_logging_ && !passed) {
-      LOG(INFO) << std::setprecision(
-                       std::numeric_limits<ComponentNativeT>::max_digits10)
-                << "actual: " << actual << "; expected: " << expected
-                << std::setprecision(std::numeric_limits<double>::max_digits10)
-                << "\n\tabs_err: " << abs_err
-                << "; spec.abs_err: " << spec.abs_err
-                << "\n\trel_err: " << rel_err
-                << "; spec.rel_err: " << spec.rel_err
-                << "\n\tdistance_err: " << distance_err
-                << "; spec.distance_err: " << spec.distance_err;
-    }
-    return passed;
-  }
-
-  // Converts part or all bits in an uint64_t to the value of the floating point
-  // data type being tested.
-  //
-  // When trying to exhaustive test for an operation of data type T, we always
-  // use an integral I with the same number of bits at T to exhaustive the input
-  // bit patterns for T. This bit pattern is zero extended and stored as
-  // uint64_t. This function is used to convert such a bit pattern stored as
-  // uint64_t to the input value for T.
-  static ComponentNativeT ConvertValue(uint64_t bits) {
-    using I = ComponentIntegralNativeT;
-    I used_bits = static_cast<I>(bits);
-    return BitCast<ComponentNativeT>(used_bits);
-  }
-
- protected:
-  // The primitive type being tested.
-  const PrimitiveType ty_;
-
-  // The platform under test.
-  const std::string platform_;
-
-  // Version of the EUP for a TPU target. Only relevant for TPU platforms.
-  const int eup_version_;
-
-  // If true, allows denormals to be flushed to non-sign-preserving 0.
-  //
-  // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
-  // a negative number) or -inf (flush the denormal to sign-preserving zero,
-  // then sqrt(-0)).  But with this as true, we'll also accept 0 (sqrt(0)).
-  //
-  // XLA:GPU preserves denormal signs, but other backends don't.
-  bool relaxed_denormal_signs_ = platform_ != "CUDA";
-
-  // Indicates if files of the expected and actual values should be dumped.
-  bool should_dump_values_ = false;
-
-  // Indicates if additional (potentially costly) logging should be emitted to
-  // ease with debugging.
-  bool should_emit_debug_logging_ = false;
-};
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,
 // the last bit chunk, and the spacing between two adjacent bit chunks, without
@@ -997,9 +610,7 @@ class FpValues {
   std::array<int, kTotalBitChunks + 1> offsets_;
 };
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 int GetMantissaTotalBits() {
   return std::numeric_limits<T>::digits - 1;
 }
@@ -1024,9 +635,7 @@ uint64_t GetAllOneExponent() {
   return (1ull << GetExponentTotalBits<T>()) - 1ull;
 }
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 FpValues GetFpValues(BitChunks mantissa, BitChunks exponent, BitChunks sign) {
   int total_bits = GetFpTotalBits<T>();
   return FpValues({mantissa, exponent, sign},
@@ -1139,7 +748,68 @@ std::vector<FpValues> CreateFpValuesForBoundaryTest() {
           GetNans<T>(1000)};
 }
 
-inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
+// Creates ranges for exhaustively testing T pairs, (T1, T2), where T1 and T2
+// both only range over the subnormal values for T.
+//
+// This is intended to be used for exhaustive binary tests where it is helpful
+// to only look at how subnormals interact for both parameters.
+//
+// Ranges are encoded as a tuple of `int64_t`. Each `int64_t` tuple element is a
+// packed pair of values equal to `(T1 << TotalBits(T)) | T2`. A range
+// `((T1,T2),(T3,T4))` will test all binary pairs between `(T1,T2)`, inclusive,
+// and `(T3,T4)`, exclusive.
+//
+// Any `T` supported by `std::numeric_limits<T>` is supported here.
+template <typename T>
+inline std::vector<std::pair<int64_t, int64_t>> CreateSubnormalStrictRanges() {
+  std::vector<std::pair<int64_t, int64_t>> ret;
+  // N.B.: Exclude 0.
+  int subnormal_count = (1ull << GetMantissaTotalBits<T>()) - 1;
+  // N.B.: subnormal_count / 2 is intended to provide mantissa spacing of 1.
+  for (auto subnormal :
+       GetSubnormals<T>((1ull << GetMantissaTotalBits<T>()) / 2)) {
+    // | 1 avoids selecting 0 as the first right value.
+    auto start = (subnormal << GetFpTotalBits<T>()) | 1;
+    auto end = start + subnormal_count;
+    ret.push_back({start, end});
+  }
+  return ret;
+}
+
+// Creates ranges for exhaustively testing T pairs, (T1, T2), where T1 only
+// ranges over the subnormal values for T and T2 ranges over all values.
+//
+// This is intended to be used for exhaustive binary tests where it is helpful
+// to only look at how subnormals interact for both parameters.
+//
+// Ranges are encoded as a tuple of `int64_t`. Each `int64_t` tuple element is a
+// packed pair of values equal to `(T1 << TotalBits(T)) | T2`. A range
+// `((T1,T2),(T3,T4))` will test all binary pairs between `(T1,T2)`, inclusive,
+// and `(T3,T4)`, exclusive.
+//
+// Any `T` supported by `std::numeric_limits<T>` is supported here.
+template <typename T>
+inline std::vector<std::pair<int64_t, int64_t>>
+CreateSubnormalExhaustiveRanges() {
+  std::vector<std::pair<int64_t, int64_t>> ret;
+  int entire_count = 1ull << GetFpTotalBits<T>();
+  // N.B.: subnormal_count / 2 is intended to provide mantissa spacing of 1.
+  for (auto subnormal :
+       GetSubnormals<T>((1ull << GetMantissaTotalBits<T>()) / 2)) {
+    auto start = subnormal << GetFpTotalBits<T>();
+    auto end = start + entire_count;
+    ret.push_back({start, end});
+  }
+  return ret;
+}
+
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveU16Ranges() {
+  // The entire U16 range is small enough that we don't need to do any
+  // partitioning.
+  return {{0, std::numeric_limits<uint16_t>::max()}};
+}
+
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveU32Ranges() {
   // We break up the 2^32-element space into small-ish chunks to keep peak
   // memory usage low.
   std::vector<std::pair<int64_t, int64_t>> result;
@@ -1148,116 +818,6 @@ inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
     result.push_back({i, i + step});
   }
   return result;
-}
-
-template <PrimitiveType T, size_t N>
-ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestBase<T, N>::NativeT);
-
-template <PrimitiveType T, size_t N>
-ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestBase<T, N>::NativeT,
-                               typename ExhaustiveOpTestBase<T, N>::NativeT);
-
-// The following two constants set the default absolute and relative error
-// tolerance in units of the smallest normalized value and the relative accuracy
-// of the format, respectively. Notice that setting an absolute tolerance above
-// the value of the smallest normalized float means that we effectively ignore
-// relative errors in values at or below the subnormal boundary (e.g. for values
-// less than ~1e-38 for FP32).
-static constexpr float kDefaultAbsoluteToleranceSlackFactor = 2;
-static constexpr float kDefaultRelativeToleranceSlackFactor = 20;
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<C128, 1>(complex128) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<double>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<C64, 1>(complex64) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
-  double rtol = 40 * std::numeric_limits<float>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F64, 1>(double) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<double>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F32, 1>(float) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<float>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F16, 1>(Eigen::half) {
-  double atol = kDefaultAbsoluteToleranceSlackFactor *
-                std::numeric_limits<Eigen::half>::min();
-  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
-  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<BF16, 1>(bfloat16) {
-  double atol = kDefaultAbsoluteToleranceSlackFactor *
-                std::numeric_limits<bfloat16>::min();
-  // epsilon for BF16 is quite large, so a slack factor of 2 suffices.
-  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<double>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F32, 2>(float, float) {
-  double atol =
-      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<float>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<F16, 2>(Eigen::half, Eigen::half) {
-  double atol = kDefaultAbsoluteToleranceSlackFactor *
-                std::numeric_limits<Eigen::half>::min();
-  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
-  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <>
-inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
-  double atol = kDefaultAbsoluteToleranceSlackFactor *
-                std::numeric_limits<bfloat16>::min();
-  // epsilon for BF16 is quite large, so a slack factor of 5 suffices.
-  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
-  return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
-}
-
-template <PrimitiveType T, size_t N>
-typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
-  return DefaultSpecGenerator<T, N>;
 }
 
 template <typename T>
@@ -1289,28 +849,10 @@ T ReferenceMin(T x, T y) {
 inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
     std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64_t>)>
         build_method) {
-  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
+  return [build_method](XlaOp src0, XlaOp src1) -> XlaOp {
     return build_method(src0, src1, {});
   };
 }
-
-template <PrimitiveType T>
-class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
- public:
-  using typename ExhaustiveOpTestBase<T, 1>::ErrorSpecGen;
-  static ErrorSpecGen GetDefaultSpecGenerator() {
-    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
-  }
-};
-
-template <PrimitiveType T>
-class ExhaustiveBinaryTest : public ExhaustiveOpTestBase<T, 2> {
- public:
-  using typename ExhaustiveOpTestBase<T, 2>::ErrorSpecGen;
-  static ErrorSpecGen GetDefaultSpecGenerator() {
-    return exhaustive_op_test::GetDefaultSpecGenerator<T, 2>();
-  }
-};
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

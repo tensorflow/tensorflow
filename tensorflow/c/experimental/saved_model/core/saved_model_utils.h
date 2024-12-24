@@ -46,25 +46,26 @@ namespace internal {
 // Load a TensorProto into a tensorflow::Constant. This is similar to the
 // constant loading logic in python:
 // https://github.com/tensorflow/tensorflow/blob/516608035f85cec8b126712b0ff8407220206b22/tensorflow/python/saved_model/load.py#L437
-Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
-                             const TensorProto& proto,
-                             std::unique_ptr<Constant>* output);
+absl::Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
+                                   const TensorProto& proto,
+                                   std::unique_ptr<Constant>* output);
 
 // Creates a tensorflow::Variable from a SavedVariable. This is similar to the
 // logic in:
 // https://github.com/tensorflow/tensorflow/blob/516608035f85cec8b126712b0ff8407220206b22/tensorflow/python/saved_model/load.py#L407
 // Note that the caller **must assign a value** to the loaded variable.
-Status LoadSavedVariable(ImmediateExecutionContext* ctx,
-                         const SavedVariable& variable,
-                         std::unique_ptr<Variable>* output);
+absl::Status LoadSavedVariable(ImmediateExecutionContext* ctx,
+                               const SavedVariable& variable,
+                               std::unique_ptr<Variable>* output);
 
-Status LoadSavedAsset(ImmediateExecutionContext* ctx, const SavedAsset& asset,
-                      const std::string& saved_model_dir,
-                      absl::Span<const AssetFileDef> assets,
-                      std::unique_ptr<Asset>* output);
+absl::Status LoadSavedAsset(ImmediateExecutionContext* ctx,
+                            const SavedAsset& asset,
+                            const std::string& saved_model_dir,
+                            absl::Span<const AssetFileDef> assets,
+                            std::unique_ptr<Asset>* output);
 
 // Creates a TFConcreteFunction from a SavedConcreteFunction.
-Status LoadTFConcreteFunction(
+absl::Status LoadTFConcreteFunction(
     const SavedConcreteFunction& saved_concrete_function,
     const FunctionDef* function_def,
     const std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>&
@@ -75,8 +76,9 @@ Status LoadTFConcreteFunction(
 // `signature`. `signature` must outlive flattened_specs. `signature` must also
 // be the input or output signature of a SavedConcreteFunction (i.e. "nested
 // structures of tensorspecs").
-Status FlattenSignature(const StructuredValue& signature,
-                        std::vector<const TensorSpecProto*>* flattened_specs);
+absl::Status FlattenSignature(
+    const StructuredValue& signature,
+    std::vector<const TensorSpecProto*>* flattened_specs);
 
 // Find the node id in `object_graph` at location `path`. `path` must be
 // a dot-delimited string of object names relative to the root object. If no
@@ -97,19 +99,19 @@ FunctionNameToFunctionDefMap(const FunctionDefLibrary& library);
 // Finds the "signatures" object in the object graph, and fills a mapping of
 // each signature's name to the corresponding function's node in the object
 // graph.
-Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
-                        gtl::FlatMap<std::string, int>* signatures_map);
+absl::Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
+                              gtl::FlatMap<std::string, int>* signatures_map);
 
 // Validates the `saved_function`.
-Status ValidateSingleConcreteFunction(const SavedFunction& saved_function);
+absl::Status ValidateSingleConcreteFunction(
+    const SavedFunction& saved_function);
 
 // Walks through the SavedObjectGraph in metagraph, and restores all nodes
 // (except "UserDefinedObjects") with their corresponding type in
 // "PartiallyRevivedObjects".
-Status PartiallyReviveSavedModelObjects(const MetaGraphDef& metagraph,
-                                        ImmediateExecutionContext* context,
-                                        const std::string& directory,
-                                        PartiallyRevivedObjects* objects);
+absl::Status PartiallyReviveSavedModelObjects(
+    const MetaGraphDef& metagraph, ImmediateExecutionContext* context,
+    const std::string& directory, PartiallyRevivedObjects* objects);
 
 }  // namespace internal
 }  // namespace tensorflow

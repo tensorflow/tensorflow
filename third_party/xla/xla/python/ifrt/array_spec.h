@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -36,7 +38,7 @@ namespace ifrt {
 struct ArraySpec {
   DType dtype;
   Shape shape;
-  std::shared_ptr<const Sharding> sharding;
+  absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
   // TODO(hyeontaek): Add `layout` once expressing the default layout can be
   // done in a symbolic manner.
 
@@ -47,7 +49,13 @@ struct ArraySpec {
   // Returns a `ArraySpecProto` representation.
   absl::StatusOr<ArraySpecProto> ToProto() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ArraySpec& array_spec) {
+    sink.Append(array_spec.DebugString());
+  }
 };
 
 }  // namespace ifrt

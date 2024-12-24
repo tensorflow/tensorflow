@@ -25,11 +25,11 @@ namespace tensorflow {
 
 class Tensor;
 
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, absl::Status* status);
 
-TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
+TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, absl::Status* status);
 
 namespace internal {
 

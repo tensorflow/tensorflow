@@ -17,7 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_ALL_REDUCE_PROMOTION_H_
 
 #include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/change_op_data_type.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

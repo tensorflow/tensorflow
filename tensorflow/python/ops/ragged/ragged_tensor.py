@@ -1487,7 +1487,7 @@ class RaggedTensor(
     tf.Tensor([1 2 3 4 5 6], shape=(6,), dtype=int32)
 
     To mimic the behavior of `np.flatten` (which flattens all dimensions), use
-    `rt.merge_dims(0, -1).  To mimic the behavior of `tf.layers.Flatten` (which
+    `rt.merge_dims(0, -1)`.  To mimic the behavior of `tf.layers.Flatten` (which
     flattens all dimensions except the outermost batch dimension), use
     `rt.merge_dims(1, -1)`.
 

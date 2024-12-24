@@ -101,12 +101,14 @@ void Log(const std::string& msg) {
 
 // Needs to be kept in sync with PrimitiveType in xla_data.proto.
 enum PrimitiveType {
+  S1,
   S2,
   S4,
   S8,
   S16,
   S32,
   S64,
+  U1,
   U2,
   U4,
   U8,
@@ -120,22 +122,23 @@ enum PrimitiveType {
   C64,
   C128,
   F8E5M2,
+  F8E4M3,
   F8E4M3FN,
   F8E4M3B11FNUZ,
   F8E5M2FNUZ,
   F8E4M3FNUZ,
+  F8E3M4,
 };
 
 const std::vector<std::string>& primitive_strings() {
-  static auto vec =
-      new std::vector<std::string>({"s2",         "s4",        "s8",
-                                    "s16",        "s32",       "s64",
-                                    "u2",         "u4",        "u8",
-                                    "u16",        "u32",       "u64",
-                                    "f16",        "bf16",      "f32",
-                                    "f64",        "c64",       "c128",
-                                    "f8e5m2",     "f8e4m3fn",  "f8e4m3b11fnuz",
-                                    "f8e5m2fnuz", "f8e4m3fnuz"});
+  static auto vec = new std::vector<std::string>(
+      {"s1",         "s2",         "s4",       "s8",
+       "s16",        "s32",        "s64",      "u1",
+       "u2",         "u4",         "u8",       "u16",
+       "u32",        "u64",        "f16",      "bf16",
+       "f32",        "f64",        "c64",      "c128",
+       "f8e5m2",     "f8e4m3",     "f8e4m3fn", "f8e4m3b11fnuz",
+       "f8e5m2fnuz", "f8e4m3fnuz", "f8e3m4"});
   return *vec;
 }
 
@@ -413,14 +416,18 @@ void Fill(void* buffer, const ArrayShape& shape) {
       return FillFloatT<double>(buffer, num_elements);
 
     case F8E5M2:
+    case F8E4M3:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E3M4:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S1:
+    case U1:
     case S2:
     case U2:
     case S4:
@@ -469,14 +476,18 @@ void Display(const void* buffer, const ArrayShape& shape) {
       return DisplayT<double>(buffer, num_elements);
 
     case F8E5M2:
+    case F8E4M3:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E3M4:
     case F16:
     case BF16:
     case C64:
     case C128:
+    case S1:
+    case U1:
     case S2:
     case U2:
     case S4:

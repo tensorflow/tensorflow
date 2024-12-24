@@ -16,26 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONVERT_OPERAND_FOLDING_H_
 #define XLA_SERVICE_CONVERT_OPERAND_FOLDING_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// Folds Convert operands to wider types into instructions that supports wider
-// result accumulation than the shape inference type.
-//
-// e.g. s32 hlo(s32 convert(s8), s32 convert(s8)) -> s32 hlo(s8, s8)
-class ConvertOperandFolding : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "convert_operand_folding"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/convert_operand_folder.h"
 
 #endif  // XLA_SERVICE_CONVERT_OPERAND_FOLDING_H_

@@ -47,6 +47,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -65,6 +66,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -119,6 +121,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -171,6 +174,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -203,6 +207,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -240,6 +245,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

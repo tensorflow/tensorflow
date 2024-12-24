@@ -23,9 +23,9 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-Status ReadVariableOpGrad(const Scope& scope, const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs) {
+absl::Status ReadVariableOpGrad(const Scope& scope, const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   return scope.status();
 }

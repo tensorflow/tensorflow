@@ -28,7 +28,7 @@ limitations under the License.
 namespace mlir {
 
 namespace quant {
-class QuantizationDialect;
+class QuantDialect;
 }
 
 namespace quantfork {

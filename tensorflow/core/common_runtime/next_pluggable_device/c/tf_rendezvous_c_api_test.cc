@@ -74,7 +74,7 @@ class FakeAllocator : public Allocator {
 class FakeDevice : public Device {
  public:
   explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-  Status Sync() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes) override {
     return allocator_.get();
   }

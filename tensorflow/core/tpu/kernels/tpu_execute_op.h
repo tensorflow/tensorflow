@@ -46,7 +46,7 @@ class TPUExecuteOp : public AsyncOpKernel {
   std::vector<int> fused_device_var_updates_in_computation_outputs_;
 
  private:
-  Status DoWork(OpKernelContext* context);
+  absl::Status DoWork(OpKernelContext* context);
 
   TPUExecuteOp(const TPUExecuteOp&) = delete;
   void operator=(const TPUExecuteOp&) = delete;

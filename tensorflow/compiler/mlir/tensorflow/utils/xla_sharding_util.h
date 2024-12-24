@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
+#include <stdbool.h>
+
 #include <map>
 #include <string>
 
@@ -25,9 +27,11 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "xla/xla_data.pb.h"
@@ -39,6 +43,9 @@ inline constexpr llvm::StringRef kInputShardingAttr =
     "input_sharding_configuration";
 inline constexpr llvm::StringRef kOutputShardingAttr =
     "output_sharding_configuration";
+
+inline constexpr llvm::StringRef kICIWeightDistributionMlirBridgeMarker =
+    "_ici_weight_distribution_mlir_bridge_marker";
 
 // Parses the sharding string. This sharding string can be binary (serialized)
 // or human readable.
@@ -64,6 +71,13 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
 
+// Same as above, except creates tf.XlaSplitND Op for split sharding if
+// use_xla_nd_ops is true, otherwise creates tf.Split op.
+mlir::LogicalResult ExtractInputsForLogicalDevices(
+    int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
+    mlir::OpBuilder* builder, bool use_xla_nd_ops,
+    llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
+
 // Extracts a list of OpSharding that represent output sharding configuration of
 // `tf_device.cluster`.
 mlir::LogicalResult ParseAndValidateOutputSharding(
@@ -79,11 +93,19 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     llvm::SmallVectorImpl<mlir::Type>* output_types,
     llvm::SmallVectorImpl<int>* cluster_to_core_index);
 
+// Same as above, except creates tf.XlaSplitND Op for split sharding if
+// use_xla_nd_ops is true, otherwise creates tf.Split op.
+mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
+    int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    mlir::tf_device::ClusterFuncOp cluster_func,
+    llvm::SmallVectorImpl<mlir::Type>* output_types, bool use_xla_nd_ops,
+    llvm::SmallVectorImpl<int>* cluster_to_core_index);
+
 // Remaps outputs of `new_parallel_execute` op that represent concurrent
 // execution of the `tf_device.cluster_func` at index `cluster_idx` of
 // `old_parallel_execute` with its users.
 // `num_results_pre_cluster` represent the # of outputs of
-// `new_parallel_execute` which are from ops before `tf_device.cluster_func` op
+// `new_parallel_execute` which are from ops before `tf_device.cluster_func` op.
 mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
@@ -92,6 +114,17 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder);
+
+// Same as above, except creates tf.XlaConcatNd Op for split sharding if
+// use_xla_nd_ops is true, otherwise creates tf.Concat op.
+mlir::LogicalResult RemapOutputsFromLogicalDevices(
+    const mlir::Location& location,
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
+    int num_results_pre_cluster,
+    mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
+    mlir::tf_device::ParallelExecuteOp new_parallel_execute,
+    bool use_xla_nd_ops, mlir::OpBuilder* builder);
 
 // Determines each logical core argument to metadata argument index mapping,
 // based on sharding. The return value is indexed first by logical core then by
@@ -123,6 +156,12 @@ bool IsSplitSharding(const xla::OpSharding& sharding);
 // Returns whether the sharding is replicated. It includes sharding with
 // REPLICATED type and replicated OTHER type.
 bool IsReplicatedSharding(const xla::OpSharding& sharding);
+
+// Returns whether the shape of inputs and outputs is statically known when
+// split sharding is done on inputs or outputs.
+bool AreInputOutputShapesStaticallyKnownForSplitSharding(
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    mlir::tf_device::ClusterFuncOp cluster_func);
 
 // Returns a map of dimension indices and number of splits for tiled sharding.
 absl::StatusOr<std::map<int, int>> GetDimensionIndicesAndNumSplitsFromSharding(

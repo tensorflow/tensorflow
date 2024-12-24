@@ -1,4 +1,4 @@
-# Release 2.18.0
+# Release 2.19.0
 
 ## TensorFlow
 
@@ -8,26 +8,16 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-* `tf.lite`
-    * C API:
-      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step
-        forward towards a cleaner API for `TfLiteOperator`. Function
-        `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0,
-        released on 7/11/2024, and we do not expect there will be much code using this
-        function yet. Any code breakages can be easily resolved by passing nullptr as
-        the new, 4th parameter.
-    * SignatureRunner is now supported for models with no signatures.
-
-* TensorRT support is disabled in CUDA builds for code health improvement.
-
-* Hermetic CUDA support is added.
-
-  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
-  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
-  distributions, and then use CUDA libraries and tools as dependencies in
-  various Bazel targets. This enables more reproducible builds for Google ML
-  projects and supported CUDA versions.
+* `LiteRT`, a.k.a. `tf.lite`:
+  * C++ API:
+    * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
+      and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
+      references, rather than `constexpr` compile-time constants.
+      (This is to enable better API compatibility for TFLite in Play services
+      while preserving the implementation flexibility to change the values of
+      these constants in the future.)
+    * Interpreter:
+      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new location at `ai_edge_litert.interpreter`, as the API `tf.lite.Interpreter` will be deleted in TF 2.20. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
 
 ### Known Caveats
 
@@ -37,7 +27,8 @@
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*  `tf.lite`
+    * `tfl.Cast` op is now supporting `bfloat16` in runtime kernel.
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 ### Bug Fixes and Other Changes
@@ -45,28 +36,6 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
-
-* `tf.data`
-    * Add optional `synchronous` argument to `map`, to specify that the `map`
-      should run synchronously, as opposed to be parallelizable when
-      `options.experimental_optimization.map_parallelization=True`. This saves
-      memory compared to setting `num_parallel_calls=1`.
-    * Add optional `use_unbounded_threadpool` argument to `map`, to specify that
-      the `map` should use an unbounded threadpool instead of the default pool
-      that is based on the number of cores on the machine. This can improve 
-      throughput for map functions which perform IO or otherwise release the 
-      CPU.
-* `tf.lite`
-    * `Dequantize` op supports `TensorType_INT4`.
-        * This change includes per-channel dequantization.
-    * Add support for `stablehlo.composite`.
-    * `EmbeddingLookup` op supports per-channel
-      quantization and `TensorType_INT4` values.
-    * `FullyConnected` op supports `TensorType_INT16` activation and
-      `TensorType_Int4` weight per-channel quantization.
-
-* `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
-    * Support `bad_indices_policy`.
 
 ## Keras
 
@@ -99,6 +68,71 @@
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.18.0
+
+## TensorFlow
+
+### Breaking Changes
+
+* `tf.lite`
+    * C API:
+      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
+
+* TensorRT support is disabled in CUDA builds for code health improvement.
+
+* TensorFlow now supports and is compiled with NumPy 2.0 by default. Please see the [NumPy 2 release notes](https://numpy.org/doc/stable/release/2.0.0-notes.html) and the [NumPy 2 migration guide](https://numpy.org/devdocs/numpy_2_0_migration_guide.html#numpy-2-migration-guide).
+  * Note that NumPy's type promotion rules have been changed(See [NEP 50](https://numpy.org/neps/nep-0050-scalar-promotion.html#nep50)for details). This may change the precision at which computations happen, leading either to type errors or to numerical changes to results.
+  * Tensorflow will continue to support NumPy 1.26 until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
+
+* Hermetic CUDA support is added.
+
+  Hermetic CUDA uses a specific downloadable version of CUDA instead of the user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL distributions, and then use CUDA libraries and tools as dependencies in various Bazel targets. This enables more reproducible builds for Google ML projects and supported CUDA versions.
+
+* Remove the `EnumNamesXNNPackFlags` function in `tensorflow/lite/acceleration/configuration/configuration_generated.h`.
+
+  This change is a bug fix in the automatically generated code. This change is automatically generated by the new flatbuffer generator. The flatbuffers library is updated to 24.3.25 in https://github.com/tensorflow/tensorflow/commit/c17d64df85a83c1bd0fd7dcc0b1230812b0d3d48. The new flatbuffers library includes the following change https://github.com/google/flatbuffers/pull/7813 which fixed a underlying flatbuffer code generator bug.
+
+
+### Known Caveats
+
+### Major Features and Improvements
+
+*   `tf.lite`:
+    *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience for TFLite. The TF Lite Runtime source will be moved later this year, and sometime after that we will start accepting contributions through that repo.
+    *   SignatureRunner is now supported for models with no signatures.
+
+### Bug Fixes and Other Changes
+
+* `tf.data`
+    * Add optional `synchronous` argument to `map`, to specify that the `map` should run synchronously, as opposed to be parallelizable when `options.experimental_optimization.map_parallelization=True`. This saves memory compared to setting `num_parallel_calls=1`.
+    * Add optional `use_unbounded_threadpool` argument to `map`, to specify that the `map` should use an unbounded threadpool instead of the default pool that is based on the number of cores on the machine. This can improve throughput for map functions which perform IO or otherwise release the CPU.
+    * Add [`tf.data.experimental.get_model_proto`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/get_model_proto) to allow users to peek into the analytical model inside of a dataset iterator.
+
+* `tf.lite`
+    * `Dequantize` op supports `TensorType_INT4`.
+        * This change includes per-channel dequantization.
+    * Add support for `stablehlo.composite`.
+    * `EmbeddingLookup` op supports per-channel quantization and `TensorType_INT4` values.
+    * `FullyConnected` op supports `TensorType_INT16` activation and `TensorType_Int4` weight per-channel quantization.
+    * Enable per-tensor quantization support in dynamic range quantization of `TRANSPOSE_CONV` layer. Fixes TFLite converter [bug](https://github.com/tensorflow/tensorflow/issues/76624).
+
+* `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
+    * Support `bad_indices_policy`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Akhil Goel, akhilgoe, Alexander Pivovarov, Amir Samani, Andrew Goodbody, Andrey Portnoy, Anthony Platanios, bernardoArcari, Brett Taylor, buptzyb, Chao, Christian Clauss, Cocoa, Daniil Kutz, Darya Parygina, dependabot[bot], Dimitris Vardoulakis, Dragan Mladjenovic, Elfie Guo, eukub, Faijul Amin, flyingcat, Frédéric Bastien, ganyu.08, Georg Stefan Schmid, Grigory Reznikov, Harsha H S, Harshit Monish, Heiner, Ilia Sergachev, Jan, Jane Liu, Jaroslav Sevcik, Kaixi Hou, Kanvi Khanna, Kristof Maar, Kristóf Maár, LakshmiKalaKadali, Lbertho-Gpsw, lingzhi98, MarcoFalke, Masahiro Hiramori, Mmakevic-Amd, mraunak, Nobuo Tsukamoto, Notheisz57, Olli Lupton, Pearu Peterson, pemeliya, Peyara Nando, Philipp Hack, Phuong Nguyen, Pol Dellaiera, Rahul Batra, Ruturaj Vaidya, sachinmuradi, Sergey Kozub, Shanbin Ke, Sheng Yang, shengyu, Shraiysh, Shu Wang, Surya, sushreebarsa, Swatheesh-Mcw, syzygial, Tai Ly, terryysun, tilakrayal, Tj Xu, Trevor Morris, Tzung-Han Juang, wenchenvincent, wondertx, Xuefei Jiang, Ye Huang, Yimei Sun, Yunlong Liu, Zahid Iqbal, Zhan Lu, Zoranjovanovic-Ns, Zuri Obozuwa
+
+# Release 2.17.1
+
+### Bug Fixes and Other Changes
+
+* Add necessary header files in the aar library. These are needed if developers build apps with header files unpacked from tflite aar files from maven.
+* Implement Name() for GCSWritableFile to fix the profiler trace viewer cache file generation.
+* Fix `cstring.h` missing file issue with the Libtensorflow archive.
 
 # Release 2.17.0
 

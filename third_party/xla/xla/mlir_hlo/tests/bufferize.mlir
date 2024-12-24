@@ -71,7 +71,7 @@ func.func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[ASSUMING_RESULT]] : memref<?xf32>
   %assuming_result = shape.assuming %witness -> (tensor<?xf32>) {
-    %result = bufferization.to_tensor %arg : memref<?xf32>
+    %result = bufferization.to_tensor %arg : memref<?xf32> to tensor<?xf32>
     shape.assuming_yield %result : tensor<?xf32>
   }
   func.return %assuming_result : tensor<?xf32>

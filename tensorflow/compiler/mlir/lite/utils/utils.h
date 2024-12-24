@@ -17,16 +17,21 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_UTILS_H_
 
 #include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -295,6 +300,40 @@ inline ShapedType GetTransposedType(Value input,
   return transposed_type;
 }
 
+// Return the resultant shape if the shape of the supplied attribute/value is
+// expanded by n leading 1s'.
+inline SmallVector<int32_t> GetExpandedShape(Value input_val, int n) {
+  auto input_shape = mlir::cast<ShapedType>(input_val.getType()).getShape();
+  SmallVector<int32_t> expanded_shape;
+  expanded_shape.reserve(input_shape.size() + n);
+  for (int i = 0; i < n; ++i) {
+    expanded_shape.push_back(1);
+  }
+  expanded_shape.insert(expanded_shape.end(), input_shape.begin(),
+                        input_shape.end());
+  return expanded_shape;
+}
+
+// Return the resultant shape as a DenseElementsAttr if the shape of the
+// supplied attribute/value is expanded by n leading 1s'.
+inline DenseElementsAttr GetExpandedShapeAttr(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get({static_cast<int>(expanded_shape.size())},
+                            mlir::IntegerType::get(input_val.getContext(), 32)),
+      llvm::ArrayRef(expanded_shape));
+}
+
+// Return the resultant shape type if the shape of the supplied attribute/value
+// is expanded by n leading 1s'.
+inline ShapedType GetExpandedShapeType(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+  return RankedTensorType::get(
+      SmallVector<int64_t>{expanded_shape.begin(), expanded_shape.end()},
+      mlir::cast<ShapedType>(input_val.getType()).getElementType());
+}
+
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
 // Returns a truncated shape when `truncate` is set to true.
@@ -321,6 +360,46 @@ inline DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::ArrayRef(shape));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Returns whether the resultant type of any broadcastable operation with
+// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
+// broadcast-compatible with `b`.
+inline bool OperandsBroadcastToOutputType(Type a, Type b,
+                                          Type expected_output) {
+  Type output_element_type =
+      mlir::cast<ShapedType>(expected_output).getElementType();
+  Type broadcasted_type =
+      OpTrait::util::getBroadcastedType(a, b, output_element_type);
+  return broadcasted_type != Type() && broadcasted_type == expected_output;
+}
+
+// Returns int, float or complex DenseElementsAttr with scalar shape with the
+// given element type and the integer value.
+template <typename T>
+DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  if (auto float_ty = mlir::dyn_cast<FloatType>(ty)) {
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto int_ty = mlir::dyn_cast<IntegerType>(ty)) {
+    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto complex_ty = mlir::dyn_cast<ComplexType>(ty)) {
+    Type complex_element_ty = complex_ty.getElementType();
+    if (complex_element_ty.isF32()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<float>>(raw_value));
+    } else if (complex_element_ty.isF64()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<double>>(raw_value));
+    }
+  }
+  llvm_unreachable("unsupported type");
 }
 
 }  // namespace TFL

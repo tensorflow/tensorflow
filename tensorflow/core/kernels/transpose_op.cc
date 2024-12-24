@@ -93,8 +93,8 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
 
 namespace {
 template <typename Tperm>
-Status PermutationHelper(const Tensor& perm, const int dims,
-                         std::vector<int32>* permutation) {
+absl::Status PermutationHelper(const Tensor& perm, const int dims,
+                               std::vector<int32>* permutation) {
   auto Vperm = perm.vec<Tperm>();
   if (dims != Vperm.size()) {
     return errors::InvalidArgument("transpose expects a vector of size ", dims,
@@ -146,7 +146,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   TensorShape shape;
 
   // Check whether permutation is a permutation of integers of [0 .. dims).
-  gtl::InlinedVector<bool, 8> bits(dims);
+  absl::InlinedVector<bool, 8UL> bits(dims);
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
     int32_t d = permutation[i];
@@ -187,17 +187,18 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                   absl::Span<const int32> perm, Tensor* out) {
+absl::Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                                         absl::Span<const int32> perm,
+                                         Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
 }
 
-Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
-                                            const Tensor& in,
-                                            absl::Span<const int32> perm,
-                                            Tensor* out) {
+absl::Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
+                                                  const Tensor& in,
+                                                  absl::Span<const int32> perm,
+                                                  Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
                                             perm, out);

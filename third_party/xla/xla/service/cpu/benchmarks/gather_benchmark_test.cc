@@ -15,16 +15,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -35,7 +36,7 @@ static void BM_GatherS32(benchmark::State& state) {
   int64_t d1 = state.range(1);
   int64_t slice_size = state.range(2);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule gather_s32_d$d0_d$d1_s$slice_size
 
     ENTRY e {

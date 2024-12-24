@@ -20,11 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -56,11 +55,10 @@ namespace internal {
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
 
-using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
-absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
-    bool lower_to_xla_hlo, const MlirToHloArgs& computation,
+absl::Status CompileFromMlirToXlaHlo(
+    bool lower_to_xla_hlo, mlir::ModuleOp mlir_module_op,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
     bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result,
@@ -74,24 +72,17 @@ absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
          "Old (non-MLIR) bridge may be used in case of unsupported feature "
          "or compilation failure from the MLIR bridge (full fallback mode).";
 
-  mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::stablehlo::registerAllDialects(registry);
-  mlir::MLIRContext context(registry);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-  TF_RETURN_IF_ERROR(
-      DeserializeMlirModule(computation.mlir_module, &context, &mlir_module));
-  if (!mlir::SetTPUInfeedLayout(mlir_module))
-    return errors::Internal("Failed to set layouts attribute");
+  llvm::SmallVector<TensorOrResourceShape, 4> tensor_or_resource_shapes;
+  tensor_or_resource_shapes.reserve(arg_shapes.size());
+  for (const auto& arg_shape : arg_shapes)
+    tensor_or_resource_shapes.push_back({arg_shape});
 
-  TF_ASSIGN_OR_RETURN(
-      auto compiled_mlir,
-      CompileSerializedMlirToXlaHlo(
-          SerializeMlirModule(mlir_module.get()), arg_shapes, device_type,
-          use_tuple_args, true, shape_determination_fns, compilation_result,
-          custom_legalization_passes, metadata.module_name(),
-          lower_to_xla_hlo));
+  TF_RETURN_IF_ERROR(CompileMlirToXlaHlo(
+      mlir_module_op, tensor_or_resource_shapes, device_type, use_tuple_args,
+      /*enable_op_fallback=*/true, /*use_return_tuple=*/true,
+      /*use_resource_updates_for_aliases=*/false, shape_determination_fns,
+      compilation_result, custom_legalization_passes, metadata.module_name(),
+      lower_to_xla_hlo));
 
   // Compute how arguments are shared across different cores.
   auto sharding_result =
@@ -100,43 +91,7 @@ absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
   if (!sharding_result.ok()) {
     return sharding_result;
   }
-  return compiled_mlir;
-}
-
-absl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
-    const tpu::MlirToHloArgs& computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
-    llvm::StringRef device_type,
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    const std::vector<tensorflow::TensorShape>& arg_shapes,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
-    XlaCompilationResult* compilation_result) {
-  // We could only end up here if the MLIR bridge was explicitly enabled or
-  // if it was in the default/unspecified state and graph analysis in the first
-  // phase has not identified unsupported features.
-  // Enabling op fallback also enables whole graph fallback if op by op
-  // fallback failed.
-
-  absl::StatusOr<std::string> mlir_bridge_status = CompileFromMlirToXlaHlo(
-      /*lower_to_xla_hlo=*/true, computation, metadata, device_type,
-      shape_determination_fns, use_tuple_args, compilation_result,
-      custom_legalization_passes, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes);
-
-  if (mlir_bridge_status.ok()) {
-    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
-               "tf2xla bridge";
-    return *compilation_result;
-  }
-
-  tsl::error_logging::Log(kBridgeComponent,
-                          "TFXLA_API_V2_BRIDGE_WITH_FALLBACK_FAIL",
-                          mlir_bridge_status.status().ToString())
-      .IgnoreError();
-
-  return mlir_bridge_status.status();
+  return absl::OkStatus();
 }
 
 };  // namespace internal

@@ -60,7 +60,7 @@ class SyclPlatform : public Platform {
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      int ordinal) override;
+      int ordinal);
 
   // This platform's name.
   std::string name_;

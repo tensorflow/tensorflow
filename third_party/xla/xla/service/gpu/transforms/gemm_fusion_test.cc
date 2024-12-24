@@ -27,14 +27,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -55,7 +55,7 @@ class GemmFusionTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
@@ -213,8 +213,8 @@ ENTRY e {
   p1 = f32[101,16] parameter(1)
   d = f32[16,7] dot(p1, s0),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
-  s1 = f32[3,33] slice(p0), slice={[10:13], [20:53]}
-  ROOT t = tuple(d, s1)
+  sout1 = f32[3,33] slice(p0), slice={[10:13], [20:53]}
+  ROOT t = tuple(d, sout1)
 })"));
 
   const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
@@ -247,9 +247,9 @@ ENTRY e {
     slice={[0:1], [0:1], [0:256], [0:256]}
   r0 = f32[256,256] reshape(s0)
   p1 = f16[2,2,256,256] parameter(1)
-  s1 = f16[1,1,256,256] slice(p1),
+  sout1 = f16[1,1,256,256] slice(p1),
     slice={[0:1], [0:1], [0:256], [0:256]}
-  r1 = f16[256,256] reshape(s1)
+  r1 = f16[256,256] reshape(sout1)
   ROOT d = f32[256,256] dot(r0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
@@ -440,7 +440,7 @@ ENTRY e {
 
 class GemmFusionLevel2Test : public GemmFusionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmFusionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_fusion_level(2);
     return debug_options;
@@ -1238,10 +1238,29 @@ ENTRY e {
                                     m::Parameter(), m::Parameter()))));
 }
 
+TEST_F(GemmFusionTest, BroadcastsOfParametersAreFusedAsEpilogueInputs) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f16[4,55] parameter(0)
+  p1 = f16[123,55] parameter(1)
+  d = f16[4,123] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  p2 = (f16[123,1], f16[456]) parameter(2)
+  g = get-tuple-element(p2), index=0
+  t = f16[123] bitcast(g)
+  b = f16[4,123] broadcast(t), dimensions={1}
+  m = f16[4,123] multiply(d, b)
+})")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::GetTupleElement()))));
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmFusionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
     return debug_options;
@@ -1352,28 +1371,19 @@ ENTRY main {
   EXPECT_FALSE(result.ok());
 }
 
-constexpr auto kInt4Dot = R"(
-ENTRY e {
-  p0 = s8[16,16] parameter(0)
-  p1 = s4[16,16] parameter(1)
-  p1c = bf16[16,16] convert(p1)
-  ROOT dot = bf16[16,16] dot(p0, p1c),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
+  constexpr auto kInt4Dot = R"(
+    ENTRY e {
+      p0 = s8[16,16] parameter(0)
+      p1 = s4[16,16] parameter(1)
+      p1c = bf16[16,16] convert(p1)
+      ROOT dot = bf16[16,16] dot(p0, p1c),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
-}
-
-TEST_F(SmallDotGemmFusionTest, Int4DotIsNotRewritten) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kInt4Dot));
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
@@ -1390,9 +1400,6 @@ TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
 
   // Check that the fusion is present and that the lhs is not converted.
@@ -1417,9 +1424,6 @@ TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
   // Check that the fusion is present and that convert and negation is fused in
   // it.
@@ -1429,6 +1433,26 @@ CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
 CHECK: ENTRY
 CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs, f32[1024,4]{1,0} %rhs)
 })");
+}
+
+TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
+  const std::string kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[8,1024,16]{2,1,0} parameter(0)
+      lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

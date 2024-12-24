@@ -21,14 +21,20 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/Passes.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -121,6 +127,11 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
       .min_num_batch_threads = options.min_num_batch_threads,
       .min_max_enqueued_batches = options.min_max_enqueued_batches,
       .batch_padding_policy = options.batch_padding_policy,
+      .num_batch_threads = options.num_batch_threads,
+      .max_batch_size = options.max_batch_size,
+      .batch_timeout_micros = options.batch_timeout_micros,
+      .allowed_batch_sizes = options.allowed_batch_sizes,
+      .max_enqueued_batches = options.max_enqueued_batches,
   }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
@@ -220,7 +231,7 @@ void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
       options.hoist_invariant_ops, options.fuse_get_resource_ops_in_hoisting));
 }
 
-Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
+absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
   if (options.target_tpurt && options.target_gpu) {
     return tensorflow::errors::Internal(
         "Invalid pipeline options. Targeting both TPU and GPU is not "
@@ -229,7 +240,7 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
   return absl::OkStatus();
 }
 
-Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
     mlir::PassManager &pm, const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {

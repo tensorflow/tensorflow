@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/barrier.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -24,15 +25,14 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -186,7 +186,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
-  BlockingCounter finish_counter(cluster_size);
+  absl::Barrier finish_counter(cluster_size);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.
@@ -255,8 +255,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TF_DeleteStatus(status);
-    finish_counter.DecrementCount();
-    finish_counter.Wait();
+    finish_counter.Block();
     TFE_DeleteExecutor(executor);
     TFE_DeleteContext(ctx);
   };
@@ -273,9 +272,9 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
-  tensorflow::BlockingCounter counter1(cluster_size);
-  tensorflow::BlockingCounter counter2(cluster_size);
-  tensorflow::BlockingCounter counter3(cluster_size);
+  absl::Barrier counter1(cluster_size);
+  absl::Barrier counter2(cluster_size);
+  absl::Barrier counter3(cluster_size);
 
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
@@ -302,8 +301,7 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
         ctx, key.c_str(),
         tensorflow::strings::StrCat("value", worker_id).c_str(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    counter1.DecrementCount();
-    counter1.Wait();
+    counter1.Block();
 
     const int next_id = (worker_id + 1) % cluster_size;
     // Setting next_key errors out because it has been set by another worker
@@ -319,14 +317,12 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
                           value_buf->length};
     EXPECT_EQ(value_str, tensorflow::strings::StrCat("value", next_id));
     TF_DeleteBuffer(value_buf);
-    counter2.DecrementCount();
-    counter2.Wait();
+    counter2.Block();
 
     // Delete key
     TFE_DeleteConfigKeyValue(ctx, key.c_str(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    counter3.DecrementCount();
-    counter3.Wait();
+    counter3.Block();
 
     TFE_DeleteContext(ctx);
     TF_DeleteStatus(status);
@@ -345,9 +341,9 @@ TEST(CAPI, MultiClientPropagateError) {
       GetMultiClientServerDef("worker", cluster_size);
   ConfigCoordinationService(&server_def);
   // Barrier for initializing the cluster.
-  tensorflow::BlockingCounter counter1(cluster_size);
+  absl::Barrier counter1(cluster_size);
   // Barrier for finishing executing operations on all workers.
-  tensorflow::BlockingCounter counter2(cluster_size);
+  absl::Barrier counter2(cluster_size);
 
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
@@ -367,8 +363,7 @@ TEST(CAPI, MultiClientPropagateError) {
 
     TFE_EnableCollectiveOps(ctx, serialized.data(), serialized.size(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    counter1.DecrementCount();
-    counter1.Wait();
+    counter1.Block();
 
     // Set error from worker/1
     if (worker_id == 1) {
@@ -389,8 +384,7 @@ TEST(CAPI, MultiClientPropagateError) {
     TFE_DeleteTensorHandle(in);
     TFE_DeleteTensorHandle(retvals[0]);
     TFE_DeleteOp(allreduce);
-    counter2.DecrementCount();
-    counter2.Wait();
+    counter2.Block();
 
     TFE_DeleteContext(ctx);
     TF_DeleteStatus(status);

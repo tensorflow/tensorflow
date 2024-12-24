@@ -31,6 +31,8 @@ namespace tflite {
 /// A memory allocation handle. This could be a mmap or shared memory.
 class Allocation {
  public:
+  using Ptr = std::unique_ptr<Allocation>;
+
   virtual ~Allocation() {}
 
   enum class Type {

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/test_op/simple_tflite_op.h"
 
-#include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 

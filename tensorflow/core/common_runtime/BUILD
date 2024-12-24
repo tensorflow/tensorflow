@@ -620,6 +620,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@local_tsl//tsl/platform:stacktrace",
     ],
 )
 
@@ -714,6 +715,7 @@ cc_library(
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -996,10 +998,7 @@ cc_library(
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":device",
         ":device_factory",
@@ -1214,13 +1213,21 @@ cc_library(
     hdrs = ["simplify_ici_dummy_variables_pass.h"],
     copts = tf_copts(),
     deps = [
-        ":colocate_predecessor_trees_pass",
         ":optimization_registry",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
+        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
     ],
     alwayslink = 1,
 )
@@ -2189,7 +2196,6 @@ cc_library(
         "//tensorflow:internal",
         # For xla_launch_util
         "//tensorflow/compiler/jit:__pkg__",
-        "//tensorflow_models:__subpackages__",
     ],
     deps = [
         ":device",
@@ -2424,6 +2430,9 @@ tf_cc_tests(
         "threadpool_device_test.cc",
     ],
     create_named_test_suite = True,
+    data = [
+        "testdata/simplify_ici_dummy_variables_pass_before.pbtxt",
+    ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -2459,6 +2468,7 @@ tf_cc_tests(
         "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
@@ -3554,8 +3564,8 @@ cc_library(
     name = "device_id_utils",
     hdrs = ["device_id_utils.h"],
     deps = [
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/tsl/framework:device_id_impl",
     ],
 )

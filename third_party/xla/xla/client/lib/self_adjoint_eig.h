@@ -16,26 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_
 #define XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_
 
-#include "xla/client/xla_builder.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// The eigenvalue decomposition of a symmetric matrix, the original matrix is
-// recovered by v * w * v_t.
-struct SelfAdjointEigResult {
-  // The i-th column is the normalized eigenvector corresponding to the
-  // eigenvalue w[i]. Will return a matrix object if a is a matrix object.
-  XlaOp v;
-  // The eigenvalues in ascending order, each repeated according to its
-  // multiplicity.
-  XlaOp w;
-};
-
-SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower = true,
-                                    int64_t max_iter = 15, float tol = 1e-5,
-                                    bool sort_eigenvalues = true);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/builder/lib/self_adjoint_eig.h"
 
 #endif  // XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_

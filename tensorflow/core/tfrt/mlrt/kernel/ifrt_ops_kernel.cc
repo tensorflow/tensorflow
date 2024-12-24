@@ -176,9 +176,14 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
     return absl::InternalError("CheckpointLoader must not be null.");
   }
   TF_RETURN_IF_ERROR(ValidateInput());
+
+  std::vector<tensorflow::DataType> restored_dtypes_vec(
+      restored_dtypes().begin(), restored_dtypes().end());
+  std::vector<bool> truncate_in_cast_vec(truncate_in_cast().begin(),
+                                         truncate_in_cast().end());
   return checkpoint_loader->Load(prefix(), var_handles(), tensor_names(),
-                                 shape_and_slices(), restored_dtypes(),
-                                 truncate_in_cast(), context());
+                                 shape_and_slices(), restored_dtypes_vec,
+                                 truncate_in_cast_vec, context());
 }
 
 class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {

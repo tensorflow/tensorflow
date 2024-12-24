@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"

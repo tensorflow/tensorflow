@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "xla/service/while_loop_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -225,7 +225,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
         instruction, InvariantInfo(/*user_count=*/instruction->user_count()));
     CHECK(emplace_result.second);
     InvariantInfo& instr_info = emplace_result.first->second;
-    // If root is a users of it, substract 1 from remaining user count as we
+    // If root is a users of it, subtract 1 from remaining user count as we
     // don't want root to be blocking other users from being hoisted. Note that
     // for invariant parameter GTEs, they will skip the iteration because their
     // operand parameter(0) is not invariant, and they are put into

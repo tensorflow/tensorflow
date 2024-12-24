@@ -94,7 +94,7 @@ void UpdateFunctionMap(FuncMap* func_map, const string& canonicalized_name,
 }
 
 // Adds new function def to graph's function library if necessary.
-Status AddFunctionDefToGraphLibrary(
+absl::Status AddFunctionDefToGraphLibrary(
     const string& func_name, const AssociatedFunctionInfo& associated_function,
     Graph* graph, FunctionLibraryDefinition* fld) {
   const OpRegistrationData* op_reg_data;
@@ -128,7 +128,7 @@ Status AddFunctionDefToGraphLibrary(
 }
 
 // Functionalizes function given by `func_name`. Update `func_map` accordingly.
-Status FunctionalizeControlFlowForFunction(
+absl::Status FunctionalizeControlFlowForFunction(
     const string& func_name, const string& new_func_name,
     const protobuf::Map<string, tensorflow::AttrValue>& attrs,
     FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
@@ -137,7 +137,7 @@ Status FunctionalizeControlFlowForFunction(
 
 // Functionalizes all functions that are (directly or indirectly) associated to
 // any node in `graph`. Adds processed functions to `func_map`.
-Status FunctionalizeControlFlowForNodeAssociatedFunctions(
+absl::Status FunctionalizeControlFlowForNodeAssociatedFunctions(
     FuncMap* func_map, Graph* graph, FunctionLibraryDefinition* fld,
     FunctionLibraryRuntime* flr, bool* any_function_modified,
     const NodeFilter& node_filter) {
@@ -201,7 +201,7 @@ Status FunctionalizeControlFlowForNodeAssociatedFunctions(
   return absl::OkStatus();
 }
 
-Status FunctionalizeControlFlowForFunction(
+absl::Status FunctionalizeControlFlowForFunction(
     const string& func_name, const string& new_func_name,
     const protobuf::Map<string, tensorflow::AttrValue>& attrs,
     FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
@@ -211,7 +211,7 @@ Status FunctionalizeControlFlowForFunction(
   // Convert the function to a graph.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(flr->Instantiate(func_name, AttrSlice(&attrs), &handle));
-  Status ret_status = absl::OkStatus();
+  absl::Status ret_status = absl::OkStatus();
   auto cleanup_handle = gtl::MakeCleanup([&]() {
     auto s = flr->ReleaseHandle(handle);
     if (!s.ok()) {
@@ -270,10 +270,10 @@ Status FunctionalizeControlFlowForFunction(
   return ret_status;
 }
 
-Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library,
-                                const NodeFilter& node_filter,
-                                bool include_functions) {
+absl::Status FunctionalizeControlFlow(Graph* graph,
+                                      FunctionLibraryDefinition* library,
+                                      const NodeFilter& node_filter,
+                                      bool include_functions) {
   VLOG(2) << "FunctionalizeControlFlow (initial): "
           << DumpGraphToFile("functionalize_initial", *graph, library);
 
@@ -308,10 +308,9 @@ Status FunctionalizeControlFlow(Graph* graph,
   return absl::OkStatus();
 }
 
-Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-                                           FunctionLibraryDefinition* library,
-                                           const NodeFilter& node_filter,
-                                           bool include_functions) {
+absl::Status FunctionalizeControlFlowForGraphDef(
+    GraphDef* graph_def, FunctionLibraryDefinition* library,
+    const NodeFilter& node_filter, bool include_functions) {
   FunctionDefLibrary function_lib = graph_def->library();
   Graph graph(OpRegistry::Global());
 
@@ -323,7 +322,7 @@ Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
   return absl::OkStatus();
 }
 
-Status FunctionalizeControlFlowForXlaPass::Run(
+absl::Status FunctionalizeControlFlowForXlaPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(4)) {

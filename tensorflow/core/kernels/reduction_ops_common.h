@@ -71,7 +71,8 @@ class ReductionHelper {
  public:
   ReductionHelper() : reduce_first_axis_(false) {}
 
-  Status Simplify(const Tensor& data, const Tensor& axis, const bool keep_dims);
+  absl::Status Simplify(const Tensor& data, const Tensor& axis,
+                        const bool keep_dims);
 
   // We need to do roughly:
   //   tmp_out = allocate(out_reshape())

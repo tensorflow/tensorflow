@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/dynamic_dimension_inference.h"
 
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {

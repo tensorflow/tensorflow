@@ -18,26 +18,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_FLATTEN_CALL_GRAPH_H_
 #define XLA_SERVICE_FLATTEN_CALL_GRAPH_H_
 
-#include "absl/status/statusor.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Flattening associates each call site with a unique computation (for
-// sequential calling contexts) This simplifies buffer assignment and
-// points-to analysis (see b/36865746 for details).
-class FlattenCallGraph : public HloModulePass {
- public:
-  absl::string_view name() const override { return "flatten-call-graph"; }
-
-  // Duplicates computations called from multiple call- or while-nodes to
-  // flatten the call graph.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 
 #endif  // XLA_SERVICE_FLATTEN_CALL_GRAPH_H_

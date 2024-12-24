@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
+#include <cstddef>
+#include <memory>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -81,7 +87,7 @@ class FreezeTest : public ::testing::Test {
       return saved_model_bundle->session->Run(
           /* inputs */ {}, /* output_tensors */ {}, {init_node}, &outputs);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with

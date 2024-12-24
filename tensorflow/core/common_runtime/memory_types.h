@@ -24,7 +24,7 @@ namespace tensorflow {
 
 // Returns an error iff *g running on a single device of 'device_type'
 // has memory type mismatch for any edge's source and destination.
-Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g);
+absl::Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g);
 
 // Updates '*g' so that every edge's source and destination has
 // compatible memory types by inserting proper HostSend/Recv and
@@ -35,13 +35,14 @@ Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g);
 // Returns OK if '*g' is updated properly (ValidateMemoryTypes(g) must
 // be OK). Otherwise, returns an error and '*g' may be in an
 // invalidate state and the caller should discard it.
-Status EnsureMemoryTypes(const DeviceType& device_type,
-                         const string& device_name, Graph* g);
+absl::Status EnsureMemoryTypes(const DeviceType& device_type,
+                               const string& device_name, Graph* g);
 
 // Get the memory type for 'index'th output of node 'n' in graph 'g', when
 // running on 'device_type'.
-Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
-                           const Node* n, int index, MemoryType* memory_type);
+absl::Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
+                                 const Node* n, int index,
+                                 MemoryType* memory_type);
 
 }  // end namespace tensorflow
 

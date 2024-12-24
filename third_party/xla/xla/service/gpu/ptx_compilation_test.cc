@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -57,7 +56,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-constexpr std::string_view kSimpleHlo = R"(
+constexpr absl::string_view kSimpleHlo = R"(
 HloModule simple
 
 ENTRY main {
@@ -65,7 +64,7 @@ ENTRY main {
   ROOT neg = f32[10]{0} negate(p)
 }
 )";
-constexpr std::string_view kParallelCompilationHlo = R"(
+constexpr absl::string_view kParallelCompilationHlo = R"(
 HloModule parallel_compilation
 
 ENTRY main {
@@ -80,7 +79,7 @@ ENTRY main {
 }
 )";
 
-constexpr std::string_view kSM90AHlo = R"(
+constexpr absl::string_view kSM90AHlo = R"(
 gemm_fusion_dot {
   %p0 = f16[64,1024]{1,0} parameter(0)
   %p1 = f16[1024,32,32]{2,1,0} parameter(1)
@@ -102,16 +101,16 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
-constexpr std::string_view kResultsInNoPtxHlo = R"(
+constexpr absl::string_view kResultsInNoPtxHlo = R"(
   ENTRY e {
     a = f32[5,5] parameter(0)
     ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
       backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
   })";
 
-std::string_view GetHlo(std::string_view name) {
-  static const absl::flat_hash_map<std::string_view, std::string_view>* const
-      kHloMap = new absl::flat_hash_map<std::string_view, std::string_view>(
+absl::string_view GetHlo(absl::string_view name) {
+  static const absl::flat_hash_map<absl::string_view, absl::string_view>* const
+      kHloMap = new absl::flat_hash_map<absl::string_view, absl::string_view>(
           {{"simple", kSimpleHlo},
            {"parallel_compilation", kParallelCompilationHlo},
            {"requires_sm90a", kSM90AHlo},
@@ -119,14 +118,14 @@ std::string_view GetHlo(std::string_view name) {
   return kHloMap->at(name);
 }
 
-void DumpArtifactIfEnabled(std::string_view name,
+void DumpArtifactIfEnabled(absl::string_view name,
                            absl::Span<const uint8_t> data) {
   if (std::string output_dir;
       tsl::io::GetTestUndeclaredOutputsDir(&output_dir)) {
     (void)tsl::WriteStringToFile(
         tsl::Env::Default(), tsl::io::JoinPath(output_dir, name),
-        std::string_view(reinterpret_cast<const char*>(data.data()),
-                         data.size()));
+        absl::string_view(reinterpret_cast<const char*>(data.data()),
+                          data.size()));
   }
 }
 
@@ -134,7 +133,7 @@ using stream_executor::PtxCompilationMethod;
 using stream_executor::PtxLinkingMethod;
 
 std::string GenerateParametrizedTestname(
-    std::string_view name, PtxCompilationMethod compilation_method,
+    absl::string_view name, PtxCompilationMethod compilation_method,
     PtxLinkingMethod linking_method) {
   return absl::StrFormat("%v_CompilationMethod_%v_LinkingMethod_%v", name,
                          compilation_method, linking_method);
@@ -143,9 +142,9 @@ std::string GenerateParametrizedTestname(
 class NVPTXCompilationTests
     : public HloTestBase,
       public ::testing::WithParamInterface<std::tuple<
-          std::string_view, PtxCompilationMethod, PtxLinkingMethod>> {
+          absl::string_view, PtxCompilationMethod, PtxLinkingMethod>> {
  public:
-  void SkipTestIfUnsupported(std::string_view name,
+  void SkipTestIfUnsupported(absl::string_view name,
                              PtxCompilationMethod compilation_method,
                              PtxLinkingMethod linking_method) {
     using CudaComputeCapability = stream_executor::CudaComputeCapability;
@@ -195,9 +194,11 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
 
-    debug_options->set_xla_gpu_enable_libnvjitlink(
-        compilation_method == PtxCompilationMethod::kNvJitLink ||
-        linking_method == PtxLinkingMethod::kNvJitLink);
+    debug_options->set_xla_gpu_libnvjitlink_mode(
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)
+            ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
+            : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);
@@ -217,9 +218,15 @@ class NVPTXCompilationTests
     debug_options->set_xla_llvm_force_inline_before_split(false);
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
   void SetUp() override {
     HloTestBase::SetUp();
-    std::string_view name = std::get<0>(GetParam());
+    absl::string_view name = std::get<0>(GetParam());
     PtxCompilationMethod compilation_method = std::get<1>(GetParam());
     PtxLinkingMethod linking_method = std::get<2>(GetParam());
     SkipTestIfUnsupported(name, compilation_method, linking_method);
@@ -227,7 +234,7 @@ class NVPTXCompilationTests
 
   absl::StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       std::unique_ptr<HloModule> module) {
-    NVPTXCompiler compiler{};
+    NVPTXCompiler compiler{module->config().debug_options()};
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),
@@ -239,8 +246,8 @@ class NVPTXCompilationTests
 };
 
 TEST_P(NVPTXCompilationTests, CompileProgram) {
-  std::string_view name = std::get<0>(GetParam());
-  std::string_view hlo_text = GetHlo(name);
+  absl::string_view name = std::get<0>(GetParam());
+  absl::string_view hlo_text = GetHlo(name);
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
   HloModuleConfig hlo_module_config = module->config();
@@ -256,9 +263,14 @@ TEST_P(NVPTXCompilationTests, CompileProgram) {
               tsl::testing::IsOkAndHolds(::testing::NotNull()));
 }
 
+MATCHER(MatchesSectionNameAndBinarySize, "") {
+  return std::get<0>(arg).first == std::get<1>(arg).first &&
+         std::get<0>(arg).second.size() == std::get<1>(arg).second.size();
+}
+
 TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
-  std::string_view name = std::get<0>(GetParam());
-  std::string_view hlo_text = GetHlo(name);
+  absl::string_view name = std::get<0>(GetParam());
+  absl::string_view hlo_text = GetHlo(name);
   auto compile = [&](PtxCompilationMethod compilation_method,
                      PtxLinkingMethod linking_method) {
     auto module = ParseAndReturnVerifiedModule(hlo_text).value();
@@ -278,18 +290,19 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       compile(compilation_method, linking_method);
 
-  // Non parallel compilation (PtxLinkingMethod::kNone) generates slightly
-  // different code (different register assignment, different instruction
-  // ordering). Ideally we would do a fuzzy match, but for now let's just not
-  // compare between parallel and non-parallel compilation.
+  // Binaries produced in a separate linking step differ from binaries produced
+  // with combined compilation/linking. Therefore we only enable linking in the
+  // reference build when the build under test also uses a separate linking
+  // step.
   const PtxLinkingMethod reference_linking_method =
-      linking_method == PtxLinkingMethod::kNone ? PtxLinkingMethod::kNone
-                                                : PtxLinkingMethod::kNvLink;
+      (linking_method == PtxLinkingMethod::kNone) ? PtxLinkingMethod::kNone
+                                                  : PtxLinkingMethod::kNvLink;
+
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
-  EXPECT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
-  EXPECT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
 
   absl::Span<const uint8_t> executable_binary =
       static_cast<GpuExecutable*>(executable.value().get())->binary();
@@ -349,7 +362,21 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
                           get_text_sections(reference_binary));
 
-  EXPECT_THAT(executable_text_sections, ::testing::Eq(reference_text_sections));
+  if (linking_method == reference_linking_method) {
+    EXPECT_THAT(executable_text_sections,
+                ::testing::Eq(reference_text_sections));
+    return;
+  }
+
+  // Different linking methods lead to slightly different code (different
+  // register assignment, different instruction ordering). Ideally we would
+  // disassemble the code and check for equivalence, but for now let's only
+  // compare the text section names and their sizes. If it turns out that
+  // this doesn't bring the necessary coverage or that it's too unstable
+  // we have to revisit that.
+  EXPECT_THAT(executable_text_sections,
+              ::testing::Pointwise(MatchesSectionNameAndBinarySize(),
+                                   reference_text_sections));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -364,7 +391,7 @@ INSTANTIATE_TEST_SUITE_P(
                                          PtxLinkingMethod::kDriver,
                                          PtxLinkingMethod::kNvJitLink)),
     [](const ::testing::TestParamInfo<std::tuple<
-           std::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
+           absl::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
       return GenerateParametrizedTestname(std::get<0>(info.param),
                                           std::get<1>(info.param),
                                           std::get<2>(info.param));

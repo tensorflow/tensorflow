@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -62,8 +62,8 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -72,6 +72,8 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -244,10 +246,20 @@ class CompileOnlyIfRtClient final
         "AssembleArrayFromSingleDeviceArrays not available with compile-only "
         "client.");
   }
+  absl::StatusOr<tsl::RCReference<ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape shape, std::shared_ptr<const ifrt::Sharding> sharding,
+      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      ifrt::ArrayCopySemantics array_copy_semantics,
+      ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
+    return Unimplemented(
+        "AssembleArrayFromSingleDeviceArrays not available with compile-only "
+        "client.");
+  }
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-      std::optional<ifrt::DeviceList> devices,
+      std::optional<tsl::RCReference<ifrt::DeviceList>> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("CopyArrays not available with compile-only client.");
@@ -293,6 +305,9 @@ class CompileOnlyIfRtClient final
     return {};
   }
   int process_index() const override { return 0; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override {
+    return devices_;
+  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return Unimplemented(
@@ -317,7 +332,7 @@ class CompileOnlyIfRtClient final
   const ifrt::PjRtTopology& topology() const { return *topology_; }
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
-      const xla::ifrt::DeviceList& devices) const override {
+      const tsl::RCReference<xla::ifrt::DeviceList>& devices) const override {
     return topology_;
   }
 
@@ -355,7 +370,7 @@ class CompileOnlyPyClient : public PyClient {
   }
 
   absl::StatusOr<std::shared_ptr<ifrt::Executable>> CompileUnloaded(
-      std::string_view mlir_module, CompileOptions options,
+      absl::string_view mlir_module, CompileOptions options,
       std::vector<nb::capsule> host_callbacks) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
@@ -366,6 +381,11 @@ class CompileOnlyPyClient : public PyClient {
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
+    if (options.executable_build_options.use_shardy_partitioner()) {
+      // Since Shardy is located in the middle of the XLA pipeline, we need to
+      // export it before going to HLO while preserving Shardy ops and attrs.
+      TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
+    }
     auto* ifrt_client =
         llvm::dyn_cast_or_null<CompileOnlyIfRtClient>(this->ifrt_client());
     CHECK(ifrt_client) << "CompileOnlyPyClient requires ifrt_client be a "
@@ -400,7 +420,7 @@ void RegisterCompileOnlyClient(nb::module_& m) {
           [](CompileOnlyPyClient& self, nb::bytes mlir_module,
              CompileOptions options, std::vector<nb::capsule> host_callbacks) {
             return ValueOrThrow(self.CompileUnloaded(
-                std::string_view(mlir_module.c_str(), mlir_module.size()),
+                absl::string_view(mlir_module.c_str(), mlir_module.size()),
                 std::move(options), std::move(host_callbacks)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),

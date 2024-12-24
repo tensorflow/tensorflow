@@ -4,7 +4,7 @@ after the TF 2.4 branch cut has passed.
 """
 
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "@local_xla//xla/tsl/platform:rules_cc.bzl",
     "cc_binary",
 )
 

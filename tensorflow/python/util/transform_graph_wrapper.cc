@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -40,7 +41,7 @@ string TransformGraphWithStringInputs(string graph_def_string,
   }
 
   graph_transforms::TransformParameters params_list;
-  Status parse_status = graph_transforms::ParseTransformParameters(
+  absl::Status parse_status = graph_transforms::ParseTransformParameters(
       transforms_string, &params_list);
   if (!parse_status.ok()) {
     MaybeRaiseFromStatus(parse_status);
@@ -48,7 +49,7 @@ string TransformGraphWithStringInputs(string graph_def_string,
   std::vector<string> inputs = str_util::Split(inputs_string, ',');
   std::vector<string> outputs = str_util::Split(outputs_string, ',');
 
-  Status transform_status = graph_transforms::TransformGraph(
+  absl::Status transform_status = graph_transforms::TransformGraph(
       inputs, outputs, params_list, &graph_def);
   if (!transform_status.ok()) {
     MaybeRaiseFromStatus(transform_status);

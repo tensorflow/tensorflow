@@ -1,6 +1,6 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,10 +34,12 @@ cc_library(
         ":execution_trace_proto_cc",
         ":execution_trace_proto_cc_impl",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

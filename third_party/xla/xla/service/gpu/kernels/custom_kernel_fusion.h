@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -60,11 +59,11 @@ namespace xla::gpu {
 // XLA:GPU has multiple strategies for executing this fusion on device:
 //
 // (1) cuBLAS library call: a lot of simple gemm operations are supported by
-//     cuBLAS out of the box. However some combinations of paramters casting and
-//     epilogue fusion are not supported, which means that XLA has to form
+//     cuBLAS out of the box. However some combinations of parameters casting
+//     and epilogue fusion are not supported, which means that XLA has to form
 //     smaller fusions or use code generation to compiled a device kernel.
 //
-// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into devie kernels
+// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into device kernels
 //     (PTX and CUBIN for NVIDIA gpus).
 //
 // (3) Custom kernel fusion is another mechanism to execute fusion on device,
@@ -126,7 +125,7 @@ class CustomKernelFusionRegistry {
                         std::unique_ptr<CustomKernelFusion> fusion);
 
   // Looks up custom kernel fusion by name. Return nullptr if it's not found.
-  CustomKernelFusion* Lookup(std::string_view name) const;
+  CustomKernelFusion* Lookup(absl::string_view name) const;
 
  private:
   mutable absl::Mutex mutex_;

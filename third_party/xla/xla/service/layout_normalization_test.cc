@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -920,6 +919,22 @@ ENTRY main.17 {
       [](HloModule* module) {
         TF_CHECK_OK(ScatterSimplifier().Run(module).status());
       });
+}
+
+TEST_F(LayoutNormalizationTest, CompareInt4) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = s4[10]{0:E(4)} parameter(0)
+  b = s4[10]{0:E(4)} parameter(1)
+  ROOT out = compare(a, b), direction=EQ
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: pred[10]{0} compare({{.*}})
+)");
 }
 
 }  // namespace

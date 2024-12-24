@@ -33,7 +33,7 @@ bool BatchFunctionKernelTestAccess::enable_adaptive_batch_threads() const {
   return kernel_->enable_adaptive_batch_threads_;
 }
 
-Status BatchFunctionKernelTestBase::Init(bool enable_adaptive_scheduler) {
+absl::Status BatchFunctionKernelTestBase::Init(bool enable_adaptive_scheduler) {
   std::vector<DataType> input_dtypes({DataType::DT_INT64, DataType::DT_INT64});
   std::vector<NodeDefBuilder::NodeOut> inputs(
       {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64}),

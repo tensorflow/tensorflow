@@ -29,7 +29,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
-#include "xla/status_macros.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -98,6 +99,7 @@ struct HloRunnerConfig {
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
+  float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
 };
 
 }  // namespace
@@ -205,7 +207,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
       !AbslParseFlag(opts.input_format_str, &opts.input_format, &error)) {
     return absl::InvalidArgumentError(error);
   }
-  TF_RET_CHECK(opts.device_type_str == "gpu" || opts.device_type_str == "host");
+
   PreprocessFlags(opts);
 
   TF_ASSIGN_OR_RETURN(
@@ -223,11 +225,28 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK(opts.dump_output_literal_to.empty() || argc == 2)
       << "Can only dump output literal when single input file is specified";
 
-  TF_ASSIGN_OR_RETURN(
-      PjRtEnvironment env,
-      GetPjRtClient(opts.device_type_str, opts.address_str, opts.task_id,
-                    opts.num_nodes, opts.enable_mock_nccl,
-                    absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+  QCHECK_GT(opts.gpu_client_mem_fraction, 0.0);
+  QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
+
+  PjRtEnvironment env;
+  if (opts.device_type_str == "gpu") {
+    xla::GpuClientOptions gpu_options;
+    gpu_options.node_id = opts.task_id;
+    gpu_options.num_nodes = opts.num_nodes;
+    gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
+    gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
+    TF_ASSIGN_OR_RETURN(
+        env, xla::GetPjRtEnvironmentForGpu(
+                 opts.address_str, gpu_options,
+                 absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+  } else if (opts.device_type_str == "host") {
+    TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unrecognized device type ", opts.device_type_str,
+                     ". Expected \"gpu\" or \"host\""));
+  }
+  CHECK(env.client != nullptr);
 
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
@@ -313,7 +332,11 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_initialization_timeout_sec",
                 &opts.gpu_client_initialization_timeout_sec,
                 "A timeout, in seconds, for the GPU client initialization. "
-                "Only used for multi-node GPU runs")};
+                "Only used for multi-node GPU runs"),
+      tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
+                "The maximum fraction of available memory to allocate in range "
+                "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
+                "client. Only used with the BFC allocator.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 

@@ -25,15 +25,32 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/filecheck.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using StreamAttributeAnnotatorTest = HloTestBase;
+auto MakeDeviceDescription() {
+  stream_executor::DeviceDescription device_description{
+      stream_executor::GpuDeviceInfoProto{}};
+  device_description.set_threads_per_warp(32);
+  return device_description;
+}
+
+class StreamAttributeAnnotatorTest : public HloTestBase {
+ public:
+  const se::DeviceDescription& device_description() const {
+    return device_description_;
+  }
+
+ private:
+  const se::DeviceDescription device_description_{MakeDeviceDescription()};
+};
 
 TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {
   constexpr absl::string_view kHloString = R"(
@@ -53,7 +70,7 @@ TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  StreamAttributeAnnotator attr_annotator;
+  StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -85,7 +102,7 @@ TEST_F(StreamAttributeAnnotatorTest, MultipleStreamsAreCombined) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  StreamAttributeAnnotator attr_annotator;
+  StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -122,7 +139,7 @@ TEST_F(StreamAttributeAnnotatorTest, GTEUserIsAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  StreamAttributeAnnotator attr_annotator;
+  StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -154,7 +171,7 @@ TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  StreamAttributeAnnotator attr_annotator;
+  StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -164,6 +181,50 @@ TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
+}
+
+TEST_F(StreamAttributeAnnotatorTest, CopyStartIsAnnotated) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule offloading
+    ENTRY %main (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+    %param_1 = f32[1024]{0} parameter(1)
+    %param_0 = f32[1024]{0} parameter(0)
+    %res_3 = f32[1024]{0} add(f32[1024]{0} %param_0, f32[1024]{0} %param_1)
+    %copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_3)
+    %res_4 = f32[1024]{0} tanh(f32[1024]{0} %res_3)
+    %copy-start.2 = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_4)
+    %res_5 = f32[1024]{0} tanh(f32[1024]{0} %res_4)
+    %copy-done = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start)
+    %res_6 = f32[1024]{0} tanh(f32[1024]{0} %res_5)
+    %copy-done.2 = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start.2)
+    %copy-start.3 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done.2)
+    %res_7 = f32[1024]{0} add(f32[1024]{0} %res_6, f32[1024]{0} %res_6)
+    %copy-start.1 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done)
+    %res_8 = f32[1024]{0} add(f32[1024]{0} %res_7, f32[1024]{0} %res_5)
+    %copy-done.3 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.3)
+    %res_9 = f32[1024]{0} add(f32[1024]{0} %res_8, f32[1024]{0} %copy-done.3)
+    %copy-done.1 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.1)
+    %res_10 = f32[1024]{0} add(f32[1024]{0} %res_9, f32[1024]{0} %copy-done.1)
+    ROOT %res_11 = f32[1024]{0} tanh(f32[1024]{0} %res_10)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  StreamAttributeAnnotator attr_annotator{device_description()};
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  for (std::string i : {"", ".1", ".2", ".3"}) {
+    const HloInstruction* cp_start =
+        FindInstruction(module.get(), "copy-start" + i);
+    EXPECT_TRUE(cp_start->has_backend_config());
+    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                            cp_start->backend_config<GpuBackendConfig>());
+    EXPECT_EQ(gpu_config.operation_queue_id(), 1);
+  }
 }
 
 TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
@@ -187,8 +248,9 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
                           ParseAndReturnVerifiedModule(kHloString));
   EXPECT_TRUE(module->has_schedule());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          StreamAttributeAnnotator().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      StreamAttributeAnnotator{device_description()}.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the dynamic-update-slice instruction is wrapped in a fusion
@@ -250,8 +312,9 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
                           ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(module->has_schedule());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          StreamAttributeAnnotator().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      StreamAttributeAnnotator{device_description()}.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the dynamic-slice instruction is wrapped in a fusion

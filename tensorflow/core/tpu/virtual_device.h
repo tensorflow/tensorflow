@@ -26,12 +26,12 @@ class VirtualDevice : public Device {
  public:
   VirtualDevice(Env* env, const DeviceAttributes& device_attributes);
 
-  Status Sync() override;
+  absl::Status Sync() override;
   Allocator* GetAllocator(AllocatorAttributes attr) override;
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
-  Status TryGetDeviceContext(DeviceContext** out_context) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
+  absl::Status TryGetDeviceContext(DeviceContext** out_context) override;
 };
 
 }  // namespace tensorflow

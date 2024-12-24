@@ -53,6 +53,104 @@ compatibility with non-hermetic CUDA/CUDNN repository rules.
 The mapping between CUDA version and NCCL distribution version to be downloaded
 is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
 
+## Configure hermetic CUDA
+
+1. In the downstream project dependent on XLA, add the following lines to the
+   bottom of the `WORKSPACE` file:
+
+   Note: use @local_tsl instead of @tsl in Tensorflow project.
+
+   ```
+   load(
+      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+      "cuda_json_init_repository",
+   )
+
+   cuda_json_init_repository()
+
+   load(
+      "@cuda_redist_json//:distributions.bzl",
+      "CUDA_REDISTRIBUTIONS",
+      "CUDNN_REDISTRIBUTIONS",
+   )
+   load(
+      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+      "cuda_redist_init_repositories",
+      "cudnn_redist_init_repository",
+   )
+
+   cuda_redist_init_repositories(
+      cuda_redistributions = CUDA_REDISTRIBUTIONS,
+   )
+
+   cudnn_redist_init_repository(
+      cudnn_redistributions = CUDNN_REDISTRIBUTIONS,
+   )
+
+   load(
+      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+      "cuda_configure",
+   )
+
+   cuda_configure(name = "local_config_cuda")
+
+   load(
+      "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+      "nccl_redist_init_repository",
+   )
+
+   nccl_redist_init_repository()
+
+   load(
+      "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
+      "nccl_configure",
+   )
+
+   nccl_configure(name = "local_config_nccl")
+   ```
+
+2. To select specific versions of hermetic CUDA and CUDNN, set the
+   `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` environment variables
+   respectively. Use only supported versions. You may set the environment
+   variables directly in your shell or in `.bazelrc` file as shown below:
+   ```
+   build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
+   build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.1.1"
+   build:cuda --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,compute_90"
+   ```
+
+3. To enable hermetic CUDA during test execution, or when running a binary via
+   bazel, make sure to add `--@local_config_cuda//cuda:include_cuda_libs=true`
+   flag to your bazel command. You can provide it either directly in a shell or
+   in `.bazelrc`:
+   ```
+   build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
+   ```
+   The flag is needed to make sure that CUDA dependencies are properly provided
+   to test executables. The flag is false by default to avoid unwanted coupling
+   of Google-released Python wheels to CUDA binaries.
+
+4. To enforce CUDA forward compatibility mode, add
+   `--@cuda_driver//:enable_forward_compatibility=true` flag to your bazel
+   command. You can provide it either directly in a shell or in `.bazelrc`:
+   ```
+   test:cuda --@cuda_driver//:enable_forward_compatibility=true
+   ```
+
+   The default flag value is `false`.
+
+   When CUDA forward compatibility mode is disabled, Bazel targets will use User
+   Mode and Kernel Mode Drivers pre-installed on the system.
+
+   When CUDA forward compatibility mode is enabled, Bazel targets will use User
+   Mode Driver from CUDA driver redistribution downloaded into Bazel cache and
+   Kernel Mode Driver pre-installed on the system. It allows enabling new CUDA
+   Toolkit features while using older Kernel Mode Driver.
+
+   Forward compatibility mode should be enforced only when it is appropriate -
+   see [NVIDIA documentation](https://docs.nvidia.com/deploy/cuda-compatibility/index.html#forward-compatibility-support-across-major-toolkit-versions) for the
+   details.
+
 ## Upgrade hermetic CUDA/CUDNN version
 1. Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
    `CUDA_REDIST_JSON_DICT` dictionaries in
@@ -66,14 +164,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
    if needed.
 
-2. For RBE executions: update `TF_CUDA_VERSION` and/or `TF_CUDNN_VERSION` in
-   [toolchains/remote_config/rbe_config.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/tools/toolchains/remote_config/rbe_config.bzl).
-
-3. For RBE executions: update `cuda_version`, `cudnn_version`, `TF_CUDA_VERSION`
-   and `TF_CUDNN_VERSION` in
-   [toolchains/remote_config/configs.bzl](https://github.com/openxla/xla/blob/main/tools/toolchains/remote_config/configs.bzl).
-
-4. For each Google ML project create a separate pull request with updated
+2. For each Google ML project create a separate pull request with updated
    `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
 
    The PR presubmit job executions will launch bazel tests and download hermetic
@@ -466,80 +557,3 @@ projects:
 
    For Tensorflow, use `--override_repository=local_tsl=<tsl_path>` flag in the
    Bazel command options.
-
-## Configure hermetic CUDA
-
-1. In the downstream project dependent on XLA, add the following lines to the
-   bottom of the `WORKSPACE` file:
-
-   Note: use @local_tsl instead of @tsl in Tensorflow project.
-
-   ```
-   load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
-      "cuda_json_init_repository",
-   )
-
-   cuda_json_init_repository()
-
-   load(
-      "@cuda_redist_json//:distributions.bzl",
-      "CUDA_REDISTRIBUTIONS",
-      "CUDNN_REDISTRIBUTIONS",
-   )
-   load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
-      "cuda_redist_init_repositories",
-      "cudnn_redist_init_repository",
-   )
-
-   cuda_redist_init_repositories(
-      cuda_redistributions = CUDA_REDISTRIBUTIONS,
-   )
-
-   cudnn_redist_init_repository(
-      cudnn_redistributions = CUDNN_REDISTRIBUTIONS,
-   )
-
-   load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
-      "cuda_configure",
-   )
-
-   cuda_configure(name = "local_config_cuda")
-
-   load(
-      "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
-      "nccl_redist_init_repository",
-   )
-
-   nccl_redist_init_repository()
-
-   load(
-      "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
-      "nccl_configure",
-   )
-
-   nccl_configure(name = "local_config_nccl")
-   ```
-
-2. To select specific versions of hermetic CUDA and CUDNN, set the
-   `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` environment variables
-   respectively. Use only supported versions. You may set the environment
-   variables directly in your shell or in `.bazelrc` file as shown below:
-   ```
-   build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.3.2"
-   build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.1.1"
-   build:cuda --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,compute_90"
-   ```
-
-3. To enable hermetic CUDA during test execution, or when running a binary via
-   bazel, make sure to add `--@local_config_cuda//cuda:include_cuda_libs=true`
-   flag to your bazel command. You can provide it either directly in a shell or
-   in `.bazelrc`:
-   ```
-   build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-   ```
-   The flag is needed to make sure that CUDA dependencies are properly provided
-   to test executables. The flag is false by default to avoid unwanted coupling
-   of Google-released Python wheels to CUDA binaries.

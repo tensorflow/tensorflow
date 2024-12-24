@@ -26,7 +26,7 @@ namespace tfd {
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
 // the default runner_table.
-Status SetUpKernelFallbackCompatRequestContext(
+absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,

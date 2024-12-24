@@ -93,7 +93,8 @@ absl::Status IrEmitter::HandleGetTupleElement(
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand),
-          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
+          llvm_ir::ShapeToIrType(operand->shape(), module_->getContext()),
+          &b_));
   return absl::OkStatus();
 }
 
@@ -125,37 +126,6 @@ absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
   return absl::OkStatus();
 }
-
-bool IrEmitter::IsEmittingForAMDGPU() const {
-  llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
-  return target_triple.isAMDGPU();
-}
-
-namespace {
-llvm::Value* Real(llvm::Value* x, llvm::IRBuilder<>* b) {
-  return b->CreateExtractValue(x, {0});
-}
-
-llvm::Value* Imag(llvm::Value* x, llvm::IRBuilder<>* b) {
-  return b->CreateExtractValue(x, {1});
-}
-
-std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
-                                                      llvm::Value* rhs_value,
-                                                      llvm::IRBuilder<>* b) {
-  llvm::Value* lhs_real = Real(lhs_value, b);
-  llvm::Value* lhs_imag = Imag(lhs_value, b);
-  llvm::Value* rhs_real = Real(rhs_value, b);
-  llvm::Value* rhs_imag = Imag(rhs_value, b);
-  llvm::Value* real_result1 = b->CreateFMul(lhs_real, rhs_real);
-  llvm::Value* real_result2 = b->CreateFMul(lhs_imag, rhs_imag);
-  llvm::Value* real_result = b->CreateFSub(real_result1, real_result2);
-  llvm::Value* imag_result1 = b->CreateFMul(lhs_real, rhs_imag);
-  llvm::Value* imag_result2 = b->CreateFMul(lhs_imag, rhs_real);
-  llvm::Value* imag_result = b->CreateFAdd(imag_result1, imag_result2);
-  return {real_result, imag_result};
-}
-}  // namespace
 
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
@@ -264,15 +234,6 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());
         });
-  }
-}
-
-void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
-                                        const char* sync_scope_id) {
-  if (IsEmittingForAMDGPU() &&
-      ir_emitter_context_->rocm_compute_capability().fence_before_barrier()) {
-    b_.CreateFence(atomic_ordering,
-                   b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
   }
 }
 

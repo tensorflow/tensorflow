@@ -65,6 +65,7 @@ cc_library(
     }),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_absl//absl/strings:string_view",
     ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 

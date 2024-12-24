@@ -19,17 +19,22 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
-
+namespace gpu {
 namespace {
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 class TransposeDimensionGrouperTest : public HloTestBase {
  public:
   void CheckDimensionGrouper(absl::string_view hlo,
                              std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, gpu::TransposeDimensionGrouper{}, expected);
+    RunAndFilecheckHloRewrite(hlo, TransposeDimensionGrouper{}, expected);
   }
   void CheckDimensionGrouperUnchanged(absl::string_view hlo) {
     CheckDimensionGrouper(hlo, /*expected=*/std::nullopt);
@@ -61,13 +66,29 @@ ENTRY main {
   ROOT out = f32[32,64,128]{0,1,2} transpose(input), dimensions={0,2,1}
 }
 )";
-
-  // The output shape doesn't have the default layout.
-  CheckDimensionGrouperUnchanged(hlo);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TransposeDimensionGrouper dimension_grouper;
+  EXPECT_THAT(dimension_grouper.Run(module.get()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Layout normalization")));
 }
 
-// TODO(b/328656780): Do not normalize to 3D once the emitter supports any
-// number of dimensions.
+TEST_F(TransposeDimensionGrouperTest, NoTranspose3) {
+  const char* hlo = R"(
+HloModule NoTranspose3
+
+ENTRY main {
+  input = f32[32,128,64]{0,1,2} parameter(0)
+  ROOT out = f32[32,64,128]{2,1,0} transpose(input), dimensions={0,2,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TransposeDimensionGrouper dimension_grouper;
+  EXPECT_THAT(dimension_grouper.Run(module.get()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Layout normalization")));
+}
+
 TEST_F(TransposeDimensionGrouperTest, Simple2D) {
   const char* hlo = R"(
 HloModule Simple2D
@@ -78,13 +99,7 @@ ENTRY main {
 }
 )";
 
-  CheckDimensionGrouper(hlo,
-                        R"(
-// CHECK:  [[input_0:%[^ ]+]] = f32[128,64]{1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,128,64]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,64,128]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
-// CHECK:  ROOT {{.*}} = f32[64,128]{1,0} bitcast([[transpose]])
-      )");
+  CheckDimensionGrouperUnchanged(hlo);
 }
 
 TEST_F(TransposeDimensionGrouperTest, Simple3D_021) {
@@ -161,8 +176,8 @@ ENTRY main {
   CheckDimensionGrouper(hlo,
                         R"(
 // CHECK:  [[input_0:%[^ ]+]] = f32[4096,4096,128,16]{3,2,1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,2147483648,16]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,16,2147483648]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[2147483648,16]{1,0} bitcast([[input_0]])
+// CHECK:  [[transpose:%[^ ]+]] = f32[16,2147483648]{1,0} transpose([[bitcast_1]]), dimensions={1,0}
 // CHECK:  ROOT {{.*}} = f32[16,4096,4096,128]{3,2,1,0} bitcast([[transpose]])
       )");
 }
@@ -205,9 +220,7 @@ ENTRY main {
       )");
 }
 
-// TODO(b/328656780): Do not normalize to 3D once the emitter supports any
-// number of dimensions.
-TEST_F(TransposeDimensionGrouperTest, Normalize2DTo3D) {
+TEST_F(TransposeDimensionGrouperTest, NormalizeTo2D) {
   const char* hlo = R"(
 HloModule Normalize2DTo3D
 
@@ -220,11 +233,12 @@ ENTRY main {
   CheckDimensionGrouper(hlo,
                         R"(
 // CHECK:  [[input_0:%[^ ]+]] = f32[50,20,30]{2,1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,50,600]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,600,50]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[50,600]{1,0} bitcast([[input_0]])
+// CHECK:  [[transpose:%[^ ]+]] = f32[600,50]{1,0} transpose([[bitcast_1]]), dimensions={1,0}
 // CHECK:  ROOT {{.*}} = f32[20,30,50]{2,1,0} bitcast([[transpose]])
       )");
 }
 
 }  // namespace
+}  // namespace gpu
 }  // namespace xla

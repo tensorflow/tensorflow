@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/array_ops.h"
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"
@@ -36,9 +37,9 @@ namespace ops {
 // or value.
 //
 // Description:
-Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                AbstractTensorHandle** output, const char* name,
-                const char* raw_device_name) {
+absl::Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
+                      AbstractTensorHandle** output, const char* name,
+                      const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Identity", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -67,10 +68,10 @@ Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
 //   def ApplyG(op, dy, _):
 //     return [None, g(dy)]  # Do not backprop to f(x).
 //   ```
-Status IdentityN(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> input,
-                 absl::Span<AbstractTensorHandle*> output, const char* name,
-                 const char* raw_device_name) {
+absl::Status IdentityN(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> input,
+                       absl::Span<AbstractTensorHandle*> output,
+                       const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -83,9 +84,9 @@ Status IdentityN(AbstractContext* ctx,
 // Summary: Returns a tensor of zeros with the same shape and type as x.
 //
 // Description:
-Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name,
-                 const char* raw_device_name) {
+absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
+                       AbstractTensorHandle** y, const char* name,
+                       const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("ZerosLike", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -107,9 +108,9 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 //   shape(t) ==> [2, 2, 3]
 //   ```
-Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, DataType out_type, const char* name,
-             const char* raw_device_name) {
+absl::Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
+                   AbstractTensorHandle** output, DataType out_type,
+                   const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -153,10 +154,10 @@ Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
 //
 //   This operation is related to `squeeze()`, which removes dimensions of
 //   size 1.
-Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
-                  AbstractTensorHandle* const dim,
-                  AbstractTensorHandle** output, const char* name,
-                  const char* raw_device_name) {
+absl::Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
+                        AbstractTensorHandle* const dim,
+                        AbstractTensorHandle** output, const char* name,
+                        const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("ExpandDims", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -170,9 +171,9 @@ Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
 // Summary: Returns a tensor of ones with the same shape and type as x.
 //
 // Description:
-Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                AbstractTensorHandle** y, const char* name,
-                const char* raw_device_name) {
+absl::Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
+                      AbstractTensorHandle** y, const char* name,
+                      const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("OnesLike", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));

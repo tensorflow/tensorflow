@@ -24,7 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
+absl::Status DataTypeToPrimitiveType(DataType data_type,
+                                     xla::PrimitiveType* type) {
   switch (data_type) {
     case tensorflow::DT_BOOL:
       *type = xla::PRED;

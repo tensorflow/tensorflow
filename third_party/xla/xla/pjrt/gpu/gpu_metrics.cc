@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/strings/str_cat.h"
-#include "tsl/lib/monitoring/gauge.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 
 namespace xla {
 namespace {

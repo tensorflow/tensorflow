@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -58,15 +59,15 @@ class TFSignatureDefFunction : public SignatureDefFunction {
   //  ctx      - A handle to the Tensorflow runtime. This MUST be non-null and
   //             outlive TFSignatureDefFunction.
   //  out      - The output TFSignatureDefFunction.
-  static Status Create(const FunctionDef* function_def,
-                       std::vector<ImmediateExecutionTensorHandle*> captures,
-                       SignatureDefFunctionMetadata metadata,
-                       ImmediateExecutionContext* ctx,
-                       std::unique_ptr<TFSignatureDefFunction>* out);
+  static absl::Status Create(
+      const FunctionDef* function_def,
+      std::vector<ImmediateExecutionTensorHandle*> captures,
+      SignatureDefFunctionMetadata metadata, ImmediateExecutionContext* ctx,
+      std::unique_ptr<TFSignatureDefFunction>* out);
 
   // This method creates a "Call" Op used to execute the function.
-  Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
-                    ImmediateOpPtr* out) const override;
+  absl::Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                          ImmediateOpPtr* out) const override;
 
   const SignatureDefFunctionMetadata& GetFunctionMetadata() const override;
 

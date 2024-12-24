@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -43,16 +42,16 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -62,7 +61,6 @@ namespace xla::gpu::ir_emitter_triton_internal {
 namespace {
 
 using ::llvm::SmallVector;
-using ::mlir::ImplicitLocOpBuilder;
 using ::mlir::MLIRContext;
 using ::mlir::OpBuilder;
 using ::mlir::Type;
@@ -135,11 +133,11 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
 }
 
 mlir::triton::FuncOp CreateTritonFunction(
-    ImplicitLocOpBuilder& b, const std::vector<int64_t> shape_sizes) {
-  auto fn = b.create<mt::FuncOp>(
+    EmitterLocOpBuilder& b, const std::vector<int64_t> shape_sizes) {
+  auto fn = b.create<::mlir::triton::FuncOp>(
       "func",
-      b.getFunctionType({mt::PointerType::get(b.getF32Type(),
-                                              mlir::NVVM::kGlobalMemorySpace)},
+      b.getFunctionType({::mlir::triton::PointerType::get(
+                            b.getF32Type(), mlir::NVVM::kGlobalMemorySpace)},
                         std::nullopt));
   for (int i = 0; i < fn.getNumArguments(); ++i) {
     fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
@@ -167,7 +165,7 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
       llvm_ir::CreateMlirModuleOp(loc);
   builder.setInsertionPointToEnd(triton_module->getBody());
 
-  ImplicitLocOpBuilder b(loc, builder);
+  EmitterLocOpBuilder b(loc, builder);
   auto fn = CreateTritonFunction(b, parent_shape);
 
   SmallVector<Value, 3> tile_multi_index = ComputeDelinearizedTileIndex(
@@ -190,63 +188,63 @@ std::vector<int> ConstOpValuesToInt(const mlir::ValueRange values) {
   return result;
 }
 
-mlir::ArrayRef<int64_t> TensorShape(const mt::MakeTensorPtrOp& op) {
-  auto ptr = mlir::cast<mt::PointerType>(op->getResult(0).getType());
+mlir::ArrayRef<int64_t> TensorShape(const ::mlir::triton::MakeTensorPtrOp& op) {
+  auto ptr =
+      mlir::cast<::mlir::triton::PointerType>(op->getResult(0).getType());
   auto tensor = mlir::cast<mlir::TensorType>(ptr.getPointeeType());
   return tensor.getShape();
 }
 
-void CheckOffsetsAreIndices(const mlir::ValueRange offset_values) {
-  for (Value v : offset_values) {
-    EXPECT_NE(v.getDefiningOp<mlir::arith::IndexCastOp>(), nullptr);
+void CheckSizesAreSubtractions(const mlir::ValueRange size_values) {
+  for (Value v : size_values) {
+    EXPECT_NE(v.getDefiningOp<mlir::arith::SubIOp>(), nullptr);
   }
 }
-
 TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
   {
     auto [module, ptr] = CreateTestTensorPtr({15, 20}, {3, 4}, {1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(15, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(0));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({20, 20}, {4, 4}, {1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(20, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5}, {1}, {1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5, 5, 5}, {1, 1, 1}, {1, 1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5, 5, 5));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1, 1, 1));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(25, 5, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(2, 1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5, 15, 20}, {1, 3, 4}, {1, 1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5, 15, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1, 4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()),
                 ElementsAre(300, 20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(2, 1, 0));
   }
 }

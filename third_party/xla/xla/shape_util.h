@@ -513,9 +513,6 @@ class ShapeUtil {
   // that floating point numbers are signed.
   static bool ElementIsSigned(const Shape& shape);
 
-  // Returns whether the given primitive type corresponds to an array shape.
-  static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
-
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
   static bool IsNestedTuple(const Shape& shape);
@@ -726,6 +723,11 @@ class ShapeUtil {
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
 
+  // Extracts the packing factor for a 1D interleaved array based on the layout.
+  // For example, bf16[1024]{0:T(1024)(128)(2,1)} -> 2
+  static absl::StatusOr<int64_t> PackedFactorFor1DInterleavedArray(
+      const Shape& shape);
+
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 
@@ -880,6 +882,11 @@ class ShapeUtil {
   // otherwise.
   static std::optional<Shape> AlignLayouts(const Shape& input_shape,
                                            const Shape& output_shape);
+
+  // Returns a shape with the given logical dimensions reordered, updating the
+  // layout so that physical dimensions are preserved.
+  static Shape ReorderLogicalDimensions(const Shape& shape,
+                                        absl::Span<const int64_t> permutation);
 
   // Returns a shape with the given dimension deleted.
   // For example:
@@ -1036,20 +1043,19 @@ class ShapeUtil {
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
 
+  // Updates element_size_in_bits on each subshape's layout. If
+  // 'pack_subbyte_types' is true, sets the element size to the dtype bitwidth
+  // for subbyte types (S4, U4, etc) and 0 for non-subbyte types, which
+  // indicates that for arrays of subbyte types, multiple elements are packed in
+  // a single byte. If 'pack_subbyte_types' is false, sets the element size to 0
+  // for all types.
+  static void UpdateElementSizeInBits(Shape* s, bool pack_subbyte_types);
+
  private:
   // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);
-
-  // Validates the shape size is sane. This makes sure it's safe to do
-  // calculations in int64_t without overflowing.
-  static absl::Status ValidateShapeSize(const Shape& shape);
-
-  // Validates all of the non-layout properties of the shape -- this is a helper
-  // used by both the layout-optional and layout-required public method.
-  static absl::Status ValidateShapeWithOptionalLayoutInternal(
-      const Shape& shape);
 
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.

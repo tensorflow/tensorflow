@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <tuple>
 
 #include "absl/status/status.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla_data.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
@@ -141,7 +141,7 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 // If deterministic output is requested, returns first (not failing) result.
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     HloModuleConfig hlo_module_config);
 
 // Returns whether determinism is required.

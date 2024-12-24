@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -52,11 +53,16 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
     return result;
   }
 
+  // The original_value may refer to an empty array, such as origin {}, so let's
+  // check whether that's the case before accessing them. Generally speaking the
+  // index _should_ be good, but let's double check.
   const auto& leaf = original_value.element(shape_index);
-  absl::StrAppend(
-      &result, "{", "\"", leaf->instruction_name, "\"",
-      (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
-      "}");
+  if (leaf.has_value()) {
+    absl::StrAppend(
+        &result, "{", "\"", leaf->instruction_name, "\"",
+        (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
+        "}");
+  }
   return result;
 }
 
@@ -65,4 +71,22 @@ std::string OriginalValueToString(const OriginalValue& original_value) {
   return OriginalValueToStringHelper(original_value, original_value.shape(),
                                      shape_index);
 }
+
+OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
+  OriginalValueProto original_value_proto;
+  for (const auto& leaf : original_value.leaves()) {
+    OriginalArrayProto* original_array_proto =
+        original_value_proto.add_leaves();
+    for (const auto& index : leaf.first) {
+      original_array_proto->add_leaf_shape_index(index);
+    }
+    *original_array_proto->mutable_instruction_name() =
+        leaf.second->instruction_name;
+    for (const auto& index : leaf.second->shape_index) {
+      original_array_proto->add_shape_index(index);
+    }
+  }
+  return original_value_proto;
+}
+
 }  // namespace xla

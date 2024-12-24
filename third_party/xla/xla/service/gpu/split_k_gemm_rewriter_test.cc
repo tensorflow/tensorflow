@@ -44,9 +44,6 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
-// TODO(b/317016172): Inspect usages of TritonGemmConfig and potentially update
-// them to to use newly exposed parameters.
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -690,7 +687,7 @@ class SplitKTestWithMorePreciseReduction
     : public HloTestBase,
       public ::testing::WithParamInterface<int> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
         true);

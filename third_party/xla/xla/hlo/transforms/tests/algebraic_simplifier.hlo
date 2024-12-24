@@ -1,0 +1,17 @@
+// RUN: hlo-opt %s --passes=algebraic_simplifier | FileCheck %s
+
+HloModule m
+ENTRY test {
+    // CHECK: %[[p0:.*]] = s32[8]{0} parameter(0)
+    // CHECK-NEXT: %[[p2:.*]] = s32[8]{0} parameter(2)
+    // CHECK-NEXT: %[[x:.*]] = s32[8]{0} multiply(s32[8]{0} %[[p0]], s32[8]{0} %[[p2]])
+    // CHECK-NEXT: %[[p1:.*]] = s32[8]{0} parameter(1)
+    // CHECK-NEXT: %[[y:.*]] = s32[8]{0} multiply(s32[8]{0} %[[p1]], s32[8]{0} %[[p2]])
+    // CHECK-NEXT: ROOT %[[sum:.*]] = s32[8]{0} add(s32[8]{0} %[[x]], s32[8]{0} %[[y]])
+    p0 = s32[8] parameter(0)
+    p1 = s32[8] parameter(1)
+    p2 = s32[8] parameter(2)
+    x = s32[8] multiply(p0, p2)
+    y = s32[8] multiply(p1, p2)
+    ROOT sum = s32[8] add(x, y)
+}

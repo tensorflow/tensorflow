@@ -76,8 +76,8 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
 }
 }  // namespace
 
-::tensorflow::Status EnsureBiasVectors::Run(Model* model, std::size_t op_index,
-                                            bool* modified) {
+absl::Status EnsureBiasVectors::Run(Model* model, std::size_t op_index,
+                                    bool* modified) {
   *modified = false;
   auto* op = model->operators[op_index].get();
   if (op->type == OperatorType::kConv ||

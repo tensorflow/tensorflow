@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize \
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
 // RUN:   --inline="default-pipeline='cse'" | FileCheck %s
 // RUN: test_correctness %s --bijection_inputs=reduce1:0 \
 // RUN:   --bijection_inputs=reduce2:0 --bijection_outputs=reduce1 \
@@ -34,7 +34,7 @@ fusion {
 // CHECK-DAG:  %[[CST0:.*]] = arith.constant 0xFFF0000000000000
 // CHECK-DAG:  %[[TID_X:.*]] = gpu.thread_id x
 
-// CHECK: xla_gpu.loop
+// CHECK: xla.loop
 // CHECK-SAME:  -> (%[[RA:.*]], %[[RA:.*]], %[[RC:.*]]) in
 // reduce0 in the context of reduce2 and reduce1's prologue:
 // CHECK:      scf.for %[[I:.*]] = %[[C0]]
@@ -44,4 +44,4 @@ fusion {
 
 // reduce0 again, in the context of its status as a fusion hero:
 // CHECK:     tensor.extract %[[P1]][%[[RC]]]
-// CHECK:     shuffle_reduce @add_add(%{{.*}}) to 2
+// CHECK: shuffle_reduce(%{{.*}}) to 2 combiner=@add_add

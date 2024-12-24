@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -34,8 +33,7 @@ using ComparisonKernel = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
 // buffer_address
 // + buffer_length]` that is not equal to `redzone_pattern`,
 // `*mismatch_count_ptr` gets incremented by 1.
-absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
-    StreamExecutor* executor, GpuAsmOpts gpu_asm_opts);
+absl::StatusOr<ComparisonKernel> GetComparisonKernel(StreamExecutor* executor);
 
 }  // namespace stream_executor
 

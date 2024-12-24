@@ -22,12 +22,23 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
 namespace quant {
-class QuantizationDialect;
+class QuantDialect;
 }
 namespace quantfork {
 class QuantizationForkDialect;
@@ -52,6 +63,16 @@ class Type;
 
 namespace TFL {
 
+////////////////////////////////////////////////////////////////////////////////
+// Forward declarations
+////////////////////////////////////////////////////////////////////////////////
+
+struct OptimizePassOptions;
+
+////////////////////////////////////////////////////////////////////////////////
+// Utilities for backward compatibility
+////////////////////////////////////////////////////////////////////////////////
+
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
 // TFL builtin op towards the TFL runtime capability and the incompatible TF ops
@@ -62,10 +83,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass();
+inline std::unique_ptr<mlir::Pass> CreateOptimizePass() {
+  return Create<OptimizePass>();
+}
 
 // Creates an instance of the Tensorflow Lite batch matmul Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass();
+inline std::unique_ptr<mlir::Pass> CreateOptimizeBatchMatmulPass() {
+  return Create<OptimizeBatchMatmulPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
@@ -143,7 +168,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass();
 
 // Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass();
+inline std::unique_ptr<mlir::Pass> CreateSplitMergedOperandsPass() {
+  return Create<SplitMergedOperandsPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
@@ -167,10 +194,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass();
 // Creates an instance of the IdentifyDilatedConvPass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass();
 
-// Creates an instance of the TensorFlow Lite dialect pass to convert dense
-// tensor to sparse format.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass();
-
 // Creates function pass to legalize TF While to TFL While.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 
@@ -178,7 +201,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
+inline std::unique_ptr<mlir::Pass> CreateWhileOutlinePass() {
+  return Create<WhileOutlinePass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect IfOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateIfOutlinePass();
@@ -211,7 +236,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 
 // Creates a pass which analyze the model whether it is safe to use
 // native TFLite variables or not.
-std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass();
+inline std::unique_ptr<mlir::Pass> CreateAnalyzeVariablesPass() {
+  return Create<AnalyzeVariablesPass>();
+}
 
 // Creates a pass which is responsible for legalizing TensorFlow static hash
 // tables to TensorFlow Lite hash tables.
@@ -223,40 +250,47 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 
 // Creates unfold large constant pass, which will replace large splat constant
 // tensors with fill op.
-std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
+inline std::unique_ptr<mlir::Pass> CreateUnfoldLargeSplatConstantPass() {
+  return Create<UnfoldLargeSplatConstantPass>();
+}
 
 // Creates a pass which is responsible for unfreezing mutable global tensors.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateUnfreezeMutableGlobalTensorsPass();
+inline std::unique_ptr<mlir::Pass> CreateUnfreezeMutableGlobalTensorsPass() {
+  return Create<UnfreezeMutableGlobalTensorsPass>();
+}
 
 // Creates a pass that adds control dependencies to keep the relative
 // execution order of operations with side effects frozen.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 
 // Legalize TensorList Ops iff all of them are supported.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
+inline std::unique_ptr<mlir::Pass> CreateLegalizeTensorListPass() {
+  return Create<LegalizeTensorListPass>();
+}
 
 // Reduce the type precision of some tensor types if all values within that
 // tensor are within the range of the reduced precision.
 std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass();
 
-// Convervatively pushes transposes through elementwise ops to prepare
-// so redudant ones may be grouped and removed.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePushTransposeThroughEwisePass();
+// Conservatively pushes transposes through element-wise ops to prepare
+// so redundant ones may be grouped and removed.
+inline std::unique_ptr<mlir::Pass> CreatePushTransposeThroughEwisePass() {
+  return Create<PushTransposeThroughEwisePass>();
+}
 
 // Create a pass that canonicalize the boundary values.
-std::unique_ptr<OperationPass<ModuleOp>> CreateCanonicalizeBoundaryValuePass();
+inline std::unique_ptr<mlir::Pass> CreateCanonicalizeBoundaryValuePass() {
+  return Create<CanonicalizeBoundaryValuePass>();
+}
 
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();
 
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
-#define GEN_PASS_DECL_DENSETOSPARSEPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS
-#define GEN_PASS_DECL_OPTIMIZEPASS
 #define GEN_PASS_DECL_POSTQUANTIZEPASS
 #define GEN_PASS_DECL_PREPARECOMPOSITEFUNCTIONSPASS
 #define GEN_PASS_DECL_PREPAREDYNAMICRANGEQUANTIZEPASS
@@ -271,10 +305,6 @@ CreatePartitionedTopologicalSortPass();
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
     const LegalizeTFPassOptions& options);
-
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    const OptimizePassOptions& options);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
@@ -294,19 +324,27 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     const DefaultQuantParamsPassOptions& options);
 
-inline void registerOptimizePass() {
-  auto pass_argument = OptimizePass::GetArgument();
-  auto pass_description = OptimizePass::GetDescription();
-  PassPipelineRegistration<OptimizePassOptions>(
-      pass_argument, pass_description,
-      [](OpPassManager& pm, const OptimizePassOptions& options) {
-        pm.addPass(CreateOptimizePass(options));
-      });
-}
-
 inline void registerTensorFlowLitePasses() {
   registerTensorFlowLiteTdPasses();
-  registerOptimizePass();
+  // Register TFLite Converter Passes
+  Register<UnfreezeMutableGlobalTensorsPass>();
+
+  // TF Legalization Passes
+  Register<AnalyzeVariablesPass>();
+  Register<LegalizeTensorListPass>();
+  Register<WhileOutlinePass>();
+
+  // TFL Optimization Passes
+  Register<OptimizePass, OptimizePassOptions>();
+  Register<OptimizeBatchMatmulPass>();
+  Register<UnfreezeMutableGlobalTensorsPass>();
+  Register<OptimizeBroadcastLikePass>();
+  Register<PushTransposeThroughEwisePass>();
+  Register<CanonicalizeBoundaryValuePass>();
+
+  // Other TFLite Passes
+  Register<UnfoldLargeSplatConstantPass>();
+  Register<SplitMergedOperandsPass>();
 }
 
 }  // namespace TFL

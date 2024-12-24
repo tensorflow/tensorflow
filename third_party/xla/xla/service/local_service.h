@@ -17,12 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_LOCAL_SERVICE_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"

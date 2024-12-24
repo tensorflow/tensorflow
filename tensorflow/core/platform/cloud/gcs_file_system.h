@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/compute_engine_zone_provider.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/retrying_file_system.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/cloud/gcs_file_system.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

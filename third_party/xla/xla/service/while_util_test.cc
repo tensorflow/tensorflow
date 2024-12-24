@@ -16,15 +16,18 @@ limitations under the License.
 #include "xla/service/while_util.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -217,6 +220,192 @@ ENTRY main {
     return instr->opcode() == HloOpcode::kWhile;
   };
   EXPECT_EQ(absl::c_count_if(main->instructions(), is_while), 1);
+}
+
+TEST_F(WhileUtilTest, TryIncrementNonCounterTripCount) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  one.0 = s32[] constant(2)
+  add.0 = s32[] add(gte.0, one.0)
+  ROOT tuple.0 = (s32[], s32[]) tuple(add.0, gte.1)
+}
+
+cond {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  minus-one.0 = s32[] constant(-1)
+  add.0 = add(gte.1, minus-one.0)
+  ROOT compare.0 = compare(gte.0, add.0), direction=LT
+}
+
+ENTRY main {
+  param.0 = (s32[], s32[]) parameter(0)
+  ROOT while = while(param.0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  // Loop body increments induction variable by 2, in this case we should fail.
+  EXPECT_FALSE(
+      WhileUtil::IncrementWhileLoopTripCount(*while_instr, /*increment=*/1)
+          .ok());
+}
+
+TEST_F(WhileUtilTest, TryIncrementNonConstantTripCount) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  one.0 = s32[] constant(1)
+  add.0 = s32[] add(gte.0, one.0)
+  add.1 = s32[] add(gte.1, one.0)
+  ROOT tuple.0 = (s32[], s32[]) tuple(add.0, add.1)
+}
+
+cond {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  minus-one.0 = s32[] constant(-1)
+  add.0 = add(gte.1, minus-one.0)
+  ROOT compare.0 = compare(gte.0, add.0), direction=LT
+}
+
+ENTRY main {
+  param.0 = (s32[], s32[]) parameter(0)
+  ROOT while = while(param.0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  // Loop body increments trip count, in this case we should fail.
+  EXPECT_FALSE(
+      WhileUtil::IncrementWhileLoopTripCount(*while_instr, /*increment=*/1)
+          .ok());
+}
+
+TEST_F(WhileUtilTest, TryIncrementSideEffecting) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  one.0 = s32[] constant(1)
+  add.0 = s32[] add(gte.0, one.0)
+  ROOT tuple.0 = (s32[], s32[]) tuple(add.0, gte.1)
+}
+
+cond {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  minus-one.0 = s32[] constant(-1)
+  add.0 = s32[] custom-call(gte.1, minus-one.0), custom_call_target="add", custom_call_has_side_effect=true
+  ROOT compare.0 = compare(gte.0, add.0), direction=LT
+}
+
+ENTRY main {
+  param.0 = (s32[], s32[]) parameter(0)
+  ROOT while = while(param.0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  // The trip count is modified with a side effecting op, in this case we
+  // should fail.
+  EXPECT_FALSE(
+      WhileUtil::IncrementWhileLoopTripCount(*while_instr, /*increment=*/1)
+          .ok());
+}
+
+TEST_F(WhileUtilTest, IncrementTripCountLt) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  one.0 = s32[] constant(1)
+  add.0 = s32[] add(gte.0, one.0)
+  ROOT tuple.0 = (s32[], s32[]) tuple(add.0, gte.1)
+}
+
+cond {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  minus-one.0 = s32[] constant(-1)
+  add.0 = add(gte.1, minus-one.0)
+  ROOT compare.0 = compare(gte.0, add.0), direction=LT
+}
+
+ENTRY main {
+  param.0 = (s32[], s32[]) parameter(0)
+  ROOT while = while(param.0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  TF_EXPECT_OK(
+      WhileUtil::IncrementWhileLoopTripCount(*while_instr, /*increment=*/1));
+
+  const HloComputation* cond = module->GetComputationWithName("cond");
+  EXPECT_THAT(cond->root_instruction()->operand(0),
+              op::Add(op::GetTupleElement(), op::Constant()));
+}
+
+TEST_F(WhileUtilTest, IncrementTripCountGt) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  one.0 = s32[] constant(1)
+  add.0 = s32[] add(gte.1, one.0)
+  ROOT tuple.0 = (s32[], s32[]) tuple(gte.0, add.0)
+}
+
+cond {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(param.0), index=0
+  gte.1 = get-tuple-element(param.0), index=1
+  minus-one.0 = s32[] constant(-1)
+  add.0 = add(gte.0, minus-one.0)
+  ROOT compare.0 = compare(add.0, gte.1), direction=GT
+}
+
+ENTRY main {
+  param.0 = (s32[], s32[]) parameter(0)
+  ROOT while = while(param.0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  TF_EXPECT_OK(
+      WhileUtil::IncrementWhileLoopTripCount(*while_instr, /*increment=*/1));
+
+  const HloComputation* cond = module->GetComputationWithName("cond");
+  EXPECT_THAT(cond->root_instruction()->operand(1),
+              op::Add(op::GetTupleElement(), op::Constant()));
 }
 }  // namespace
 }  // namespace xla

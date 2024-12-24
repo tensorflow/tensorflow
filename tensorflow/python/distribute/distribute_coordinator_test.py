@@ -285,7 +285,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       if context.is_chief:
         self.evaluate(variables.global_variables_initializer())
 
-      # Synchronize workers after initializaton.
+      # Synchronize workers after initialization.
       if context.has_barrier:
         context.wait_for_other_workers()
       else:
@@ -346,7 +346,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
         self._result_correct += 1
 
   def _dump_worker_context(self, strategy):
-    """Dumps the propoerties of each worker context.
+    """Dumps the properties of each worker context.
 
     It dumps the context properties to a dict mapping from task_type to a list
     of tuples of master_target, num_workers, is_chief and distribute_mode, where
