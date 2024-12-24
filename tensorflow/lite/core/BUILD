@@ -15,9 +15,7 @@ exports_files(
         "macros.h",
         "subgraph.h",
     ],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 bzl_library(
@@ -110,9 +108,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         ":cc_api_experimental",
         ":cc_api_stable",
@@ -384,9 +380,7 @@ cc_library(
         "create_op_resolver.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:op_resolver",
@@ -400,9 +394,7 @@ cc_library(
     hdrs = ["create_op_resolver.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:op_resolver",
@@ -427,9 +419,7 @@ alias(
     name = "private_create_op_resolver_header",
     actual = ":create_op_resolver_header",
     tags = ["avoid_dep"],
-    visibility = [
-        "//visibility:public",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
