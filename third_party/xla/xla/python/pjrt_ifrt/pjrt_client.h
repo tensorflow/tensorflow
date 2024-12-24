@@ -159,6 +159,8 @@ class PjRtClient final
 
   ~PjRtClient() override;
 
+  void ShutDown() override { pjrt_client_->ShutDown(); }
+
   // For making Arrays with `dtype` as kString:
   //   (1) the `data` argument should point to an array of `absl::Cord`
   //   in major-to-minor order,
