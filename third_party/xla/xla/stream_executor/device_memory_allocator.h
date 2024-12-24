@@ -96,18 +96,14 @@ class ScopedDeviceMemory {
   // operations. The value returned should not be used outside the scope of this
   // ScopedDeviceMemory object's lifetime.
   DeviceMemory<ElemT> *ptr() { return &wrapped_; }
-  const DeviceMemory<ElemT> *ptr() const { return &wrapped_; }
 
   // Smart-pointer-like operators for the wrapped DeviceMemory.
   // This reference must not be used outside the lifetime of this
   // ScopedDeviceMemory.
   const DeviceMemory<ElemT> &operator*() const { return cref(); }
   DeviceMemory<ElemT> *operator->() { return ptr(); }
-  const DeviceMemory<ElemT> *operator->() const { return ptr(); }
 
   bool is_null() const { return wrapped_.is_null(); }
-  bool operator==(std::nullptr_t other) const { return is_null(); }
-  bool operator!=(std::nullptr_t other) const { return !is_null(); }
 
   // Analogous to std::unique_ptr::release, releases ownership of the held
   // memory and transfers it to the caller.
