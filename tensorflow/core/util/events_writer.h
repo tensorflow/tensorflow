@@ -68,7 +68,7 @@ class EventsWriter {
   // Append "event_str", a serialized Event, to the file.
   // Note that this function does NOT check that de-serializing event_str
   // results in a valid Event proto.  The tensorflow:: bit makes SWIG happy.
-  void WriteSerializedEvent(tensorflow::StringPiece event_str);
+  void WriteSerializedEvent(absl::string_view event_str);
 
   // EventWriter automatically flushes and closes on destruction, but
   // these two methods are provided for users who want to write to disk sooner

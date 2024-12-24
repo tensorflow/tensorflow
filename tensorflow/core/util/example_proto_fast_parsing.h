@@ -42,8 +42,8 @@ namespace example {
 // in Example.
 struct FastParseExampleConfig {
   struct Dense {
-    Dense(StringPiece feature_name, DataType dtype, PartialTensorShape shape,
-          Tensor default_value, bool variable_length,
+    Dense(absl::string_view feature_name, DataType dtype,
+          PartialTensorShape shape, Tensor default_value, bool variable_length,
           std::size_t elements_per_stride)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
@@ -66,7 +66,7 @@ struct FastParseExampleConfig {
   };
 
   struct Sparse {
-    Sparse(StringPiece feature_name, DataType dtype)
+    Sparse(absl::string_view feature_name, DataType dtype)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
           dtype(dtype) {}
@@ -77,7 +77,8 @@ struct FastParseExampleConfig {
   };
 
   struct Ragged {
-    Ragged(StringPiece feature_name, DataType dtype, DataType splits_dtype)
+    Ragged(absl::string_view feature_name, DataType dtype,
+           DataType splits_dtype)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
           dtype(dtype),
@@ -143,7 +144,8 @@ absl::Status FastParseExample(const FastParseExampleConfig& config,
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
 absl::Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                                    StringPiece serialized, Result* result);
+                                    absl::string_view serialized,
+                                    Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.

@@ -61,21 +61,21 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     return errors::Unimplemented(
         "RandomAccessFileFromMemmapped does not support Name()");
   }
 
-  absl::Status Read(uint64 offset, size_t to_read, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t to_read, absl::string_view* result,
                     char* scratch) const override {
     if (offset >= length_) {
-      *result = StringPiece(scratch, 0);
+      *result = absl::string_view(scratch, 0);
       return absl::Status(absl::StatusCode::kOutOfRange, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
-    *result =
-        StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
+    *result = absl::string_view(reinterpret_cast<const char*>(data_) + offset,
+                                region_left);
     return (region_left == to_read)
                ? absl::OkStatus()
                : absl::Status(absl::StatusCode::kOutOfRange,
