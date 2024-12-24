@@ -15,19 +15,18 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 
-#include <cstddef>
 #include <vector>
 
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal_util.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -35,24 +34,16 @@ namespace {
 TEST(XnnDotThunkTest, SimpleDot) {
   std::vector<MaybeOwningDeviceMemory> buffers;
 
-  std::vector<float> lhs = {1.0, 2.0, 3.0, 4.0};  // 2x2 matrix
-  std::vector<float> rhs = {4.0, 3.0, 2.0, 1.0};  // 2x2 matrix
-  std::vector<float> out(4, 0.0);                 // 2x2 matrix
+  auto lhs = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto rhs = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
+  auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  size_t size_in_bytes = lhs.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(lhs.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(rhs.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(lhs, rhs, out);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation lhs_alloc(0, size_in_bytes, 0);
-  BufferAllocation rhs_alloc(1, size_in_bytes, 0);
-  BufferAllocation out_alloc(2, size_in_bytes, 0);
-
-  BufferAllocation::Slice lhs_slice(&lhs_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice rhs_slice(&rhs_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+  auto [lhs_alloc, rhs_alloc, out_alloc] =
+      CreateBufferAllocation(lhs, rhs, out);
+  auto [lhs_slice, rhs_slice, out_slice] =
+      CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
 
@@ -71,8 +62,7 @@ TEST(XnnDotThunkTest, SimpleDot) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
 
-  std::vector<float> expected = {8.0, 5.0, 20.0, 13.0};
-  EXPECT_EQ(out, expected);
+  EXPECT_EQ(out, LiteralUtil::CreateR2<float>({{8.0, 5.0}, {20.0, 13.0}}));
 }
 
 }  // namespace

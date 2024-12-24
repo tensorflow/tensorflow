@@ -167,13 +167,19 @@ cc_library(
 cc_library(
     name = "thunk_testlib",
     testonly = 1,
+    srcs = ["thunk_testlib.cc"],
     hdrs = ["thunk_testlib.h"],
     deps = [
+        ":buffer_allocations",
         ":resource_use",
         ":thunk",
+        "//xla:literal",
         "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
