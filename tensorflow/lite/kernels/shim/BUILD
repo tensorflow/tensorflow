@@ -79,6 +79,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -92,6 +93,7 @@ tf_cc_test(
     srcs = ["tf_tensor_view_test.cc"],
     deps = [
         ":tf_tensor_view",
+        "//third_party/protobuf",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ] + if_mobile([
@@ -189,7 +191,9 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
