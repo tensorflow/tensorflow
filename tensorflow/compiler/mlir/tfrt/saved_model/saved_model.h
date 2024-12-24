@@ -71,7 +71,7 @@ struct TFRTSavedModelSignatureInfo {
 // Apply `map_fn` on every exported function in the module with the
 // corresponding signature metadata populated in TFRTSavedModelSignatureInfo for
 // the function.
-Status MapFunctionSignaturesFromTFSavedModelMLIR(
+absl::Status MapFunctionSignaturesFromTFSavedModelMLIR(
     mlir::ModuleOp module,
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn);
 
