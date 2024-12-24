@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/cudnn_fused_mha_transpose_fusion.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
