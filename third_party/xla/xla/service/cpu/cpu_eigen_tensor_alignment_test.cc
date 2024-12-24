@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/test.h"

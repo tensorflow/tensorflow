@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
