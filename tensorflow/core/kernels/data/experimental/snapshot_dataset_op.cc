@@ -1914,7 +1914,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               absl::StrSplit(split_filename.back(), '.');
           std::string max_num_str = split_snapshot_filename[0];
           uint64 max_num;
-          if (!strings::safe_strtou64(max_num_str, &max_num)) {
+          if (!absl::SimpleAtoi(max_num_str, &max_num)) {
             return errors::Internal("Could not parse: ", max_num, " as uint64");
           }
           next_file_index_ = max_num + 1;
