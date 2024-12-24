@@ -26,7 +26,7 @@ namespace tensorflow {
 double ParamFromEnvWithDefault(const char* var_name, double default_value) {
   const char* val = std::getenv(var_name);
   double num;
-  return (val && strings::safe_strtod(val, &num)) ? num : default_value;
+  return (val && absl::SimpleAtod(val, &num)) ? num : default_value;
 }
 
 std::vector<double> ParamFromEnvWithDefault(const char* var_name,
