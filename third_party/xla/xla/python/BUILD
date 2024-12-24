@@ -330,9 +330,9 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
+    defines = if_google(if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
         "TENSORFLOW_USE_ROCM=1",
-    ]),
+    ])),
     features = ["-use_header_modules"],
     deps = [
         ":aggregate_profile",
@@ -438,9 +438,9 @@ cc_library(
         # keep sorted
         "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_cuda_or_rocm([
+    ]) + if_google(if_cuda_or_rocm([
         ":py_client_gpu",  # TODO(b/337876408): remove after migration to plugin
-    ]) + if_google(["@com_google_protobuf//:any_cc_proto"]),
+    ]) + ["@com_google_protobuf//:any_cc_proto"]),
 )
 
 cc_library(
@@ -1244,18 +1244,6 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    linkopts = select({
-        ":use_jax_cuda_pip_rpaths": [
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/nccl/lib",
-        ],
-        "//conditions:default": [],
-    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],

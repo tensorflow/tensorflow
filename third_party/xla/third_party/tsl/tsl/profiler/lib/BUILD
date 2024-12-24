@@ -1,4 +1,4 @@
-load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.bzl", "if_google", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@local_xla//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
@@ -278,14 +278,17 @@ cc_library(
 
 cc_library(
     name = "nvtx_utils_impl",
-    srcs = if_cuda_is_configured(
-        ["nvtx_utils.cc"],
+    srcs = if_google(
+        if_cuda_is_configured(
+            ["nvtx_utils.cc"],
+            ["nvtx_utils_stub.cc"],
+        ),
         ["nvtx_utils_stub.cc"],
     ),
     hdrs = ["nvtx_utils.h"],
     local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured(nvtx_headers()),
+    deps = if_google(if_cuda_is_configured(nvtx_headers())),
 )
 
 cc_library(
