@@ -946,7 +946,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
     HloInstruction* hlo) {
   bool dimension_is_static = false;
   const HloInstruction* size = hlo->operand(1);
-  if (size->opcode() == HloOpcode::kConstant) {
+  if (HloPredicateIsOp<HloOpcode::kConstant>(size)) {
     // Check if we are setting a dimension size to its static size. If so,
     // removes the dynamic dimension.
     //
@@ -1332,7 +1332,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           return false;
         }
         VLOG(3) << "Found " << found_dims.size() << "\n";
-        if (op->opcode() == HloOpcode::kReshape) {
+        if (HloPredicateIsOp<HloOpcode::kReshape>(op)) {
           for (auto op_dim_index : found_dims) {
             auto orig_reshape_pair = find_reshape_group_pair(op, op_dim_index);
             if (is_reverse_reshape_group_pair(op, orig_reshape_pair, hlo,
@@ -2259,7 +2259,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleWhile(
   //     hlo->while_condition()->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(WhileUtil::MakeInstructionsLiveInResult result,
                       WhileUtil::MakeInstructionsLiveIn(hlo, operands_to_add));
-  TF_RET_CHECK(result.replacement_instr->opcode() == HloOpcode::kTuple);
+  TF_RET_CHECK(HloPredicateIsOp<HloOpcode::kTuple>(result.replacement_instr));
   // WhileUtil creates a new while hlo and tuple. Update the dynamic size
   // mapping for the newly created tuple.
   HloInstruction* new_tuple_operand =
@@ -2367,7 +2367,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleWhile(
           TF_RET_CHECK(!index.empty());
           HloInstruction* gte =
               result.replacement_instr->mutable_operand(index.front());
-          TF_RET_CHECK(gte->opcode() == HloOpcode::kGetTupleElement);
+          TF_RET_CHECK(HloPredicateIsOp<HloOpcode::kGetTupleElement>(gte));
           TF_RET_CHECK(gte->operand(0) == hlo);
           ShapeUtil::GetMutableSubshape(gte->mutable_shape(),
                                         ShapeIndexView(index).subspan(1))
@@ -2432,17 +2432,14 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
   auto uses =
       dataflow_analysis_.GetValueDefinedAt(instr, shape_index).GetUses();
   for (const auto& use : uses) {
-    if (use.instruction->opcode() == HloOpcode::kAsyncStart ||
-        use.instruction->opcode() == HloOpcode::kAsyncUpdate ||
-        use.instruction->opcode() == HloOpcode::kAsyncDone ||
-        use.instruction->opcode() == HloOpcode::kCall ||
-        use.instruction->opcode() == HloOpcode::kTuple ||
-        use.instruction->opcode() == HloOpcode::kGetTupleElement ||
-        use.instruction->opcode() == HloOpcode::kConditional) {
+    if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate,
+                         HloOpcode::kAsyncDone, HloOpcode::kCall,
+                         HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+                         HloOpcode::kConditional>(use.instruction)) {
       // These uses do not require padding as they do not operate the data.
       continue;
     }
-    if (use.instruction->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(use.instruction)) {
       TF_RET_CHECK(use.operand_number == 0);
       HloInstruction* root = use.instruction->while_body()->root_instruction();
       if (parent_->HasDynamicDimension(root, use.operand_index)) {
@@ -2450,17 +2447,17 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
       }
       continue;
     }
-    if (use.instruction->opcode() == HloOpcode::kSetDimensionSize) {
+    if (HloPredicateIsOp<HloOpcode::kSetDimensionSize>(use.instruction)) {
       // The dynamic size cannot itself be dynamic.
       TF_RET_CHECK(use.operand_number == 0);
       // SetDimensionSize will be removed, so the array must be padded if it
       // is a user of the array.
       return true;
     }
-    if (use.instruction->opcode() == HloOpcode::kGetDimensionSize) {
+    if (HloPredicateIsOp<HloOpcode::kGetDimensionSize>(use.instruction)) {
       return true;
     }
-    if (use.instruction->opcode() != HloOpcode::kCustomCall ||
+    if (HloPredicateIsNotOp<HloOpcode::kCustomCall>(use.instruction) ||
         !use.instruction->IsCustomCall({"PadToStatic", "Sharding",
                                         "SPMDShardToFullShape",
                                         "SPMDFullToShardShape"})) {
@@ -2863,7 +2860,7 @@ bool DynamicDimensionInference::CanInfer(HloInstruction* hlo) {
   // However, if there are called computations, we may need to run inference on
   // them.  Similarly, custom calls can do anything based on the user callbacks.
   if (hlo->shape().is_static() && hlo->called_computations().empty() &&
-      hlo->opcode() != HloOpcode::kCustomCall) {
+      HloPredicateIsNotOp<HloOpcode::kCustomCall>(hlo)) {
     return false;
   }
   // The dimensions of all operands must either be 1) not dynamic, or 2) have a
