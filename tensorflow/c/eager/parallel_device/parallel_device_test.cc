@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "tensorflow/c/c_api.h"
