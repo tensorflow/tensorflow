@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_REPLICATE_CONSTANTS_PASS_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 // Small constants are replicated to the hosts of their successors. This pass
 // only applies when there are multiple successors.
