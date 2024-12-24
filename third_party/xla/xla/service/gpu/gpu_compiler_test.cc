@@ -604,7 +604,7 @@ TEST_F(GpuCompilerTestWithAutotuneDb,
         << "Autotuning results have only been generated for Hopper GPUs";
   }
   const absl::string_view hlo_string = R"(
-HloModule test 
+HloModule test
 
 ENTRY main {
   p0 = f8e4m3fn[12288,4096]{0,1} parameter(0)
