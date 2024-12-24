@@ -3238,5 +3238,41 @@ TEST_F(PlacerTest, IdentityDoesntMatchWithMultipleOutput) {
   EXPECT_EQ(identity2->assigned_device_name().c_str(), task0_device);
 }
 
+TEST_F(PlacerTest, InputToIdentityMatches) {
+  /*
+   *     Op Input (Not assigned -> same device as Identity)
+   *       |
+   *       v
+   *     // Tests that identity gets assigned to default task:0
+   *     Identity (Assignment)
+   */
+  const std::string task0_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string task1_device = "/job:b/replica:0/task:1/device:FakeCPU:0";
+
+  GraphDef graph = GDef({
+      NDef("a1", "_Arg", {}, {{"T", DT_INT32}}, {}),
+      NDef("a2", "_Arg", {}, {{"T", DT_INT32}}, {}),
+      NDef("f1", "Fill", {"a1:0", "a2:0"}, {{"T", DT_INT32}}, {}),
+      NDef("identity", "Identity", {"f1:0"}, {{"T", DT_INT32}}, task1_device),
+  });
+
+  Graph g(OpRegistry::Global());
+
+  DeviceSet multiple_tasks;
+  std::unique_ptr<Device> task0_cpu(FakeDevice::MakeCPU(task0_device));
+  multiple_tasks.AddDevice(task0_cpu.get());
+
+  std::unique_ptr<Device> task1_cpu(FakeDevice::MakeCPU(task1_device));
+  multiple_tasks.AddDevice(task1_cpu.get());
+
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+
+  absl::Status s = Place(&g, &multiple_tasks);
+  TF_ASSERT_OK(s);
+
+  Node* fill = GetNodeByName(g, "f1");
+  EXPECT_EQ(fill->assigned_device_name().c_str(), task1_device);
+}
+
 }  // namespace
 }  // namespace tensorflow
