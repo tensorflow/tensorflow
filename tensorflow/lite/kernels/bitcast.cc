@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/util.h"
+#include "tsl/util/byte_swap_array.h"
 
 namespace tflite {
 namespace ops {
@@ -91,6 +92,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Only copy data if input and output do not share a buffer.
   if (output->data.data != input->data.data) {
     memcpy(output->data.data, input->data.data, input->bytes);
+
+    // Data is encoded in little-endian for big-endian systems
+    if constexpr (!tsl::port::kLittleEndian) {
+      size_t in_size{},out_size{};
+      TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &in_size));
+      TF_LITE_ENSURE_STATUS(GetSizeOfType(context, output->type, &out_size));
+      if ( in_size != out_size ) {
+        auto input_num_elem{input->bytes / in_size};
+        auto output_num_elem{output->bytes / out_size};
+
+        TF_LITE_ENSURE_EQ(context,
+            tsl::ByteSwapArray(reinterpret_cast<char*>(output->data.data), in_size,
+                             input_num_elem),tsl::OkStatus());
+        TF_LITE_ENSURE_EQ(context,
+            tsl::ByteSwapArray(reinterpret_cast<char*>(output->data.data), out_size,
+                             output_num_elem),tsl::OkStatus());
+      }
+    }
   }
   return kTfLiteOk;
 }
