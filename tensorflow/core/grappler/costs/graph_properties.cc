@@ -1108,7 +1108,7 @@ class SymbolicShapeRefiner {
       } else {
         VLOG(1) << "UpdateFunction failed for " << node->op()
                 << ". Defaulting to ShapeUnknown.\n"
-                << s.ToString();
+                << s;
       }
     }
 

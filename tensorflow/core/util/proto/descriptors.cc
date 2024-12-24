@@ -76,7 +76,7 @@ absl::Status GetDescriptorPoolFromBinary(
   }
   // Parse the FileDescriptorSet.
   protobuf::FileDescriptorSet proto;
-  if (!proto.ParseFromString(string(absl::StripPrefix(source, "bytes://")))) {
+  if (!proto.ParseFromString(absl::StripPrefix(source, "bytes://"))) {
     return errors::InvalidArgument(absl::StrCat(
         "Source does not represent serialized file descriptor set proto. ",
         "This may be due to a missing dependency on the file containing ",
