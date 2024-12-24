@@ -20,6 +20,9 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 // This value should be >= to the maximum number of outputs in any op
