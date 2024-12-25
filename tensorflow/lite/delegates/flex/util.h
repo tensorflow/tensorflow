@@ -32,8 +32,7 @@ namespace flex {
 
 // Converts a tensorflow:Status into a TfLiteStatus. If the original status
 // represented an error, reports it using the given 'context'.
-TfLiteStatus ConvertStatus(TfLiteContext* context,
-                           const tensorflow::Status& status);
+TfLiteStatus ConvertStatus(TfLiteContext* context, const absl::Status& status);
 
 // Copies the given shape and type of the TensorFlow 'src' tensor into a TF Lite
 // 'tensor'. Logs an error and returns kTfLiteError if the shape or type can't
