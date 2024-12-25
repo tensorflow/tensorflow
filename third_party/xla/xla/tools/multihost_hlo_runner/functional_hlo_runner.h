@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_TOOLS_MULTIHOST_HLO_RUNNER_FUNCTIONAL_HLO_RUNNER_H_
 #define XLA_TOOLS_MULTIHOST_HLO_RUNNER_FUNCTIONAL_HLO_RUNNER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
