@@ -96,7 +96,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
     return false;
   }
   int64_t value = 0;
-  if (!strings::safe_strto64(match, &value)) {
+  if (!absl::SimpleAtoi(match, &value)) {
     return false;
   }
   *out = value;
