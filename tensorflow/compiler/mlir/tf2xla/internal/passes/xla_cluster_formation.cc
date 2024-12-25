@@ -15,8 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
