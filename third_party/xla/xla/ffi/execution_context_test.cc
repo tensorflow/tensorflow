@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
