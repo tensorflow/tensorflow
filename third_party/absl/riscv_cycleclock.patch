@@ -1,0 +1,38 @@
+diff --git a/absl/base/internal/unscaledcycleclock.cc b/absl/base/internal/unscaledcycleclock.cc
+index b1c396c6..e475e8c9 100644
+--- a/absl/base/internal/unscaledcycleclock.cc
++++ b/absl/base/internal/unscaledcycleclock.cc
+@@ -13,7 +13,7 @@
+ // limitations under the License.
+
+ #include "absl/base/internal/unscaledcycleclock.h"
+-
++#include <chrono>
+ #if ABSL_USE_UNSCALED_CYCLECLOCK
+
+ #if defined(_WIN32)
+@@ -125,15 +125,15 @@ double UnscaledCycleClock::Frequency() {
+ #elif defined(__riscv)
+
+ int64_t UnscaledCycleClock::Now() {
+-  int64_t virtual_timer_value;
+-  asm volatile("rdcycle %0" : "=r"(virtual_timer_value));
+-  return virtual_timer_value;
++  auto now = std::chrono::steady_clock::now();
++  auto duration = now.time_since_epoch();
++  return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+ }
+
+ double UnscaledCycleClock::Frequency() {
+-  return base_internal::NominalCPUFrequency();
++  using steady = std::chrono::steady_clock;
++  return static_cast<double>(steady::period::den) / steady::period::num;
+ }
+-
+ #elif defined(_M_IX86) || defined(_M_X64)
+
+ #pragma intrinsic(__rdtsc)
+
+
+
+
