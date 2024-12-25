@@ -184,7 +184,7 @@ class MasterSession : public core::RefCounted {
 
     RunState(const std::vector<string>& input_names,
              const std::vector<string>& output_names, ReffedClientGraph* rcg,
-             const uint64 step_id, const int64_t count);
+             uint64 step_id, int64_t count);
 
     bool PendingDone() const;
 

@@ -215,8 +215,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                              CallOptions* opts,
                              const RunStepRequestWrapper& req,
                              MutableRunStepResponseWrapper* resp,
-                             CancellationManager* cm,
-                             const bool is_last_partial_run);
+                             CancellationManager* cm, bool is_last_partial_run);
   absl::Status RunPartitions(const MasterEnv* env, int64_t step_id,
                              int64_t execution_count, PerStepState* pss,
                              CallOptions* call_opts,

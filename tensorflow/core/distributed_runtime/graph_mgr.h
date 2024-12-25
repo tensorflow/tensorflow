@@ -94,7 +94,7 @@ class GraphMgr {
   // should receive upon finish.
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const absl::Status&)> StatusCallback;
-  void ExecuteAsync(const string& handle, const int64_t step_id,
+  void ExecuteAsync(const string& handle, int64_t step_id,
                     const ExecutorOpts& opts, const NamedTensors& in,
                     WorkerSession* session, StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
@@ -102,9 +102,9 @@ class GraphMgr {
                     tsl::CoordinationServiceAgent* coordination_service_agent,
                     StatusCallback done);
 
-  absl::Status SendInputs(const int64_t step_id, const NamedTensors& in);
-  absl::Status RecvOutputs(const int64_t step_id, NamedTensors* out);
-  void RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
+  absl::Status SendInputs(int64_t step_id, const NamedTensors& in);
+  absl::Status RecvOutputs(int64_t step_id, NamedTensors* out);
+  void RecvOutputsAsync(int64_t step_id, NamedTensors* out,
                         StatusCallback done);
 
   // Deregisters a graph.
