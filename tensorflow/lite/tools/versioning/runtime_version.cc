@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
