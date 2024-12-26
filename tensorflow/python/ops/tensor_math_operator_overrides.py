@@ -60,7 +60,17 @@ def _mod_factory(x, y, name=None):
 
 def _mul_dispatch_factory(x, y, name=None):
   from tensorflow.python.ops import math_ops
+  from tensorflow.python.framework import dtypes
 
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.cast(
+      math_ops._mul_dispatch(
+        gen_math_ops.cast(x, dtypes.int32),
+        gen_math_ops.cast(y, dtypes.int32),
+        name=name,
+      ),
+      dtypes.bool,
+    )  # pylint: disable=protected-access
   return math_ops._mul_dispatch(x, y, name=name)  # pylint: disable=protected-access
 
 
