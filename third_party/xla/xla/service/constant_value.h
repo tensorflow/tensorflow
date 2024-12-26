@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONSTANT_VALUE_H_
 #define XLA_SERVICE_CONSTANT_VALUE_H_
 
+#include <cstdint>
 #include <string>
 
+#include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/util.h"
