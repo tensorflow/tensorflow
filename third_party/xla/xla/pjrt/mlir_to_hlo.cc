@@ -82,6 +82,9 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
     mlir::PassManager pm(context);
+    // Expand stablehlo complex math functions such as log_plus_one, etc.
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createStablehloComplexMathExpanderPass());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass());
@@ -223,6 +226,10 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
   mlir::PassManager pm(context);
+  // Expand stablehlo complex math functions such as log_plus_one, etc.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloComplexMathExpanderPass());
+
   xla::sdy::addSdyRoundTripExportPipeline(pm);
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
