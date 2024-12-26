@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,13 +25,13 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -67,21 +65,13 @@ TEST(KernelThunkTest, CheckAlignment) {
 }
 
 TEST(KernelThunkTest, AddF32) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
-  std::vector<float> out(4, 0.0);
+  auto in = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  size_t size_in_bytes = in.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(in, out);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation in_alloc(0, size_in_bytes, 0);
-  BufferAllocation out_alloc(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+  auto [in_alloc, out_alloc] = CreateBufferAllocation(in, out);
+  auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
@@ -95,25 +85,21 @@ TEST(KernelThunkTest, AddF32) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
 
-  std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
-  EXPECT_EQ(out, expected);
+  EXPECT_EQ(out, LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}}));
 }
 
 TEST(KernelThunkTest, AddF32Inline) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+  auto in_out = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
 
-  size_t size_in_bytes = in_out.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(in_out);
 
-  BufferAllocations allocations(buffers);
-  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
-  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+  BufferAllocation alloc = CreateBufferAllocation(0, in_out);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create(
-                      {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
-                      se::ThreadDim(4), /*invariant_arguments=*/{}));
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
+                          se::ThreadDim(4), /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -122,8 +108,7 @@ TEST(KernelThunkTest, AddF32Inline) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
-  EXPECT_EQ(in_out, expected);
+  EXPECT_EQ(in_out, LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}}));
 }
 
 TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
@@ -131,21 +116,13 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
   GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
 #endif
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
-  std::vector<float> out(4, 0.0);
+  auto in = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  size_t size_in_bytes = in.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(in, out);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation in_alloc(0, size_in_bytes, 0);
-  BufferAllocation out_alloc(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+  auto [in_alloc, out_alloc] = CreateBufferAllocation(in, out);
+  auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
 
   // Invariant buffer set is incorrect - should include in_slice, but is empty.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -171,22 +148,18 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
   GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
 #endif
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+  auto in_out = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  BufferAllocations allocations = CreateBufferAllocations(in_out);
 
-  size_t size_in_bytes = in_out.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
-
-  BufferAllocations allocations(buffers);
-  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
-  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+  BufferAllocation alloc = CreateBufferAllocation(0, in_out);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
 
   // Invariant buffer set is incorrect - should be empty, but contains input
   // buffer that's not invariant.
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create(
-                      {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
-                      se::ThreadDim(4), /*invariant_arguments=*/{0}));
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
+                          se::ThreadDim(4), /*invariant_arguments=*/{0}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -209,30 +182,20 @@ TEST(KernelThunkInvariantBuffersTest,
   GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
 #endif
 
-  // We've got only one memory section
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+  // We've got only one literal, but two buffer slices that point to the same
+  // memory region.
+  auto data = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  BufferAllocations allocations = CreateBufferAllocations(data, data);
 
-  // We've got two buffer slices with different indexes, but both pointing to
-  // the same memory section.
-  size_t size_in_bytes = in_out.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+  auto [alloc_0, alloc_1] = CreateBufferAllocation(data, data);
+  auto [slice_0, slice_1] = CreateBufferAllocationSlice(alloc_0, alloc_1);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation in_0_alloc(0, size_in_bytes, 0);
-  BufferAllocation in_1_alloc(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice in_0_slice(&in_0_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice in_1_slice(&in_1_alloc, 0, size_in_bytes);
-
-  // Invariant buffer set is incorrect. in_1_slice is not aliased to any output,
-  // but it points to the same memory section as in_0_slice (which is not
-  // invariant, because is aliased with the output).
+  // Invariant buffer set is incorrect. slice_1 is not aliased to any output,
+  // but it points to the same memory region as slice_0 (which is not
+  // invariant, because it is aliased with the output).
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create({"add_f32"}, {in_0_slice, in_1_slice},
-                                      {in_0_slice}, "add_f32", se::ThreadDim(4),
+      auto thunk, KernelThunk::Create({"add_f32"}, {slice_0, slice_1},
+                                      {slice_0}, "add_f32", se::ThreadDim(4),
                                       /*invariant_arguments=*/{1}));
 
   AddF32HostKernel host_kernels;
