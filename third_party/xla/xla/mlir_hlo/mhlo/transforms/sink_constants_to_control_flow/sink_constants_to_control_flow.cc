@@ -83,7 +83,7 @@ class SinkConstantsToControlFlowPass
 
 // TODO(hinsu): Rename this pass and move to a different file along with the
 // generalization to make all ops isolated from above.
-std::unique_ptr<OperationPass<func::FuncOp>>
+static std::unique_ptr<OperationPass<func::FuncOp>>
 createSinkConstantsToControlFlowPass() {
   return std::make_unique<SinkConstantsToControlFlowPass>();
 }
