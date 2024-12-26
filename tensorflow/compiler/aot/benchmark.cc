@@ -23,6 +23,9 @@ limitations under the License.
 #include <sys/time.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>

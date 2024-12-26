@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
@@ -30,6 +36,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
+#include "third_party/protobuf/message_lite.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
