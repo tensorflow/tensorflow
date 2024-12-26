@@ -9,13 +9,13 @@ The converter tool allows you to include additional operators, but converting
 a model this way also requires you to modify the TensorFlow Lite runtime
 environment you use to execute your model, which can limit your ability
 use standard runtime deployment options, such as
-[Google Play services](../android/play_services).
+[Google Play services](../android/play_services.md).
 
 The TensorFlow Lite Converter is designed to analyze model
 structure and apply optimizations in order to make it compatible with the
 directly supported operators. For example, depending on the ML operators in
 your model, the converter may
-[elide or fuse](../models/convert/operation_fusion) those
+[elide or fuse](../models/convert/operation_fusion.md) those
 operators in order to map them to their TensorFlow Lite counterparts.
 
 Even for supported operations, specific usage patterns are sometimes expected,
@@ -48,9 +48,9 @@ TensorFlow Lite, you do not need any additional flags to convert it. This
 is the recommended path because this type of model will convert smoothly
 and is simpler to optimize and run using the default TensorFlow Lite runtime.
 You also have more deployment options for your model such as
-[Google Play services](../android/play_services).
+[Google Play services](../android/play_services.md).
 You can get started with the
-[TensorFlow Lite converter guide](../models/convert/convert_models). See
+[TensorFlow Lite converter guide](../models/convert/convert_models.md). See
 the [TensorFlow Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops) for a
 list of built-in operators.
 
@@ -70,9 +70,9 @@ can result in worse performance when deployed to
 resource constrained devices compared to a server environment.
 Finally, just like including select TensorFlow core operators, custom operators
 requires you to
-[modify the model runtime environment](ops_custom#create_and_register_the_operator)
+[modify the model runtime environment](ops_custom.md#create-and-register-the-operator)
 which limits you from taking advantage of standard runtime services such as
-the [Google Play services](../android/play_services).
+the [Google Play services](../android/play_services.md).
 
 
 ## Supported types
