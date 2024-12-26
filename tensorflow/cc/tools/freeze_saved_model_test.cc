@@ -76,7 +76,7 @@ class FreezeTest : public ::testing::Test {
 
   // Adds an initialized session to `saved_model_bundle` using `graph_def` and
   // initializing with `init_node`.
-  Status InitializeSavedModelBundleSession(
+  absl::Status InitializeSavedModelBundleSession(
       const GraphDef& graph_def, const string& init_node,
       SavedModelBundle* saved_model_bundle) {
     SessionOptions session_options;
@@ -92,9 +92,9 @@ class FreezeTest : public ::testing::Test {
 
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with
   // `init_node`.
-  Status AddGraphDefToSavedModelBundle(const GraphDef& graph_def,
-                                       const string& init_node,
-                                       SavedModelBundle* saved_model_bundle) {
+  absl::Status AddGraphDefToSavedModelBundle(
+      const GraphDef& graph_def, const string& init_node,
+      SavedModelBundle* saved_model_bundle) {
     MetaGraphDef* meta_graph_def = &saved_model_bundle->meta_graph_def;
     *meta_graph_def->mutable_graph_def() = graph_def;
     return InitializeSavedModelBundleSession(graph_def, init_node,
@@ -103,7 +103,7 @@ class FreezeTest : public ::testing::Test {
 
   // Adds `graph_def` and `outputs` as the GraphDef and SignatureDef in
   // `saved_model_bundle` and initializes a session with `init_node`.
-  Status AddGraphDefWithOutputsToSavedModelBundle(
+  absl::Status AddGraphDefWithOutputsToSavedModelBundle(
       const GraphDef& graph_def, const std::unordered_set<string>& outputs,
       const string& init_node, SavedModelBundle* saved_model_bundle) {
     SignatureDef signature_def =
