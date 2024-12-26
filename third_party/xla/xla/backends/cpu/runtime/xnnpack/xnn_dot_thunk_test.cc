@@ -15,13 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 
-#include <vector>
-
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/literal_util.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -32,8 +29,6 @@ namespace xla::cpu {
 namespace {
 
 TEST(XnnDotThunkTest, SimpleDot) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-
   auto lhs = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
