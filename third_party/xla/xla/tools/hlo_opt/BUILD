@@ -190,6 +190,7 @@ cc_library(
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:MC",
