@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"

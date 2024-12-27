@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 
-#include <map>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

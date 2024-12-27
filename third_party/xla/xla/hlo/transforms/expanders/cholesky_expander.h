@@ -16,9 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_EXPANDERS_CHOLESKY_EXPANDER_H_
 #define XLA_HLO_TRANSFORMS_EXPANDERS_CHOLESKY_EXPANDER_H_
 
+#include <cstdint>
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
