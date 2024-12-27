@@ -188,7 +188,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 
 OpKernel::~OpKernel() {}
 
-absl::Status OpKernel::InputRange(StringPiece input_name, int* start,
+absl::Status OpKernel::InputRange(absl::string_view input_name, int* start,
                                   int* stop) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
@@ -200,7 +200,7 @@ absl::Status OpKernel::InputRange(StringPiece input_name, int* start,
   }
 }
 
-absl::Status OpKernel::OutputRange(StringPiece output_name, int* start,
+absl::Status OpKernel::OutputRange(absl::string_view output_name, int* start,
                                    int* stop) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
@@ -273,7 +273,7 @@ OpKernelConstruction::OpKernelConstruction(
       graph_def_version_(graph_def_version),
       status_(status) {}
 
-bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+bool OpKernelConstruction::HasAttr(absl::string_view attr_name) const {
   return HasNodeAttr(def(), attr_name);
 }
 
@@ -403,7 +403,8 @@ void OpKernelContext::SetStatus(const absl::Status& status) {
   status_.Update(status);
 }
 
-absl::Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
+absl::Status OpKernelContext::input(absl::string_view name,
+                                    const Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (input_is_ref(index)) {
@@ -414,7 +415,7 @@ absl::Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::input_dtype(StringPiece name,
+absl::Status OpKernelContext::input_dtype(absl::string_view name,
                                           DataType* dtype) const {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
@@ -423,7 +424,7 @@ absl::Status OpKernelContext::input_dtype(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::input_ref_mutex(StringPiece name,
+absl::Status OpKernelContext::input_ref_mutex(absl::string_view name,
                                               mutex** out_mutex) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
@@ -508,7 +509,7 @@ bool OpKernelContext::forward_input_to_output_with_shape(
 }
 
 absl::Status OpKernelContext::forward_input_to_output_with_shape(
-    StringPiece input_name, StringPiece output_name,
+    absl::string_view input_name, absl::string_view output_name,
     const TensorShape& output_shape, Tensor** output) {
   int input_index, output_index;
   TF_RETURN_IF_ERROR(get_input_index(input_name, &input_index));
@@ -624,9 +625,10 @@ absl::Status OpKernelContext::forward_input_or_allocate_output(
 }
 
 absl::Status OpKernelContext::forward_input_or_allocate_output(
-    absl::Span<const StringPiece> candidate_input_names,
-    StringPiece output_name, const TensorShape& output_shape, Tensor** output) {
-  for (const StringPiece& input_name : candidate_input_names) {
+    absl::Span<const absl::string_view> candidate_input_names,
+    absl::string_view output_name, const TensorShape& output_shape,
+    Tensor** output) {
+  for (const absl::string_view& input_name : candidate_input_names) {
     if (forward_input_to_output_with_shape(input_name, output_name,
                                            output_shape, output)
             .ok()) {
@@ -649,8 +651,8 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   }
 }
 
-absl::Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
-                                            bool lock_held) {
+absl::Status OpKernelContext::mutable_input(absl::string_view name,
+                                            Tensor* tensor, bool lock_held) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (!input_is_ref(index)) {
@@ -667,7 +669,7 @@ absl::Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::replace_ref_input(StringPiece name,
+absl::Status OpKernelContext::replace_ref_input(absl::string_view name,
                                                 const Tensor& tensor,
                                                 bool lock_held) {
   int index;
@@ -680,14 +682,15 @@ absl::Status OpKernelContext::replace_ref_input(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::input_list(StringPiece name, OpInputList* list) {
+absl::Status OpKernelContext::input_list(absl::string_view name,
+                                         OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::mutable_input_list(StringPiece name,
+absl::Status OpKernelContext::mutable_input_list(absl::string_view name,
                                                  OpMutableInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
@@ -695,7 +698,7 @@ absl::Status OpKernelContext::mutable_input_list(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::output_list(StringPiece name,
+absl::Status OpKernelContext::output_list(absl::string_view name,
                                           OpOutputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
@@ -733,7 +736,7 @@ absl::Status OpKernelContext::allocate_output(int index,
   return allocate_output(index, shape, tensor, attr);
 }
 
-absl::Status OpKernelContext::allocate_output(StringPiece name,
+absl::Status OpKernelContext::allocate_output(absl::string_view name,
                                               const TensorShape& shape,
                                               Tensor** tensor) {
   int start, stop;
@@ -747,7 +750,7 @@ absl::Status OpKernelContext::allocate_output(StringPiece name,
   return allocate_output(start, shape, tensor);
 }
 
-absl::Status OpKernelContext::allocate_output(StringPiece name,
+absl::Status OpKernelContext::allocate_output(absl::string_view name,
                                               const TensorShape& shape,
                                               Tensor** tensor,
                                               AllocatorAttributes attr) {
@@ -884,7 +887,7 @@ absl::Status OpKernelContext::allocate_temp(DataType type,
   return allocate_temp(type, shape, out_temp, AllocatorAttributes());
 }
 
-absl::Status OpKernelContext::get_input_index(StringPiece name,
+absl::Status OpKernelContext::get_input_index(absl::string_view name,
                                               int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
@@ -898,7 +901,7 @@ absl::Status OpKernelContext::get_input_index(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::get_output_index(StringPiece name,
+absl::Status OpKernelContext::get_output_index(absl::string_view name,
                                                int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
@@ -912,7 +915,7 @@ absl::Status OpKernelContext::get_output_index(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::set_output(StringPiece name,
+absl::Status OpKernelContext::set_output(absl::string_view name,
                                          const Tensor& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
@@ -920,7 +923,8 @@ absl::Status OpKernelContext::set_output(StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
+absl::Status OpKernelContext::set_output(absl::string_view name,
+                                         Tensor&& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, std::move(tensor));
@@ -1029,7 +1033,7 @@ void OpKernelContext::set_output_ref(int index, mutex* mu,
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
-absl::Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
+absl::Status OpKernelContext::set_output_ref(absl::string_view name, mutex* mu,
                                              Tensor* tensor_for_ref) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
@@ -1037,7 +1041,7 @@ absl::Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
   return absl::OkStatus();
 }
 
-absl::Status OpKernelContext::mutable_output(StringPiece name,
+absl::Status OpKernelContext::mutable_output(absl::string_view name,
                                              Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
@@ -1149,7 +1153,7 @@ const string& OpKernelContext::executor_type() const {
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {
-  KernelRegistration(const KernelDef& d, StringPiece c,
+  KernelRegistration(const KernelDef& d, absl::string_view c,
                      std::unique_ptr<kernel_factory::OpKernelFactory> f)
       : def(d), kernel_class_name(c), factory(std::move(f)) {}
 
@@ -1260,8 +1264,8 @@ void LoadDynamicKernels() {
   absl::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
 }
 
-static string Key(StringPiece op_type, const DeviceType& device_type,
-                  StringPiece label) {
+static string Key(absl::string_view op_type, const DeviceType& device_type,
+                  absl::string_view label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
 }
@@ -1339,7 +1343,7 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
 namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
-                                     StringPiece kernel_class_name,
+                                     absl::string_view kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
@@ -1388,11 +1392,11 @@ const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
 
 // TODO(irving): Replace with const Node& version below.
 absl::Status FindKernelRegistration(
-    const DeviceType& device_type, StringPiece node_name,
+    const DeviceType& device_type, absl::string_view node_name,
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
-    StringPiece node_op, AttrSlice node_attrs, const KernelRegistration** reg,
-    bool* was_attr_mismatch) {
+    absl::string_view node_op, AttrSlice node_attrs,
+    const KernelRegistration** reg, bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
 
@@ -1489,11 +1493,11 @@ bool KernelDefAvailable(const DeviceType& device_type,
 
 // TODO(irving): Change const NodeDef& to const Node&
 absl::Status FindKernelDef(
-    const DeviceType& device_type, StringPiece node_name,
+    const DeviceType& device_type, absl::string_view node_name,
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
-    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, string* kernel_class_name) {
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
   TF_RETURN_IF_ERROR(FindKernelRegistration(
@@ -1636,12 +1640,12 @@ KernelList GetFilteredRegisteredKernels(
   return kernel_list;
 }
 
-KernelList GetRegisteredKernelsForOp(StringPiece op_name) {
+KernelList GetRegisteredKernelsForOp(absl::string_view op_name) {
   auto op_pred = [op_name](const KernelDef& k) { return k.op() == op_name; };
   return GetFilteredRegisteredKernels(op_pred);
 }
 
-string KernelsRegisteredForOp(StringPiece op_name) {
+string KernelsRegisteredForOp(absl::string_view op_name) {
   KernelList kernel_list = GetRegisteredKernelsForOp(op_name);
   if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
   string ret;
@@ -1758,7 +1762,7 @@ absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
 namespace {
 
-bool FindArgInOp(StringPiece arg_name,
+bool FindArgInOp(absl::string_view arg_name,
                  const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
   for (const auto& arg : args) {
     if (arg_name == arg.name()) {

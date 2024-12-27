@@ -162,7 +162,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   mutex_lock lock(mu_);
   MustCallDeferred();
 
-  std::vector<std::pair<StringPiece, const OpRegistrationData*>> sorted;
+  std::vector<std::pair<absl::string_view, const OpRegistrationData*>> sorted;
   sorted.reserve(registry_.size());
   for (const auto& item : registry_) {
     sorted.emplace_back(item.first, item.second.get());

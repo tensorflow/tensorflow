@@ -199,7 +199,7 @@ absl::Status ResourceMgr::DoCreate(const string& container_name, TypeIndex type,
   // key can contain a StringPiece that borrows from the string in the value.
   ResourceAndName resource_and_name(name);
 
-  StringPiece borrowed_name(*resource_and_name.name);
+  absl::string_view borrowed_name(*resource_and_name.name);
 
   if (owns_resource) {
     resource_and_name.resource = core::RefCountPtr<ResourceBase>(resource);
@@ -336,7 +336,7 @@ absl::Status ResourceMgr::Cleanup(const string& container) {
   return absl::OkStatus();
 }
 
-static bool IsValidContainerName(StringPiece s) {
+static bool IsValidContainerName(absl::string_view s) {
   using ::tensorflow::strings::Scanner;
   return Scanner(s)
       .One(Scanner::LETTER_DIGIT_DOT)
@@ -399,7 +399,7 @@ absl::Status HandleFromInput(OpKernelContext* ctx, int input,
   return absl::OkStatus();
 }
 
-absl::Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+absl::Status HandleFromInput(OpKernelContext* ctx, absl::string_view input,
                              ResourceHandle* handle) {
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(ctx->input(input, &tensor));

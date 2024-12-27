@@ -24,20 +24,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-NodeDefBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType dt)
+NodeDefBuilder::NodeOut::NodeOut(absl::string_view n, int i, DataType dt)
     : node(n), index(i), data_type(dt) {}
 
 NodeDefBuilder::NodeOut::NodeOut() {
   // uninitialized, call Reset() before use.
 }
 
-void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
+void NodeDefBuilder::NodeOut::Reset(absl::string_view n, int i, DataType dt) {
   node = string(n);
   index = i;
   data_type = dt;
 }
 
-NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+NodeDefBuilder::NodeDefBuilder(absl::string_view name,
+                               absl::string_view op_name,
                                const OpRegistryInterface* op_registry,
                                const NodeDebugInfo* debug) {
   node_def_.set_name(string(name));
@@ -52,13 +53,14 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
 }
 
-NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+NodeDefBuilder::NodeDefBuilder(absl::string_view name,
+                               absl::string_view op_name,
                                const NodeDebugInfo& debug)
     : NodeDefBuilder(name, op_name) {
   MergeDebugInfo(debug, &node_def_);
 }
 
-NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)
+NodeDefBuilder::NodeDefBuilder(absl::string_view name, const OpDef* op_def)
     : op_def_(op_def) {
   node_def_.set_name(string(name));
   Initialize();
@@ -95,7 +97,7 @@ NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   return *this;
 }
 
-NodeDefBuilder& NodeDefBuilder::Input(StringPiece src_node, int src_index,
+NodeDefBuilder& NodeDefBuilder::Input(absl::string_view src_node, int src_index,
                                       DataType dt) {
   const OpDef::ArgDef* arg = NextArgDef();
   if (arg != nullptr) SingleInput(arg, src_node, src_index, dt);
@@ -115,7 +117,7 @@ NodeDefBuilder& NodeDefBuilder::Input(absl::Span<const NodeOut> src_list) {
 }
 
 void NodeDefBuilder::SingleInput(const OpDef::ArgDef* input_arg,
-                                 StringPiece src_node, int src_index,
+                                 absl::string_view src_node, int src_index,
                                  DataType dt) {
   AddInput(src_node, src_index);
 
@@ -172,7 +174,7 @@ void NodeDefBuilder::ListInput(const OpDef::ArgDef* input_arg,
   }
 }
 
-void NodeDefBuilder::AddInput(StringPiece src_node, int src_index) {
+void NodeDefBuilder::AddInput(absl::string_view src_node, int src_index) {
   if (src_node.empty()) {
     errors_.push_back("Empty input node name");
   } else if (src_node[0] == '^') {
@@ -203,12 +205,12 @@ void NodeDefBuilder::VerifyInputRef(const OpDef::ArgDef* input_arg,
   }
 }
 
-NodeDefBuilder& NodeDefBuilder::ControlInput(StringPiece src_node) {
+NodeDefBuilder& NodeDefBuilder::ControlInput(absl::string_view src_node) {
   control_inputs_.emplace_back(src_node);
   return *this;
 }
 
-NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
+NodeDefBuilder& NodeDefBuilder::Device(absl::string_view device_spec) {
   node_def_.set_device(string(device_spec));
   return *this;
 }
@@ -268,7 +270,7 @@ absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   }
 }
 
-bool NodeDefBuilder::AttrValueAlreadyPresent(StringPiece name,
+bool NodeDefBuilder::AttrValueAlreadyPresent(absl::string_view name,
                                              const AttrValue& value) {
   if (const AttrValue* found = AttrSlice(node_def_).Find(name)) {
     if (!AreAttrValuesEqual(*found, value)) {
@@ -281,14 +283,16 @@ bool NodeDefBuilder::AttrValueAlreadyPresent(StringPiece name,
   return false;
 }
 
-NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+NodeDefBuilder& NodeDefBuilder::Attr(absl::string_view name,
+                                     const AttrValue& value) {
   if (!AttrValueAlreadyPresent(name, value)) {
     AddNodeAttr(name, value, &node_def_);
   }
   return *this;
 }
 
-NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
+NodeDefBuilder& NodeDefBuilder::Attr(absl::string_view name,
+                                     AttrValue&& value) {
   if (!AttrValueAlreadyPresent(name, value)) {
     AddNodeAttr(name, std::move(value), &node_def_);
   }
@@ -301,7 +305,7 @@ NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
     SetAttrValue(value, &attr_value);                               \
     return Attr(name, attr_value);                                  \
   }
-ATTR(StringPiece)
+ATTR(absl::string_view)
 ATTR(const char*)
 ATTR(int32_t)
 ATTR(int64_t)
@@ -313,7 +317,7 @@ ATTR(const PartialTensorShape&)
 ATTR(const Tensor&)
 ATTR(const TensorProto&)
 ATTR(const NameAttrList&)
-ATTR(absl::Span<const StringPiece>)
+ATTR(absl::Span<const absl::string_view>)
 ATTR(absl::Span<const char* const>)
 ATTR(absl::Span<const string>)
 ATTR(absl::Span<const tstring>)

@@ -139,7 +139,7 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t,
 
 namespace {
 
-typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
+typedef absl::flat_hash_map<absl::string_view, const AttrValue*> AttrMap;
 
 inline absl::Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
 
@@ -151,7 +151,7 @@ absl::Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
                      t.args_size()));
   }
 
-  StringPiece var_name = t.s();
+  absl::string_view var_name = t.s();
   if (!attrs.contains(var_name)) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
@@ -193,7 +193,7 @@ absl::Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
   const auto& tmpl = t.args(1);
   const auto& t_var = t.args(2);
 
-  StringPiece var_name = t_var.s();
+  absl::string_view var_name = t_var.s();
   if (!attrs.contains(var_name)) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,

@@ -439,7 +439,7 @@ absl::Status GraphToFunctionDefHelper(
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const StringPiece& output_name = output.first;
+      const absl::string_view& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -488,7 +488,7 @@ absl::Status GraphToFunctionDefHelper(
     const uint64 hash = FunctionDefHash(*fdef);
     string encoded;
     TF_RETURN_IF_ERROR(Base64Encode(
-        StringPiece(reinterpret_cast<const char*>(&hash), sizeof(hash)),
+        absl::string_view(reinterpret_cast<const char*>(&hash), sizeof(hash)),
         &encoded));
     // Besides letters and digits our Base64 encoding uses '_' and '-'.
     // Dash is invalid in operation names and multiple underscores in random

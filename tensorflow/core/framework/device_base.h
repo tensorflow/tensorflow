@@ -101,14 +101,15 @@ class DeviceContext : public core::RefCounted {
   // device_tensor into "cpu_tensor".  "cpu_tensor" must be allocated
   // to be of the same size as "device_tensor".
   virtual void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                     StringPiece tensor_name, Device* device,
-                                     Tensor* cpu_tensor, StatusCallback done) {
+                                     absl::string_view tensor_name,
+                                     Device* device, Tensor* cpu_tensor,
+                                     StatusCallback done) {
     done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
   }
 
   // Same as `CopyDeviceTensorToCPU`, but blocks until the copy is done.
   absl::Status CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
-                                         StringPiece tensor_name,
+                                         absl::string_view tensor_name,
                                          Device* device, Tensor* cpu_tensor);
 
   // If possible, wait for all events on *stream to complete then execute func.

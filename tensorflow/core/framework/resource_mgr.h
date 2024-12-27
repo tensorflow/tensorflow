@@ -242,7 +242,7 @@ class ResourceMgr {
   std::string DebugString() const;
 
  private:
-  typedef std::pair<uint64, StringPiece> Key;
+  typedef std::pair<uint64, absl::string_view> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
       return Hash64(k.second.data(), k.second.size(), k.first);
@@ -382,7 +382,7 @@ absl::Status HandleFromInput(OpKernelContext* ctx, int input,
                              ResourceHandle* handle);
 // Returns a resource handle by name, as defined in the OpDef.
 // Also prevents segfault by checking for empty resource handle.
-absl::Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+absl::Status HandleFromInput(OpKernelContext* ctx, absl::string_view input,
                              ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.

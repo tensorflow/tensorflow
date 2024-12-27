@@ -589,9 +589,9 @@ string Print(const NodeDef& n) {
     strings::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
-  std::vector<StringPiece> dat;
+  std::vector<absl::string_view> dat;
   std::vector<string> dep;
-  for (StringPiece s : n.input()) {
+  for (absl::string_view s : n.input()) {
     if (absl::ConsumePrefix(&s, "^")) {
       dep.emplace_back(s);
     } else {
@@ -1729,7 +1729,8 @@ absl::Status FunctionLibraryDefinition::LookUp(
   return default_registry_->LookUp(op, op_reg_data);
 }
 
-string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
+string FunctionLibraryDefinition::UniqueFunctionName(
+    absl::string_view prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
   string name = strings::StrCat(prefix, index);
@@ -2041,7 +2042,8 @@ string FunctionLibraryRuntime::Options::DebugString() const {
       " rets_alloc_attrs=", AllocatorAttributesToString(rets_alloc_attrs), ")");
 }
 
-void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
+void FunctionDefHelper::AttrValueWrapper::InitFromString(
+    absl::string_view val) {
   if (val.size() >= 2 && val[0] == '$') {
     proto.set_placeholder(val.data() + 1, val.size() - 1);
   } else {

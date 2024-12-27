@@ -236,7 +236,7 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
 
 absl::Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset, const std::vector<Node*>& inputs,
-    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+    const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
     Node** output) {
   std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -249,7 +249,7 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
     const std::vector<std::pair<size_t, absl::Span<Node* const>>>& list_inputs,
-    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+    const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
     Node** output) {
   return AddDataset(dataset, inputs, list_inputs, attrs,
                     /*use_dataset_name=*/false, output);
@@ -259,7 +259,7 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
     const std::vector<std::pair<size_t, absl::Span<Node* const>>>& list_inputs,
-    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+    const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
     bool use_dataset_name, Node** output) {
   auto& type_string = dataset->type_string();
   auto opts = absl::make_unique<GraphDefBuilder::Options>(b_->opts());
@@ -626,7 +626,7 @@ std::string FullName(const std::string& prefix, const std::string& name) {
   return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
 }
 
-absl::Status ExtractIteratorPrefix(StringPiece key, string* prefix) {
+absl::Status ExtractIteratorPrefix(absl::string_view key, string* prefix) {
   if (!absl::StartsWith(key, data::kFullNameRandomHex)) {
     return errors::InvalidArgument("Key: ", key,
                                    " was not generated using full_name.");

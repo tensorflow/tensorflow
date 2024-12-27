@@ -141,7 +141,9 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64 KeyHash(const StringPiece& k) { return Hash64(k.data(), k.size()); }
+uint64 KeyHash(const absl::string_view& k) {
+  return Hash64(k.data(), k.size());
+}
 }  // namespace
 
 absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,

@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-string WordWrap(StringPiece prefix, StringPiece str, int width) {
+string WordWrap(absl::string_view prefix, absl::string_view str, int width) {
   const string indent_next_line = "\n" + Spaces(prefix.size());
   width -= prefix.size();
   string result;
@@ -43,16 +43,16 @@ string WordWrap(StringPiece prefix, StringPiece str, int width) {
       break;
     }
     auto space = str.rfind(' ', width);
-    if (space == StringPiece::npos) {
+    if (space == absl::string_view::npos) {
       // Rather make a too-long line and break at a space.
       space = str.find(' ');
-      if (space == StringPiece::npos) {
+      if (space == absl::string_view::npos) {
         strings::StrAppend(&result, str);
         break;
       }
     }
     // Breaking at character at position <space>.
-    StringPiece to_append = str.substr(0, space);
+    absl::string_view to_append = str.substr(0, space);
     str.remove_prefix(space + 1);
     // Remove spaces at break.
     while (absl::EndsWith(to_append, " ")) {
@@ -69,7 +69,7 @@ string WordWrap(StringPiece prefix, StringPiece str, int width) {
   return result;
 }
 
-bool ConsumeEquals(StringPiece* description) {
+bool ConsumeEquals(absl::string_view* description) {
   if (absl::ConsumePrefix(description, "=")) {
     while (absl::ConsumePrefix(description,
                                " ")) {  // Also remove spaces after "=".
@@ -84,12 +84,12 @@ bool ConsumeEquals(StringPiece* description) {
 // contains the maximum prefix of the input `*orig` that doesn't
 // contain `split_ch`, and `*orig` contains everything after the
 // first `split_ch`.
-static bool SplitAt(char split_ch, StringPiece* orig,
-                    StringPiece* before_split) {
+static bool SplitAt(char split_ch, absl::string_view* orig,
+                    absl::string_view* before_split) {
   auto pos = orig->find(split_ch);
-  if (pos == StringPiece::npos) {
+  if (pos == absl::string_view::npos) {
     *before_split = *orig;
-    *orig = StringPiece();
+    *orig = absl::string_view();
     return false;
   } else {
     *before_split = orig->substr(0, pos);
@@ -100,9 +100,9 @@ static bool SplitAt(char split_ch, StringPiece* orig,
 
 // Does this line start with "<spaces><field>:" where "<field>" is
 // in multi_line_fields? Sets *colon_pos to the position of the colon.
-static bool StartsWithFieldName(StringPiece line,
+static bool StartsWithFieldName(absl::string_view line,
                                 const std::vector<string>& multi_line_fields) {
-  StringPiece up_to_colon;
+  absl::string_view up_to_colon;
   if (!SplitAt(':', &line, &up_to_colon)) return false;
   while (absl::ConsumePrefix(&up_to_colon, " "))
     ;  // Remove leading spaces.
@@ -114,7 +114,7 @@ static bool StartsWithFieldName(StringPiece line,
   return false;
 }
 
-static bool ConvertLine(StringPiece line,
+static bool ConvertLine(absl::string_view line,
                         const std::vector<string>& multi_line_fields,
                         string* ml) {
   // Is this a field we should convert?
@@ -122,8 +122,8 @@ static bool ConvertLine(StringPiece line,
     return false;
   }
   // Has a matching field name, so look for "..." after the colon.
-  StringPiece up_to_colon;
-  StringPiece after_colon = line;
+  absl::string_view up_to_colon;
+  absl::string_view after_colon = line;
   SplitAt(':', &after_colon, &up_to_colon);
   while (absl::ConsumePrefix(&after_colon, " "))
     ;  // Remove leading spaces.
@@ -132,12 +132,12 @@ static bool ConvertLine(StringPiece line,
     return false;
   }
   auto last_quote = after_colon.rfind('\"');
-  if (last_quote == StringPiece::npos) {
+  if (last_quote == absl::string_view::npos) {
     // Error: we don't see the expected matching quote, abort the conversion.
     return false;
   }
-  StringPiece escaped = after_colon.substr(0, last_quote);
-  StringPiece suffix = after_colon.substr(last_quote + 1);
+  absl::string_view escaped = after_colon.substr(0, last_quote);
+  absl::string_view suffix = after_colon.substr(last_quote + 1);
   // We've now parsed line into '<up_to_colon>: "<escaped>"<suffix>'
 
   string unescaped;
@@ -163,13 +163,13 @@ static bool ConvertLine(StringPiece line,
   return true;
 }
 
-string PBTxtToMultiline(StringPiece pbtxt,
+string PBTxtToMultiline(absl::string_view pbtxt,
                         const std::vector<string>& multi_line_fields) {
   string ml;
   // Probably big enough, since the input and output are about the
   // same size, but just a guess.
   ml.reserve(pbtxt.size() * (17. / 16));
-  StringPiece line;
+  absl::string_view line;
   while (!pbtxt.empty()) {
     // Split pbtxt into its first line and everything after.
     SplitAt('\n', &pbtxt, &line);
@@ -184,8 +184,8 @@ string PBTxtToMultiline(StringPiece pbtxt,
 // Given a single line of text `line` with first : at `colon`, determine if
 // there is an "<<END" expression after the colon and if so return true and set
 // `*end` to everything after the "<<".
-static bool FindMultiline(StringPiece line, size_t colon, string* end) {
-  if (colon == StringPiece::npos) return false;
+static bool FindMultiline(absl::string_view line, size_t colon, string* end) {
+  if (colon == absl::string_view::npos) return false;
   line.remove_prefix(colon + 1);
   while (absl::ConsumePrefix(&line, " ")) {
   }
@@ -196,12 +196,12 @@ static bool FindMultiline(StringPiece line, size_t colon, string* end) {
   return false;
 }
 
-string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
+string PBTxtFromMultiline(absl::string_view multiline_pbtxt) {
   string pbtxt;
   // Probably big enough, since the input and output are about the
   // same size, but just a guess.
   pbtxt.reserve(multiline_pbtxt.size() * (33. / 32));
-  StringPiece line;
+  absl::string_view line;
   while (!multiline_pbtxt.empty()) {
     // Split multiline_pbtxt into its first line and everything after.
     if (!SplitAt('\n', &multiline_pbtxt, &line)) {
@@ -240,7 +240,7 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
         unescaped.push_back('\n');
       }
       strings::StrAppend(&unescaped, line);
-      line = StringPiece();
+      line = absl::string_view();
     }
 
     // Escape what we extracted and then output it in quotes.

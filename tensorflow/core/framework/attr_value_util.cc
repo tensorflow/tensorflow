@@ -186,8 +186,8 @@ string SummarizeString(const string& str) {
   // If the string is long, replace the middle with ellipses.
   constexpr int kMaxStringSummarySize = 80;
   if (escaped.size() >= kMaxStringSummarySize) {
-    StringPiece prefix(escaped);
-    StringPiece suffix = prefix;
+    absl::string_view prefix(escaped);
+    absl::string_view suffix = prefix;
     prefix.remove_suffix(escaped.size() - 10);
     suffix.remove_prefix(escaped.size() - 10);
     return strings::StrCat("\"", prefix, "...", suffix, "\"");
@@ -351,7 +351,8 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
   return "<Unknown AttrValue type>";  // Prevent missing return warning
 }
 
-absl::Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
+absl::Status AttrValueHasType(const AttrValue& attr_value,
+                              absl::string_view type) {
   int num_set = 0;
 
 #define VALIDATE_FIELD(name, type_string, oneof_case)                         \
@@ -449,7 +450,8 @@ absl::Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   return absl::OkStatus();
 }
 
-bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
+bool ParseAttrValue(absl::string_view type, absl::string_view text,
+                    AttrValue* out) {
   // Parse type.
   string field_name;
   bool is_list = absl::ConsumePrefix(&type, "list(");
@@ -483,7 +485,7 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   if (is_list) {
     // TextFormat parser considers "i: 7" to be the same as "i: [7]",
     // but we only want to allow list values with [].
-    StringPiece cleaned = text;
+    absl::string_view cleaned = text;
     str_util::RemoveLeadingWhitespace(&cleaned);
     str_util::RemoveTrailingWhitespace(&cleaned);
     if (cleaned.size() < 2 || cleaned[0] != '[' ||
@@ -552,11 +554,12 @@ void SetAttrValue(absl::Span<const tstring> value, AttrValue* out) {
   }
 }
 
-void SetAttrValue(StringPiece value, AttrValue* out) {
+void SetAttrValue(absl::string_view value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
-void SetAttrValue(const absl::Span<const StringPiece> value, AttrValue* out) {
+void SetAttrValue(const absl::Span<const absl::string_view> value,
+                  AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
