@@ -16,30 +16,31 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <numeric>
-#include <random>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -54,39 +55,29 @@ static bool LessThan(const void** data) {
 
 class LessThanComparator : public FunctionLibrary {
  public:
-  static void LessThanWrapper(bool* result, const void*, const void** data,
-                              const void*, const void*, const void*) {
-    *result = LessThan(data);
-  }
-
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
                                         absl::string_view name) final {
     DCHECK_EQ(name, "less_than");
     return reinterpret_cast<void*>(LessThanWrapper);
   }
+
+ private:
+  static void LessThanWrapper(bool* result, const void*, const void** data,
+                              const void*, const void*, const void*) {
+    *result = LessThan(data);
+  }
 };
 
 TEST_P(SortThunkTest, DescendingSortPlainArray) {
   bool is_stable = GetParam();
-  const int data_size = 10000;
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data(data_size);
+  TF_ASSERT_OK_AND_ASSIGN(auto data,
+                          LiteralUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
 
-  std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0, 1000.0);
-
-  for (int i = 0; i < data_size; i++) {
-    data[i] = distribution(gen);
-  }
-
-  const size_t size_in_bytes = data_size * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
-
-  const BufferAllocations allocations(buffers);
-  const BufferAllocation alloc(0, size_in_bytes, 0);
-  const BufferAllocation::Slice slice0(&alloc, 0, size_in_bytes);
-  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
+  BufferAllocations allocations = CreateBufferAllocations(data);
+  BufferAllocation alloc = CreateBufferAllocation(0, data);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
 
   // The comparator function is not used in the plain array sort when the sort
   // direction is specified and data types are supported.
@@ -94,7 +85,7 @@ TEST_P(SortThunkTest, DescendingSortPlainArray) {
 
   // Use sort direction to activate the most efficient sorting function.
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, SortThunk::Create({"sort"}, {{slice0, data_shape}},
+      auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
                                     /*dimension=*/0, is_stable, fake_less_than,
                                     SortThunk::SortDirection::kDescending));
 
@@ -105,37 +96,27 @@ TEST_P(SortThunkTest, DescendingSortPlainArray) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  EXPECT_TRUE(
-      std::is_sorted(data.cbegin(), data.cend(), std::greater<float>()));
+  EXPECT_TRUE(std::is_sorted(data.data<float>().begin(),
+                             data.data<float>().end(), std::greater<float>()));
 }
 
 TEST_P(SortThunkTest, Sort1D) {
   bool is_stable = GetParam();
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data = {2.0, 4.0, 1.0, 3.0};
-  std::vector<int32_t> indices = {0, 1, 2, 3};
+  auto data = LiteralUtil::CreateR1<float>({2.0, 4.0, 1.0, 3.0});
+  auto indices = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3});
 
-  size_t size_in_bytes = data.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(indices.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(data, indices);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation alloc0(0, size_in_bytes, 0);
-  BufferAllocation alloc1(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice slice0(&alloc0, 0, size_in_bytes);
-  BufferAllocation::Slice slice1(&alloc1, 0, size_in_bytes);
-
-  Shape data_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {4});
+  auto [alloc0, alloc1] = CreateBufferAllocation(data, indices);
+  auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, SortThunk::Create(
-                      {"sort"}, {{slice0, data_shape}, {slice1, indices_shape}},
-                      /*dimension=*/0, is_stable, LessThan,
-                      SortThunk::SortDirection::kAscending));
+      auto thunk,
+      SortThunk::Create({"sort"},
+                        {{slice0, data.shape()}, {slice1, indices.shape()}},
+                        /*dimension=*/0, is_stable, LessThan,
+                        SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -144,68 +125,42 @@ TEST_P(SortThunkTest, Sort1D) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  std::vector<float> expected_data = {1.0, 2.0, 3.0, 4.0};
-  std::vector<int32_t> expected_indices = {2, 0, 3, 1};
-
-  EXPECT_EQ(data, expected_data);
-  EXPECT_EQ(indices, expected_indices);
+  EXPECT_EQ(data, LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_EQ(indices, LiteralUtil::CreateR1<int32_t>({2, 0, 3, 1}));
 }
 
-TEST_P(SortThunkTest, DynamicSort1D) {
+TEST_P(SortThunkTest, Sort1DDynamicNumInputs) {
   bool is_stable = GetParam();
 
-  // 33 empty slices + 2 slices with data = 35 slices
-  // This amount of slices will call the dynamic sort implementation.
-  constexpr int num_of_empty_slices = 33;
-  constexpr int total_num_of_slices = num_of_empty_slices + 2;
+  Literal data = LiteralUtil::CreateR1<float>(
+      {17.0f, 16.0f, 5.0f,  10.0f, 30.0f, 8.0f,  9.0f,  21.0f,
+       14.0f, 32.0f, 29.0f, 28.0f, 19.0f, 12.0f, 25.0f, 22.0f,
+       18.0f, 35.0f, 34.0f, 23.0f, 7.0f,  13.0f, 26.0f, 33.0f,
+       15.0f, 24.0f, 20.0f, 31.0f, 6.0f,  27.0f, 11.0f});
 
-  // size of each of 33 data buffers
-  constexpr int data_size = 31;
+  Literal indices = LiteralUtil::CreateR1<int32_t>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
 
-  // values range will be [5.0, 35.0]
-  constexpr float starting_value = 5.0f;
+  // We use dummy data to create large number of input to trigger the dynamic
+  // sort implementation, but we don't use it for sorting.
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal dummy_data,
+      LiteralUtil::CreateRandomLiteral<F32>(data.shape(), 1.0f, 0.1f));
 
-  std::array<float, data_size> data{
-      17.0f, 16.0f, 5.0f,  10.0f, 30.0f, 8.0f,  9.0f,  21.0f,
-      14.0f, 32.0f, 29.0f, 28.0f, 19.0f, 12.0f, 25.0f, 22.0f,
-      18.0f, 35.0f, 34.0f, 23.0f, 7.0f,  13.0f, 26.0f, 33.0f,
-      15.0f, 24.0f, 20.0f, 31.0f, 6.0f,  27.0f, 11.0f};
-  std::array<int32_t, data_size> indices;
-  std::iota(indices.begin(), indices.end(), 0);
+  BufferAllocations allocations =
+      CreateBufferAllocations(data, indices, dummy_data);
 
-  // This is a container for the rest of the buffers.
-  std::array<uint32_t, data_size * num_of_empty_slices> empty;
+  auto [data_alloc, indices_alloc, dummy_alloc] =
+      CreateBufferAllocation(data, indices, dummy_data);
+  auto [data_slice, indices_slice, dummy_slice] =
+      CreateBufferAllocationSlice(data_alloc, indices_alloc, dummy_alloc);
 
-  const size_t data_size_in_bytes = data.size() * sizeof(float);
-  const size_t ind_size_in_bytes = indices.size() * sizeof(int32_t);
-  const size_t empty_size_in_bytes = empty.size() * sizeof(uint32_t);
-
-  const BufferAllocation alloc0(0, data_size_in_bytes, 0);
-  const BufferAllocation alloc1(1, ind_size_in_bytes, 0);
-  const BufferAllocation rest(2, empty_size_in_bytes, 0);
-
-  const BufferAllocation::Slice slice0(&alloc0, 0, data_size_in_bytes);
-  const BufferAllocation::Slice slice1(&alloc1, 0, ind_size_in_bytes);
-
-  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
-  const Shape indices_shape = ShapeUtil::MakeShape(S32, {data_size});
-  const Shape rest_shape = ShapeUtil::MakeShape(U32, {data_size});
-
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), data_size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(indices.data(), ind_size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(empty.data(), empty_size_in_bytes));
-
-  BufferAllocations allocations(buffers);
-
-  std::array<SortThunk::Input, total_num_of_slices> inputs{
-      {{slice0, data_shape}, {slice1, indices_shape}}};
-  for (int i = 0; i < num_of_empty_slices; ++i) {
-    constexpr size_t empty_slice_in_bytes = data_size * sizeof(uint32_t);
-    inputs[i + 2].slice = BufferAllocation::Slice(
-        &rest, i * empty_slice_in_bytes, empty_slice_in_bytes);
-    inputs[i + 2].shape = rest_shape;
-  }
+  // We use only first input for sorting, the rest of the inputs are shuffled
+  // according to the values in the `data` literal.
+  std::vector<SortThunk::Input> inputs = {{data_slice, data.shape()},
+                                          {indices_slice, indices.shape()}};
+  inputs.resize(40, {dummy_slice, dummy_data.shape()});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create({"sort"}, inputs,
@@ -219,11 +174,15 @@ TEST_P(SortThunkTest, DynamicSort1D) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  std::array<float, data_size> expected_data;
-  std::iota(expected_data.begin(), expected_data.end(), starting_value);
-  const std::array<int32_t, data_size> expected_indices{
-      2, 28, 20, 5,  6,  3,  30, 13, 21, 8, 24, 1, 0,  16, 12, 26,
-      7, 15, 19, 25, 14, 22, 29, 11, 10, 4, 27, 9, 23, 18, 17};
+  auto expected_data = LiteralUtil::CreateR1<float>(
+      {5.0f,  6.0f,  7.0f,  8.0f,  9.0f,  10.0f, 11.0f, 12.0f,
+       13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f,
+       21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f,
+       29.0f, 30.0f, 31.0f, 32.0f, 33.0f, 34.0f, 35.0f});
+
+  auto expected_indices = LiteralUtil::CreateR1<int32_t>(
+      {2, 28, 20, 5,  6,  3,  30, 13, 21, 8, 24, 1, 0,  16, 12, 26,
+       7, 15, 19, 25, 14, 22, 29, 11, 10, 4, 27, 9, 23, 18, 17});
 
   EXPECT_EQ(data, expected_data);
   EXPECT_EQ(indices, expected_indices);
@@ -232,30 +191,19 @@ TEST_P(SortThunkTest, DynamicSort1D) {
 TEST_P(SortThunkTest, Sort2D) {
   bool is_stable = GetParam();
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data = {2.0, 4.0, 1.0, 3.0};
-  std::vector<int32_t> indices = {0, 1, 2, 3};
+  auto data = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {1.0, 3.0}});
+  auto indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  size_t size_in_bytes = data.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(indices.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(data, indices);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation alloc0(0, size_in_bytes, 0);
-  BufferAllocation alloc1(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice slice0(&alloc0, 0, size_in_bytes);
-  BufferAllocation::Slice slice1(&alloc1, 0, size_in_bytes);
-
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {2, 2});
+  auto [alloc0, alloc1] = CreateBufferAllocation(data, indices);
+  auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
   // Sort along the dimension `0`.
   TF_ASSERT_OK_AND_ASSIGN(
       auto sort_dim0,
       SortThunk::Create({"sort"},
-                        {{slice0, data_shape}, {slice1, indices_shape}},
+                        {{slice0, data.shape()}, {slice1, indices.shape()}},
                         /*dimension=*/0, is_stable, "less_than",
                         SortThunk::SortDirection::kAscending));
 
@@ -269,20 +217,17 @@ TEST_P(SortThunkTest, Sort2D) {
   tsl::BlockUntilReady(execute_event0);
   ASSERT_FALSE(execute_event0.IsError());
 
-  std::vector<float> expected_data = {1.0, 3.0, 2.0, 4.0};
-  std::vector<int32_t> expected_indices = {2, 3, 0, 1};
-
-  EXPECT_EQ(data, expected_data);
-  EXPECT_EQ(indices, expected_indices);
+  EXPECT_EQ(data, LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}));
+  EXPECT_EQ(indices, LiteralUtil::CreateR2<int32_t>({{2, 3}, {0, 1}}));
 
   // Reset data and indices to make it unsorted along the dimension `1`.
-  data = {4.0, 3.0, 2.0, 1.0};
-  indices = {0, 1, 2, 3};
+  data = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
+  indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
       SortThunk::Create({"sort"},
-                        {{slice0, data_shape}, {slice1, indices_shape}},
+                        {{slice0, data.shape()}, {slice1, indices.shape()}},
                         /*dimension=*/1,
                         /*is_stable=*/false, "less_than",
                         SortThunk::SortDirection::kAscending));
@@ -291,36 +236,25 @@ TEST_P(SortThunkTest, Sort2D) {
   tsl::BlockUntilReady(execute_event1);
   ASSERT_FALSE(execute_event1.IsError());
 
-  expected_data = {3.0, 4.0, 1.0, 2.0};
-  expected_indices = {1, 0, 3, 2};
-
-  EXPECT_EQ(data, expected_data);
-  EXPECT_EQ(indices, expected_indices);
+  EXPECT_EQ(data, LiteralUtil::CreateR2<float>({{3.0, 4.0}, {1.0, 2.0}}));
+  EXPECT_EQ(indices, LiteralUtil::CreateR2<int32_t>({{1, 0}, {3, 2}}));
 }
 
 TEST_P(SortThunkTest, Sort2DWithLayout) {
   bool is_stable = GetParam();
 
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data = {4.0, 3.0, 2.0, 1.0};
-  std::vector<int32_t> indices = {0, 1, 2, 3};
+  auto data = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
+  auto indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  size_t size_in_bytes = data.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(indices.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(data, indices);
 
-  BufferAllocations allocations(buffers);
+  auto [alloc0, alloc1] = CreateBufferAllocation(data, indices);
+  auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
-  BufferAllocation alloc0(0, size_in_bytes, 0);
-  BufferAllocation alloc1(1, size_in_bytes, 0);
-
-  BufferAllocation::Slice slice0(&alloc0, 0, size_in_bytes);
-  BufferAllocation::Slice slice1(&alloc1, 0, size_in_bytes);
-
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = data.shape();
   *data_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {2, 2});
+  Shape indices_shape = indices.shape();
   *indices_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
   // Sort along the dimension `0`.
@@ -341,15 +275,12 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   tsl::BlockUntilReady(execute_event0);
   ASSERT_FALSE(execute_event0.IsError());
 
-  std::vector<float> expected_data = {3.0, 4.0, 1.0, 2.0};
-  std::vector<int32_t> expected_indices = {1, 0, 3, 2};
-
-  EXPECT_EQ(data, expected_data);
-  EXPECT_EQ(indices, expected_indices);
+  EXPECT_EQ(data, LiteralUtil::CreateR2<float>({{3.0, 4.0}, {1.0, 2.0}}));
+  EXPECT_EQ(indices, LiteralUtil::CreateR2<int32_t>({{1, 0}, {3, 2}}));
 
   // Reset data and indices to make it unsorted along the dimension `1`.
-  data = {2.0, 4.0, 1.0, 3.0};
-  indices = {0, 1, 2, 3};
+  data = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {1.0, 3.0}});
+  indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
@@ -363,76 +294,57 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   tsl::BlockUntilReady(execute_event1);
   ASSERT_FALSE(execute_event1.IsError());
 
-  expected_data = {1.0, 3.0, 2.0, 4.0};
-  expected_indices = {2, 3, 0, 1};
-
-  EXPECT_EQ(data, expected_data);
-  EXPECT_EQ(indices, expected_indices);
+  EXPECT_EQ(data, LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}));
+  EXPECT_EQ(indices, LiteralUtil::CreateR2<int32_t>({{2, 3}, {0, 1}}));
 }
 
+INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
+                         testing::PrintToStringParamName());
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
 void BM_DynamicSort1D(::testing::benchmark::State& state, bool is_stable) {
-  const int total_num_of_slices = state.range(0);
-  const int num_of_empty_slices = total_num_of_slices - 2;
+  size_t num_inputs = state.range(0);
 
-  // size of each of data buffers
-  constexpr int data_size = 31;
+  Literal data = LiteralUtil::CreateR1<float>(
+      {17.0f, 16.0f, 5.0f,  10.0f, 30.0f, 8.0f,  9.0f,  21.0f,
+       14.0f, 32.0f, 29.0f, 28.0f, 19.0f, 12.0f, 25.0f, 22.0f,
+       18.0f, 35.0f, 34.0f, 23.0f, 7.0f,  13.0f, 26.0f, 33.0f,
+       15.0f, 24.0f, 20.0f, 31.0f, 6.0f,  27.0f, 11.0f});
 
-  const std::array<float, data_size> data{
-      17.0f, 16.0f, 5.0f,  10.0f, 30.0f, 8.0f,  9.0f,  21.0f,
-      14.0f, 32.0f, 29.0f, 28.0f, 19.0f, 12.0f, 25.0f, 22.0f,
-      18.0f, 35.0f, 34.0f, 23.0f, 7.0f,  13.0f, 26.0f, 33.0f,
-      15.0f, 24.0f, 20.0f, 31.0f, 6.0f,  27.0f, 11.0f};
-  std::array<int32_t, data_size> indices;
-  std::iota(indices.begin(), indices.end(), 0);
+  Literal indices = LiteralUtil::CreateR1<int32_t>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
 
-  // This is the container for the rest of the buffers.
-  std::vector<uint32_t> empty(data_size * num_of_empty_slices);
+  // We use dummy data to create a large number of input to trigger the dynamic
+  // sort implementation, but we don't use it for sorting.
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal dummy_data,
+      LiteralUtil::CreateRandomLiteral<F32>(data.shape(), 1.0f, 0.1f));
 
-  const size_t data_size_in_bytes = data.size() * sizeof(float);
-  const size_t ind_size_in_bytes = indices.size() * sizeof(int32_t);
-  const size_t empty_size_in_bytes = empty.size() * sizeof(uint32_t);
-
-  const BufferAllocation alloc0(0, data_size_in_bytes, 0);
-  const BufferAllocation alloc1(1, ind_size_in_bytes, 0);
-  const BufferAllocation rest(2, empty_size_in_bytes, 0);
-
-  const BufferAllocation::Slice slice0(&alloc0, 0, data_size_in_bytes);
-  const BufferAllocation::Slice slice1(&alloc1, 0, ind_size_in_bytes);
-
-  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
-  const Shape indices_shape = ShapeUtil::MakeShape(S32, {data_size});
-  const Shape rest_shape = ShapeUtil::MakeShape(U32, {data_size});
+  auto [data_alloc, indices_alloc, dummy_alloc] =
+      CreateBufferAllocation(data, indices, dummy_data);
+  auto [data_slice, indices_slice, dummy_slice] =
+      CreateBufferAllocationSlice(data_alloc, indices_alloc, dummy_alloc);
 
   for (auto s : state) {
-    // Pause timing to avoid counting the time spent in the setup.
-    state.PauseTiming();
-    auto data_clone(data);
-    auto indices_clone(indices);
+    // Clone the data input to avoid sorting already sorted data.
+    Literal data_copy = data.Clone();
 
-    std::vector<MaybeOwningDeviceMemory> buffers;
-    buffers.emplace_back(
-        se::DeviceMemoryBase(data_clone.data(), data_size_in_bytes));
-    buffers.emplace_back(
-        se::DeviceMemoryBase(indices_clone.data(), ind_size_in_bytes));
-    buffers.emplace_back(
-        se::DeviceMemoryBase(empty.data(), empty_size_in_bytes));
+    BufferAllocations allocations =
+        CreateBufferAllocations(data_copy, indices, dummy_data);
 
-    BufferAllocations allocations(buffers);
-
-    std::vector<SortThunk::Input> inputs(total_num_of_slices);
-    inputs[0] = {slice0, data_shape};
-    inputs[1] = {slice1, indices_shape};
-    for (int i = 0; i < num_of_empty_slices; ++i) {
-      constexpr size_t empty_slice_in_bytes = data_size * sizeof(uint32_t);
-      inputs[i + 2].slice = BufferAllocation::Slice(
-          &rest, i * empty_slice_in_bytes, empty_slice_in_bytes);
-      inputs[i + 2].shape = rest_shape;
-    }
+    // We use only first input for sorting, the rest of the inputs are shuffled
+    // according to the values in the `data` literal.
+    std::vector<SortThunk::Input> inputs = {{data_slice, data.shape()},
+                                            {indices_slice, indices.shape()}};
+    inputs.resize(num_inputs, {dummy_slice, dummy_data.shape()});
 
     Thunk::ExecuteParams params;
     params.buffer_allocations = &allocations;
 
-    state.ResumeTiming();
     TF_ASSERT_OK_AND_ASSIGN(
         auto thunk, SortThunk::Create({"sort"}, inputs,
                                       /*dimension=*/0, is_stable, LessThan,
@@ -445,29 +357,20 @@ void BM_DynamicSort1D(::testing::benchmark::State& state, bool is_stable) {
 }
 
 void BM_SortPlainArray(::testing::benchmark::State& state, bool is_stable) {
-  const int data_size = state.range(0);
+  int64_t input_size = state.range(0);
 
-  std::vector<float> data(data_size);
+  auto data = LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {input_size}), 1.0f, 0.1f);
+  CHECK_OK(data) << "Failed to create random literal";  // Crash OK
 
-  std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0, 1000.0);
-
-  for (int i = 0; i < data_size; i++) {
-    data[i] = distribution(gen);
-  }
-
-  const size_t size_in_bytes = data_size * sizeof(float);
-  const BufferAllocation alloc(0, size_in_bytes, 0);
-  const BufferAllocation::Slice slice0(&alloc, 0, size_in_bytes);
-  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
+  auto alloc = CreateBufferAllocation(0, *data);
+  auto slice = CreateBufferAllocationSlice(alloc);
 
   for (auto s : state) {
-    state.PauseTiming();
-    auto data_clone(data);
-    std::vector<MaybeOwningDeviceMemory> buffer;
-    buffer.emplace_back(se::DeviceMemoryBase(data_clone.data(), size_in_bytes));
+    // Clone the data input to avoid sorting already sorted data.
+    Literal data_copy = data->Clone();
 
-    const BufferAllocations allocations(buffer);
+    BufferAllocations allocations = CreateBufferAllocations(data_copy);
 
     Thunk::ExecuteParams params;
     params.buffer_allocations = &allocations;
@@ -476,11 +379,10 @@ void BM_SortPlainArray(::testing::benchmark::State& state, bool is_stable) {
     // direction is specified and data types are supported.
     auto fake_less_than = [](const void** data) { return false; };
 
-    state.ResumeTiming();
     // Use sort direction to activate the most efficient sorting function.
     TF_ASSERT_OK_AND_ASSIGN(
         auto thunk,
-        SortThunk::Create({"sort"}, {{slice0, data_shape}},
+        SortThunk::Create({"sort"}, {{slice, data_copy.shape()}},
                           /*dimension=*/0, is_stable, fake_less_than,
                           SortThunk::SortDirection::kAscending));
 
@@ -527,9 +429,6 @@ BENCHMARK(BM_UnstableSortPlainArray)
     ->MeasureProcessCPUTime()
     ->Arg(10000)
     ->Arg(100000);
-
-INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
-                         testing::PrintToStringParamName());
 
 }  // namespace
 }  // namespace xla::cpu
