@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -47,6 +47,7 @@ namespace {
 
 class SortThunkTest : public testing::TestWithParam<bool> {};
 
+// Sorts the data using only the first input (that must be float!).
 static bool LessThan(const void** data) {
   auto* lhs = reinterpret_cast<const float*>(data[0]);
   auto* rhs = reinterpret_cast<const float*>(data[1]);
@@ -305,130 +306,70 @@ INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
 // Performance benchmarks below.
 //===----------------------------------------------------------------------===//
 
-void BM_DynamicSort1D(::testing::benchmark::State& state, bool is_stable) {
-  size_t num_inputs = state.range(0);
-
-  Literal data = LiteralUtil::CreateR1<float>(
-      {17.0f, 16.0f, 5.0f,  10.0f, 30.0f, 8.0f,  9.0f,  21.0f,
-       14.0f, 32.0f, 29.0f, 28.0f, 19.0f, 12.0f, 25.0f, 22.0f,
-       18.0f, 35.0f, 34.0f, 23.0f, 7.0f,  13.0f, 26.0f, 33.0f,
-       15.0f, 24.0f, 20.0f, 31.0f, 6.0f,  27.0f, 11.0f});
-
-  Literal indices = LiteralUtil::CreateR1<int32_t>(
-      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
-
-  // We use dummy data to create a large number of input to trigger the dynamic
-  // sort implementation, but we don't use it for sorting.
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal dummy_data,
-      LiteralUtil::CreateRandomLiteral<F32>(data.shape(), 1.0f, 0.1f));
-
-  auto [data_alloc, indices_alloc, dummy_alloc] =
-      CreateBufferAllocation(data, indices, dummy_data);
-  auto [data_slice, indices_slice, dummy_slice] =
-      CreateBufferAllocationSlice(data_alloc, indices_alloc, dummy_alloc);
-
-  for (auto s : state) {
-    // Clone the data input to avoid sorting already sorted data.
-    Literal data_copy = data.Clone();
-
-    BufferAllocations allocations =
-        CreateBufferAllocations(data_copy, indices, dummy_data);
-
-    // We use only first input for sorting, the rest of the inputs are shuffled
-    // according to the values in the `data` literal.
-    std::vector<SortThunk::Input> inputs = {{data_slice, data.shape()},
-                                            {indices_slice, indices.shape()}};
-    inputs.resize(num_inputs, {dummy_slice, dummy_data.shape()});
-
-    Thunk::ExecuteParams params;
-    params.buffer_allocations = &allocations;
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto thunk, SortThunk::Create({"sort"}, inputs,
-                                      /*dimension=*/0, is_stable, LessThan,
-                                      SortThunk::SortDirection::kAscending));
-
-    auto execute_event = thunk->Execute(params);
-    tsl::BlockUntilReady(execute_event);
-    ASSERT_FALSE(execute_event.IsError());
-  }
-}
-
-void BM_SortPlainArray(::testing::benchmark::State& state, bool is_stable) {
+void BM_Sort1D(benchmark::State& state) {
   int64_t input_size = state.range(0);
+  int64_t num_inputs = state.range(1);
+  bool is_stable = state.range(2);
+  bool sort_ascending = state.range(3);
+
+  CHECK_GE(num_inputs, 1) << "Number of inputs must be at least 1";  // Crash OK
 
   auto data = LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeShape(F32, {input_size}), 1.0f, 0.1f);
+      ShapeUtil::MakeShape(F32, {input_size}), 1.0f, 1.0f);
   CHECK_OK(data) << "Failed to create random literal";  // Crash OK
 
-  auto alloc = CreateBufferAllocation(0, *data);
-  auto slice = CreateBufferAllocationSlice(alloc);
+  // We use dummy data to create additional inputs, but we don't use it for
+  // sorting and simply shuffle it according to the values in the first input.
+  auto dummy_data =
+      LiteralUtil::CreateRandomLiteral<F32>(data->shape(), 1.f, 1.f);
+  CHECK_OK(dummy_data) << "Failed to create random literal";  // Crash OK
+
+  // Use sort direction to activate the most efficient sorting function, or fall
+  // back on the comparator functor.
+  std::optional<SortThunk::SortDirection> direction;
+  if (sort_ascending) direction = SortThunk::SortDirection::kAscending;
+
+  auto [alloc, dummy_alloc] = CreateBufferAllocation(*data, *dummy_data);
+  auto [slice, dummy_slice] = CreateBufferAllocationSlice(alloc, dummy_alloc);
 
   for (auto s : state) {
-    // Clone the data input to avoid sorting already sorted data.
+    // Clone the data to avoid sorting already sorted data.
     Literal data_copy = data->Clone();
+    BufferAllocations allocations =
+        CreateBufferAllocations(data_copy, *dummy_data);
 
-    BufferAllocations allocations = CreateBufferAllocations(data_copy);
+    std::vector<SortThunk::Input> inputs = {{slice, data_copy.shape()}};
+    inputs.resize(num_inputs, {dummy_slice, dummy_data->shape()});
 
     Thunk::ExecuteParams params;
     params.buffer_allocations = &allocations;
 
-    // The comparator function is not used in the plain array sort when the sort
-    // direction is specified and data types are supported.
-    auto fake_less_than = [](const void** data) { return false; };
+    auto thunk =
+        SortThunk::Create({"sort"}, inputs,
+                          /*dimension=*/0, is_stable, LessThan, direction);
+    CHECK_OK(thunk) << "Failed to create sort thunk";  // Crash OK
 
-    // Use sort direction to activate the most efficient sorting function.
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto thunk,
-        SortThunk::Create({"sort"}, {{slice, data_copy.shape()}},
-                          /*dimension=*/0, is_stable, fake_less_than,
-                          SortThunk::SortDirection::kAscending));
-
-    auto execute_event = thunk->Execute(params);
+    auto execute_event = (*thunk)->Execute(params);
     tsl::BlockUntilReady(execute_event);
-    ASSERT_FALSE(execute_event.IsError());
+    CHECK(execute_event.IsConcrete());
   }
 }
 
-void BM_StableDynamicSort1D(::testing::benchmark::State& state) {
-  BM_DynamicSort1D(state, /*is_stable=*/true);
-}
-
-void BM_UnstableDynamicSort1D(::testing::benchmark::State& state) {
-  BM_DynamicSort1D(state, /*is_stable=*/false);
-}
-
-void BM_StableSortPlainArray(::testing::benchmark::State& state) {
-  BM_SortPlainArray(state, /*is_stable=*/true);
-}
-
-void BM_UnstableSortPlainArray(::testing::benchmark::State& state) {
-  BM_SortPlainArray(state, /*is_stable=*/false);
-}
-
-BENCHMARK(BM_StableDynamicSort1D)
+BENCHMARK(BM_Sort1D)
     ->MeasureProcessCPUTime()
-    ->Arg(35)
-    ->Arg(50)
-    ->Arg(100);
-
-BENCHMARK(BM_UnstableDynamicSort1D)
-    ->MeasureProcessCPUTime()
-    ->Arg(35)
-    ->Arg(50)
-    ->Arg(100);
-
-BENCHMARK(BM_StableSortPlainArray)
-    ->MeasureProcessCPUTime()
-    ->Arg(10000)
-    ->Arg(100000);
-
-BENCHMARK(BM_UnstableSortPlainArray)
-    ->MeasureProcessCPUTime()
-    ->Arg(10000)
-    ->Arg(100000);
+    ->ArgNames({"input_size", "num_inputs", "is_stable", "sort_ascending"})
+    // Sort using ascending directions.
+    ->Args({1000, 1, false, true})
+    ->Args({1000, 2, false, true})
+    ->Args({1000, 8, false, true})
+    ->Args({1000, 16, false, true})
+    ->Args({1000, 32, false, true})
+    // Sort using LessThan comparator.
+    ->Args({1000, 1, false, false})
+    ->Args({1000, 2, false, false})
+    ->Args({1000, 8, false, false})
+    ->Args({1000, 16, false, false})
+    ->Args({1000, 32, false, false});
 
 }  // namespace
 }  // namespace xla::cpu

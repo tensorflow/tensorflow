@@ -51,10 +51,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -638,10 +638,8 @@ static absl::Status SortInplace(
           type);
     };
 
-    // use "sort" for statically known number of sorted inputs (expected to be
+    // Use "sort" for statically known number of sorted inputs (expected to be
     // faster) and "dsort" for dynamically known number of sorted inputs.
-    // for 100 elements stable sort is 1.5 times faster than stable dsort.
-    // for 100 elements unstable sort is 2.47 times faster than unstable dsort.
     switch (data.size()) {
       case 1:
         DCHECK_EQ(shapes.size(), 1);
