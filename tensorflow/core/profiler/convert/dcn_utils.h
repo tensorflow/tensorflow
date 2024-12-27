@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_DCN_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_DCN_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
