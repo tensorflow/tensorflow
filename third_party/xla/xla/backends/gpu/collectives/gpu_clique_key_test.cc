@@ -23,6 +23,8 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/btree_map.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/service/global_device_id.h"
