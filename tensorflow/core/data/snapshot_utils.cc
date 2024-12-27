@@ -345,10 +345,10 @@ CustomWriter::~CustomWriter() {
   }
 }
 
-absl::Status CustomWriter::WriteRecord(const StringPiece& data) {
+absl::Status CustomWriter::WriteRecord(const absl::string_view& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 
@@ -356,7 +356,7 @@ absl::Status CustomWriter::WriteRecord(const StringPiece& data) {
 absl::Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 #endif  // TF_CORD_SUPPORT
