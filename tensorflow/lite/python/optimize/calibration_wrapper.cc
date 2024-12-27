@@ -700,14 +700,17 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             bool allow_float,
                                             int activations_py_type,
                                             int bias_py_type) {
-  return QuantizeModel(input_py_type, output_py_type, allow_float,
-                       activations_py_type, bias_py_type,
-                       /*disable_per_channel=*/false);
+  return QuantizeModel(
+      input_py_type, output_py_type, allow_float, activations_py_type,
+      bias_py_type,
+      /*disable_per_channel=*/false,
+      /*disable_per_channel_quantization_for_dense_layers=*/false);
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(
     int input_py_type, int output_py_type, bool allow_float,
-    int activations_py_type, int bias_py_type, bool disable_per_channel) {
+    int activations_py_type, int bias_py_type, bool disable_per_channel,
+    bool disable_per_channel_quantization_for_dense_layers) {
   if (NoOpModel(*model_)) {
     return ConvertToPyString(model_str_->data(), model_str_->size());
   }
@@ -732,7 +735,7 @@ PyObject* CalibrationWrapper::QuantizeModel(
       TfLiteTypeToSchemaType(output_type), allow_float,
       TfLiteTypeToSchemaType(activations_type),
       TfLiteTypeToSchemaType(bias_type), disable_per_channel,
-      error_reporter_.get());
+      disable_per_channel_quantization_for_dense_layers, error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();
