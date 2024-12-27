@@ -70,7 +70,7 @@ class BackendConfigWrapper {
     raw_string_ = other.raw_string_;
   }
 
-  BackendConfigWrapper& operator=(BackendConfigWrapper&& other);
+  BackendConfigWrapper& operator=(BackendConfigWrapper&& other) noexcept;
   bool operator==(const BackendConfigWrapper& other) const;
   bool operator!=(const BackendConfigWrapper& other) const {
     return !(*this == other);
