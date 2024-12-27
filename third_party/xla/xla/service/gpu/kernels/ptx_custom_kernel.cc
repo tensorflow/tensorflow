@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"

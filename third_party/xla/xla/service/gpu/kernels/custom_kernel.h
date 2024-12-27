@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
