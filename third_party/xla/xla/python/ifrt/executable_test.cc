@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/execute_options.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/index_domain.h"
 
-#include <memory>
-#include <utility>
-#include <vector>
-
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "xla/python/ifrt/index.h"

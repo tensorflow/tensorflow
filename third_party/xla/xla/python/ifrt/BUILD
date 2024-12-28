@@ -182,6 +182,7 @@ xla_cc_test(
     srcs = ["executable_test.cc"],
     deps = [
         ":attribute_map",
+        ":execute_options_proto_cc",
         ":ifrt",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -298,6 +299,7 @@ cc_library(
         ":ifrt",
         ":mock",
         ":test_util",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:util",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -325,6 +327,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
@@ -361,6 +364,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//testing/base/public:gunit_for_library_testonly",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
