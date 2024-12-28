@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 #define TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
