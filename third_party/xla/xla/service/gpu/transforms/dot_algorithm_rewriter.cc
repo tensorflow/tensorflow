@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

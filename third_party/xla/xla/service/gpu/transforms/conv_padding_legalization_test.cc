@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
