@@ -1101,6 +1101,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/builder:padding",
         "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -1219,6 +1220,7 @@ xla_cc_test(
     deps = [
         ":refcounting_hash_map",
         ":test",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
