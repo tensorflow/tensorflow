@@ -92,7 +92,7 @@ class JournalReader {
 // directory, in order of their sequence numbers. See FileJournalWriter above.
 class FileJournalReader : public JournalReader {
  public:
-  explicit FileJournalReader(Env* env, StringPiece journal_dir);
+  explicit FileJournalReader(Env* env, absl::string_view journal_dir);
   FileJournalReader(const FileJournalReader&) = delete;
   FileJournalReader& operator=(const FileJournalReader&) = delete;
 
