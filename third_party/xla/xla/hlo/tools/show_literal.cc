@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "xla/literal.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
