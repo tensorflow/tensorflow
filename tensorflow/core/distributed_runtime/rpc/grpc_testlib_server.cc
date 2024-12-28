@@ -62,7 +62,7 @@ absl::Status FillServerDef(const string& job_spec, const string& job_name,
       return errors::InvalidArgument("Invalid job string: ", job_str);
     }
 
-    const StringPiece spec = job_pieces[1];
+    const absl::string_view spec = job_pieces[1];
 
     // job_str is of form <job_name>|<host_ports>.
     const std::vector<string> host_ports = str_util::Split(spec, ';');

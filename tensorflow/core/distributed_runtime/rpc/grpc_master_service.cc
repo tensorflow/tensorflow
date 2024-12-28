@@ -301,12 +301,12 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
 
   // Start tracing, including the ID attached to the RPC.
   tsl::profiler::TraceMe* TraceRpc(
-      StringPiece name,
+      absl::string_view name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
-    StringPiece id;
+    absl::string_view id;
     auto it = metadata.find(GrpcIdKey());
     if (it != metadata.end()) {
-      id = StringPiece(it->second.data(), it->second.size());
+      id = absl::string_view(it->second.data(), it->second.size());
     }
     return new tsl::profiler::TraceMe(
         [&] { return strings::StrCat(name, ":", id); },
