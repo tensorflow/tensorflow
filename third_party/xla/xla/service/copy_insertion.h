@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_COPY_INSERTION_H_
 #define XLA_SERVICE_COPY_INSERTION_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

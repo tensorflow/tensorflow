@@ -16,8 +16,9 @@ limitations under the License.
 #include "xla/service/conditional_to_select.h"
 
 #include <memory>
-#include <utility>
+#include <string>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"

@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "xla/service/constant_value.h"
 
+#include <cstdint>
 #include <string>
+
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 
 namespace xla {
 
