@@ -47,7 +47,7 @@ string RandomString(random::SimplePhilox* rnd, size_t len) {
 template <typename T>
 void OCWriteIncreasing(string* dest, const T& val);
 template <typename T>
-bool OCReadIncreasing(StringPiece* src, T* result);
+bool OCReadIncreasing(absl::string_view* src, T* result);
 
 // Read/WriteIncreasing<string>
 template <>
@@ -55,7 +55,7 @@ void OCWriteIncreasing<string>(string* dest, const string& val) {
   OrderedCode::WriteString(dest, val);
 }
 template <>
-bool OCReadIncreasing<string>(StringPiece* src, string* result) {
+bool OCReadIncreasing<string>(absl::string_view* src, string* result) {
   return OrderedCode::ReadString(src, result);
 }
 
@@ -65,7 +65,7 @@ void OCWriteIncreasing<uint64>(string* dest, const uint64& val) {
   OrderedCode::WriteNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<uint64>(StringPiece* src, uint64* result) {
+bool OCReadIncreasing<uint64>(absl::string_view* src, uint64* result) {
   return OrderedCode::ReadNumIncreasing(src, result);
 }
 
@@ -75,7 +75,7 @@ void OCWriteIncreasing<int64_t>(string* dest, const int64_t& val) {
   OrderedCode::WriteSignedNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<int64_t>(StringPiece* src, int64_t* result) {
+bool OCReadIncreasing<int64_t>(absl::string_view* src, int64_t* result) {
   return OrderedCode::ReadSignedNumIncreasing(src, result);
 }
 
@@ -92,7 +92,7 @@ void OCWriteToString(string* result, T val) {
 }
 
 template <typename T>
-bool OCRead(StringPiece* s, T* val) {
+bool OCRead(absl::string_view* s, T* val) {
   return OCReadIncreasing<T>(s, val);
 }
 
@@ -103,12 +103,12 @@ template <typename T>
 T TestRead(const string& a) {
   // gracefully reject any proper prefix of an encoding
   for (int i = 0; i < a.size() - 1; ++i) {
-    StringPiece s(a.data(), i);
+    absl::string_view s(a.data(), i);
     CHECK(!OCRead<T>(&s, nullptr));
     CHECK_EQ(s, a.substr(0, i));
   }
 
-  StringPiece s(a);
+  absl::string_view s(a);
   T v;
   CHECK(OCRead<T>(&s, &v));
   CHECK(s.empty());
@@ -304,7 +304,7 @@ inline string StrNot(const string& s) {
 
 template <typename T>
 void TestInvalidEncoding(const string& s) {
-  StringPiece p(s);
+  absl::string_view p(s);
   EXPECT_FALSE(OCRead<T>(&p, nullptr));
   EXPECT_EQ(s, p);
 }
@@ -338,7 +338,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
     EXPECT_NE(OCWrite<uint64>(0), non_minimal);
 #ifndef NDEBUG
-    StringPiece s(non_minimal);
+    absl::string_view s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadNumIncreasing(&s, nullptr),
                  "invalid encoding");
 #else
@@ -357,7 +357,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
     EXPECT_NE(OCWrite<int64_t>(0), non_minimal);
 #ifndef NDEBUG
-    StringPiece s(non_minimal);
+    absl::string_view s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadSignedNumIncreasing(&s, nullptr),
                  "invalid encoding")
         << n;
@@ -408,7 +408,7 @@ void BM_ReadNum(::testing::benchmark::State& state, T multiplier) {
   uint32 index = 0;
   for (auto i : state) {
     T val;
-    StringPiece s = values[index++ % kValues];
+    absl::string_view s = values[index++ % kValues];
     OCRead<T>(&s, &val);
   }
 }
@@ -449,8 +449,8 @@ TEST(String, EncodeDecode) {
       OCWriteToString<string>(&out, b);
 
       string a2, b2, dummy;
-      StringPiece s = out;
-      StringPiece s2 = out;
+      absl::string_view s = out;
+      absl::string_view s2 = out;
       CHECK(OCRead<string>(&s, &a2));
       CHECK(OCRead<string>(&s2, nullptr));
       CHECK_EQ(s, s2);
@@ -472,7 +472,7 @@ TEST(String, EncodeDecode) {
 // 'str' is a string literal that may contain '\0'.
 #define STATIC_STR(str) StringPiece((str), sizeof(str) - 1)
 
-string EncodeStringIncreasing(StringPiece value) {
+string EncodeStringIncreasing(absl::string_view value) {
   string encoded;
   OrderedCode::WriteString(&encoded, value);
   return encoded;
@@ -526,7 +526,7 @@ TEST(EncodingIsExpected, String) {
     OrderedCode::WriteString(&result, t.first);
     EXPECT_EQ(t.second, result);
 
-    StringPiece in = result;
+    absl::string_view in = result;
     string decoded;
     EXPECT_TRUE(OrderedCode::ReadString(&in, &decoded));
     EXPECT_EQ(t.first, decoded);
@@ -758,7 +758,7 @@ TEST(EncodingIsExpected, Unsigned) {
     OrderedCode::WriteNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
-    StringPiece in = result;
+    absl::string_view in = result;
     uint64 decoded;
     EXPECT_TRUE(OrderedCode::ReadNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
@@ -1205,7 +1205,7 @@ TEST(EncodingIsExpected, Signed) {
     OrderedCode::WriteSignedNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
-    StringPiece in = result;
+    absl::string_view in = result;
     int64_t decoded;
     EXPECT_TRUE(OrderedCode::ReadSignedNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
@@ -1242,7 +1242,7 @@ void BM_ReadString(::testing::benchmark::State& state, int len) {
 
   for (auto i : state) {
     result.clear();
-    StringPiece s = data;
+    absl::string_view s = data;
     OCRead<string>(&s, &result);
   }
   state.SetBytesProcessed(state.iterations() * len);
