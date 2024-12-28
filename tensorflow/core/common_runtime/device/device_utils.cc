@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace device_utils {
 
-absl::Status ValidateDeviceType(StringPiece type) {
+absl::Status ValidateDeviceType(absl::string_view type) {
   static const LazyRE2 kTfDeviceTypeRegEx = {"[A-Z][A-Z_]*"};
   bool matches = RE2::FullMatch(type, *kTfDeviceTypeRegEx);
   if (!matches) {
