@@ -153,6 +153,7 @@ struct Value {
 
   // Use properly aligned byte array to store primitive values.
   using ValueStorage = std::array<std::byte, kMaxElementSize>;
+
   alignas(alignof(std::max_align_t)) std::array<ValueStorage, n> value;
   std::array<uint8_t, n> value_sizes;
 };
@@ -164,9 +165,10 @@ struct DValue {
 
   // Use properly aligned byte array to store primitive values.
   using ValueStorage = std::array<std::byte, kMaxElementSize>;
-  std::vector<ValueStorage> value;
-  std::vector<uint8_t> value_sizes;
+
   size_t n;
+  std::vector<ValueStorage> value;   // size == n
+  std::vector<uint8_t> value_sizes;  // size == n
 };
 
 // Reference to values stored in the input buffers.
@@ -186,16 +188,16 @@ struct Ref {
 
 struct DRef {
   DRef(std::vector<std::byte*> ptr, std::vector<uint8_t> ptr_sizes)
-      : ptr(ptr), ptr_sizes(ptr_sizes), n(ptr.size()) {}
+      : n(ptr.size()), ptr(std::move(ptr)), ptr_sizes(std::move(ptr_sizes)) {}
 
   DRef& operator=(const DValue& value);
   DRef& operator=(const DRef& other);
 
   const void* compared_value(size_t i) const { return ptr[i]; }
 
-  std::vector<std::byte*> ptr;
-  std::vector<uint8_t> ptr_sizes;
-  const size_t n;
+  size_t n;
+  std::vector<std::byte*> ptr;     // size == n
+  std::vector<uint8_t> ptr_sizes;  // size == n
 };
 
 // We know that we can only copy up to 16 bytes for the largest element type
@@ -233,25 +235,24 @@ Value<n>::Value(const Ref<n>& ref) : value_sizes(ref.ptr_sizes) {
 }
 
 DValue::DValue(const DRef& ref)
-    : value_sizes(ref.ptr_sizes), n(ref.ptr.size()) {
-  value.reserve(n);
+    : n(ref.ptr.size()), value(n), value_sizes(ref.ptr_sizes) {
   for (size_t i = 0; i < n; ++i) {
-    Memcpy(value.emplace_back().data(), ref.ptr[i], ref.ptr_sizes[i]);
+    Memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
   }
 }
 
 template <size_t n>
 Ref<n>& Ref<n>::operator=(const Value<n>& value) {
-  DCHECK(ptr_sizes == value.value_sizes);
   for (size_t i = 0; i < n; ++i) {
+    DCHECK_EQ(ptr_sizes[i], value.value_sizes[i]);
     Memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
   }
   return *this;
 }
 
 DRef& DRef::operator=(const DValue& value) {
-  DCHECK(ptr_sizes == value.value_sizes);
   for (size_t i = 0; i < n; ++i) {
+    DCHECK_EQ(ptr_sizes[i], value.value_sizes[i]);
     Memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
   }
   return *this;
@@ -259,17 +260,16 @@ DRef& DRef::operator=(const DValue& value) {
 
 template <size_t n>
 Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
-  DCHECK(ptr_sizes == other.ptr_sizes);
   for (size_t i = 0; i < n; ++i) {
+    DCHECK_EQ(ptr_sizes[i], other.ptr_sizes[i]);
     Memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
   }
   return *this;
 }
 
 DRef& DRef::operator=(const DRef& other) {
-  DCHECK(ptr_sizes == other.ptr_sizes);
-  const size_t n = other.ptr.size();
-  for (size_t i = 0; i < n; ++i) {
+  for (size_t i = 0, n = other.ptr.size(); i < n; ++i) {
+    DCHECK_EQ(ptr_sizes[i], other.ptr_sizes[i]);
     Memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
   }
   return *this;
@@ -278,22 +278,24 @@ DRef& DRef::operator=(const DRef& other) {
 // Swap function required by `std::sort` and `std::stable_sort` implementations.
 template <size_t n>
 void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
+  std::array<std::byte, kMaxElementSize> tmp;
   for (size_t i = 0; i < n; ++i) {
-    std::array<std::byte, kMaxElementSize> tmp;
-    Memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
-    Memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
-    Memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+    DCHECK_EQ(lhs.ptr_sizes[i], rhs.ptr_sizes[i]);
+    size_t primitive_size = lhs.ptr_sizes[i];
+    Memcpy(tmp.data(), lhs.ptr[i], primitive_size);
+    Memcpy(lhs.ptr[i], rhs.ptr[i], primitive_size);
+    Memcpy(rhs.ptr[i], tmp.data(), primitive_size);
   }
 }
 
 void swap(const DRef& lhs, const DRef& rhs) {
-  DCHECK(lhs.ptr_sizes == rhs.ptr_sizes);
-  const size_t n = lhs.ptr.size();
-  for (size_t i = 0; i < n; ++i) {
-    std::array<std::byte, kMaxElementSize> tmp;
-    Memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
-    Memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
-    Memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+  std::array<std::byte, kMaxElementSize> tmp;
+  for (size_t i = 0, n = lhs.ptr.size(); i < n; ++i) {
+    DCHECK_EQ(lhs.ptr_sizes[i], rhs.ptr_sizes[i]);
+    size_t primitive_size = lhs.ptr_sizes[i];
+    Memcpy(tmp.data(), lhs.ptr[i], primitive_size);
+    Memcpy(lhs.ptr[i], rhs.ptr[i], primitive_size);
+    Memcpy(rhs.ptr[i], tmp.data(), primitive_size);
   }
 }
 
@@ -320,15 +322,15 @@ struct Ptr {
   }
 
   Ptr operator+(difference_type diff) const {
-    std::array<std::byte*, n> upd;
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] + diff * ptr_sizes[i];
-    return Ptr{upd, ptr_sizes};
+    Ptr upd(ptr, ptr_sizes);
+    for (size_t i = 0; i < n; ++i) upd.ptr[i] += diff * upd.ptr_sizes[i];
+    return upd;
   }
 
   Ptr operator-(difference_type diff) const {
-    std::array<std::byte*, n> upd;
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] - diff * ptr_sizes[i];
-    return Ptr{upd, ptr_sizes};
+    Ptr upd(ptr, ptr_sizes);
+    for (size_t i = 0; i < n; ++i) upd.ptr[i] -= diff * upd.ptr_sizes[i];
+    return upd;
   }
 
   // In all comparison operators defined below we use only the ptr at index 0,
@@ -336,7 +338,7 @@ struct Ptr {
   // implementation detail of sort iterator.
 
   difference_type operator-(const Ptr& rhs) const {
-    DCHECK(ptr_sizes == rhs.ptr_sizes);
+    DCHECK_EQ(ptr_sizes[0], rhs.ptr_sizes[0]);
     return (ptr[0] - rhs.ptr[0]) / ptr_sizes[0];
   }
 
@@ -357,7 +359,7 @@ struct DPtr {
   DPtr() = default;
 
   DPtr(std::vector<std::byte*> ptr, std::vector<uint8_t> ptr_sizes)
-      : ptr(ptr), ptr_sizes(ptr_sizes), n(ptr.size()) {}
+      : n(ptr.size()), ptr(std::move(ptr)), ptr_sizes(std::move(ptr_sizes)) {}
 
   DRef operator*() const { return DRef{ptr, ptr_sizes}; }
 
@@ -372,15 +374,15 @@ struct DPtr {
   }
 
   DPtr operator+(difference_type diff) const {
-    std::vector<std::byte*> upd(n);
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] + diff * ptr_sizes[i];
-    return DPtr{upd, ptr_sizes};
+    DPtr upd{ptr, ptr_sizes};
+    for (size_t i = 0; i < n; ++i) upd.ptr[i] += diff * ptr_sizes[i];
+    return upd;
   }
 
   DPtr operator-(difference_type diff) const {
-    std::vector<std::byte*> upd(n);
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] - diff * ptr_sizes[i];
-    return DPtr{upd, ptr_sizes};
+    DPtr upd{ptr, ptr_sizes};
+    for (size_t i = 0; i < n; ++i) upd.ptr[i] -= diff * ptr_sizes[i];
+    return upd;
   }
 
   // In all comparison operators defined below we use only the ptr at index 0,
@@ -388,7 +390,7 @@ struct DPtr {
   // implementation detail of sort iterator.
 
   difference_type operator-(const DPtr& rhs) const {
-    DCHECK(ptr_sizes == rhs.ptr_sizes);
+    DCHECK_EQ(ptr_sizes[0], rhs.ptr_sizes[0]);
     return (ptr[0] - rhs.ptr[0]) / ptr_sizes[0];
   }
 
@@ -399,9 +401,9 @@ struct DPtr {
   bool operator>=(const DPtr& rhs) const { return ptr[0] >= rhs.ptr[0]; }
   bool operator<=(const DPtr& rhs) const { return ptr[0] <= rhs.ptr[0]; }
 
+  size_t n;
   std::vector<std::byte*> ptr;     // pointers into the input buffers
   std::vector<uint8_t> ptr_sizes;  // pointers sizes in bytes
-  size_t n;
 };
 
 // We rely on `std::sort` and `std::stable_sort` to sort the raw data. We sort
@@ -420,7 +422,7 @@ class SortIterator {
 
   SortIterator() = default;
   SortIterator(pointer ptr, difference_type stride)
-      : ptr_(ptr), stride_(stride) {}
+      : ptr_(std::move(ptr)), stride_(stride) {}
 
   SortIterator(const SortIterator& other) = default;
   SortIterator& operator=(const SortIterator& other) = default;
@@ -720,33 +722,6 @@ static absl::Status SortInplace(
         break;
       case 16:
         sort(std::integral_constant<size_t, 16>{});
-        break;
-      case 17:
-        sort(std::integral_constant<size_t, 17>{});
-        break;
-      case 18:
-        sort(std::integral_constant<size_t, 18>{});
-        break;
-      case 19:
-        sort(std::integral_constant<size_t, 19>{});
-        break;
-      case 20:
-        sort(std::integral_constant<size_t, 20>{});
-        break;
-      case 21:
-        sort(std::integral_constant<size_t, 21>{});
-        break;
-      case 22:
-        sort(std::integral_constant<size_t, 22>{});
-        break;
-      case 23:
-        sort(std::integral_constant<size_t, 23>{});
-        break;
-      case 24:
-        sort(std::integral_constant<size_t, 24>{});
-        break;
-      case 25:
-        sort(std::integral_constant<size_t, 25>{});
         break;
       default:
         dsort(data.size());
