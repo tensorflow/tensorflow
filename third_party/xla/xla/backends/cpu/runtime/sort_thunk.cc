@@ -141,34 +141,53 @@ static constexpr size_t kMaxElementSize = 16;
 
 // Pointers to the input arrays together with their primitive sizes.
 template <size_t n>
-struct Inputs {
+class Inputs {
+ public:
+  Inputs(std::array<std::byte*, n> ptrs, std::array<uint8_t, n> primitive_sizes)
+      : ptrs_(ptrs), primitive_sizes_(primitive_sizes) {}
+
+  // Accessing arrays with `operator[]` has zero overheads, so we don't need to
+  // use pointers to data in contrast to `DInputs` below.
+
   std::byte* ptr(size_t i, size_t offset) {
     DCHECK_LT(i, n) << "Input index out of bounds";
-    return ptrs[i] + offset * primitive_sizes[i];
+    return ptrs_[i] + offset * primitive_sizes_[i];
   }
 
-  uint8_t primitive_size(size_t i) { return primitive_sizes[i]; }
+  uint8_t primitive_size(size_t i) { return primitive_sizes_[i]; }
 
-  std::array<std::byte*, n> ptrs;          // pointers into the input buffers
-  std::array<uint8_t, n> primitive_sizes;  // each input's primitive size
+ private:
+  std::array<std::byte*, n> ptrs_;          // pointers into the input buffers
+  std::array<uint8_t, n> primitive_sizes_;  // each input's primitive size
 };
 
-struct DInputs {
-  explicit DInputs(size_t n) : n(n) {
-    ptrs.resize(n);
-    primitive_sizes.resize(n);
+class DInputs {
+ public:
+  DInputs(std::vector<std::byte*> ptrs, std::vector<uint8_t> primitive_sizes)
+      : n_(ptrs.size()),
+        ptrs_(std::move(ptrs)),
+        primitive_sizes_(std::move(primitive_sizes)) {
+    DCHECK_EQ(ptrs_.size(), primitive_sizes_.size());
   }
+
+  size_t n() const { return n_; }
+
+  // Accessing vectors with `operator[]` is significantly slower than using a
+  // pointer to data because of libc++ hardening which checks for OOB access on
+  // every call. We know that we are not going to access out of bounds, so we
+  // use a pointer to data instead.
 
   std::byte* ptr(size_t i, size_t offset) {
-    DCHECK_LT(i, n) << "Input index out of bounds";
-    return ptrs[i] + offset * primitive_sizes[i];
+    DCHECK_LT(i, n_) << "Input index out of bounds";
+    return ptrs_.data()[i] + offset * primitive_sizes_.data()[i];
   }
 
-  uint8_t primitive_size(size_t i) { return primitive_sizes[i]; }
+  uint8_t primitive_size(size_t i) { return primitive_sizes_.data()[i]; }
 
-  size_t n;                              // number of sorted inputs
-  std::vector<std::byte*> ptrs;          // pointers into the input buffers
-  std::vector<uint8_t> primitive_sizes;  // each input's primitive size
+ private:
+  size_t n_;                              // number of sorted inputs
+  std::vector<std::byte*> ptrs_;          // pointers into the input buffers
+  std::vector<uint8_t> primitive_sizes_;  // each input's primitive size
 };
 
 // Forward declare reference type defined below.
@@ -223,7 +242,7 @@ struct DRef {
   DRef& operator=(const DValue& value);
   DRef& operator=(const DRef& other);
 
-  size_t n() const { return inputs->n; }
+  size_t n() const { return inputs->n(); }
 
   std::byte* ptr(size_t i) const { return inputs->ptr(i, offset); }
   size_t primitive_size(size_t i) const { return inputs->primitive_size(i); }
@@ -579,15 +598,16 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
                         absl::Span<se::DeviceMemoryBase> data,
                         absl::Span<const Shape> shapes, bool is_stable,
                         SortThunk::LessThan* less_than) {
-  Inputs<n> sorted_inputs;
+  std::array<std::byte*, n> ptrs;
+  std::array<uint8_t, n> primitive_sizes;
 
   for (size_t i = 0; i < n; ++i) {
-    PrimitiveType element_type = shapes[i].element_type();
-    sorted_inputs.primitive_sizes[i] = primitive_util::ByteWidth(element_type);
-
     std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
-    sorted_inputs.ptrs[i] = base + offset * sorted_inputs.primitive_sizes[i];
+    primitive_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
+    ptrs[i] = base + offset * primitive_sizes[i];
   }
+
+  Inputs<n> inputs(ptrs, primitive_sizes);
 
   auto compare = [&](const auto& a, const auto& b) {
     std::array<const void*, 2 * n> data;
@@ -599,7 +619,7 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
   };
 
   SortIterator<Value<n>, Ref<n>, Ptr<n>> begin(
-      Ptr<n>(&sorted_inputs), /*stride=*/sort_dims.inner_dim_size);
+      Ptr<n>(&inputs), /*stride=*/sort_dims.inner_dim_size);
   if (is_stable) {
     std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
   } else {
@@ -611,15 +631,16 @@ static void DSortInplace(const SortDims& sort_dims, int64_t offset,
                          absl::Span<se::DeviceMemoryBase> data,
                          absl::Span<const Shape> shapes, bool is_stable,
                          SortThunk::LessThan* less_than, size_t n) {
-  DInputs sorted_inputs(n);
+  std::vector<std::byte*> ptrs(n);
+  std::vector<uint8_t> primitive_sizes(n);
 
   for (size_t i = 0; i < n; ++i) {
-    PrimitiveType element_type = shapes[i].element_type();
-    sorted_inputs.primitive_sizes[i] = primitive_util::ByteWidth(element_type);
-
     std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
-    sorted_inputs.ptrs[i] = base + offset * sorted_inputs.primitive_sizes[i];
+    primitive_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
+    ptrs[i] = base + offset * primitive_sizes[i];
   }
+
+  DInputs inputs(std::move(ptrs), std::move(primitive_sizes));
 
   auto compare = [&](const auto& a, const auto& b) {
     std::vector<const void*> data(2 * n);
@@ -630,7 +651,7 @@ static void DSortInplace(const SortDims& sort_dims, int64_t offset,
     return (*less_than)(data.data());
   };
 
-  SortIterator<DValue, DRef, DPtr> begin(DPtr(&sorted_inputs),
+  SortIterator<DValue, DRef, DPtr> begin(DPtr(&inputs),
                                          /*stride=*/sort_dims.inner_dim_size);
   if (is_stable) {
     std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
