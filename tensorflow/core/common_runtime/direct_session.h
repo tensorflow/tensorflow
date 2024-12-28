@@ -65,7 +65,8 @@ class DirectSession : public Session {
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
-  typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
+  typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
+      NameNodeMap;
 
   absl::Status Create(const GraphDef& graph) override;
   absl::Status Create(GraphDef&& graph) override;
