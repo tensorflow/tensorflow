@@ -211,7 +211,10 @@ struct Value {
 struct DValue {
   DValue(const DRef& ref);  // NOLINT
 
-  const void* compared_value(size_t i) const { return values[i].data(); }
+  const void* compared_value(size_t i) const {
+    DCHECK_LT(i, values.size()) << "Input index out of bounds";
+    return values.data()[i].data();
+  }
 
   // Use properly aligned byte array to store primitive values.
   using ValueStorage = std::array<std::byte, kMaxElementSize>;
@@ -289,14 +292,14 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE Value<n>::Value(const Ref<n>& ref) {
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE DValue::DValue(const DRef& ref) : values(ref.n()) {
   for (size_t i = 0, end = ref.n(); i < end; ++i) {
-    Memcpy(values[i].data(), ref.ptr(i), ref.primitive_size(i));
+    Memcpy(values.data()[i].data(), ref.ptr(i), ref.primitive_size(i));
   }
 }
 
 template <size_t n>
 ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Value<n>& value) {
   for (size_t i = 0; i < n; ++i) {
-    Memcpy(ptr(i), value.values[i].data(), primitive_size(i));
+    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
   }
   return *this;
 }
@@ -312,7 +315,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DValue& value) {
   for (size_t i = 0, end = n(); i < end; ++i) {
-    Memcpy(ptr(i), value.values[i].data(), primitive_size(i));
+    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
   }
   return *this;
 }
@@ -610,12 +613,12 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
   Inputs<n> inputs(ptrs, primitive_sizes);
 
   auto compare = [&](const auto& a, const auto& b) {
-    std::array<const void*, 2 * n> data;
+    std::array<const void*, 2 * n> values;
     for (size_t i = 0, j = 0; i < n; i += 1, j += 2) {
-      data[j] = a.compared_value(i);
-      data[j + 1] = b.compared_value(i);
+      values[j] = a.compared_value(i);
+      values[j + 1] = b.compared_value(i);
     }
-    return (*less_than)(data.data());
+    return (*less_than)(values.data());
   };
 
   SortIterator<Value<n>, Ref<n>, Ptr<n>> begin(
@@ -642,13 +645,16 @@ static void DSortInplace(const SortDims& sort_dims, int64_t offset,
 
   DInputs inputs(std::move(ptrs), std::move(primitive_sizes));
 
-  auto compare = [&](const auto& a, const auto& b) {
-    std::vector<const void*> data(2 * n);
+  // Allocate scratch space for sorted values outside of the lambda to avoid
+  // allocating it on every call to `compare`.
+  std::vector<const void*> values(2 * n);
+
+  auto compare = [&, values = values.data()](const auto& a, const auto& b) {
     for (size_t i = 0, j = 0; i < n; i += 1, j += 2) {
-      data[j] = a.compared_value(i);
-      data[j + 1] = b.compared_value(i);
+      values[j] = a.compared_value(i);
+      values[j + 1] = b.compared_value(i);
     }
-    return (*less_than)(data.data());
+    return (*less_than)(values);
   };
 
   SortIterator<DValue, DRef, DPtr> begin(DPtr(&inputs),
