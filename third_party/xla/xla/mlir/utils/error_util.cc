@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Support/LLVM.h"
