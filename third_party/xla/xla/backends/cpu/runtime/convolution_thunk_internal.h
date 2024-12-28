@@ -38,7 +38,8 @@ constexpr auto kMaxConvMatrixSize = static_cast<size_t>(8) << 30;  // 8 GiB
 // Returns in 'out_data' (assumes to be zero-initialized) image patch in storage
 // order (width, height, depth), constructed from patches in 'conv_matrix',
 // which is required to be in storage order (in_width * in_height, filter_width,
-// filter_height, in_depth). Based on TF implementation by Yangqing Jia (jiayq).
+// filter_height, out_depth).
+// Based on TF implementation by Yangqing Jia (jiayq).
 // TODO(adambanas): The original implementation implicitly rotates the kernel by
 // 180 degrees, but to be backwards compatible, we cannot do that in XLA. This
 // results in counterintuitive operations on conv_matrix, which is also 15-20%
@@ -109,17 +110,18 @@ bool EigenTransposedConv2D(
     Eigen::Index padding_y_before, Eigen::Index padding_y_after,
     Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
     std::function<void()> done_callback, bool use_thunk_runtime) {
-  // TODO(adambanas): Current custom conv algorithm doesn't support both
-  // multiple input channels and multiple output channels (i.e. kernel_filters)
-  // at the same time.
-  CHECK(input_channels == 1 || kernel_filters == 1);
+  // Grouped convolutions are not supported yet.
+  CHECK(kernel_channels == input_channels);
 
-  typedef Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
-                           Eigen::Unaligned>
-      TensorMap;
-  typedef Eigen::TensorMap<Eigen::Tensor<const ScalarType, 2, Eigen::RowMajor>,
-                           Eigen::Aligned>
-      ConstTensorMap;
+  using TensorMap2D =
+      Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
+                       Eigen::Unaligned>;
+  using ConstTensorMap3D =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
+                       Eigen::Aligned>;
+  using ConstTensorMap2D =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 2, Eigen::RowMajor>,
+                       Eigen::Aligned>;
 
   // Total spatial dimensions.
   const int input_image_size = input_x * input_y;
@@ -147,17 +149,17 @@ bool EigenTransposedConv2D(
             out_data + input_batch * output_image_size * kernel_filters,
             ScalarType(0.0f));
 
-  // Initialize contraction dims (we need to transpose 'B' below).
-  Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
-  contract_dims[0].first = 1;
-  contract_dims[0].second = 1;
+  // Initialize contraction dims (we need to transpose 'B' below, the dimension
+  // we need to contract is 'kernel_channels').
+  Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims = {
+      Eigen::IndexPair<Eigen::DenseIndex>(1, 1)};
 
   // Compute intermediate results (convolution matrix) into conv_matrix.
-  TensorMap C(conv_matrix_data, input_batch * input_image_size,
-              kernel_total_size);
+  TensorMap2D C(conv_matrix_data, input_batch * input_image_size,
+                kernel_total_size);
 
-  ConstTensorMap A(lhs, input_batch * input_image_size, input_channels);
-  ConstTensorMap B(rhs, kernel_total_size, input_channels);
+  ConstTensorMap2D A(lhs, input_batch * input_image_size, input_channels);
+  ConstTensorMap3D B(rhs, kernel_x * kernel_y, kernel_channels, kernel_filters);
 
   // Use concurrent execution if we have a thread pool device.
   constexpr bool use_thread_pool =
@@ -200,25 +202,34 @@ bool EigenTransposedConv2D(
     }
   };
 
+  // Molds the output of the contraction into the shape expected by packing
+  // algorithm:
+  // - the minor dimension (dims[1]): the patch values to be packed; contiguous
+  //   in memory
+  // - the major dimension (dims[0]): everything else
+  Eigen::DSizes<Eigen::Index, 2> post_contract_dims;
+  post_contract_dims[0] = input_batch * input_image_size;
+  post_contract_dims[1] = kernel_total_size;
+
   if (done_callback) {
     // Schedule the work in the thread pool and return.
-    C.device(device, std::move(pack_patches)) = A.contract(B, contract_dims);
+    C.device(device, std::move(pack_patches)) =
+        A.contract(B, contract_dims).reshape(post_contract_dims);
   } else {
     // Run synchronously in the current thread.
-    C.device(device) = A.contract(B, contract_dims);
+    C.device(device) = A.contract(B, contract_dims).reshape(post_contract_dims);
     pack_patches();
   }
   return true;
 }
 
 inline bool CanUseCustomTransposedConv(
-    Eigen::Index input_channels, Eigen::Index kernel_filters,
     Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
   return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
-         rhs_y_dilation == 1 && (input_channels == 1 || kernel_filters == 1) &&
-         feature_group_count == 1 && x_stride == 1 && y_stride == 1;
+         rhs_y_dilation == 1 && feature_group_count == 1 && x_stride == 1 &&
+         y_stride == 1;
 }
 
 // Algorithm that works for all types of 2D convolutions. Even though it works
@@ -372,9 +383,8 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
                  Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
                  std::function<void()> done_callback, bool use_thunk_runtime) {
-  if (CanUseCustomTransposedConv(input_channels, kernel_filters, x_stride,
-                                 y_stride, lhs_x_dilation, lhs_y_dilation,
-                                 rhs_x_dilation, rhs_y_dilation,
+  if (CanUseCustomTransposedConv(x_stride, y_stride, lhs_x_dilation,
+                                 lhs_y_dilation, rhs_x_dilation, rhs_y_dilation,
                                  feature_group_count)) {
     if (EigenTransposedConv2D(
             device, out, lhs, rhs, input_batch, input_x, input_y,
