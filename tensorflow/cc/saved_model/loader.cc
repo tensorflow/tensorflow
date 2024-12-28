@@ -148,7 +148,7 @@ Tensor CreateStringTensor(const string& value) {
   return tensor;
 }
 
-void AddAssetsTensorsToInputs(const StringPiece export_dir,
+void AddAssetsTensorsToInputs(const absl::string_view export_dir,
                               const std::vector<AssetFileDef>& asset_file_defs,
                               std::vector<std::pair<string, Tensor>>* inputs) {
   if (asset_file_defs.empty()) {
@@ -229,8 +229,8 @@ absl::Status RunInitOp(const RunOptions& run_options, const string& export_dir,
 }
 
 absl::Status RunRestore(const RunOptions& run_options, const string& export_dir,
-                        const StringPiece restore_op_name,
-                        const StringPiece variable_filename_const_op_name,
+                        const absl::string_view restore_op_name,
+                        const absl::string_view variable_filename_const_op_name,
                         const std::vector<AssetFileDef>& asset_file_defs,
                         Session* session) {
   LOG(INFO) << "Restoring SavedModel bundle.";
