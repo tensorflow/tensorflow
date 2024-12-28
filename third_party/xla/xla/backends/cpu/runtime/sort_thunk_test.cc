@@ -361,12 +361,14 @@ BENCHMARK(BM_Sort1D)
     // Sort using ascending directions.
     ->Args({1000, 1, false, true})
     ->Args({1000, 2, false, true})
+    ->Args({1000, 4, false, true})
     ->Args({1000, 8, false, true})
     ->Args({1000, 16, false, true})
     ->Args({1000, 32, false, true})
     // Sort using LessThan comparator.
     ->Args({1000, 1, false, false})
     ->Args({1000, 2, false, false})
+    ->Args({1000, 4, false, false})
     ->Args({1000, 8, false, false})
     ->Args({1000, 16, false, false})
     ->Args({1000, 32, false, false});

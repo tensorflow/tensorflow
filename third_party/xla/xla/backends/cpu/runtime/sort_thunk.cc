@@ -143,7 +143,7 @@ static constexpr size_t kMaxElementSize = 16;
 template <size_t n>
 class Inputs {
  public:
-  Inputs(std::array<std::byte*, n> ptrs, std::array<uint8_t, n> primitive_sizes)
+  Inputs(std::array<std::byte*, n> ptrs, std::array<size_t, n> primitive_sizes)
       : ptrs_(ptrs), primitive_sizes_(primitive_sizes) {}
 
   // Accessing arrays with `operator[]` has zero overheads, so we don't need to
@@ -151,19 +151,19 @@ class Inputs {
 
   std::byte* ptr(size_t i, size_t offset) {
     DCHECK_LT(i, n) << "Input index out of bounds";
-    return ptrs_[i] + offset * primitive_sizes_[i];
+    return ptrs_[i] + offset * primitive_size(i);
   }
 
-  uint8_t primitive_size(size_t i) { return primitive_sizes_[i]; }
+  size_t primitive_size(size_t i) { return primitive_sizes_[i]; }
 
  private:
-  std::array<std::byte*, n> ptrs_;          // pointers into the input buffers
-  std::array<uint8_t, n> primitive_sizes_;  // each input's primitive size
+  std::array<std::byte*, n> ptrs_;         // pointers into the input buffers
+  std::array<size_t, n> primitive_sizes_;  // each input's primitive size
 };
 
 class DInputs {
  public:
-  DInputs(std::vector<std::byte*> ptrs, std::vector<uint8_t> primitive_sizes)
+  DInputs(std::vector<std::byte*> ptrs, std::vector<size_t> primitive_sizes)
       : n_(ptrs.size()),
         ptrs_(std::move(ptrs)),
         primitive_sizes_(std::move(primitive_sizes)) {
@@ -179,15 +179,15 @@ class DInputs {
 
   std::byte* ptr(size_t i, size_t offset) {
     DCHECK_LT(i, n_) << "Input index out of bounds";
-    return ptrs_.data()[i] + offset * primitive_sizes_.data()[i];
+    return ptrs_.data()[i] + offset * primitive_size(i);
   }
 
-  uint8_t primitive_size(size_t i) { return primitive_sizes_.data()[i]; }
+  size_t primitive_size(size_t i) { return primitive_sizes_.data()[i]; }
 
  private:
-  size_t n_;                              // number of sorted inputs
-  std::vector<std::byte*> ptrs_;          // pointers into the input buffers
-  std::vector<uint8_t> primitive_sizes_;  // each input's primitive size
+  size_t n_;                             // number of sorted inputs
+  std::vector<std::byte*> ptrs_;         // pointers into the input buffers
+  std::vector<size_t> primitive_sizes_;  // each input's primitive size
 };
 
 // Forward declare reference type defined below.
@@ -283,6 +283,42 @@ static ABSL_ATTRIBUTE_ALWAYS_INLINE void Memcpy(void* __restrict dest,
   }
 }
 
+// Specialize swap for statically known sizes to avoid going through the same
+// switch statement multiple times.
+static ABSL_ATTRIBUTE_ALWAYS_INLINE void Swap(void* __restrict a,
+                                              void* __restrict b, size_t n) {
+  std::array<std::byte, kMaxElementSize> tmp;
+  switch (n) {
+    case 1:
+      std::memcpy(tmp.data(), a, 1);
+      std::memcpy(a, b, 1);
+      std::memcpy(b, tmp.data(), 1);
+      break;
+    case 2:
+      std::memcpy(tmp.data(), a, 2);
+      std::memcpy(a, b, 2);
+      std::memcpy(b, tmp.data(), 2);
+      break;
+    case 4:
+      std::memcpy(tmp.data(), a, 4);
+      std::memcpy(a, b, 4);
+      std::memcpy(b, tmp.data(), 4);
+      break;
+    case 8:
+      std::memcpy(tmp.data(), a, 8);
+      std::memcpy(a, b, 8);
+      std::memcpy(b, tmp.data(), 8);
+      break;
+    case 16:
+      std::memcpy(tmp.data(), a, 16);
+      std::memcpy(a, b, 16);
+      std::memcpy(b, tmp.data(), 16);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported swap size: " << n;
+  }
+}
+
 template <size_t n>
 ABSL_ATTRIBUTE_ALWAYS_INLINE Value<n>::Value(const Ref<n>& ref) {
   for (size_t i = 0; i < n; ++i) {
@@ -323,7 +359,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DValue& value) {
 ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DRef& other) {
   for (size_t i = 0, end = n(); i < end; ++i) {
     DCHECK_EQ(primitive_size(i), other.primitive_size(i));
-    Memcpy(ptr(i), other.ptr(i), other.primitive_size(i));
+    Memcpy(ptr(i), other.ptr(i), primitive_size(i));
   }
   return *this;
 }
@@ -332,23 +368,17 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DRef& other) {
 template <size_t n>
 ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
   for (size_t i = 0; i < n; ++i) {
-    std::array<std::byte, kMaxElementSize> tmp;
     DCHECK_EQ(lhs.primitive_size(i), rhs.primitive_size(i));
     size_t primitive_size = lhs.primitive_size(i);
-    Memcpy(tmp.data(), lhs.ptr(i), primitive_size);
-    Memcpy(lhs.ptr(i), rhs.ptr(i), primitive_size);
-    Memcpy(rhs.ptr(i), tmp.data(), primitive_size);
+    Swap(lhs.ptr(i), rhs.ptr(i), primitive_size);
   }
 }
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const DRef& lhs, const DRef& rhs) {
   for (size_t i = 0, end = lhs.n(); i < end; ++i) {
-    std::array<std::byte, kMaxElementSize> tmp;
     DCHECK_EQ(lhs.primitive_size(i), rhs.primitive_size(i));
     size_t primitive_size = lhs.primitive_size(i);
-    Memcpy(tmp.data(), lhs.ptr(i), primitive_size);
-    Memcpy(lhs.ptr(i), rhs.ptr(i), primitive_size);
-    Memcpy(rhs.ptr(i), tmp.data(), primitive_size);
+    Swap(lhs.ptr(i), rhs.ptr(i), primitive_size);
   }
 }
 
@@ -602,7 +632,7 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
                         absl::Span<const Shape> shapes, bool is_stable,
                         SortThunk::LessThan* less_than) {
   std::array<std::byte*, n> ptrs;
-  std::array<uint8_t, n> primitive_sizes;
+  std::array<size_t, n> primitive_sizes;
 
   for (size_t i = 0; i < n; ++i) {
     std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
@@ -635,7 +665,7 @@ static void DSortInplace(const SortDims& sort_dims, int64_t offset,
                          absl::Span<const Shape> shapes, bool is_stable,
                          SortThunk::LessThan* less_than, size_t n) {
   std::vector<std::byte*> ptrs(n);
-  std::vector<uint8_t> primitive_sizes(n);
+  std::vector<size_t> primitive_sizes(n);
 
   for (size_t i = 0; i < n; ++i) {
     std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
