@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_UTILS_SHAPE_INFERENCE_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/status/status.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
