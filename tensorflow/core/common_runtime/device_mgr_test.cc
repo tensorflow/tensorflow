@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 

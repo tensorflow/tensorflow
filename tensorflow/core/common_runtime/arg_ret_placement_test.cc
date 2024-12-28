@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 
-#include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
