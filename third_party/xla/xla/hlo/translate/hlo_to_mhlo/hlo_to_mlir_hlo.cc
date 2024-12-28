@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
-#include <utility>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/Location.h"
