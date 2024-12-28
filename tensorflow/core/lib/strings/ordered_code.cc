@@ -161,7 +161,7 @@ const char* OrderedCode::TEST_SkipToNextSpecialByte(const char* start,
 
 // Helper routine to encode "s" and append to "*dest", escaping special
 // characters.
-inline static void EncodeStringFragment(string* dest, StringPiece s) {
+inline static void EncodeStringFragment(string* dest, absl::string_view s) {
   const char* p = s.data();
   const char* limit = p + s.size();
   const char* copy_start = p;
@@ -188,7 +188,7 @@ inline static void EncodeStringFragment(string* dest, StringPiece s) {
   }
 }
 
-void OrderedCode::WriteString(string* dest, StringPiece s) {
+void OrderedCode::WriteString(string* dest, absl::string_view s) {
   EncodeStringFragment(dest, s);
   AppendBytes(dest, kEscape1_Separator, 2);
 }
@@ -213,7 +213,7 @@ void OrderedCode::WriteNumIncreasing(string* dest, uint64 val) {
 // If parse succeeds, return true, consume encoding from
 // "*src", and if result != NULL append the decoded string to "*result".
 // Otherwise, return false and leave both undefined.
-inline static bool ReadStringInternal(StringPiece* src, string* result) {
+inline static bool ReadStringInternal(absl::string_view* src, string* result) {
   const char* start = src->data();
   const char* string_limit = src->data() + src->size();
 
@@ -268,11 +268,11 @@ inline static bool ReadStringInternal(StringPiece* src, string* result) {
   return false;
 }
 
-bool OrderedCode::ReadString(StringPiece* src, string* result) {
+bool OrderedCode::ReadString(absl::string_view* src, string* result) {
   return ReadStringInternal(src, result);
 }
 
-bool OrderedCode::ReadNumIncreasing(StringPiece* src, uint64* result) {
+bool OrderedCode::ReadNumIncreasing(absl::string_view* src, uint64* result) {
   if (src->empty()) {
     return false;  // Not enough bytes
   }
@@ -452,7 +452,8 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64_t val) {
   dest->append(begin, len);
 }
 
-bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64_t* result) {
+bool OrderedCode::ReadSignedNumIncreasing(absl::string_view* src,
+                                          int64_t* result) {
   if (src->empty()) return false;
   const uint64 xor_mask = (!((*src)[0] & 0x80)) ? ~0ULL : 0ULL;
   const unsigned char first_byte = (*src)[0] ^ (xor_mask & 0xff);

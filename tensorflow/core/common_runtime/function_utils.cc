@@ -49,7 +49,7 @@ struct Endpoint {
 
 // The following Add* routines are used to add a few graph nodes while
 // functions are transformed.
-static Node* AddNoOp(StringPiece name, Graph* g) {
+static Node* AddNoOp(absl::string_view name, Graph* g) {
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
   ndef.set_op("NoOp");
@@ -59,7 +59,7 @@ static Node* AddNoOp(StringPiece name, Graph* g) {
   return ret;
 }
 
-static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
+static Node* AddIdentity(absl::string_view name, Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
@@ -73,7 +73,7 @@ static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
   return ret;
 }
 
-void DumpGraph(StringPiece label, const Graph* g) {
+void DumpGraph(absl::string_view label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(2) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
           << g->num_edges();
@@ -177,11 +177,12 @@ bool RemoveListArrayConverter(Graph* g) {
       }
       absl::InlinedVector<Node*, 8UL> identity_nodes(n->num_inputs(), nullptr);
 
-      const auto no_op = [&](StringPiece name) -> Node* {
+      const auto no_op = [&](absl::string_view name) -> Node* {
         return AddNoOp(absl::StrCat(n->name(), "/", name), g);
       };
 
-      const auto identity = [&](StringPiece name, Endpoint input) -> Node* {
+      const auto identity = [&](absl::string_view name,
+                                Endpoint input) -> Node* {
         Node* node = AddIdentity(absl::StrCat(n->name(), "/", name), g, input);
         node->set_requested_device(input.node->def().device());
         return node;

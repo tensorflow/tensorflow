@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_LOGGER_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_LOGGER_H_
 
+#include <cstddef>
 #include <limits>
+#include <tuple>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/core/api/error_reporter.h"

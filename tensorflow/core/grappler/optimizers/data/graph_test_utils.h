@@ -24,104 +24,115 @@ namespace grappler {
 namespace graph_tests_utils {
 
 // Creates a test NodeDef for BatchDatasetV2.
-NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
-                        StringPiece batch_size_node_name,
-                        StringPiece drop_remainder_node_name,
+NodeDef MakeBatchV2Node(absl::string_view name,
+                        absl::string_view input_node_name,
+                        absl::string_view batch_size_node_name,
+                        absl::string_view drop_remainder_node_name,
                         bool parallel_copy);
 
 // Creates a test NodeDef for ParallelBatchDataset.
-NodeDef MakeParallelBatchNode(StringPiece name, StringPiece input_node_name,
-                              StringPiece batch_size_node_name,
-                              StringPiece num_parallel_calls_node_name,
-                              StringPiece drop_remainder_node_name,
-                              StringPiece deterministic);
+NodeDef MakeParallelBatchNode(absl::string_view name,
+                              absl::string_view input_node_name,
+                              absl::string_view batch_size_node_name,
+                              absl::string_view num_parallel_calls_node_name,
+                              absl::string_view drop_remainder_node_name,
+                              absl::string_view deterministic);
 
 // Creates a test NodeDef for ShuffleDatasetV2.
-NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
-                        StringPiece filename_node_name,
-                        StringPiece cache_node_name);
+NodeDef MakeCacheV2Node(absl::string_view name,
+                        absl::string_view input_node_name,
+                        absl::string_view filename_node_name,
+                        absl::string_view cache_node_name);
 
 // Creates a test NodeDef for FilterDataset.
-NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
-                       StringPiece function_name = "IsZero");
+NodeDef MakeFilterNode(absl::string_view name,
+                       absl::string_view input_node_name,
+                       absl::string_view function_name = "IsZero");
 
 // Creates a test NodeDef for MapDataset.
-NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
-                    StringPiece function_name = "XTimesTwo");
+NodeDef MakeMapNode(absl::string_view name, absl::string_view input_node_name,
+                    absl::string_view function_name = "XTimesTwo");
 
 // Creates a test NodeDef for MapAndBatchDataset.
-NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
-                            StringPiece batch_size_node_name,
-                            StringPiece num_parallel_calls_node_name,
-                            StringPiece drop_remainder_node_name,
-                            StringPiece function_name = "XTimesTwo");
+NodeDef MakeMapAndBatchNode(absl::string_view name,
+                            absl::string_view input_node_name,
+                            absl::string_view batch_size_node_name,
+                            absl::string_view num_parallel_calls_node_name,
+                            absl::string_view drop_remainder_node_name,
+                            absl::string_view function_name = "XTimesTwo");
 
 // Creates a test NodeDef for ParallelInterleaveDatasetV2.
-NodeDef MakeParallelInterleaveV2Node(StringPiece name,
-                                     StringPiece input_node_name,
-                                     StringPiece cycle_length_node_name,
-                                     StringPiece block_length_node_name,
-                                     StringPiece num_parallel_calls_node_name,
-                                     StringPiece function_name, bool sloppy);
+NodeDef MakeParallelInterleaveV2Node(
+    absl::string_view name, absl::string_view input_node_name,
+    absl::string_view cycle_length_node_name,
+    absl::string_view block_length_node_name,
+    absl::string_view num_parallel_calls_node_name,
+    absl::string_view function_name, bool sloppy);
 
 // Creates a test NodeDef for ParallelInterleaveDatasetV4.
-NodeDef MakeParallelInterleaveV4Node(StringPiece name,
-                                     StringPiece input_node_name,
-                                     StringPiece cycle_length_node_name,
-                                     StringPiece block_length_node_name,
-                                     StringPiece num_parallel_calls_node_name,
-                                     StringPiece function_name,
-                                     StringPiece deterministic);
+NodeDef MakeParallelInterleaveV4Node(
+    absl::string_view name, absl::string_view input_node_name,
+    absl::string_view cycle_length_node_name,
+    absl::string_view block_length_node_name,
+    absl::string_view num_parallel_calls_node_name,
+    absl::string_view function_name, absl::string_view deterministic);
 
 // Creates a test NodeDef for InterleaveDataset.
-NodeDef MakeInterleaveNode(StringPiece name, StringPiece input_node_name,
-                           StringPiece cycle_length_node_name,
-                           StringPiece block_length_node_name,
-                           StringPiece function_name,
-                           StringPiece deterministic);
+NodeDef MakeInterleaveNode(absl::string_view name,
+                           absl::string_view input_node_name,
+                           absl::string_view cycle_length_node_name,
+                           absl::string_view block_length_node_name,
+                           absl::string_view function_name,
+                           absl::string_view deterministic);
 
 // Creates a test NodeDef for ParallelMapDataset.
-NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
-                            StringPiece num_parallel_calls_node_name,
-                            StringPiece function_name, bool sloppy);
+NodeDef MakeParallelMapNode(absl::string_view name,
+                            absl::string_view input_node_name,
+                            absl::string_view num_parallel_calls_node_name,
+                            absl::string_view function_name, bool sloppy);
 
 // Creates a test NodeDef for ParallelMapDatasetV2.
-NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
-                              StringPiece num_parallel_calls_node_name,
-                              StringPiece function_name,
-                              StringPiece deterministic,
+NodeDef MakeParallelMapV2Node(absl::string_view name,
+                              absl::string_view input_node_name,
+                              absl::string_view num_parallel_calls_node_name,
+                              absl::string_view function_name,
+                              absl::string_view deterministic,
                               bool use_unbounded_threadpool);
 
 // Creates a test NodeDef for ParseExampleDataset.
-NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
-                             StringPiece num_parallel_calls_node_name,
+NodeDef MakeParseExampleNode(absl::string_view name,
+                             absl::string_view input_node_name,
+                             absl::string_view num_parallel_calls_node_name,
                              bool sloppy);
 
 // Creates a test NodeDef for ShuffleDatasetV2.
-NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
-                          StringPiece buffer_size_node_name,
-                          StringPiece seed_generator_node_name);
+NodeDef MakeShuffleV2Node(absl::string_view name,
+                          absl::string_view input_node_name,
+                          absl::string_view buffer_size_node_name,
+                          absl::string_view seed_generator_node_name);
 
 // Creates a test NodeDef for TakeDataset.
-NodeDef MakeTakeNode(StringPiece name, StringPiece input_node_name,
-                     StringPiece count_node_name);
+NodeDef MakeTakeNode(absl::string_view name, absl::string_view input_node_name,
+                     absl::string_view count_node_name);
 
 // Creates a test NodeDef for TensorSliceDataset.
-NodeDef MakeTensorSliceNode(StringPiece name, StringPiece tensor_node_name,
+NodeDef MakeTensorSliceNode(absl::string_view name,
+                            absl::string_view tensor_node_name,
                             bool replicate_on_split);
 
 // Creates a test NodeDef for SkipDataset.
-NodeDef MakeSkipNode(StringPiece name, StringPiece input_node_name,
-                     StringPiece count_node_name);
+NodeDef MakeSkipNode(absl::string_view name, absl::string_view input_node_name,
+                     absl::string_view count_node_name);
 
 // Creates a test NodeDef for ShardDataset.
-NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
-                      StringPiece num_shards_node_name,
-                      StringPiece index_node_name);
+NodeDef MakeShardNode(absl::string_view name, absl::string_view input_node_name,
+                      absl::string_view num_shards_node_name,
+                      absl::string_view index_node_name);
 
 // Creates a test NodeDef for PrefetchDataset.
-NodeDef MakePrefetchNode(StringPiece name, StringPiece input_node_name,
-                         StringPiece buffer_size);
+NodeDef MakePrefetchNode(absl::string_view name,
+                         absl::string_view input_node_name,
+                         absl::string_view buffer_size);
 
 }  // namespace graph_tests_utils
 }  // namespace grappler

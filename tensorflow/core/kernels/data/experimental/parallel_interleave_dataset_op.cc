@@ -203,7 +203,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         b->AddScalar(prefetch_input_elements_, &prefetch_input_elements_node));
     inputs.emplace_back(input_index++, prefetch_input_elements_node);
 
-    std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    std::vector<std::pair<absl::string_view, AttrValue>> attrs;
 
     AttrValue f;
     b->BuildAttrValue(captured_func_->func(), &f);

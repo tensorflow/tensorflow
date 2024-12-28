@@ -108,7 +108,7 @@ NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
   return graph->AddNode(std::move(node));
 }
 
-NodeDef* AddNode(StringPiece name, StringPiece op,
+NodeDef* AddNode(absl::string_view name, absl::string_view op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph) {
@@ -159,7 +159,7 @@ NodeDef* AddScalarConstNode(int64_t v, MutableGraphView* graph) {
 }
 
 template <>
-NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph) {
+NodeDef* AddScalarConstNode(absl::string_view v, MutableGraphView* graph) {
   return AddScalarConstNodeHelper(
       DT_STRING,
       [v](TensorProto* proto) { proto->add_string_val(v.data(), v.size()); },
@@ -236,20 +236,20 @@ bool Compare(const GraphDef& g1, const GraphDef& g2) {
   return true;
 }
 
-bool ContainsGraphFunctionWithName(StringPiece name,
+bool ContainsGraphFunctionWithName(absl::string_view name,
                                    const FunctionDefLibrary& library) {
   return FindGraphFunctionWithName(name, library) != -1;
 }
 
-bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph) {
+bool ContainsGraphNodeWithName(absl::string_view name, const GraphDef& graph) {
   return FindGraphNodeWithName(name, graph) != -1;
 }
 
-bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
+bool ContainsNodeWithOp(absl::string_view op, const GraphDef& graph) {
   return FindGraphNodeWithOp(op, graph) != -1;
 }
 
-int FindGraphFunctionWithName(StringPiece name,
+int FindGraphFunctionWithName(absl::string_view name,
                               const FunctionDefLibrary& library) {
   return GetFirstElementIndexWithPredicate(
       [&name](const FunctionDef& function) {
@@ -258,13 +258,13 @@ int FindGraphFunctionWithName(StringPiece name,
       library.function());
 }
 
-int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
+int FindGraphNodeWithName(absl::string_view name, const GraphDef& graph) {
   return GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       graph.node());
 }
 
-int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph) {
+int FindGraphNodeWithOp(absl::string_view op, const GraphDef& graph) {
   return GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
 }
@@ -300,7 +300,7 @@ absl::Status GetDatasetOutputTypesAttr(const NodeDef& node,
                                  node.name(), " with op: ", node.op());
 }
 
-void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
+void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
                             NodeDef* node) {
   string name = string(prefix);
   int id = graph->node_size();
@@ -316,7 +316,7 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(StringPiece prefix,
+void SetUniqueGraphFunctionName(absl::string_view prefix,
                                 const FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);

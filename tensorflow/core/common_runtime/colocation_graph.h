@@ -333,9 +333,9 @@ class ColocationGraph {
                                        const Node& node);
 
   absl::Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
+      std::unordered_map<absl::string_view, const Node*, StringPieceHasher>*
           colocation_group_root,
-      const Node* node, StringPiece colocation_group);
+      const Node* node, absl::string_view colocation_group);
 
   // Merge the (possibly disjoint) sets containing nodes "x" and
   // "y". Returns OK if the all nodes in the union of these sets can

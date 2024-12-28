@@ -52,7 +52,8 @@ FunctionBody::FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
     (*node_vec)[index] = n;
   }
   // 2. Find ControlRet nodes that must be always executed.
-  std::unordered_set<StringPiece, StringPieceHasher> control_ret_node_names;
+  std::unordered_set<absl::string_view, StringPieceHasher>
+      control_ret_node_names;
   for (const auto& control_ret : this->record->fdef().control_ret()) {
     control_ret_node_names.insert(control_ret.second);
   }
