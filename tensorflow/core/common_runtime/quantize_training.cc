@@ -151,7 +151,7 @@ absl::Status FindSaveOp(const Graph* graph, Node** save_op,
   return absl::OkStatus();
 }
 
-Node* FindRestoreAllOp(const Graph* graph, StringPiece save_prefix) {
+Node* FindRestoreAllOp(const Graph* graph, absl::string_view save_prefix) {
   for (Node* node : graph->op_nodes()) {
     // The restore_all op should have the same prefix of the save_op.
     if (node->name() == strings::StrCat(save_prefix, "/restore_all")) {
@@ -164,8 +164,8 @@ Node* FindRestoreAllOp(const Graph* graph, StringPiece save_prefix) {
 // Strips the last "/suffix" from a name.
 // We use this to construct the name of restore ops in the same way they are
 // constructed by the Saver.
-StringPiece GetNodeNamePrefix(const Node* node) {
-  StringPiece name = node->name();
+absl::string_view GetNodeNamePrefix(const Node* node) {
+  absl::string_view name = node->name();
   return name.substr(0, name.rfind('/'));
 }
 
@@ -249,7 +249,7 @@ absl::Status AddRestoreVariableSubgraphs(
     Graph* graph, Node* save_op, const std::vector<const Edge*>& in_edges,
     const std::vector<Node*>& variables) {
   Node* prefix_op = in_edges[0]->src();
-  StringPiece name_prefix = GetNodeNamePrefix(save_op);
+  absl::string_view name_prefix = GetNodeNamePrefix(save_op);
   Node* restore_all = FindRestoreAllOp(graph, name_prefix);
   if (restore_all == nullptr) {
     return errors::InvalidArgument("graph has SaveOp, but no restore_all NoOp");
