@@ -230,13 +230,14 @@ static ABSL_ATTRIBUTE_ALWAYS_INLINE void Memcpy(void* __restrict dest,
 }
 
 template <size_t n>
-Value<n>::Value(const Ref<n>& ref) : primitive_sizes(ref.primitive_sizes) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE Value<n>::Value(const Ref<n>& ref)
+    : primitive_sizes(ref.primitive_sizes) {
   for (size_t i = 0; i < n; ++i) {
     Memcpy(values[i].data(), ref.ptrs[i], ref.primitive_sizes[i]);
   }
 }
 
-DValue::DValue(const DRef& ref)
+ABSL_ATTRIBUTE_ALWAYS_INLINE DValue::DValue(const DRef& ref)
     : n(ref.ptrs.size()), values(n), primitive_sizes(ref.primitive_sizes) {
   for (size_t i = 0; i < n; ++i) {
     Memcpy(values[i].data(), ref.ptrs[i], ref.primitive_sizes[i]);
@@ -244,15 +245,7 @@ DValue::DValue(const DRef& ref)
 }
 
 template <size_t n>
-Ref<n>& Ref<n>::operator=(const Value<n>& value) {
-  for (size_t i = 0; i < n; ++i) {
-    DCHECK_EQ(primitive_sizes[i], value.primitive_sizes[i]);
-    Memcpy(ptrs[i], value.values[i].data(), value.primitive_sizes[i]);
-  }
-  return *this;
-}
-
-DRef& DRef::operator=(const DValue& value) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Value<n>& value) {
   for (size_t i = 0; i < n; ++i) {
     DCHECK_EQ(primitive_sizes[i], value.primitive_sizes[i]);
     Memcpy(ptrs[i], value.values[i].data(), value.primitive_sizes[i]);
@@ -261,7 +254,7 @@ DRef& DRef::operator=(const DValue& value) {
 }
 
 template <size_t n>
-Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
   for (size_t i = 0; i < n; ++i) {
     DCHECK_EQ(primitive_sizes[i], other.primitive_sizes[i]);
     Memcpy(ptrs[i], other.ptrs[i], other.primitive_sizes[i]);
@@ -269,7 +262,15 @@ Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
   return *this;
 }
 
-DRef& DRef::operator=(const DRef& other) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DValue& value) {
+  for (size_t i = 0; i < n; ++i) {
+    DCHECK_EQ(primitive_sizes[i], value.primitive_sizes[i]);
+    Memcpy(ptrs[i], value.values[i].data(), value.primitive_sizes[i]);
+  }
+  return *this;
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DRef& other) {
   for (size_t i = 0, n = other.ptrs.size(); i < n; ++i) {
     DCHECK_EQ(primitive_sizes[i], other.primitive_sizes[i]);
     Memcpy(ptrs[i], other.ptrs[i], other.primitive_sizes[i]);
@@ -279,7 +280,7 @@ DRef& DRef::operator=(const DRef& other) {
 
 // Swap function required by `std::sort` and `std::stable_sort` implementations.
 template <size_t n>
-void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
   for (size_t i = 0; i < n; ++i) {
     std::array<std::byte, kMaxElementSize> tmp;
     DCHECK_EQ(lhs.primitive_sizes[i], rhs.primitive_sizes[i]);
@@ -290,7 +291,7 @@ void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
   }
 }
 
-void swap(const DRef& lhs, const DRef& rhs) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const DRef& lhs, const DRef& rhs) {
   for (size_t i = 0, n = lhs.ptrs.size(); i < n; ++i) {
     std::array<std::byte, kMaxElementSize> tmp;
     DCHECK_EQ(lhs.primitive_sizes[i], rhs.primitive_sizes[i]);
@@ -325,13 +326,13 @@ struct Ptr {
 
   Ptr operator+(difference_type diff) const {
     Ptr upd(ptrs, primitive_sizes);
-    for (size_t i = 0; i < n; ++i) upd.ptrs[i] += diff * upd.primitive_sizes[i];
+    upd += diff;
     return upd;
   }
 
   Ptr operator-(difference_type diff) const {
     Ptr upd(ptrs, primitive_sizes);
-    for (size_t i = 0; i < n; ++i) upd.ptrs[i] -= diff * upd.primitive_sizes[i];
+    upd -= diff;
     return upd;
   }
 
@@ -379,13 +380,13 @@ struct DPtr {
 
   DPtr operator+(difference_type diff) const {
     DPtr upd{ptrs, primitive_sizes};
-    for (size_t i = 0; i < n; ++i) upd.ptrs[i] += diff * primitive_sizes[i];
+    upd += diff;
     return upd;
   }
 
   DPtr operator-(difference_type diff) const {
     DPtr upd{ptrs, primitive_sizes};
-    for (size_t i = 0; i < n; ++i) upd.ptrs[i] -= diff * primitive_sizes[i];
+    upd -= diff;
     return upd;
   }
 
