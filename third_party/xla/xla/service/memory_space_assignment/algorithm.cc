@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -266,32 +267,76 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
          });
 }
 
-struct CrossProgramPrefetchBufferSortValues {
-  int64_t latest_use = 0;
-  int64_t use_size = 0;
+bool IsUserAnnotatedCrossProgramPrefetch(const HloValue& value,
+                                         const Options& options) {
+  const HloInstruction* defining_instruction = value.defining_instruction();
+  if (defining_instruction->parent() !=
+          defining_instruction->GetModule()->entry_computation() ||
+      defining_instruction->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  const ComputationLayout& entry_computation_layout =
+      defining_instruction->GetModule()->entry_computation_layout();
+  if (defining_instruction->parameter_number() >=
+      entry_computation_layout.parameter_count()) {
+    return false;
+  }
+  const Shape& shape =
+      entry_computation_layout
+          .parameter_layout(defining_instruction->parameter_number())
+          .shape();
+  return shape.has_layout() &&
+         shape.layout().memory_space() == options.alternate_memory_space;
+}
+
+MsaBufferInterval CreateMsaBufferInterval(const HloBuffer& buffer,
+                                          const HloValue* value,
+                                          const HloLiveRange& hlo_live_range,
+                                          const Options& options) {
+  MsaBufferInterval interval;
+  interval.buffer = value;
+  interval.size = options.size_fn(*value);
+  interval.start = 0;
+  interval.end = hlo_live_range.schedule_end_time();
+  interval.colocations = {++buffer.values().begin(), buffer.values().end()};
+  interval.need_allocation = true;
+  return interval;
+}
+
+struct CrossProgramPrefetches {
+  std::vector<MsaBufferInterval> prefetches;
+  std::vector<MsaBufferInterval> candidates;
 };
 
-std::vector<MsaBufferInterval> FindCrossProgramPrefetchCandidates(
+CrossProgramPrefetches FindCrossProgramPrefetches(
     const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
     const Options& options) {
-  std::vector<MsaBufferInterval> candidates;
+  CrossProgramPrefetches cross_program_prefetches;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
-    MsaBufferInterval interval;
-    interval.buffer = value;
-    interval.size = options.size_fn(*value);
-    interval.start = 0;
-    interval.end = hlo_live_range.schedule_end_time();
-    interval.need_allocation = true;
-    interval.colocations = {++buffer.values().begin(), buffer.values().end()};
-    if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
-      candidates.push_back(interval);
+    MsaBufferInterval buffer_interval =
+        CreateMsaBufferInterval(buffer, value, hlo_live_range, options);
+    if (IsUserAnnotatedCrossProgramPrefetch(*value, options)) {
+      cross_program_prefetches.prefetches.push_back(buffer_interval);
+    } else if (IsCrossProgramPrefetchCandidate(*value, alias_analysis,
+                                               options)) {
+      cross_program_prefetches.candidates.push_back(buffer_interval);
     } else if (MemorySpaceAssignmentUtils::
                    DoesCrossProgramPrefetchBufferMatchAnyFilter(
-                       options.msa_sort_order_overrides, interval)) {
-      candidates.push_back(interval);
+                       options.msa_sort_order_overrides, buffer_interval)) {
+      cross_program_prefetches.candidates.push_back(buffer_interval);
     }
+  }
+
+  for (auto& prefetch : cross_program_prefetches.prefetches) {
+    VLOG(3) << "User annotated cross-program prefetch: "
+            << prefetch.buffer->ToString();
+  }
+
+  for (auto& prefetch : cross_program_prefetches.prefetches) {
+    VLOG(3) << "User annotated cross-program prefetch: "
+            << prefetch.buffer->ToString();
   }
 
   DefaultCrossProgramPrefetchBufferIntervalComparator default_comparator(
@@ -301,16 +346,18 @@ std::vector<MsaBufferInterval> FindCrossProgramPrefetchCandidates(
                options.buffer_interval_comparator
            ? options.buffer_interval_comparator
            : &default_comparator);
-  absl::c_sort(candidates, comparator->GetComparisonFunctor());
+  absl::c_sort(cross_program_prefetches.candidates,
+               comparator->GetComparisonFunctor());
 
-  VLOG(3) << "Cross-program prefetch candidates: " << candidates.size()
+  VLOG(3) << "Cross-program prefetch candidates: "
+          << cross_program_prefetches.candidates.size()
           << ". Sorting criteria: " << comparator->DescribeComparisonCriteria();
-  for (auto& candidate : candidates) {
+  for (auto& candidate : cross_program_prefetches.candidates) {
     VLOG(3) << "Cross-program prefetch candidate. Sorting criteria: "
             << comparator->CriteriaToString(candidate)
             << ". Candidate: " << candidate.buffer->ToString();
   }
-  return candidates;
+  return cross_program_prefetches;
 }
 
 }  // namespace
@@ -1638,11 +1685,27 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   }
   VLOG(1) << "Memory pressure = " << memory_pressure_;
 
+  CrossProgramPrefetches cross_program_prefetches =
+      FindCrossProgramPrefetches(alias_analysis_, hlo_live_range_, options_);
+  // Crash if cross program prefetch is disabled and user has requested
+  // cross program prefetch.
+  CHECK(options_.enable_cross_program_prefetch ||
+        cross_program_prefetches.prefetches.empty())
+      << "Cross program prefetch is disabled but user has requested cross "
+         "program prefetch.";
+  // Crash if number of user requested cross program prefetches is greater than
+  // the maximum number of cross program prefetches allowed.
+  CHECK(cross_program_prefetches.prefetches.size() <=
+        options().max_cross_program_prefetches)
+      << "Number of user requested cross program prefetches is greater than "
+         "the maximum number of cross program prefetches allowed.";
+  // Allocate user requested cross program prefetches first.
+  for (auto& prefetch : cross_program_prefetches.prefetches) {
+    HloModule* module = prefetch.buffer->instruction()->GetModule();
+    AllocateCrossProgramPrefetchBuffer(module, prefetch);
+  }
   if (options_.enable_cross_program_prefetch) {
-    std::vector<MsaBufferInterval> prefetch_candidates =
-        FindCrossProgramPrefetchCandidates(alias_analysis_, hlo_live_range_,
-                                           options_);
-    for (auto& prefetch_candidate : prefetch_candidates) {
+    for (auto& prefetch_candidate : cross_program_prefetches.candidates) {
       HloModule* module = prefetch_candidate.buffer->instruction()->GetModule();
       if (0 <= options().max_cross_program_prefetches &&
           options().max_cross_program_prefetches <=
@@ -3247,6 +3310,9 @@ void SetDefaultMemorySpace(const HloValue* value, const Options& options) {
     }
     shape->mutable_layout()->set_memory_space(options.default_memory_space);
   }
+  HloModule* module = value->defining_instruction()->GetModule();
+  module->mutable_config().SetComputationLayoutIfExists(
+      module->entry_computation()->ComputeProgramShape());
 }
 
 }  // namespace

@@ -564,6 +564,7 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:buffer_value",
         "//xla/service:call_graph",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
