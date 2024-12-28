@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_SORT_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_SORT_THUNK_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,10 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"

@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
@@ -197,10 +198,37 @@ struct DRef {
   const size_t n;
 };
 
+// We know that we can only copy up to 16 bytes for the largest element type
+// and can specialize `std::memcpy` to allow LLVM to inline it with statically
+// known sizes.
+static ABSL_ATTRIBUTE_ALWAYS_INLINE void Memcpy(void* __restrict dest,
+                                                const void* __restrict src,
+                                                size_t n) {
+  switch (n) {
+    case 1:
+      std::memcpy(dest, src, 1);
+      break;
+    case 2:
+      std::memcpy(dest, src, 2);
+      break;
+    case 4:
+      std::memcpy(dest, src, 4);
+      break;
+    case 8:
+      std::memcpy(dest, src, 8);
+      break;
+    case 16:
+      std::memcpy(dest, src, 16);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported memcpy size: " << n;
+  }
+}
+
 template <size_t n>
 Value<n>::Value(const Ref<n>& ref) : value_sizes(ref.ptr_sizes) {
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
+    Memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
   }
 }
 
@@ -208,8 +236,7 @@ DValue::DValue(const DRef& ref)
     : value_sizes(ref.ptr_sizes), n(ref.ptr.size()) {
   value.reserve(n);
   for (size_t i = 0; i < n; ++i) {
-    value.emplace_back();
-    std::memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
+    Memcpy(value.emplace_back().data(), ref.ptr[i], ref.ptr_sizes[i]);
   }
 }
 
@@ -217,7 +244,7 @@ template <size_t n>
 Ref<n>& Ref<n>::operator=(const Value<n>& value) {
   DCHECK(ptr_sizes == value.value_sizes);
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
+    Memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
   }
   return *this;
 }
@@ -225,7 +252,7 @@ Ref<n>& Ref<n>::operator=(const Value<n>& value) {
 DRef& DRef::operator=(const DValue& value) {
   DCHECK(ptr_sizes == value.value_sizes);
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
+    Memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
   }
   return *this;
 }
@@ -234,7 +261,7 @@ template <size_t n>
 Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
   DCHECK(ptr_sizes == other.ptr_sizes);
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
+    Memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
   }
   return *this;
 }
@@ -243,7 +270,7 @@ DRef& DRef::operator=(const DRef& other) {
   DCHECK(ptr_sizes == other.ptr_sizes);
   const size_t n = other.ptr.size();
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
+    Memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
   }
   return *this;
 }
@@ -253,9 +280,9 @@ template <size_t n>
 void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
   for (size_t i = 0; i < n; ++i) {
     std::array<std::byte, kMaxElementSize> tmp;
-    std::memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
-    std::memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
-    std::memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+    Memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
+    Memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
+    Memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
   }
 }
 
@@ -264,9 +291,9 @@ void swap(const DRef& lhs, const DRef& rhs) {
   const size_t n = lhs.ptr.size();
   for (size_t i = 0; i < n; ++i) {
     std::array<std::byte, kMaxElementSize> tmp;
-    std::memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
-    std::memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
-    std::memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+    Memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
+    Memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
+    Memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
   }
 }
 
