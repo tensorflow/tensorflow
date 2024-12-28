@@ -53,7 +53,7 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }
 
 void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, StringPiece edge_name,
+                      Allocator* out_allocator, absl::string_view edge_name,
                       Device* dst, Tensor* output,
                       DeviceContext* recv_dev_context, StatusCallback done,
                       bool sync_dst_compute) {
@@ -199,7 +199,8 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(absl::string_view edge_name,
+                        DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,
@@ -338,7 +339,7 @@ REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 }  // namespace
 
 void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, StringPiece edge_name,
+                      Allocator* out_allocator, absl::string_view edge_name,
                       Device* src, Tensor* output,
                       DeviceContext* send_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
