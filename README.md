@@ -14,6 +14,11 @@
 [![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
 [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
+## How to Run the Script
+1. Clone the repository: `git clone https://github.com/your-username/tensorflow.git`
+2. Navigate to the folder: `cd tensorflow`
+3. Run the script: `python script_name.py`
+
 **`Documentation`** |
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
