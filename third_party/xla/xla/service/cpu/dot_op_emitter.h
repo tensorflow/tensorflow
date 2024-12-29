@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
