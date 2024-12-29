@@ -102,4 +102,16 @@ diff --ruN a/stablehlo/build_tools/math/generate_tests.py b/stablehlo/build_tool
        f.write(
            "// This file is generated, see build_tools/math/README.md for more"
            " information.\n")
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -107,6 +107,8 @@
+ 
+ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
+   addArgumentMaterialization(scalarToTensor);
++  addSourceMaterialization(scalarToTensor);
++  addTargetMaterialization(scalarToTensor);
+ }
+ 
+ }  // namespace mlir::stablehlo
 

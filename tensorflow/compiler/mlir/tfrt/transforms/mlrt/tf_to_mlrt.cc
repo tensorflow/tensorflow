@@ -1051,17 +1051,9 @@ class TfToMlrtConversionPass
     };
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
+    type_converter_.addSourceMaterialization(future_to_tensor_materialization);
     type_converter_.addArgumentMaterialization(
         future_to_tensor_materialization);
-    type_converter_.addSourceMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type result_type,
-           mlir::ValueRange inputs,
-           mlir::Location loc) -> mlir::Value {
-          return builder
-              .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
-                                                        inputs)
-              .getResult(0);
-        });
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =
