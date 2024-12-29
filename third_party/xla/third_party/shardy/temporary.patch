@@ -1,75 +1,42 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 06d4433..509398d 100644
+index 509398d..91172d6 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,55 +1 @@
+@@ -1 +1,22 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--@@ -5167,6 +5167,7 @@
--         ":FuncDialect",
--         ":FunctionInterfaces",
--         ":GPUDialect",
--+        ":GPUUtils",
--         ":IR",
--         ":LinalgDialect",
--         ":MemRefDialect",
--@@ -5795,6 +5796,7 @@
--         ":ExecutionEngineUtils",
--         ":FuncDialect",
--         ":GPUDialect",
--+        ":GPUUtils",
--         ":GPUPassIncGen",
--         ":GPUToLLVMIRTranslation",
--         ":IR",
--@@ -5829,6 +5831,26 @@
--     ]),
-- )
-- 
--+cc_library(
--+    name = "GPUUtils",
--+    srcs = glob(
--+        [
--+            "lib/Dialect/GPU/Utils/*.cpp",
--+        ],
--+    ),
--+    hdrs = glob(["include/mlir/Dialect/GPU/Utils/*.h"]),
--+    includes = ["include"],
--+    deps = [
--+      ":AffineDialect",
--+      ":ArithDialect",
--+      ":GPUDialect",
--+      ":IR",
--+      ":Support",
--+      ":VectorDialect",
--+      "//llvm:Support",
--+    ],
--+)
--+
-- td_library(
--     name = "GPUTransformOpsTdFiles",
--     srcs = [
--@@ -6188,6 +6210,7 @@
--         ":FuncToLLVM",
--         ":GPUCommonTransforms",
--         ":GPUDialect",
--+        ":GPUUtils",
--         ":GPUTransforms",
--         ":IR",
--         ":LLVMCommonConversion",
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++@@ -1619,13 +1619,16 @@
++ 
++ cc_library(
++     name = "FrontendAtomic",
+++    srcs = glob([
+++        "lib/Frontend/Atomic/*.cpp",
+++    ]),
++     hdrs = glob([
++         "include/llvm/Frontend/Atomic/*.h",
++     ]),
++     copts = llvm_copts,
++     deps = [
+++        ":Core",
++         ":Support",
++-        ":ir_headers",
++     ],
++ )
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 323bcb6..0e243d3 100644
+index cb9a476..f04c32d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "bc29fc937c6cb4a210f80c93c79fc6ed97c801f8"
--    LLVM_SHA256 = "c52784eddf958532cb617befe65df12a7a350b7eacf0532c3a61efc921b2142c"
-+    LLVM_COMMIT = "a21f9bfe29c2b9f1967952d12a5b7cb8f8b75202"
-+    LLVM_SHA256 = "7039c2826841e473fe6431e36a2d8ba3746f200da53c481384f7f5d970e5bca1"
+-    LLVM_COMMIT = "21a1dbb50320889ee0e116237c924ee1af3c3dd3"
+-    LLVM_SHA256 = "399bab11e4de85d9d65957ccf236ec57c1741ec6ed96225a86076b34e0026816"
++    LLVM_COMMIT = "c660b281b60085cbe40d73d692badd43d7708d20"
++    LLVM_SHA256 = "77714a6dbfab00cb7a8d54ae119770011c9da9d810ea02864b173fce90b4ca14"
  
      tf_http_archive(
          name = name,

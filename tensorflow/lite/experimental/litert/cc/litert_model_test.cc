@@ -211,7 +211,8 @@ TEST(CcTensorTest, SimpleModel) {
     ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
 
     auto input_ranked_tensor_type = input_tensor.RankedTensorType();
-    ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
+    EXPECT_TRUE(input_ranked_tensor_type);
+    ASSERT_EQ(input_ranked_tensor_type->ElementType(), ElementType::Float32);
 
     EXPECT_FALSE(input_tensor.HasWeights());
 

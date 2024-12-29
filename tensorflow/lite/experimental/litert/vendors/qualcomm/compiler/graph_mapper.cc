@@ -61,12 +61,12 @@ inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
 
 absl::Span<const QnnGraph_Config_t*> GraphMapper::PickGraphConfigHeuristic() {
   for (const auto& input : subgraph_.Inputs()) {
-    if (input.RankedTensorType().ElementType() == ElementType::Float32) {
+    if (input.ElementType() == ElementType::Float32) {
       return GetFp32GraphConfigs();
     }
   }
   for (const auto& output : subgraph_.Outputs()) {
-    if (output.RankedTensorType().ElementType() == ElementType::Float32) {
+    if (output.ElementType() == ElementType::Float32) {
       return GetFp32GraphConfigs();
     }
   }

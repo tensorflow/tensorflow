@@ -44,9 +44,11 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -551,6 +553,25 @@ TEST_F(PjrtCApiTest, DeviceLocalHardwareId) {
   CHECK_EQ(args.local_hardware_id, 0);
 }
 
+TEST_F(PjrtCApiTest, DeviceDescriptionAndMemoryDescriptionss) {
+  PJRT_Device_GetDescription_Args get_description =
+      PJRT_Device_GetDescription_Args{
+          .struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE,
+          .extension_start = nullptr,
+          .device = GetClientDevices()[0],
+      };
+  PJRT_Error* error = api_->PJRT_Device_GetDescription(&get_description);
+  EXPECT_EQ(error, nullptr);
+
+  std::vector<xla::PjRtMemorySpaceDescription> memory_descriptions =
+      GetMemorySpaceDescriptions(get_description.device_description, api_);
+
+  for (int i = 0; i < memory_descriptions.size(); i++) {
+    EXPECT_NE(memory_descriptions[i].kind().size(), 0);
+    EXPECT_GE(memory_descriptions[i].kind_id(), 0);
+  }
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 class PjrtCApiBufferTest : public PjrtCApiTest {
@@ -891,6 +912,12 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 57) {
       add_field("PJRT_Buffer_CopyRawToHost", kFnPtrSize);
     }
+    if (minor_version >= 58) {
+      add_field("PJRT_AsyncHostToDeviceTransferManager_Destroy", kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_TransferData",
+                kFnPtrSize);
+      add_field("PJRT_Client_CreateBuffersForAsyncHostToDevice", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1219,6 +1246,17 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Buffer_CopyRawToHost",
            {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHost),
             sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHost)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_Destroy",
+           {offsetof(PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_Destroy),
+            sizeof(PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_Destroy)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_TransferData",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_TransferData),
+            sizeof(
+                PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_TransferData)}},
+          {"PJRT_Client_CreateBuffersForAsyncHostToDevice",
+           {offsetof(PJRT_Api, PJRT_Client_CreateBuffersForAsyncHostToDevice),
+            sizeof(PJRT_Api::PJRT_Client_CreateBuffersForAsyncHostToDevice)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

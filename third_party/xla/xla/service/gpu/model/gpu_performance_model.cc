@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <optional>
 

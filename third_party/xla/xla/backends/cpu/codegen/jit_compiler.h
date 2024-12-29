@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -176,7 +175,7 @@ class JitCompiler {
     ~CompiledFunctionLibrary() final;
 
     absl::StatusOr<void*> ResolveFunction(TypeId type_id,
-                                          std::string_view name) final;
+                                          absl::string_view name) final;
 
    private:
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;

@@ -66,6 +66,14 @@ using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 // The lifetime of the Api pointed to must be longer than the client.
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api);
 
+using PJRT_AsyncHostToDeviceTransferManagerDeleter =
+    std::function<void(PJRT_AsyncHostToDeviceTransferManager*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the transfer manager.
+PJRT_AsyncHostToDeviceTransferManagerDeleter
+MakeAsyncHostToDeviceTransferManagerDeleter(const PJRT_Api* api);
+
 using PJRT_ErrorDeleter = std::function<void(PJRT_Error*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
@@ -296,6 +304,12 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable);
 
+PJRT_ShapeSpec ConvertToPjRtShapeSpec(
+    const xla::PjRtClient::ShapeSpec& shape_spec);
+
+xla::PjRtClient::ShapeSpec ConvertFromPjrtShapeSpec(
+    PJRT_ShapeSpec c_shape_spec);
+
 // Creates a PJRT_Profiler_Extension and adds a producer trace with
 // the given name. The created PJRT_Profiler_Extension will be used in argument
 // structs to pass the producer traceme context id to add a corresponding
@@ -335,6 +349,9 @@ int64_t GetTracemeContextId(InputType* args) {
   }
   return traceme_context_id;
 }
+
+std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api);
 
 }  // namespace pjrt
 

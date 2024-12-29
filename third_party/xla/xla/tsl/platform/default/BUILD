@@ -115,13 +115,17 @@ cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
-        "@local_tsl//tsl/platform:env.cc",
-        "@local_tsl//tsl/platform:file_system.cc",
-        "@local_tsl//tsl/platform:file_system_helper.cc",
-        "@local_tsl//tsl/platform:threadpool.cc",
+        "//xla/tsl/platform:env.cc",
+        "//xla/tsl/platform:file_system.cc",
+        "//xla/tsl/platform:file_system_helper.cc",
+        "//xla/tsl/platform:threadpool.cc",
     ],
     hdrs = [
         "posix_file_system.h",
+        "//xla/tsl/platform:env.h",
+        "//xla/tsl/platform:file_system.h",
+        "//xla/tsl/platform:file_system_helper.h",
+        "//xla/tsl/platform:threadpool.h",
         "@local_tsl//tsl/platform:env.h",
         "@local_tsl//tsl/platform:file_system.h",
         "@local_tsl//tsl/platform:file_system_helper.h",
@@ -135,9 +139,12 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
@@ -194,7 +201,7 @@ cc_library(
 cc_library(
     name = "env_time",
     srcs = ["env_time.cc"],
-    hdrs = ["@local_tsl//tsl/platform:env_time.h"],
+    hdrs = ["//xla/tsl/platform:env_time.h"],
     tags = [
         "manual",
         "no_oss",

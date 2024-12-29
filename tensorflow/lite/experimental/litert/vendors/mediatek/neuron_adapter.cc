@@ -98,6 +98,10 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
   LOAD_SYMB(NeuronExecution_compute, api_->execution_compute);
   LOAD_SYMB(NeuronExecution_create, api_->execution_create);
   LOAD_SYMB(NeuronExecution_free, api_->execution_free);
+  LOAD_SYMB(NeuronCompilation_getCompiledNetworkSize,
+            api_->compilation_get_compiled_network_size);
+  LOAD_SYMB(NeuronCompilation_storeCompiledNetwork,
+            api_->compilation_store_compiled_network);
   LOAD_SYMB(NeuronExecution_setBoostHint, api_->execution_set_boost_hint);
   LOAD_SYMB(NeuronExecution_setInputFromMemory,
             api_->execution_set_input_from_memory);
@@ -119,11 +123,52 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
             api_->model_identify_inputs_and_outputs);
   LOAD_SYMB(NeuronModel_restoreFromCompiledNetwork,
             api_->model_restore_from_compiled_network);
+  LOAD_SYMB(NeuronModel_setName, api_->model_set_name);
   LOAD_SYMB(NeuronModel_setOperandValue, api_->model_set_operand_value);
   LOAD_SYMB(Neuron_getVersion, api_->get_version);
 
   LITERT_LOG(LITERT_INFO, "NeuronAdapter symbols loaded");
   return {};
+}
+
+Expected<NeuronModelPtr> NeuronAdapter::CreateModel() const {
+  NeuronModel* model;
+  if (api().model_create(&model) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuroModel");
+  }
+  return NeuronModelPtr{model, api().model_free};
+}
+
+Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+    NeuronModel* model) const {
+  NeuronCompilation* compilation;
+  if (api().compilation_create(model, &compilation) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuronCompilation");
+  }
+  return NeuronCompilationPtr{compilation, api().compilation_free};
+}
+
+Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+    NeuronModel* model, const std::string& compile_options) const {
+  NeuronCompilation* compilation;
+  if (api().compilation_create_with_options(
+          model, &compilation, compile_options.c_str()) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuronCompilation");
+  }
+  return NeuronCompilationPtr{compilation, api().compilation_free};
+}
+
+Expected<NeuronExecutionPtr> NeuronAdapter::CreateExecution(
+    NeuronCompilation* compilation) const {
+  NeuronExecution* execution;
+  if (api().execution_create(compilation, &execution) != NEURON_NO_ERROR) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to create execution");
+  }
+  return NeuronExecutionPtr{execution, api().execution_free};
 }
 
 }  // namespace mediatek

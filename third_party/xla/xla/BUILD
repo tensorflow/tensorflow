@@ -525,6 +525,7 @@ xla_cc_test(
         ":test",
         ":test_helpers",
         ":xla_data_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -625,6 +626,33 @@ xla_cc_test(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "literal_pool",
+    srcs = ["literal_pool.cc"],
+    hdrs = ["literal_pool.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":literal",
+        ":shape_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "literal_pool_test",
+    srcs = ["literal_pool_test.cc"],
+    deps = [
+        ":literal",
+        ":literal_pool",
+        ":literal_util",
+        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -1073,6 +1101,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/builder:padding",
         "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -1191,6 +1220,7 @@ xla_cc_test(
     deps = [
         ":refcounting_hash_map",
         ":test",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

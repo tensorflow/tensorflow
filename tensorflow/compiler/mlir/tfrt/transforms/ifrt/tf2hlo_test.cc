@@ -37,9 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
@@ -49,8 +50,6 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -58,7 +57,6 @@ namespace {
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Ne;
-using ::testing::status::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS
@@ -120,13 +118,13 @@ TEST_F(Tf2HloTest, Empty) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, {}));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg{
       .module = mlir_module.get(),
@@ -168,13 +166,13 @@ TEST_F(Tf2HloTest, Tuple) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg{
       .module = mlir_module.get(),
@@ -216,13 +214,13 @@ TEST_F(Tf2HloTest, Spmd) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg{
       .module = mlir_module.get(),
@@ -302,13 +300,13 @@ TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg{
       .module = mlir_module.get(),
@@ -413,13 +411,13 @@ TEST_F(Tf2HloTest, XlaCallHostCallback) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg{
       .module = mlir_module.get(),
@@ -519,13 +517,13 @@ TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg0{
       .module = mlir_module.get(),
@@ -578,13 +576,13 @@ TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  xla::TfrtCpuTopologyDescription cpu_topology =
-      xla::TfrtCpuTopologyDescription::Create(
+  xla::CpuTopologyDescription cpu_topology =
+      xla::CpuTopologyDescription::Create(
           xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*devices=*/std::vector<std::unique_ptr<xla::PjRtDevice>>{},
           /*machine_attributes=*/std::vector<std::string>{});
-  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
-      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+  std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
   Tf2HloArg arg0{
       .module = mlir_module.get(),

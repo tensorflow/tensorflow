@@ -1,106 +1,105 @@
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -369,6 +369,10 @@
- // Which correlates to <func, sym_int_values, arg_types>
- class RefineShapeState {
-  public:
-+  RefineShapeState(
-+      std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn)
-+      : additionalPatternsFn(additionalPatternsFn) {}
-+
-   enum class RefinementState {
-     NOT_ALREADY_REFINED,
-     ALREADY_REFINED,
-@@ -431,7 +435,14 @@
-     });
-   }
+diff --ruN a/stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py b/stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
+--- stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
++++ stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
+@@ -71,8 +71,15 @@
  
-+  void addAdditionalPatterns(RewritePatternSet& patterns) {
-+    if (additionalPatternsFn.has_value())
-+      additionalPatternsFn.value()(&patterns);
-+  }
-+
-  private:
-+  std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn;
-+
-   // Maps refined functions to the refinement context: the values of dimension
-   // arguments and the types of non-global-constant arguments. A function is
-   // added here when we start refining it.
-@@ -1001,7 +1012,7 @@
- LogicalResult applyShapeRefinementPatterns(func::FuncOp func,
-                                            RefineShapeState& state) {
-   MLIRContext* context = func.getContext();
--  RewritePatternSet patterns(context);
-+  RewritePatternSet patterns(func->getContext());
-   GreedyRewriteConfig config;
+   output_file = os.path.relpath(
+       os.path.normpath(
+-          os.path.join(os.path.dirname(__file__), "..", "..", "stablehlo",
+-                       "transforms", output_filename)),
++          os.path.join(
++              os.path.dirname(__file__),
++              "..",
++              "..",
++              "stablehlo",
++              "transforms",
++              output_filename,
++          )
++      ),
+       os.getcwd(),
+   )
  
-   // The algorithm behind this pass consists of a single traversal of the
-@@ -1019,6 +1030,9 @@
-   populateStablehloRefineShapesPatterns(&patterns, context);
-   patterns.add<RefineCallOpPattern>(context, state);
+@@ -105,7 +112,8 @@
+     func = getattr(fa.algorithms, fname, None)
+     if func is None:
+       warnings.warn(
+-          f"{fa.algorithms.__name__} does not define {fname}. Skipping.")
++          f"{fa.algorithms.__name__} does not define {fname}. Skipping."
++      )
+       continue
+     ctx = fa.Context(paths=[fa.algorithms],
+                      parameters=dict(rewrite_keep_integer_literals=True))
+@@ -116,14 +124,15 @@
+     sources[-1] += src
+   source = "\n\n".join(sources) + "\n"
  
-+  // Populate additional patterns for StableHLO extensions.
-+  state.addAdditionalPatterns(patterns);
-+
-   // The folding patterns implement partial evaluation of shape computations
-   // which is a critical part of implementing type refinement for ops like
-   // dynamic_broadcast_in_dim, dynamic_iota and dynamic_reshape whose shape
-@@ -1103,14 +1117,22 @@
+-  if chloname.startswith('StableHLO_'):
++  if chloname.startswith("StableHLO_"):
+     # an ugly hack to fix the definition of stablehlo complex math
+     # functions. TODO(pearu): add the corresponding feature to
+     # functional_algorithms stablehlo printer
+-    NameOp = chloname.split('_', 1)[1]
++    NameOp = chloname.split("_", 1)[1]
+     source = source.replace(
+-        f'def : Pat<({chloname}',
+-        f'def {NameOp}_ComplexElementType_ComplexMathExpander : Pat<({chloname}'
++        f"def : Pat<({chloname}",
++        f"def {NameOp}_ComplexElementType_ComplexMathExpander :"
++        f" Pat<({chloname}",
+     )
  
-     // Start with empty state, and no dim args / token args.
-     MLIRContext* context = func.getContext();
--    RefineShapeState state;
--    RefinementKey key(func, 0, {}, llvm::to_vector(func.getArgumentTypes()));
--    if (failed(refineFunction(*context, state, key)))
--      return signalPassFailure();
-+    if (failed(refineEntryFunction(*context, func))) return signalPassFailure();
-   }
- };
+   if os.path.isfile(output_file):
+diff --ruN a/stablehlo/build_tools/math/generate_tests.py b/stablehlo/build_tools/math/generate_tests.py
+--- stablehlo/build_tools/math/generate_tests.py
++++ stablehlo/build_tools/math/generate_tests.py
+@@ -64,10 +64,12 @@
+     dict(name="acosh", mpmath_name="arccosh"),
+     dict(name="atanh", mpmath_name="arctanh"),
+     dict(name="square", mpmath_name="square"),
+-    dict(name="log_plus_one",
+-         mpmath_name="log1p",
+-         namespace="stablehlo",
+-         passes="--stablehlo-complex-math-expander"),
++    dict(
++        name="log_plus_one",
++        mpmath_name="log1p",
++        namespace="stablehlo",
++        passes="--stablehlo-complex-math-expander",
++    ),
+ ]
  
- }  // namespace
-+
-+LogicalResult refineEntryFunction(
-+    MLIRContext& context, func::FuncOp func,
-+    std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn) {
-+  // Start with empty state, and no dim args / token args.
-+  RefineShapeState state(additionalPatternsFn);
-+  RefinementKey key(func, 0, {}, llvm::to_vector(func.getArgumentTypes()));
-+  if (failed(refineFunction(context, state, key)))
-+    return func.emitError("Failed to refine entry function");
-+  return success();
-+}
  
- func::FuncOp getStablehloRefineShapesTarget(ModuleOp module) {
-   // Only one function per module is supported at the moment to avoid the need
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.h b/stablehlo/stablehlo/transforms/StablehloRefineShapes.h
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.h
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.h
-@@ -16,7 +16,6 @@
- #ifndef STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
- #define STABLEHLO_TRANSFORMS_STABLEHLO_REFINE_SHAPES_H
+@@ -138,13 +140,16 @@
+       params = fa.utils.function_validation_parameters(opname, dtype)
+       max_ulp_difference = op.get(
+           "max_ulp_difference",
+-          params.get("max_valid_ulp_count", default_max_ulp_difference))
++          params.get("max_valid_ulp_count", default_max_ulp_difference),
++      )
  
--#include "llvm/ADT/SmallVector.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
- #include "mlir/IR/BuiltinOps.h"
- #include "mlir/IR/Operation.h"
-@@ -101,6 +100,18 @@
-   return refineReturnShape(rewriter, op, shape);
- }
+       nmp = fa.utils.numpy_with_mpmath(
+           extra_prec_multiplier=op.get(
+               "extra_prec_multiplier",
+-              params.get("extra_prec_multiplier",
+-                         default_extra_prec_multiplier)),
++              params.get(
++                  "extra_prec_multiplier", default_extra_prec_multiplier
++              ),
++          ),
+           flush_subnormals=flush_subnormals,
+       )
  
-+// Entrypoint for any pass adding extensibility to the StableHLO shape
-+// refinement pass. If program is inlined before shape refinement,
-+// populateShapeRefinementPatterns can be safely used, but if shape refinement
-+// needs to operate on programs with functions and calls, then
-+// additionalPatterns will need to be populated and passed in.
-+using AdditionalShapeRefinementPatternsFn =
-+    std::function<void(RewritePatternSet*)>;
-+LogicalResult refineEntryFunction(
-+    MLIRContext& context, func::FuncOp func,
-+    std::optional<AdditionalShapeRefinementPatternsFn> additionalPatternsFn =
-+        std::nullopt);
-+
- // Custom call used to buffer operands for shape refinement
- // This is a temporary artifact that is introduced by StablehloRefineArguments
- // and is washed away during StablehloRefineShapes.
+@@ -208,8 +213,10 @@
+           continue
+ 
+       f = open(fname, "w")
+-      f.write(f"// RUN: stablehlo-opt {passes} %s |"
+-              " stablehlo-translate --interpret\n")
++      f.write(
++          f"// RUN: stablehlo-opt {passes} %s |"
++          " stablehlo-translate --interpret\n"
++      )
+       f.write(
+           "// This file is generated, see build_tools/math/README.md for more"
+           " information.\n")
 

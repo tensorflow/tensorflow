@@ -55,8 +55,8 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
   TF_CHECK_OK(FromProto(proto));
 }
 
-Status ResourceHandle::BuildResourceHandle(const ResourceHandleProto& proto,
-                                           ResourceHandle* out) {
+absl::Status ResourceHandle::BuildResourceHandle(
+    const ResourceHandleProto& proto, ResourceHandle* out) {
   if (out == nullptr)
     return errors::Internal(
         "BuildResourceHandle() was called with nullptr for the output");
@@ -78,7 +78,7 @@ void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
   }
 }
 
-Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
+absl::Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   set_device(proto.device());
   set_container(proto.container());
   set_name(proto.name());
@@ -88,7 +88,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   for (const auto& dtype_and_shape : proto.dtypes_and_shapes()) {
     DataType dtype = dtype_and_shape.dtype();
     PartialTensorShape shape;
-    Status s = PartialTensorShape::BuildPartialTensorShape(
+    absl::Status s = PartialTensorShape::BuildPartialTensorShape(
         dtype_and_shape.shape(), &shape);
     if (!s.ok()) {
       return s;
@@ -147,7 +147,7 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
   return result;
 }
 
-Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
+absl::Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
   if (type_index.hash_code() != hash_code()) {
     return errors::InvalidArgument(
         "Trying to access a handle's resource using the wrong type. ",

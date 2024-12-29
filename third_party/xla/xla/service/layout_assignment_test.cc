@@ -1367,6 +1367,59 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
+TEST_F(LayoutAssignmentTest, MemorySpaceRemoved) {
+  const char* module_str = R"(
+HloModule MixedHostDeviceResult
+
+ENTRY %MixedHostDeviceResult {
+  %p0 = f32[4,4] parameter(0)
+  %d = f32[4,4]{1,0} custom-call(%p0), custom_call_target="MoveToDevice", metadata={preserve_layout=true}
+  ROOT %tuple = (f32[4,4], f32[4,4]) tuple(%p0, %d)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+
+  // Set the parameter to be in host memory.
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(
+          F32, {4, 4}, {1, 0}, /*tiles=*/{},
+          /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
+          Layout::kHostMemorySpace));
+  // Set one result component to be in host memory, the other one on device.
+  // Also make sure to request incompatible result layout so that the layout
+  // assignment pass has to copy the layout from the entry computation layout.
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShapeWithDenseLayout(
+               F32, {4, 4}, {1, 0}, /*tiles=*/{},
+               /*tail_padding_alignment_in_elements=*/1,
+               /*element_size_in_bits=*/0, Layout::kHostMemorySpace),
+           ShapeUtil::MakeShapeWithDenseLayout(
+               F32, {4, 4}, {0, 1}, /*tiles=*/{},
+               /*tail_padding_alignment_in_elements=*/1,
+               /*element_size_in_bits=*/0, Layout::kDefaultMemorySpace)}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  // Verify that the memory space did not leak from the entry computation layout
+  // to the parameter or to the result.
+  Shape result_shape = m->entry_computation()->root_instruction()->shape();
+  EXPECT_EQ(
+      ShapeUtil::GetTupleElementShape(result_shape, 0).layout().memory_space(),
+      Layout::kDefaultMemorySpace);
+  EXPECT_EQ(
+      ShapeUtil::GetTupleElementShape(result_shape, 1).layout().memory_space(),
+      Layout::kDefaultMemorySpace);
+
+  const HloInstruction* parameter = FindInstruction(m.get(), "p0");
+  EXPECT_EQ(parameter->shape().layout().memory_space(),
+            Layout::kDefaultMemorySpace);
+
+  ExpectTupleLayoutIs(result_shape, {{1, 0}, {0, 1}});
+}
+
 absl::Status AssignLayoutsToComputation(
     HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
@@ -1768,7 +1821,7 @@ TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)
@@ -1802,7 +1855,7 @@ TEST_F(LayoutAssignmentTest,
 
  ENTRY %main {
    p = (f32[32,650],s32[16,1,18]) parameter(0)
-   operand = f32[32,650] get-tuple-element(p), index=0 
+   operand = f32[32,650] get-tuple-element(p), index=0
    reshape = f32[208,100] reshape(operand)
    indices = s32[16,1,18] get-tuple-element(p), index=1
    reshape_indices = s32[2,144] reshape(indices)

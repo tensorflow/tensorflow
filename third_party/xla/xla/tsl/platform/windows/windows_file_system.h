@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 

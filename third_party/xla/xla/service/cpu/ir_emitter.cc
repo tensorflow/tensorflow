@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -71,6 +70,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_function.h"
@@ -115,36 +115,19 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
           absl::StrContains(feature_string, "+amx-bf16"));
 }
 
-class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
+class IrEmitter::ElementalIrEmitter : public CpuElementalIrEmitter {
  public:
-  CpuElementalIrEmitter(const HloModuleConfig& module_config,
-                        IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(
+  ElementalIrEmitter(const HloModuleConfig& module_config,
+                     IrEmitter* ir_emitter, llvm::Module* module)
+      : CpuElementalIrEmitter(
             module, ir_emitter->b(),
-            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/
-                    !IsNativeConvertSupportedOnTargetCPU(
-                        ir_emitter->target_machine_features_
-                            .get_target_feature_string())}),
-        hlo_module_config_(module_config),
+            !IsNativeConvertSupportedOnTargetCPU(
+                ir_emitter->target_machine_features_
+                    .get_target_feature_string()),
+            module_config.debug_options().xla_cpu_enable_fast_min_max()),
         ir_emitter_(ir_emitter) {}
 
  protected:
-  absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs,
-                                         absl::string_view) override {
-    return xla::cpu::EmitAtan2(module(), *b(), prim_type, lhs, rhs);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                        llvm::Value* value) override {
-    return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
-                                       llvm::Value* value) override {
-    return xla::cpu::EmitErf(module(), *b(), prim_type, value);
-  }
-
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {
@@ -152,11 +135,6 @@ class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
                                             is_reducer);
   }
 
-  bool fast_min_max() override {
-    return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
-  }
-
-  const HloModuleConfig& hlo_module_config_;
   IrEmitter* ir_emitter_;
 };
 
@@ -246,7 +224,13 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
+
+  auto cleanup = absl::MakeCleanup(
+      [saved_allow_reassociation = allow_reassociation_, this]() {
+        allow_reassociation_ = saved_allow_reassociation;
+      });
   allow_reassociation_ = allow_reassociation;
+
   num_dynamic_loop_bounds_ = 0;
   auto backend_config_or =
       computation->root_instruction()->backend_config<BackendConfig>();
@@ -2228,7 +2212,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
-    CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+    ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
 
@@ -2238,7 +2222,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         fusion, GetIrArrayFor(fusion), &fused_emitter, b());
   } else if (fusion->IsLoopFusion()) {
     VLOG(3) << "HandleFusion kLoop";
-    CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+    ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
     TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
@@ -3206,7 +3190,7 @@ struct EncodedInfo {
 };
 
 template <typename Args>
-static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
+static EncodedInfo StoreEncodedTypes(absl::string_view alloca_name,
                                      const Args& args,
                                      llvm::IRBuilderBase& ir) {
   // Store the types of `args` into the allocated memory. These types are stored
@@ -3235,7 +3219,7 @@ static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
 };
 
 template <typename Args>
-static EncodedInfo StoreEncodedShapes(std::string_view alloca_name,
+static EncodedInfo StoreEncodedShapes(absl::string_view alloca_name,
                                       const Args& args,
                                       llvm::IRBuilderBase& ir) {
   // Prepare metadata for all buffers. A tuple shape is flattened to only encode
@@ -4055,7 +4039,7 @@ absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       return GetIrArrayFor(operand).EmitReadArrayElement(index, b());
     };
   }
-  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+  ElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
   return EmitTargetElementLoop(
       hlo, "elemental_loop",
       elemental_emitter.MakeElementGenerator(hlo, operand_to_generator),

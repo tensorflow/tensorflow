@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 
 #include "absl/random/random.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -287,7 +286,7 @@ BENCHMARK(BM_HloReachabilityBitSetUnion)->BM_ARGS;
 
 class HloReachabilityBenchmark {
  public:
-  HloReachabilityBenchmark(int size, std::string_view name) : name_(name) {
+  HloReachabilityBenchmark(int size, absl::string_view name) : name_(name) {
     Shape r0f32 = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(name);
 

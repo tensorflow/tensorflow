@@ -41,7 +41,7 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
 
   NodeDef *map_node;
   {
@@ -124,7 +124,7 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
 
   NodeDef *map_node;
   {
@@ -208,7 +208,7 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
   NodeDef *num_parallel_calls_node =
       graph_utils::AddScalarConstNode<int>(2, &graph);
 
@@ -294,7 +294,7 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
   NodeDef *num_parallel_calls_node =
       graph_utils::AddScalarConstNode<int64_t>(2, &graph);
 
@@ -417,7 +417,7 @@ TEST(MapAndBatchFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
   NodeDef *num_parallel_calls_node =
       graph_utils::AddScalarConstNode<int>(2, &graph);
 

@@ -25,7 +25,7 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #define XLA_NCCL_STATUS(expr)                                         \
-  [](ncclResult_t s, std::string_view str) -> absl::Status {          \
+  [](ncclResult_t s, absl::string_view str) -> absl::Status {         \
     if (s == ncclSuccess) return absl::OkStatus();                    \
     return xla::Internal(                                             \
         "NCCL operation %s failed: %s. Last NCCL warning(error) log " \

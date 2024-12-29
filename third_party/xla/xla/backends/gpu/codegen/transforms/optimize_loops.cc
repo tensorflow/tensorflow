@@ -298,6 +298,15 @@ struct UnrollLoops : mlir::OpRewritePattern<mlir::scf::ForOp> {
 
   mlir::LogicalResult matchAndRewrite(
       mlir::scf::ForOp op, mlir::PatternRewriter& rewriter) const override {
+    for (mlir::Value yielded_value :
+         op.getBody()->getTerminator()->getOperands()) {
+      if (yielded_value.getParentRegion() != &op.getBodyRegion()) {
+        // TODO(b/385081592): loopUnrollByFactor fails if it sees a yield of a
+        // value defined out of the loop. It can be fixed upstream.
+        return rewriter.notifyMatchFailure(
+            op, "loop yields values defined outside of the loop");
+      }
+    }
     if (int factor = GetUnrollingFactor(op); factor > 1) {
       return mlir::loopUnrollByFactor(op, factor);
     }

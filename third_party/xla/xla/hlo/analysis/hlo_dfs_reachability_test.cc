@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -145,7 +144,7 @@ TEST_F(HloDfsReachabilityTest, ChannelReachability) {
 
 class HloDfsReachabilityBenchmark {
  public:
-  HloDfsReachabilityBenchmark(int size, std::string_view name) : name_(name) {
+  HloDfsReachabilityBenchmark(int size, absl::string_view name) : name_(name) {
     Shape r0f32 = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(name);
 

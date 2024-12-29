@@ -14,17 +14,21 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
-#if defined(__ANDROID__)
-#include <android/hardware_buffer.h>
-#endif
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
+
+#if defined(__ANDROID__)
+#include <android/hardware_buffer.h>
+#endif
+
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
@@ -32,6 +36,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -40,6 +45,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
@@ -49,8 +55,9 @@
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
+using litert::Error;
 using litert::Expected;
-using litert::SmallVec;
+using litert::OwningBufferRef;
 using litert::TensorBuffer;
 using litert::TensorBufferScopedLock;
 using litert::Unexpected;
@@ -82,7 +89,21 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
 
 Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     LiteRtModel model, LiteRtCompilationOptions compilation_options) {
-  auto runtime = std::make_unique<LiteRtCompiledModelT>();
+  auto compiled_model = std::make_unique<LiteRtCompiledModelT>();
+
+  std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
+  // TODO: b/379317134 - Support other delegates with compilation options.
+  if (compilation_options != kLiteRtHwAccelatorNone) {
+    LITERT_LOG(LITERT_INFO, "Applying compiler plugins");
+    if (auto flatbuffer =
+            litert::internal::ApplyPlugins(model, compilation_options);
+        !flatbuffer) {
+      LITERT_LOG(LITERT_ERROR, "Failed to applying compiler plugins");
+      return flatbuffer.Error();
+    } else {
+      new_flatbuffer = *flatbuffer;
+    }
+  }
 
   const char* model_buffer = nullptr;
   size_t model_buffer_size = 0;
@@ -97,43 +118,45 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   } else {
     // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
     // to use it to initialize Interpreter instead of serializing LiteRtModel.
-    auto [data, size, offset] = runtime->model_buf_.GetWeak();
+    auto [data, size, offset] = compiled_model->model_buf_.GetWeak();
     if (LiteRtSerializeModel(model, &data, &size, &offset,
                              /*destroy_model=*/false) != kLiteRtStatusOk) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure);
     }
-    runtime->alloc_ = std::make_unique<tflite::MemoryAllocation>(
-        runtime->model_buf_.Data(), runtime->model_buf_.Size(),
+    compiled_model->alloc_ = std::make_unique<tflite::MemoryAllocation>(
+        compiled_model->model_buf_.Data(), compiled_model->model_buf_.Size(),
         tflite::DefaultErrorReporter());
-    model_buffer = reinterpret_cast<const char*>(runtime->alloc_->base());
-    model_buffer_size = runtime->alloc_->bytes();
+    model_buffer =
+        reinterpret_cast<const char*>(compiled_model->alloc_->base());
+    model_buffer_size = compiled_model->alloc_->bytes();
   }
-  runtime->fb_model_ =
+  compiled_model->fb_model_ =
       tflite::FlatBufferModel::BuildFromBuffer(model_buffer, model_buffer_size);
-  if (runtime->fb_model_ == nullptr) {
+  if (compiled_model->fb_model_ == nullptr) {
     return Unexpected(kLiteRtStatusErrorFileIO);
   }
 
-  if (auto res = runtime->Initialize(); !res.HasValue()) {
+  if (auto res = compiled_model->Initialize(); !res.HasValue()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
   }
 
-  // TODO: b/379317134 - Support other delegates with compilation options.
-  if (compilation_options & kLiteRtHwAccelatorNpu) {
-    auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
-    LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                             model_buffer);
-    auto dispatch_delegate =
-        litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
-    if (auto status =
-            runtime->interp_->ModifyGraphWithDelegate(dispatch_delegate.get());
-        status != kTfLiteOk) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to modify graph with delegate");
-    }
+  // Apply the dispatch delegate, unconditionally, since the loaded model may
+  // have been compiled for NPU at AOT.
+  auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
+  LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
+                                           model_buffer);
+  auto dispatch_delegate =
+      litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
+          dispatch_delegate.get());
+      status != kTfLiteOk) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to modify graph with delegate");
   }
 
-  return runtime;
+  compiled_model->RegisterDelegate(std::move(dispatch_delegate));
+
+  return compiled_model;
 }
 
 litert::Expected<LiteRtTensorBufferRequirements>
@@ -214,7 +237,7 @@ tflite::SignatureRunner* LiteRtCompiledModelT::GetSignatureRunner(
   return runner;
 }
 
-Expected<void> LiteRtCompiledModelT::BufferRegister(
+Expected<void> LiteRtCompiledModelT::RegisterBuffer(
     tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
     const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
     std::vector<TensorBufferScopedLock>& scoped_locks) {
@@ -222,7 +245,12 @@ Expected<void> LiteRtCompiledModelT::BufferRegister(
 
   auto requirements = buffer_context_->GetBufferRequirement(tensor);
   if (requirements) {
-    for (auto& type : *(*requirements)->SupportedTypes()) {
+    auto supported_types = (*requirements)->SupportedTypes();
+    if (!supported_types) {
+      return supported_types.Error();
+    }
+
+    for (auto& type : *supported_types) {
       if (type == buffer->buffer_type()) {
         // Register tensor buffer if it can be used by the backend.
         buffer->Duplicate();
@@ -267,7 +295,8 @@ Expected<void> LiteRtCompiledModelT::BufferRegister(
       auto lock_and_addr = TensorBufferScopedLock::Create(buffer);
       if (!lock_and_addr) {
         return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          "Failed to lock input tensor buffer");
+                          absl::StrCat("Failed to lock input tensor buffer: ",
+                                       lock_and_addr.Error().Message()));
       }
       scoped_locks.push_back(std::move(lock_and_addr->first));
       TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
@@ -291,8 +320,8 @@ Expected<void> LiteRtCompiledModelT::BufferRegister(
 
 Expected<void> LiteRtCompiledModelT::Run(
     absl::string_view signature_key,
-    std::vector<LiteRtTensorBuffer>& input_buffers,
-    std::vector<LiteRtTensorBuffer>& output_buffers) {
+    const std::vector<LiteRtTensorBuffer>& input_buffers,
+    const std::vector<LiteRtTensorBuffer>& output_buffers) {
   auto runner = GetSignatureRunner(signature_key);
   if (runner == nullptr) {
     return Unexpected(kLiteRtStatusErrorNotFound,
@@ -309,17 +338,44 @@ Expected<void> LiteRtCompiledModelT::Run(
                       "Output buffer size mismatch");
   }
 
+  // In general output buffer events are assigned by the runtime and not the
+  // caller; here we check for any violation of that condition.
+  for (auto litert_output_buffer : output_buffers) {
+    if (litert_output_buffer->HasEvent()) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Output buffers cannot have events attached");
+    }
+  }
+
+  // TODO: If input buffers have events, we wait on them before we launch the
+  // inference. This is inefficient when using HW acceleration, since in that
+  // case it would be best to make the HW accelerator wait for those events as
+  // opposed to blocking the CPU here.
+  for (auto input_buffer : input_buffers) {
+    if (input_buffer->HasEvent()) {
+      auto litert_event = input_buffer->GetEvent();
+      if (!litert_event) {
+        return litert_event.Error();
+      }
+      litert::Event event(*litert_event, /*owned=*/false);
+      if (auto status = event.Wait(/*timeout_in_ms=*/-1); !status) {
+        return status.Error();
+      }
+    }
+  }
+
   std::vector<TensorBufferScopedLock> scoped_locks;
   scoped_locks.reserve(num_inputs + num_outputs);
   for (int i = 0; i < num_inputs; ++i) {
     const auto& input_name = runner->input_names()[i];
     auto* input_tensor = runner->input_tensor(input_name);
     auto res =
-        BufferRegister(runner, input_tensor, input_name, input_buffers[i],
+        RegisterBuffer(runner, input_tensor, input_name, input_buffers[i],
                        /*is_input=*/true, scoped_locks);
     if (!res) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to register input tensor buffer");
+                        absl::StrCat("Failed to register input tensor buffer: ",
+                                     res.Error().Message()));
     }
   }
 
@@ -327,11 +383,13 @@ Expected<void> LiteRtCompiledModelT::Run(
     const auto& output_name = runner->output_names()[i];
     auto* output_tensor = runner->output_tensor(output_name);
     auto res =
-        BufferRegister(runner, output_tensor, output_name, output_buffers[i],
+        RegisterBuffer(runner, output_tensor, output_name, output_buffers[i],
                        /*is_input=*/false, scoped_locks);
     if (!res) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to register output tensor buffer");
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          absl::StrCat("Failed to register output tensor buffer: ",
+                       res.Error().Message()));
     }
   }
 

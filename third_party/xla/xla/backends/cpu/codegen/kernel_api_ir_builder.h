@@ -30,6 +30,11 @@ namespace xla::cpu {
 
 class KernelApiIrBuilder {
  public:
+  struct Options {
+    bool enable_invariant_load_metadata;
+    int32_t prefer_vector_width;
+  };
+
   // Thread dimensions of the kernel invocation.
   struct ThreadDims {
     llvm::Value* x;
@@ -44,8 +49,7 @@ class KernelApiIrBuilder {
     llvm::Value* z;
   };
 
-  KernelApiIrBuilder(llvm::LLVMContext& context_,
-                     bool enable_invariant_load_metadata);
+  KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);
 
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);
@@ -60,7 +64,7 @@ class KernelApiIrBuilder {
  private:
   llvm::LLVMContext& context_;
 
-  bool enable_invariant_load_metadata_;
+  Options options_;
 
   llvm::StructType* thread_dim_ty_;
   llvm::StructType* thread_ty_;

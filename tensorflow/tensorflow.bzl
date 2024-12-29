@@ -2622,20 +2622,17 @@ def py_test(
         exec_properties = None,
         test_rule = _plain_py_test,
         env = {},
+        extra_pywrap_deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow")],
         **kwargs):
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
     if use_pywrap_rules():
-        test_env = {
-            "PYWRAP_TARGET": clean_dep(Label("//tensorflow/python:_pywrap_tensorflow")),
-        }
-        test_env.update(env)
         actual_deps = deps.to_list() if hasattr(deps, "to_list") else deps
         test_rule(
-            deps = actual_deps + [test_env["PYWRAP_TARGET"]],
+            deps = actual_deps + extra_pywrap_deps,
             exec_properties = exec_properties,
-            env = test_env,
+            env = env,
             data = data,
             **kwargs
         )
@@ -3386,7 +3383,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@cpuinfo//:__subpackages__",
         "@curl//:__subpackages__",
         "@dlpack//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@farmhash_archive//:__subpackages__",
         "@farmhash_gpu_archive//:__subpackages__",

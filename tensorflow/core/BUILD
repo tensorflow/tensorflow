@@ -160,6 +160,7 @@ package_group(
     name = "friends",
     packages = if_google([
         "//learning/brain/...",
+        "//third_party/car/...",
         "//tensorflow/...",
         "@tf_runtime//...",
         "//third_party/tf_runtime_google/...",
@@ -265,7 +266,6 @@ cc_library(
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
-        "@double_conversion//:double-conversion",
     ],
 )
 
@@ -1447,7 +1447,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
-        "@double_conversion//:double-conversion",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/lib/math:math_util",
         "@ml_dtypes//:float8",

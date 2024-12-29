@@ -332,7 +332,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   template <class FetchListType, class ClientRequestType,
             class ClientResponseType>
   absl::Status RunPartitionsHelper(
-      const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
+      const std::unordered_map<absl::string_view, size_t, StringPieceHasher>&
+          feeds,
       const FetchListType& fetches, const MasterEnv* env, int64_t step_id,
       int64_t execution_count, PerStepState* pss, CallOptions* call_opts,
       const ClientRequestType& req, ClientResponseType* resp,
@@ -653,7 +654,8 @@ struct RunCallableResponseWrapper {
 template <class FetchListType, class ClientRequestType,
           class ClientResponseType>
 absl::Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
-    const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
+    const std::unordered_map<absl::string_view, size_t, StringPieceHasher>&
+        feeds,
     const FetchListType& fetches, const MasterEnv* env, int64_t step_id,
     int64_t execution_count, PerStepState* pss, CallOptions* call_opts,
     const ClientRequestType& req, ClientResponseType* resp,
@@ -825,7 +827,7 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+  std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
       return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
@@ -849,7 +851,7 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+  std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
   for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.

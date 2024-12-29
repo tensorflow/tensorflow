@@ -212,6 +212,9 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -553,6 +556,7 @@ lit_test_suite(
             "calling_convention.hlo",
             "dot_bf16.hlo",
             "kernel_reuse.hlo",
+            "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "rng_get_and_update_state.hlo",
             "single_instruction.hlo",

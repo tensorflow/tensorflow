@@ -123,6 +123,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
   MOCK_METHOD(void, CancelBarrierAsync,
               (std::string_view barrier_id, StatusCallback done), (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTask>>, GetAliveTasks,
+              (const std::vector<CoordinatedTask>& tasks), (override));
   MOCK_METHOD(absl::StatusOr<Env*>, GetEnv, (), (override));
   MOCK_METHOD(void, SetError, (const absl::Status& error), (override));
   MOCK_METHOD(absl::Status, ActivateWatch,

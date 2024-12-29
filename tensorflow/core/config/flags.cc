@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace config {
 
-Flag::Flag(StringPiece flag, bool default_value) {
+Flag::Flag(absl::string_view flag, bool default_value) {
   bool val = default_value;
   if (ReadBoolFromEnvVar(absl::AsciiStrToUpper(flag), default_value, &val)
           .ok()) {

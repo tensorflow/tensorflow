@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -38,7 +38,7 @@ namespace {
 
 class HloComputationDeduplicatorTest : public HloHardwareIndependentTestBase {
  protected:
-  std::vector<std::string> RunDeduplicatePass(const std::string_view text,
+  std::vector<std::string> RunDeduplicatePass(const absl::string_view text,
                                               bool expect_true) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(text).value();
@@ -54,7 +54,7 @@ class HloComputationDeduplicatorTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(HloComputationDeduplicatorTest, RemoveRegionBandC) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0}, s32[20]{0})->s32[]}
   region_A {
     Arg_0.6 = s32[] parameter(0)
@@ -97,7 +97,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionBandC) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, RemoveRegionBExactCopy) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A {
     Arg_0.5 = s32[] parameter(0)
@@ -129,7 +129,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionBExactCopy) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, RemoveRegionsWithSameSubcomp) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_X {
     Ag_0 = s32[] parameter(0)
@@ -193,7 +193,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionsWithSameSubcomp) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionsWithDifferentSubcomp) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_X {
     Ag_0 = s32[] parameter(0)
@@ -272,7 +272,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionsWithDifferentSubcomp) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, RemoveRegionBVarDifferences) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A {
     Arg_0.5 = s32[] parameter(0)
@@ -306,7 +306,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionBVarDifferences) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBCommutative) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A {
     Arg_0 = s32[] parameter(0)
@@ -342,7 +342,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBCommutative) {
 
 TEST_F(HloComputationDeduplicatorTest,
        DontRemoveRegionBDifferentExecutionThread) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
 
   region_A {
@@ -389,7 +389,7 @@ TEST_F(HloComputationDeduplicatorTest,
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionLargeConstant) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A {
     Arg_00 = s32[] parameter(0)
@@ -481,7 +481,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionLargeConstant) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentcomp) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A {
     Arg_0.5 = s32[] parameter(0)
@@ -516,7 +516,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentcomp) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentType) {
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s16[15]{0})->s16[]}
   region_A {
     Arg_0.5 = s32[] parameter(0)
@@ -552,7 +552,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentType) {
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBEntryComp) {
   // Note: this test is hypothetical and just to check dedup.
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
   region_A1 {
     Arg_0.5 = s32[] parameter(0)
@@ -637,7 +637,7 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
 
 TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
   // Note: this test is hypothetical and just to check dedup.
-  const std::string_view text = R"(
+  const absl::string_view text = R"(
   HloModule TestModule
 
   add.1 {

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -95,7 +94,7 @@ class CompilationProvider {
   // Compiles a single PTX module into a CUDA program. This method is supported
   // by all compilation providers.
   virtual absl::StatusOr<Assembly> Compile(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const = 0;
 
   // Compiles the given PTX string into relocatable CUBIN for the given
@@ -103,7 +102,7 @@ class CompilationProvider {
   // providers. `SupportsCompileToRelocatableModule` can be used to check if
   // this method is supported.
   virtual absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const = 0;
 
   // Returns true if 'CompileToRelocatableModule' can be used.

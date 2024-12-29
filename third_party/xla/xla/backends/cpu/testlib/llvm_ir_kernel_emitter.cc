@@ -16,12 +16,11 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
 #include <memory>
-#include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
@@ -40,8 +39,8 @@ namespace {
 
 }  // namespace
 
-LlvmIrKernelEmitter::LlvmIrKernelEmitter(std::string_view llvm_ir,
-                                         std::string_view kernel_name,
+LlvmIrKernelEmitter::LlvmIrKernelEmitter(absl::string_view llvm_ir,
+                                         absl::string_view kernel_name,
                                          se::ThreadDim thread_dim,
                                          absl::Span<const KernelArg> args)
     : llvm_ir_(llvm_ir),

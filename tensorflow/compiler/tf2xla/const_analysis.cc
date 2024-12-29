@@ -34,7 +34,8 @@ namespace tensorflow {
 namespace {
 
 absl::Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime,
-                             const NodeDef& node, StringPiece func_attr_name,
+                             const NodeDef& node,
+                             absl::string_view func_attr_name,
                              const FunctionBody** fbody) {
   NameAttrList name_attr_list;
   TF_RETURN_IF_ERROR(GetNodeAttr(node, func_attr_name, &name_attr_list));
@@ -47,7 +48,7 @@ absl::Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime,
 
 absl::Status GetFunctionBodies(FunctionLibraryRuntime* flib_runtime,
                                const NodeDef& node,
-                               StringPiece func_list_attr_name,
+                               absl::string_view func_list_attr_name,
                                std::vector<const FunctionBody*>* fbodies) {
   std::vector<NameAttrList> name_attr_lists;
   TF_RETURN_IF_ERROR(GetNodeAttr(node, func_list_attr_name, &name_attr_lists));

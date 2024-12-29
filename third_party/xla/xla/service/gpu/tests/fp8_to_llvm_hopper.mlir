@@ -5,9 +5,9 @@
 // When this test fails, change the mapping in ir_emitter_triton.cc.
 // See b/345700241.
 #mma = #ttg.nvidia_mma<{
-  versionMajor = 2, 
-  versionMinor = 0, 
-  warpsPerCTA = [1, 1], 
+  versionMajor = 2,
+  versionMinor = 0,
+  warpsPerCTA = [1, 1],
   instrShape = [16, 8]
 }>
 

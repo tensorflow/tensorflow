@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -26,18 +25,18 @@ limitations under the License.
 
 namespace stream_executor::cuda {
 
-inline constexpr std::string_view kSubprocessCompilationProviderName =
+inline constexpr absl::string_view kSubprocessCompilationProviderName =
     "subprocess";
-inline constexpr std::string_view kNvJitLinkCompilationProviderName =
+inline constexpr absl::string_view kNvJitLinkCompilationProviderName =
     "nvjitlink";
-inline constexpr std::string_view kNvptxcompilerCompilationProviderName =
+inline constexpr absl::string_view kNvptxcompilerCompilationProviderName =
     "nvptxcompiler";
-inline constexpr std::string_view kDriverCompilationProviderName = "driver";
+inline constexpr absl::string_view kDriverCompilationProviderName = "driver";
 
 class CompilationProviderTest
-    : public testing::TestWithParam<std::string_view> {
+    : public testing::TestWithParam<absl::string_view> {
   absl::StatusOr<std::unique_ptr<CompilationProvider>>
-  CreateCompilationProvider(std::string_view name);
+  CreateCompilationProvider(absl::string_view name);
 
   void SetUp() override;
   std::unique_ptr<CompilationProvider> compilation_provider_;
@@ -51,7 +50,7 @@ class CompilationProviderTest
 // Prints the test parameter name as is. Needed for gtest instantiation.
 struct CompilationProviderTestParamNamePrinter {
   std::string operator()(
-      const ::testing::TestParamInfo<std::string_view>& name) const {
+      const ::testing::TestParamInfo<absl::string_view>& name) const {
     return std::string(name.param);
   }
 };

@@ -1,4 +1,9 @@
 # PJRT C API changelog
+## 0.60
+* Added ``PJRT_Client_CreateBuffersForAsyncHostToDevice`` and ``PJRT_AsyncHostToDeviceTransferManager_TransferRawDataToSubBuffer``.
+
+## 0.59
+* Added ``PJRT_MemoryDescriptions_Extension``.
 
 ## 0.57
 * Rearranged fields in the PJRT_Api

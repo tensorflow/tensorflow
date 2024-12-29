@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <random>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -42,7 +41,7 @@ namespace xla::cpu {
 using ::testing::Eq;
 
 TEST(KernelRunnerTest, Add) {
-  static constexpr std::string_view kLlvmAddI32 = R"(
+  static constexpr absl::string_view kLlvmAddI32 = R"(
         %struct.XLA_CPU_KernelCallFrame = type { ptr, ptr, i64, ptr }
         %struct.XLA_CPU_KernelArg = type { ptr, i64 }
         ; c = a + b (per thread)

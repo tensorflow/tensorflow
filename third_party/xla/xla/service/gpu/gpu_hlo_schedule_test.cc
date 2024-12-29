@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -1612,7 +1611,7 @@ TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
       module->schedule().sequence(module->entry_computation());
   HloInstructionSequence result = PostProcessSchedule(input);
 
-  const std::vector<std::string_view> expected_sequence = {
+  const std::vector<absl::string_view> expected_sequence = {
       "p0",
       "ar-start",  // ar-start is async, should be scheduled as early as
                    // possible.

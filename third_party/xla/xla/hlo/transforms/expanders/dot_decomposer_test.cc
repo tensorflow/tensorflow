@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"

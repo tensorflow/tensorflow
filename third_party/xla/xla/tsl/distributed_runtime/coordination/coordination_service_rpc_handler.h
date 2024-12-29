@@ -92,6 +92,10 @@ class CoordinationServiceRpcHandler {
                           tensorflow::CancelBarrierResponse* response,
                           StatusCallback done);
 
+  void GetAliveTasksAsync(const tensorflow::GetAliveTasksRequest* request,
+                          tensorflow::GetAliveTasksResponse* response,
+                          StatusCallback done);
+
   void PollForErrorAsync(const tensorflow::PollForErrorRequest* request,
                          tensorflow::PollForErrorResponse* response,
                          StatusCallback done);

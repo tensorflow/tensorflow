@@ -57,7 +57,7 @@ void ExpectSuccess(const NodeDef& good, const OpDef& op_def) {
 
 void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
                    const string& message) {
-  Status status = ValidateNodeDef(bad, op_def);
+  absl::Status status = ValidateNodeDef(bad, op_def);
 
   EXPECT_FALSE(status.ok()) << "NodeDef: " << SummarizeNodeDef(bad)
                             << "; OpDef: " << SummarizeOpDef(op_def);
@@ -323,14 +323,14 @@ void ExpectValidSyntax(const NodeDef& good) {
 }
 
 void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
-  Status status = ValidateExternalNodeDefSyntax(bad);
+  absl::Status status = ValidateExternalNodeDefSyntax(bad);
 
   ASSERT_FALSE(status.ok()) << "NodeDef: " << SummarizeNodeDef(bad);
 
   EXPECT_TRUE(errors::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(absl::StrContains(StringPiece(status.ToString()), message))
+  EXPECT_TRUE(absl::StrContains(absl::string_view(status.ToString()), message))
       << "NodeDef: " << SummarizeNodeDef(bad) << ", " << status << ", "
       << message;
 }
@@ -876,10 +876,10 @@ TEST(AttachDef, AllowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(absl::StatusCode::kCancelled, "Error");
-  Status s2 = AttachDef(s, a, true);
+  absl::Status s = absl::Status(absl::StatusCode::kCancelled, "Error");
+  absl::Status s2 = AttachDef(s, a, true);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.message());
-  Status s3 = AttachDef(s2, b, true);
+  absl::Status s3 = AttachDef(s2, b, true);
   EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[{{node b}}]]", s3.message());
 }
 
@@ -888,10 +888,10 @@ TEST(AttachDef, DisallowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(absl::StatusCode::kCancelled, "Error");
-  Status s2 = AttachDef(s, a, false);
+  absl::Status s = absl::Status(absl::StatusCode::kCancelled, "Error");
+  absl::Status s2 = AttachDef(s, a, false);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.message());
-  Status s3 = AttachDef(s2, b, false);
+  absl::Status s3 = AttachDef(s2, b, false);
   EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.message());
 }
 

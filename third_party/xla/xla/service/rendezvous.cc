@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <string_view>
 
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -67,7 +66,7 @@ static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
 }
 
 void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
-                        std::string_view name,
+                        absl::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
   // Wait for `warn_stuck_timeout` for the rendezvous to be ready.

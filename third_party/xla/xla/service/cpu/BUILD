@@ -235,6 +235,7 @@ cc_library(
         "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",
         "//xla:literal",
+        "//xla:literal_pool",
         "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -271,6 +272,7 @@ cc_library(
         "//xla/hlo/transforms:hlo_constant_folding",
         "//xla/hlo/transforms:hlo_dce",
         "//xla/hlo/transforms:hlo_memory_scheduler",
+        "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:logistic_expander",
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:optimization_barrier_expander",
@@ -454,6 +456,7 @@ xla_test(
     ],
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
+        "test_xla_cpu_no_thunks",
     ],
     deps = [
         "//xla/hlo/testlib:verified_hlo_module",
@@ -626,17 +629,12 @@ cc_library(
     srcs = ["elemental_math_emitter.cc"],
     hdrs = ["elemental_math_emitter.h"],
     deps = [
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -647,11 +645,11 @@ cc_library(
     deps = [
         ":backend_config_proto_cc",
         ":dot_op_emitter",
+        ":elemental_ir_emitter",
         ":elemental_math_emitter",
         ":ir_emitter",
         ":parallel_loop_emitter",
         ":shape_partition",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -660,6 +658,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
+        "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
@@ -769,6 +768,7 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
+        ":elemental_ir_emitter",
         ":elemental_math_emitter",
         ":ir_emission_utils",
         ":ir_function",
@@ -885,6 +885,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:xnn_emitter",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
@@ -909,6 +910,8 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:topk_thunk",
         "//xla/backends/cpu/runtime:while_thunk",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
@@ -916,6 +919,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
         "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -924,7 +928,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -2027,6 +2030,19 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "elemental_ir_emitter",
+    srcs = ["elemental_ir_emitter.cc"],
+    hdrs = ["elemental_ir_emitter.h"],
+    deps = [
+        ":elemental_math_emitter",
+        "//xla/service:elemental_ir_emitter",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 

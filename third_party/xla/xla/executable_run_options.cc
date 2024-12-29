@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 namespace xla {

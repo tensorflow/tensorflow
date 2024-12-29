@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <vector>
 

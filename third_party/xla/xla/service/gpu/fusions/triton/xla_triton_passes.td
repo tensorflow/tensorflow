@@ -95,4 +95,15 @@ def PreventMmaV3LoopUnrollingPass
   let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
 }
 
+def LoadInt4RewritePass
+    : Pass<"int4-to-packed-int4-rewrite", "mlir::ModuleOp"> {
+  let summary = "Converts ops with int4 tensors to the ops with int4 packed to int8 tensors.";
+  let description = [{
+    This pass replaces the int4 tensors with the int4 packed to int8 tensor of
+    the twice smaller size. It also replaces the plain ExtSIOp upcast to the
+    int8 tensor with the unpack sequence.
+  }];
+  let constructor = "CreateInt4ToPackedInt4RewritePass()";
+}
+
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_XLA_TRITON_PASSES_TD_

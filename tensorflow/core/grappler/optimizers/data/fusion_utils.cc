@@ -502,11 +502,14 @@ void LazyConjunctionOutput(const protobuf::Map<string, string>& first_ret,
   *fused_ret = first_ret;
 }
 
-FunctionDef* FuseFunctions(
-    const FunctionDef& first_function, const FunctionDef& second_function,
-    StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
-    const SetInputFn& set_input, const SetOutputFn& set_output,
-    const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
+FunctionDef* FuseFunctions(const FunctionDef& first_function,
+                           const FunctionDef& second_function,
+                           absl::string_view fused_name_prefix,
+                           const SetFunctionSignatureFn& set_signature,
+                           const SetInputFn& set_input,
+                           const SetOutputFn& set_output,
+                           const SetNodesFn& set_nodes,
+                           FunctionDefLibrary* library) {
   auto has_unknown_attrs = [](const FunctionDef& func) {
     int known_attribute_size = 0;
 

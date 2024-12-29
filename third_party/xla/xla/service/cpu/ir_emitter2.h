@@ -19,13 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
@@ -171,7 +171,7 @@ class IrEmitter2 {
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
-      std::string_view name, absl::Span<const KernelParameter> arguments,
+      absl::string_view name, absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
 
   // Emits a host kernel prototype for the given HLO instruction.
@@ -219,7 +219,7 @@ class IrEmitter2 {
   ParallelPartitionBounds EmitParallelPartitionBounds(
       llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
       const ParallelConfig& parallel_config, const Shape& shape,
-      std::string_view name);
+      absl::string_view name);
 
   // Emits LLVM IR using elemental loop emitter and the given element generator.
   // If the instruction is parallelized, it will emit a parallel loop partition
@@ -228,6 +228,9 @@ class IrEmitter2 {
       llvm::IRBuilderBase& b, const HloInstruction* instr,
       const KernelPrototype& kernel_prototype,
       const llvm_ir::ElementGenerator& element_generator);
+
+  absl::Status EmitNestedComputation(const HloComputation& callee,
+                                     absl::string_view name, bool is_reducer);
 
   bool fast_min_max() const;
 

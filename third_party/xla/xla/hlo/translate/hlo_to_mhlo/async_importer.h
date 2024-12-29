@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_ASYNC_IMPORTER_H_
 
 #include <functional>
+#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

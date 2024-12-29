@@ -1,0 +1,37 @@
+// RUN: fusion_to_mlir %s   | emitters_opt -xla-gpu-test-optimize \
+// RUN: | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=scatter:2
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+scatter {
+  %operand = f32[100]  parameter(0)
+  %indices = s32[200,1] parameter(1)
+  %update = f32[200,32] parameter(2)
+
+  ROOT %scatter = f32[100] scatter(
+      f32[100] %operand,
+      s32[200,1] %indices,
+      f32[200,32] %update
+    ),
+    update_window_dims={1},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    indices_are_sorted=true,
+    unique_indices=false,
+    to_apply=add
+}
+// When there is not enough indices per warp, we fall back to the naive impl,
+// when one warp processes one slice.
+// CHECK:      #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1]
+// CHECK-SAME:   -> (bl_x * 4 + th_x floordiv 32, th_x mod 32),
+// CHECK-SAME:   domain: th_x in [0, 127],
+// CHECK-SAME:           bl_x in [0, 49],
+// CHECK-LABEL: func.func @main
+// CHECK:     xla.loop
+// CHECK-NOT: xla.loop
+

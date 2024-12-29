@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 
-#include <optional>
-
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"

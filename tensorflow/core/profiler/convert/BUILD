@@ -710,6 +710,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "//tensorflow/core/profiler/protobuf:roofline_model_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
@@ -1308,6 +1309,21 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
         "@com_google_absl//absl/log",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
+cc_library(
+    name = "profile_time_breakdown",
+    srcs = ["profile_time_breakdown.cc"],
+    hdrs = ["profile_time_breakdown.h"],
+    visibility = ["@local_xla//xla/tsl/profiler:friends"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )

@@ -14,25 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <utility>
 
-#include "absl/status/statusor.h"
-#include "xla/pjrt/interpreter_device.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
 
 // Register an interpreter PjRt client for tests.
-const bool kUnused = (RegisterPjRtClientTestFactory([]() {
-                        absl::StatusOr<std::unique_ptr<PjRtClient>> client =
-                            GetInterpreterClient();
-                        TF_CHECK_OK(client.status());
-                        return *std::move(client);
-                      }),
-                      true);
+const bool kUnused =
+    (RegisterPjRtClientTestFactory(
+         []() { return std::make_unique<InterpreterClient>(); },
+         [](PjRtClient* client) {
+           return InterpreterClient::DeviceShapeRepresentation;
+         },
+         [](PjRtClient* client) { return InterpreterClient::ShapeSizeBytes; }),
+     true);
 
 }  // namespace
 }  // namespace xla

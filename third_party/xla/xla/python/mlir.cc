@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <string_view>
 
 #include "mhlo/transforms/passes.h"
 #include "absl/status/status.h"
@@ -36,10 +35,8 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/Serialization.h"
-#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -110,7 +107,7 @@ absl::StatusOr<std::string> PyXlaComputationToMlirModule(
 }
 
 absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
-    std::string_view mlir_module, bool use_tuple_args, bool return_tuple) {
+    absl::string_view mlir_module, bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, context));
@@ -123,7 +120,7 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   return computation;
 }
 
-absl::StatusOr<nb::bytes> PyMhloToStablehlo(std::string_view mlir_module) {
+absl::StatusOr<nb::bytes> PyMhloToStablehlo(absl::string_view mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
@@ -156,7 +153,7 @@ absl::StatusOr<nb::bytes> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       ParseMlirModuleString(
-          std::string_view(mlir_module.c_str(), mlir_module.size()), context));
+          absl::string_view(mlir_module.c_str(), mlir_module.size()), context));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -171,7 +168,7 @@ absl::StatusOr<nb::bytes> PyStablehloToMhlo(const nb::bytes& mlir_module) {
 }
 
 absl::StatusOr<nb::bytes> PySerializePortableArtifact(
-    std::string_view mlir_module, std::string_view target) {
+    absl::string_view mlir_module, absl::string_view target) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
@@ -189,7 +186,7 @@ absl::StatusOr<std::string> PyDeserializePortableArtifact(
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::stablehlo::deserializePortableArtifact(
-          std::string_view(bytecode_str.c_str(), bytecode_str.size()),
+          absl::string_view(bytecode_str.c_str(), bytecode_str.size()),
           &context);
   if (!module)
     return tsl::errors::InvalidArgument("Failed to deserialize StableHLO");
@@ -208,8 +205,8 @@ void BuildMlirSubmodule(nb::module_& m) {
       "mlir_module_to_xla_computation",
       [](const nb::bytes& bytecode, bool use_tuple_args, bool return_tuple) {
         return xla::ValueOrThrow(PyMlirModuleToXlaComputation(
-            std::string_view(bytecode.c_str(), bytecode.size()), use_tuple_args,
-            return_tuple));
+            absl::string_view(bytecode.c_str(), bytecode.size()),
+            use_tuple_args, return_tuple));
       },
       nb::arg("mlir_module"), nb::arg("use_tuple_args") = false,
       nb::arg("return_tuple") = false);
@@ -221,7 +218,7 @@ void BuildMlirSubmodule(nb::module_& m) {
       "mhlo_to_stablehlo",
       [](const nb::bytes& bytecode) {
         return xla::ValueOrThrow(PyMhloToStablehlo(
-            std::string_view(bytecode.c_str(), bytecode.size())));
+            absl::string_view(bytecode.c_str(), bytecode.size())));
       },
       nb::arg("mlir_module"));
   mlir_module.def("mhlo_to_stablehlo",
@@ -232,9 +229,9 @@ void BuildMlirSubmodule(nb::module_& m) {
                   nb::arg("mlir_module"));
   mlir_module.def(
       "serialize_portable_artifact",
-      [](const nb::bytes& bytecode, std::string_view target) {
+      [](const nb::bytes& bytecode, absl::string_view target) {
         return xla::ValueOrThrow(PySerializePortableArtifact(
-            std::string_view(bytecode.c_str(), bytecode.size()), target));
+            absl::string_view(bytecode.c_str(), bytecode.size()), target));
       },
       nb::arg("mlir_module"), nb::arg("target"));
   mlir_module.def("serialize_portable_artifact",
@@ -250,7 +247,7 @@ void BuildMlirSubmodule(nb::module_& m) {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
         xla::ThrowIfError(RefinePolymorphicShapes(
-            std::string_view(bytecode.c_str(), bytecode.size()), os,
+            absl::string_view(bytecode.c_str(), bytecode.size()), os,
             enable_shape_assertions, validate_static_shapes));
         return nb::bytes(buffer.data(), buffer.size());
       },

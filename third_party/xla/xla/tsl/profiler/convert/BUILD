@@ -4,7 +4,7 @@ load(
     "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_alias", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,13 +29,17 @@ cc_library(
 
 cc_library(
     name = "xla_op_utils",
+    srcs = [tf_profiler_alias("//xla/tsl/profiler/convert/", "xla_op_utils.cc")],
     hdrs = ["xla_op_utils.h"],
     visibility = internal_visibility([
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//xla/python:__pkg__",
     ]),
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:macros",
+    ],
 )
 
 tsl_cc_test(
@@ -93,7 +97,6 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
 )
 

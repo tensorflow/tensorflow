@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>

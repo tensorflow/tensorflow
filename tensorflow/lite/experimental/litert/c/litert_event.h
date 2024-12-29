@@ -26,12 +26,10 @@ extern "C" {
 
 LITERT_DEFINE_HANDLE(LiteRtEvent);
 
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
 LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event);
 
 LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd);
-#endif  // LITERT_HAS_SYNC_FENCE_SUPPORT
 
 // Pass -1 for timeout_in_ms for indefinite wait.
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms);

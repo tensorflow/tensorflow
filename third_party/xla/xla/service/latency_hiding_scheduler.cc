@@ -1320,29 +1320,6 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   }
   absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
       skipped_nodes_and_reasons;
-  if (!scheduling_instruction_crosses_overlap_limit_) {
-    scheduling_instruction_crosses_overlap_limit_ =
-        [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          for (const auto& [resource, limit] :
-               sched_state.max_concurrent_resource) {
-            // No resources in flight of this kind. Continue.
-            auto it = sched_state.resource_occupiers_in_flight.find(resource);
-            if (it == sched_state.resource_occupiers_in_flight.end() ||
-                it->second.empty()) {
-              continue;
-            }
-            // Number of instances of 'resource' needed if this instruction was
-            // to be scheduled.
-            const int64_t num_resources_needed =
-                sched_state.async_tracker->GetNumResourcesPerInstruction(
-                    resource, node->GetInstr());
-            if (limit < num_resources_needed) {
-              return true;
-            }
-          }
-          return false;
-        };
-  }
   VLOG(2) << "Current time: " << sched_state.current_time;
   ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
                       early_target_scheduling_rule_};
@@ -2285,6 +2262,29 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   if (VLOG_IS_ON(2)) {
     annotation_tracker_->PrintAnnotationSets(2);
   }
+  if (!scheduling_instruction_crosses_overlap_limit_) {
+    scheduling_instruction_crosses_overlap_limit_ =
+        [](const SchedulingState& sched_state, const HloGraphNode* node) {
+          for (const auto& [resource, limit] :
+               sched_state.max_concurrent_resource) {
+            // No resources in flight of this kind. Continue.
+            auto it = sched_state.resource_occupiers_in_flight.find(resource);
+            if (it == sched_state.resource_occupiers_in_flight.end() ||
+                it->second.empty()) {
+              continue;
+            }
+            // Number of instances of 'resource' needed if this instruction was
+            // to be scheduled.
+            const int64_t num_resources_needed =
+                sched_state.async_tracker->GetNumResourcesPerInstruction(
+                    resource, node->GetInstr());
+            if (limit < num_resources_needed) {
+              return true;
+            }
+          }
+          return false;
+        };
+  }
   return absl::OkStatus();
 }
 
@@ -2303,6 +2303,17 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
   return absl::OkStatus();
 }
 
+bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
+    const SchedulingState& sched_state, int64_t annotation) {
+  for (const HloInstruction* instr :
+       annotation_tracker_->GetInstructions(annotation)) {
+    if (scheduling_instruction_crosses_overlap_limit_(
+            sched_state, &sched_state.sched_graph.GetNode(instr))) {
+      return true;
+    }
+  }
+  return false;
+}
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
@@ -2369,16 +2380,30 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
     }());
     if (!sched_state.ready_annotations.empty()) {
-      // TODO (sacer): If more than one annotations are ready, decide which one
-      // to schedule next with a heuristic.
-      int64_t annotation = sched_state.ready_annotations.back();
-      sched_state.ready_annotations.pop_back();
-      VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
-      sched_state.ongoing_annotation = annotation;
-      TF_RETURN_IF_ERROR(ScheduleAnnotation(annotation, &sched_state));
-      VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
-      sched_state.ongoing_annotation = -1;
-      continue;
+      // Pick the first ready annotation whose scheduling will not cross the
+      // overlap limit. If there is no such annotation, continue with scheduling
+      // non-annotated ops.
+      int64_t annotation_index = -1;
+      for (int64_t i = 0; i < sched_state.ready_annotations.size(); ++i) {
+        if (SchedulingAnnotationCrossesOverlapLimit(
+                sched_state, sched_state.ready_annotations[i])) {
+          continue;
+        }
+        annotation_index = i;
+        break;
+      }
+      if (annotation_index != -1) {
+        std::swap(sched_state.ready_annotations[annotation_index],
+                  sched_state.ready_annotations.back());
+        int64_t annotation = sched_state.ready_annotations.back();
+        sched_state.ready_annotations.pop_back();
+        VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
+        sched_state.ongoing_annotation = annotation;
+        TF_RETURN_IF_ERROR(ScheduleAnnotation(annotation, &sched_state));
+        VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
+        sched_state.ongoing_annotation = -1;
+        continue;
+      }
     }
     TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
   }

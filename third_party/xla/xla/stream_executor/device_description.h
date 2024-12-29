@@ -23,7 +23,6 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>

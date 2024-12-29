@@ -26,12 +26,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void ExpectContainsStr(StringPiece s, StringPiece expected) {
+void ExpectContainsStr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectDoesNotContainStr(StringPiece s, StringPiece expected) {
+void ExpectDoesNotContainStr(absl::string_view s, absl::string_view expected) {
   EXPECT_FALSE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }

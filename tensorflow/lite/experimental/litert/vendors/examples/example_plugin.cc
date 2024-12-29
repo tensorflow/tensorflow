@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <stdio.h>
-
-#include <cstddef>
 #include <cstdlib>
-#include <string>
-#include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -25,107 +20,11 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/examples/example_plugin_common.h"
 
-//
-// Configurations
-//
-
-namespace {
-
-constexpr char kPluginManufacturer[] = "ExampleSocManufacturer";
-constexpr char kPluginSocModel[] = "ExampleSocModel";
-
-}  // namespace
-
-LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
-  if (!api_version) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  api_version->major = LITERT_API_VERSION_MAJOR;
-  api_version->minor = LITERT_API_VERSION_MINOR;
-  api_version->patch = LITERT_API_VERSION_PATCH;
-  return kLiteRtStatusOk;
-}
-
-const char* LiteRtGetCompilerPluginSocManufacturer() {
-  return kPluginManufacturer;
-}
-
-LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
-    LiteRtCompilerPlugin compiler_plugin,
-    LiteRtHwAccelerators* supported_hardware) {
-  if (!compiler_plugin || !supported_hardware) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  *supported_hardware = kLiteRtHwAccelatorCpu;
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
-    LiteRtCompilerPlugin compiler_plugin,
-    LiteRtParamIndex* num_supported_soc_models) {
-  if (!compiler_plugin || !num_supported_soc_models) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  *num_supported_soc_models = 1;
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
-    const char** soc_model_name) {
-  if (!compiler_plugin || !soc_model_name) {
-    return kLiteRtStatusErrorInvalidArgument;
-  } else if (soc_model_idx != 0) {
-    return kLiteRtStatusErrorUnsupported;
-  }
-  *soc_model_name = kPluginSocModel;
-  return kLiteRtStatusOk;
-}
-
-//
-// Compiled Result Definition
-//
-
-struct LiteRtCompiledResultT {
-  std::string byte_code;
-  std::vector<std::string> per_op_data;
-};
-
-LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  *byte_code = compiled_result->byte_code.data();
-  *byte_code_size = compiled_result->byte_code.size();
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetCompiledResultCallInfo(
-    LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
-  if (call_idx >= compiled_result->per_op_data.size()) {
-    return kLiteRtStatusErrorIndexOOB;
-  }
-
-  *call_info = compiled_result->per_op_data.at(call_idx).data();
-  *call_info_size = compiled_result->per_op_data.at(call_idx).size();
-
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetNumCompiledResultCalls(
-    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls) {
-  *num_calls = compiled_result->per_op_data.size();
-  return kLiteRtStatusOk;
-}
-
-void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
-  delete compiled_result;
-}
-
-//
-// Plugin Definition
-//
+// A simple compiler plugin example that implements everything directly.
+// This plugin matches on mul ops, and emits "byte code" that is simply
+// a string representative of the ops consumed.
 
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {};
@@ -189,7 +88,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraphArray partitions, LiteRtParamIndex num_partitions,
+    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
     LiteRtCompiledResult* compiled_result) {
   LiteRtCompiledResult result = new LiteRtCompiledResultT;
 

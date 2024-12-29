@@ -5423,6 +5423,37 @@ class Subgraph {
         /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, node->inputs->data[0],
         BuiltinOperator_RESHAPE, node_index));
 
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(
+        logging_context, output_tensor, /*min_num_dims=*/0,
+        /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, node->outputs->data[0],
+        BuiltinOperator_RESHAPE, node_index));
+
+    if (output_tensor.type == kTfLiteUInt8 ||
+        output_tensor.type == kTfLiteInt8) {
+      if (input_tensor.params.zero_point != output_tensor.params.zero_point) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "Mismatching quantization zero point across the input "
+            "(%" PRId32 ") and the output (%" PRId32
+            ") for RESHAPE operator #%d",
+            input_tensor.params.zero_point, output_tensor.params.zero_point,
+            node_index);
+        return kTfLiteError;
+      }
+      if (input_tensor.params.scale != output_tensor.params.scale) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "Mismatching quantization scale across the input (%f) "
+            "and the output (%f) for RESHAPE operator #%d",
+            input_tensor.params.scale, output_tensor.params.scale, node_index);
+        return kTfLiteError;
+      }
+    }
+
     std::array<size_t, XNN_MAX_TENSOR_DIMS> new_shape;
     int num_new_dimensions;
     if (node->inputs->size == 2) {
@@ -5455,36 +5486,6 @@ class Subgraph {
       }
     }
 
-    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, output_tensor, /*min_num_dims=*/0,
-        /*max_num_dims=*/XNN_MAX_TENSOR_DIMS, node->outputs->data[0],
-        BuiltinOperator_RESHAPE, node_index));
-
-    if (output_tensor.type == kTfLiteUInt8 ||
-        output_tensor.type == kTfLiteInt8) {
-      if (input_tensor.params.zero_point != output_tensor.params.zero_point) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "Mismatching quantization zero point across the input "
-            "(%" PRId32 ") and the output (%" PRId32
-            ") for RESHAPE operator #%d",
-            input_tensor.params.zero_point, output_tensor.params.zero_point,
-            node_index);
-        return kTfLiteError;
-      }
-      if (input_tensor.params.scale != output_tensor.params.scale) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "Mismatching quantization scale across the input (%f) "
-            "and the output (%f) for RESHAPE operator #%d",
-            input_tensor.params.scale, output_tensor.params.scale, node_index);
-        return kTfLiteError;
-      }
-    }
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_static_reshape(
           subgraph, num_new_dimensions, new_shape.data(),

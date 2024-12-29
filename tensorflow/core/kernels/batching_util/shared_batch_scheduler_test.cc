@@ -74,7 +74,7 @@ class FakeTask : public BatchTask {
   void operator=(const FakeTask&) = delete;
 };
 
-// Fake task taht doesn't inherit BatchTask and doesn't define criticality. The
+// Fake task that doesn't inherit BatchTask and doesn't define criticality. The
 // shared batch scheduler should still work with this task.
 class FakeTaskWithoutCriticality {
  public:
@@ -1202,7 +1202,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
       testing::StatusIs(
           absl::StatusCode::kUnavailable,
           HasSubstr("The low priority task queue to which this task was "
-                    "submitted does not have the capcity to handle this task; "
+                    "submitted does not have the capacity to handle this task; "
                     "currently the low priority queue has 20 tasks enqueued "
                     "and the submitted task size is 1 while "
                     "max_enqueued_batches=2 and max_execution_batch_size=10")));

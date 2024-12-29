@@ -86,7 +86,7 @@ class CompilerPlugin {
   }
 
   // Get list of unique soc models targetable by this plugin.
-  const SmallVec<std::string>& SocModels() const { return soc_models_; }
+  const std::vector<std::string>& SocModels() const { return soc_models_; }
 
   // Selects ops for the plugin to compile.
   Expected<std::vector<LiteRtOp>> Partition(const Subgraph& subgraph);
@@ -101,15 +101,8 @@ class CompilerPlugin {
   // "loaded_plugins" with resolved plugin apis for each found library that can
   // be succesfully loaded. Additionally initializes the compiler plugin
   // instances and stores handle.
-  static Expected<SmallVec<CompilerPlugin>> LoadPlugins(
+  static Expected<std::vector<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
-
-  // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
-  // the directories passed through "lib_search_paths" and return a compiler
-  // plugin instance for a given manufactured, if one is found.
-  static Expected<CompilerPlugin> LoadPlugin(
-      absl::Span<const absl::string_view> lib_search_paths,
-      absl::string_view soc_manufacturer);
 
   CompilerPlugin(CompilerPlugin&& other);
   CompilerPlugin& operator=(CompilerPlugin&& other);
@@ -124,7 +117,7 @@ class CompilerPlugin {
   static Expected<CompilerPlugin> LoadPlugin(absl::string_view lib_path);
   CompilerPlugin() = default;
 
-  SmallVec<std::string> soc_models_;
+  std::vector<std::string> soc_models_;
   void* lib_handle_ = nullptr;
   LiteRtCompilerPluginApi plugin_api_ = {};
   LiteRtCompilerPlugin plugin_handle_ = nullptr;
@@ -151,9 +144,16 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
 // byte_code will be internalized within the model for later serialization.
 // The serialization parameter refers to the strategy used to pack the byte code
 // during future serialization.
-LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                   absl::string_view soc_model = "",
-                   Serialization serialization = Serialization::kAppend);
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model = "",
+    Serialization serialization = Serialization::kAppend);
+
+// Apply all available plugins providing the selected HW accelerators to the
+// given model, modify the model accordingly, and return a new flatbuffer
+// backing the modified model.
+Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
+    LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators);
 
 }  // namespace litert::internal
 

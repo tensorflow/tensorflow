@@ -48,7 +48,7 @@ class TensorSliceWriter {
   class Builder {
    public:
     virtual ~Builder() = default;
-    virtual void Add(StringPiece key, StringPiece value) = 0;
+    virtual void Add(absl::string_view key, absl::string_view value) = 0;
     virtual absl::Status Finish(int64_t* file_size) = 0;
   };
   typedef std::function<absl::Status(const string&, Builder**)>

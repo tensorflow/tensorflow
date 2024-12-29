@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --passes=gather_expander | FileCheck %s
+// RUN: hlo-opt %s --platform=cpu --passes=gather_expander | FileCheck %s
 
 HloModule test
 

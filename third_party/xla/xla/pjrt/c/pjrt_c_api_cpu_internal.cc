@@ -60,12 +60,16 @@ const PJRT_Api* GetCpuPjrtApi() {
   static PJRT_Layouts_Extension layouts_extension =
       pjrt::CreateLayoutsExtension(nullptr);
 
+  static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
+      pjrt::CreateMemoryDescriptionsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension),
+      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension),
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

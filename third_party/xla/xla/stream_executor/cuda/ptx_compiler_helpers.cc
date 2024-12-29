@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 
-#include <string_view>
-
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 namespace {
@@ -30,7 +31,7 @@ static constexpr absl::string_view kPtxasErrorPayloadKey = "ptxas_log";
 
 }  // namespace
 
-absl::Status PtxRegisterAllocationError(std::string_view message) {
+absl::Status PtxRegisterAllocationError(absl::string_view message) {
   absl::Status status = absl::ResourceExhaustedError(message);
   status.SetPayload(kPtxasErrorPayloadKey, absl::Cord());
   return status;
@@ -40,14 +41,14 @@ bool IsPtxRegisterAllocationError(absl::Status status) {
   return status.GetPayload(kPtxasErrorPayloadKey).has_value();
 }
 
-bool IsPtxRegisterAllocationError(std::string_view str) {
+bool IsPtxRegisterAllocationError(absl::string_view str) {
   return absl::StrContains(str, "ptxas fatal") &&
          (absl::StrContains(str, "Register allocation failed") ||
           absl::StrContains(str, "Insufficient registers"));
 }
 
-absl::Status CreateErrorFromPTXASLog(std::string_view log,
-                                     std::string_view architecture,
+absl::Status CreateErrorFromPTXASLog(absl::string_view log,
+                                     absl::string_view architecture,
                                      bool cancel_if_reg_spill) {
   //  It happens when the loaded version of nvjitlink is too old for
   //  the current GPU. Example error message associated with this error
@@ -74,7 +75,7 @@ absl::Status CreateErrorFromPTXASLog(std::string_view log,
 
 // Warns if the ptxas version should be upgraded.
 // Only prints the warning upon the first invocation.
-void WarnIfBadPtxasVersion(std::string_view method,
+void WarnIfBadPtxasVersion(absl::string_view method,
                            const CudaComputeCapability& cc,
                            SemanticVersion compiler_version) {
   static absl::once_flag run_once;

@@ -300,7 +300,8 @@ d1 in [0, 29]
 ```
 
 ### [Gather](https://openxla.org/xla/operation_semantics#gather)
-Only the simplified gather is supported. See [gather_simplifier].(https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_simplifier.h).
+
+Only the simplified gather is supported. See [gather_simplifier.h](https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_simplifier.h).
 
 ```c++
 operand = f32[33,76,70] parameter(0)
@@ -326,10 +327,7 @@ rt0 in [0, 26],
 rt1 in [0, 68]
 ```
 
-Note that now we have **s** on the right side for the input-to-output mapping.
-Those are the symbols that represent runtime values. For example, in this
-particular case for every element of the output with indices `d0, d1, d2, d3` we
-extract elements (d0, 0) and (d0, 1) from `indices` tensor.
+Note that now we have **rt** symbols that represent runtime values.
 
 The output to input map for `indices`:
 
@@ -342,9 +340,9 @@ d2 in [0, 7],
 d3 in [0, 3],
 s0 in [0, 1]
 ```
+
 The range variable `s0` shows that we need the entire row (d0, *) of the
 `indices` tensor to compute an element of the output.
-
 
 ### [Transpose](https://openxla.org/xla/operation_semantics#transpose)
 

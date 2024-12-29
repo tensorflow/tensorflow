@@ -118,11 +118,11 @@ func.func @constant() -> tensor<i32> {
 // CHECK-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal device=5}"}) {
 func.func @inlined_mesh(
   %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>}
-) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, [{}]>}) {
+) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, []>}) {
   // CHECK-NEXT: %[[SHARDING:.*]] = stablehlo.custom_call @Sharding(%arg0)
   // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[\\\22c\\\22=4]>, [{\\\22c\\\22}]>]>"}, mhlo.sharding = "{devices=[4]<=[4]}"}
   // CHECK-NEXT: %[[RESULT_SHARDING:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[SHARDING]])
-  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[], device_ids=[5]>, [{}]>]>"}
+  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[], device_ids=[5]>, []>]>"}
   // CHECK-NEXT: return %[[RESULT_SHARDING]]
   %0 = sdy.sharding_constraint %arg0 <mesh<["c"=4]>, [{"c"}]> : tensor<32xi32>
   return %0 : tensor<32xi32>

@@ -399,12 +399,16 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
       reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
 
+  static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
+      pjrt::CreateMemoryDescriptionsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension));
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
+      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension),
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

@@ -58,7 +58,7 @@ class TestEnvBrokenFileSystem : public tsl::Env {
 
   tsl::string GetRunfilesDir() override { return tsl::string("dummy_path"); }
 
-  int32_t GetCurrentThreadId() override { return 0; }
+  int64_t GetCurrentThreadId() override { return 0; }
 
   tsl::Thread* StartThread(const tsl::ThreadOptions& thread_options,
                            const tsl::string& name,

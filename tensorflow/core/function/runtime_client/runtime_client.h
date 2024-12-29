@@ -70,7 +70,7 @@ class Runtime {
     TF,
   };
 
-  absl::StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
+  absl::StatusOr<FunctionDef> GetFunctionProto(absl::string_view name);
 
   // TODO(mdan): Enforce creation or rename to SetFunction.
   absl::Status CreateFunction(const FunctionDef& fdef);
@@ -82,11 +82,12 @@ class Runtime {
   // The pipeline may rename the function. If it does so, the old function
   // remains unchanged. If the new name specifies an existing function, it will
   // be overwritten.
-  absl::Status TransformFunction(StringPiece name, StringPiece pipeline_name,
+  absl::Status TransformFunction(absl::string_view name,
+                                 absl::string_view pipeline_name,
                                  Dialect dialect = Dialect::TFG);
 
   absl::StatusOr<ReturnValues> CallFunction(
-      StringPiece name, absl::Span<AbstractTensorHandle* const> args);
+      absl::string_view name, absl::Span<AbstractTensorHandle* const> args);
 
  private:
   EagerContext& eager_ctx_;

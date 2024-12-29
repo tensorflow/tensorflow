@@ -26,7 +26,7 @@ namespace protocol_version {
 inline constexpr int kClientMin = 3;
 
 // The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = 1;
+inline constexpr int kServerMin = 3;
 
 enum {
   // Versions kAncient are named and are only referred to by their numbers. See

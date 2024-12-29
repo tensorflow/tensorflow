@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -36,14 +35,14 @@ namespace stream_executor {
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    const CudaComputeCapability& cc, std::string_view ptx_contents,
+    const CudaComputeCapability& cc, absl::string_view ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill = false);
 
 // Like the above, but uses the ptxas_binary from `ptxas_path` instead of
 // using `FindCudaExecutable` to find it.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    std::string_view ptxas_path, const CudaComputeCapability& cc,
-    std::string_view ptx_contents, GpuAsmOpts options,
+    absl::string_view ptxas_path, const CudaComputeCapability& cc,
+    absl::string_view ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
 // Finds the CUDA executable with the given binary_name
@@ -53,35 +52,35 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
 // A binary is only considered if it is of at least `minimum_version` and not
 // in `excluded_versions`.
 absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir,
+    absl::string_view binary_name, absl::string_view preferred_cuda_dir,
     SemanticVersion minimum_version,
     absl::Span<const SemanticVersion> excluded_versions);
 
 // Same as above, but with no version constraints.
 absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir);
+    absl::string_view binary_name, absl::string_view preferred_cuda_dir);
 
 // Returns the path to the first found ptxas binary that fulfills our version
 // requirements.
 absl::StatusOr<std::string> FindPtxAsExecutable(
-    std::string_view preferred_cuda_dir);
+    absl::string_view preferred_cuda_dir);
 
 // Returns the path to the first found nvlink binary that fulfills our version
 // requirements.
 absl::StatusOr<std::string> FindNvlinkExecutable(
-    std::string_view preferred_cuda_dir);
+    absl::string_view preferred_cuda_dir);
 
 // Runs tool --version and parses its version string. All the usual CUDA
 // tools are supported.
-absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path);
+absl::StatusOr<SemanticVersion> GetToolVersion(absl::string_view tool_path);
 
 // On NVIDIA GPUs, returns the version of the ptxas command line tool.
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
-    std::string_view preferred_cuda_dir);
+    absl::string_view preferred_cuda_dir);
 
 // On NVIDIA GPUs, returns the version of the nvlink command line tool.
 absl::StatusOr<SemanticVersion> GetNvLinkVersion(
-    std::string_view preferred_cuda_dir);
+    absl::string_view preferred_cuda_dir);
 
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the
 // resulting binary (i.e. a fatbin) as a byte array.
@@ -91,13 +90,13 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
 // Links the given CUBIN `images` using nvlink.
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
-    std::string_view preferred_cuda_dir,
+    absl::string_view preferred_cuda_dir,
     absl::Span<const std::vector<uint8_t>> images);
 
 // The same as above, but uses the nvlink_path instead of
 // `FindCudaExecutable` to find the nvlink binary.
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
-    std::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
+    absl::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
     absl::Span<const std::vector<uint8_t>> images);
 }  // namespace stream_executor
 

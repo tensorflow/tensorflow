@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
 namespace xla {
@@ -40,7 +40,7 @@ class CliqueId {
  public:
   CliqueId() = default;
 
-  explicit CliqueId(std::string_view data);
+  explicit CliqueId(absl::string_view data);
 
   absl::Span<const char> data() const;
   std::string ToString() const;

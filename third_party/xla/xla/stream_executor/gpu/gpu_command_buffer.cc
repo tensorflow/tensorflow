@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,12 +31,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -62,7 +61,7 @@ using GraphConditionalHandle = GpuCommandBuffer::GraphConditionalHandle;
 using GraphConditionalHandles = absl::Span<const GraphConditionalHandle>;
 
 namespace {
-std::string_view to_string(State state) {
+absl::string_view to_string(State state) {
   switch (state) {
     case State::kCreate:
       return "create";

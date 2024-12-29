@@ -15,15 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offloader.h"
 
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
-#include <optional>
 #include <queue>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,7 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -56,6 +51,7 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -859,7 +855,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
       // If instruction is MoveToHost, we will replace usage.
       if (instr_and_shape.instruction->IsCustomCall(
               host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
-        to_replace.emplace_back(instr_and_shape);
+        to_replace.push_back(instr_and_shape);
         continue;
       }
 
@@ -1018,7 +1014,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
             queue.push(successor);
             host_instrs_tree.mutable_element(output_shape_index)
-                ->emplace_back(successor);
+                ->push_back(successor);
           }
         }
 

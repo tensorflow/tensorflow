@@ -98,6 +98,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(DeleteKeyValue);
   HANDLER(Barrier);
   HANDLER(CancelBarrier);
+  HANDLER(GetAliveTasks);
   HANDLER(PollForError);
 #undef HANDLER
 

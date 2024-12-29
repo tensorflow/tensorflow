@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -90,12 +91,12 @@ struct CppTypeToDType;
 
 template <>
 struct CppTypeToDType<int32_t> {
-  static constexpr DType::Kind dtype = DType::kS32;
+  static constexpr DType::Kind kDType = DType::kS32;
 };
 
 template <>
 struct CppTypeToDType<float> {
-  static constexpr DType::Kind dtype = DType::kF32;
+  static constexpr DType::Kind kDType = DType::kF32;
 };
 
 template <typename ValueType>
@@ -104,7 +105,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
     absl::Span<const int> device_indices, Shape shard_shape = Shape({2, 3})) {
   TF_RET_CHECK(base_values.size() == device_indices.size());
 
-  DType dtype(CppTypeToDType<ValueType>::dtype);
+  DType dtype(CppTypeToDType<ValueType>::kDType);
   TF_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
 
   std::vector<tsl::RCReference<Array>> shards;
@@ -147,7 +148,7 @@ void AssertArrayContent(Client* client, Array* array,
                         absl::Span<const ValueType> base_values,
                         absl::Span<const int> device_indices,
                         Shape expected_shard_shape = Shape({2, 3})) {
-  DType expected_dtype(CppTypeToDType<ValueType>::dtype);
+  DType expected_dtype(CppTypeToDType<ValueType>::kDType);
   TF_ASSERT_OK_AND_ASSIGN(Shape expected_shape,
                           GetShape(base_values.size(), expected_shard_shape));
   EXPECT_EQ(array->dtype(), expected_dtype);
@@ -528,6 +529,79 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
     AssertArrayContent<int32_t>(client.get(), outputs[3].get(),
                                 /*base_values=*/{60},
                                 /*device_indices=*/{1}, second_shard_shape);
+  }
+}
+
+TEST(RemapImplTest, DetectBadInput) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  // Trivial remap plan for a single device array on device 0.
+  RemapPlan plan;
+  plan.input_specs.push_back(
+      CreateArraySpec(client.get(), /*device_indices=*/{0}).value());
+  plan.output_specs.push_back(
+      CreateArraySpec(client.get(), /*device_indices=*/{0}).value());
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  TF_ASSERT_OK(plan.Validate());
+
+  {
+    std::vector<tsl::RCReference<Array>> arrays;
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        CreateArray<int32_t>(client.get(), /*base_values=*/{0},
+                             /*device_indices=*/{0}));
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        CreateArray<int32_t>(client.get(), /*base_values=*/{0},
+                             /*device_indices=*/{0}));
+    EXPECT_THAT(
+        client->RemapArrays(plan, absl::MakeSpan(arrays),
+                            ArrayCopySemantics::kReuseInput),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("RemapArrays expects 1 input arrays, but got 2")));
+  }
+
+  {
+    std::vector<tsl::RCReference<Array>> arrays;
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        CreateArray<float>(client.get(), /*base_values=*/{0},
+                           /*device_indices=*/{0}));
+    EXPECT_THAT(
+        client->RemapArrays(plan, absl::MakeSpan(arrays),
+                            ArrayCopySemantics::kReuseInput),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("RemapArrays expects input #0 to have dtype")));
+  }
+
+  {
+    std::vector<tsl::RCReference<Array>> arrays;
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        CreateArray<int32_t>(client.get(), /*base_values=*/{0},
+                             /*device_indices=*/{0},
+                             /*shard_shape=*/Shape({20, 30})));
+    EXPECT_THAT(
+        client->RemapArrays(plan, absl::MakeSpan(arrays),
+                            ArrayCopySemantics::kReuseInput),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("RemapArrays expects input #0 to have shape")));
+  }
+
+  {
+    std::vector<tsl::RCReference<Array>> arrays;
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        CreateArray<int32_t>(client.get(), /*base_values=*/{0},
+                             /*device_indices=*/{1}));
+    EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                    ArrayCopySemantics::kReuseInput),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("RemapArrays expects input #0 to be on")));
   }
 }
 

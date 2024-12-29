@@ -142,7 +142,7 @@ int FusionPriority(const HloInstruction* instr) {
   if (instr->IsMultiOutputFusion()) {
     return 2;
   }
-  if (instr->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
     return 1;
   }
   return 0;
@@ -170,7 +170,7 @@ FusionDecision OperandReachableFromProducer(
     // map, it has been created by fusion in this pass. Simply move
     // on to its operand, which is in the reachability map.
     if (!reachability.IsPresent(operand) &&
-        operand->opcode() == HloOpcode::kGetTupleElement) {
+        HloPredicateIsOp<HloOpcode::kGetTupleElement>(operand)) {
       operand = operand->operand(0);
     }
     CHECK(reachability.IsPresent(operand) && reachability.IsPresent(&producer))
@@ -274,9 +274,8 @@ bool IsSiblingFusionCandidate(const HloInstruction* instr,
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.
   return (!instr->IsMultiOutputFusion() ||
-          absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
-            return user->opcode() == HloOpcode::kGetTupleElement;
-          }));
+          absl::c_all_of(instr->users(),
+                         HloPredicateIsOp<HloOpcode::kGetTupleElement>));
 }
 
 FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
@@ -386,7 +385,7 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
                                    "| inside multi-output fusion"),
                       /*producer=*/fused);
 
-      if (fused->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(fused)) {
         remaining->MergeFusionInstructionIntoMultiOutput(fused);
         if (fused->IsInputFusion()) {
           remaining->set_fusion_kind(HloInstruction::FusionKind::kInput);
@@ -427,7 +426,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     auto* producer = *it;
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
-    if (producer->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(producer)) {
       VLOG(3) << producer->name() << " is a constant.";
       continue;
     }
@@ -462,7 +461,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
-    if (consumer_for_fusion->opcode() == HloOpcode::kFusion) {
+    if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
       input_fusion = consumer_for_fusion;
       VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
               << consumer_for_fusion->name();
@@ -484,7 +483,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                  "| inside multi-output fusion"),
                     /*producer=*/producer);
 
-    if (producer->opcode() == HloOpcode::kFusion) {
+    if (HloPredicateIsOp<HloOpcode::kFusion>(producer)) {
       input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
     } else {
       input_fusion->FuseInstructionIntoMultiOutput(producer);

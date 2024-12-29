@@ -16,8 +16,65 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_INTEROP_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_INTEROP_H_
 
-#include "xnnpack.h"  // IWYU pragma: keep
+#include "xnnpack.h"
+#include "absl/base/optimization.h"
+#include "absl/status/status.h"
+#include "xla/util.h"
+#include "tsl/platform/logging.h"
 
-namespace xla::cpu {}
+namespace xla::cpu {
+
+#define XNN_RETURN_IF_ERROR(expr)             \
+  do {                                        \
+    absl::Status s = XnnStatusToStatus(expr); \
+    if (!s.ok()) {                            \
+      return s;                               \
+    }                                         \
+  } while (0)
+
+#define XNN_LOG_IF_ERROR(expr)                         \
+  do {                                                 \
+    absl::Status s = XnnStatusToStatus(expr);          \
+    if (!s.ok()) {                                     \
+      LOG(ERROR) << "XNNPACK operation failed: " << s; \
+    }                                                  \
+  } while (0)
+
+// Statically initializes XNNPACK for the current process.
+absl::Status InitializeXnnPack();
+
+// Converts XNNPACK status to absl::Status.
+inline absl::Status XnnStatusToStatus(xnn_status status) {
+  if (ABSL_PREDICT_TRUE(status == xnn_status_success)) {
+    return absl::OkStatus();
+  }
+
+  auto error_message = [](xnn_status status) {
+    switch (status) {
+      case xnn_status_success:
+        return "";
+      case xnn_status_uninitialized:
+        return "uninitialized";
+      case xnn_status_invalid_parameter:
+        return "invalid parameter";
+      case xnn_status_invalid_state:
+        return "invalid state";
+      case xnn_status_unsupported_parameter:
+        return "unsupported parameter";
+      case xnn_status_unsupported_hardware:
+        return "unsupported hardware";
+      case xnn_status_out_of_memory:
+        return "out of memory";
+      case xnn_status_reallocation_required:
+        return "reallocation required";
+      case xnn_status_deprecated:
+        return "deprecated";
+    }
+  };
+
+  return Internal("XNNPACK operation failed: %s", error_message(status));
+}
+
+}  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_INTEROP_H_

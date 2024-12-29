@@ -413,7 +413,7 @@ TensorShardingAttr convertToSdySharding(
   // device.
   if (hloSharding.HasUniqueDevice()) {
     return TensorShardingAttr::getFullyClosed(
-        ctx, rank,
+        ctx, /*rank=*/0,
         deviceIdToMaximalMeshName.lookup(hloSharding.GetUniqueDevice()));
   }
   CHECK(!hloSharding.IsTuple());

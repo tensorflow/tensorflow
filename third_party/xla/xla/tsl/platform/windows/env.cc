@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 #include <Shlwapi.h>
 #include <Windows.h>
@@ -22,6 +22,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#include <cstdint>
 #undef ERROR
 
 #include <string>
@@ -102,8 +104,8 @@ class WindowsEnv : public Env {
     return new StdThread(thread_options, name, std::move(fn));
   }
 
-  int32 GetCurrentThreadId() override {
-    return static_cast<int32>(::GetCurrentThreadId());
+  int64_t GetCurrentThreadId() override {
+    return static_cast<int64_t>(::GetCurrentThreadId());
   }
 
   bool GetCurrentThreadName(string* name) override {

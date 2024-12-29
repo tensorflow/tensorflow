@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
+#include <vector>
+
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
@@ -29,17 +31,84 @@ bool Tensor::IsConstant() const {
   return HasWeights() && !DefiningOp().has_value();
 }
 
-SmallVec<Tensor::TensorUse> Tensor::Uses() const {
+Tensor::TensorUses Tensor::Uses() const {
   LiteRtParamIndex num_uses;
-  LiteRtOpArray users;
-  LiteRtParamIndex* user_arg_inds;
-  litert::internal::AssertOk(LiteRtGetTensorUses, Get(), &num_uses, &users,
-                             &user_arg_inds);
-  SmallVec<Tensor::TensorUse> res;
-  for (int i = 0; i < num_uses; ++i) {
-    res.push_back(Tensor::TensorUse{Op(users[i]), user_arg_inds[i]});  // NOLINT
+  litert::internal::AssertOk(LiteRtGetNumTensorUses, Get(), &num_uses);
+
+  TensorUses uses;
+  for (auto i = 0; i < num_uses; ++i) {
+    LiteRtOp user;
+    LiteRtParamIndex user_arg_index;
+    litert::internal::AssertOk(LiteRtGetTensorUse, Get(), i, &user,
+                               &user_arg_index);
+    uses.emplace_back(Op(user), user_arg_index);
   }
-  return res;
+  return uses;
+}
+
+OpInputs Op::Inputs() const {
+  LiteRtParamIndex num_inputs;
+  internal::AssertOk(LiteRtGetNumOpInputs, Get(), &num_inputs);
+
+  OpInputs inputs;
+  for (auto i = 0; i < num_inputs; ++i) {
+    LiteRtTensor input;
+    internal::AssertOk(LiteRtGetOpInput, Get(), i, &input);
+    inputs.emplace_back(Tensor(input));
+  }
+  return inputs;
+}
+
+OpOutputs Op::Outputs() const {
+  LiteRtParamIndex num_outputs;
+  internal::AssertOk(LiteRtGetNumOpOutputs, Get(), &num_outputs);
+
+  OpOutputs outputs;
+  for (auto i = 0; i < num_outputs; ++i) {
+    LiteRtTensor output;
+    internal::AssertOk(LiteRtGetOpOutput, Get(), i, &output);
+    outputs.emplace_back(Tensor(output));
+  }
+  return outputs;
+}
+
+SubgraphInputs Subgraph::Inputs() const {
+  LiteRtParamIndex num_inputs;
+  internal::AssertOk(LiteRtGetNumSubgraphInputs, Get(), &num_inputs);
+
+  SubgraphInputs inputs;
+  for (auto i = 0; i < num_inputs; ++i) {
+    LiteRtTensor input;
+    internal::AssertOk(LiteRtGetSubgraphInput, Get(), i, &input);
+    inputs.emplace_back(Tensor(input));
+  }
+  return inputs;
+}
+
+SubgraphOutputs Subgraph::Outputs() const {
+  LiteRtParamIndex num_outputs;
+  internal::AssertOk(LiteRtGetNumSubgraphOutputs, Get(), &num_outputs);
+
+  SubgraphOutputs outputs;
+  for (auto i = 0; i < num_outputs; ++i) {
+    LiteRtTensor output;
+    internal::AssertOk(LiteRtGetSubgraphOutput, Get(), i, &output);
+    outputs.emplace_back(Tensor(output));
+  }
+  return outputs;
+}
+
+std::vector<Op> Subgraph::Ops() const {
+  LiteRtParamIndex num_ops;
+  internal::AssertOk(LiteRtGetNumSubgraphOps, Get(), &num_ops);
+
+  std::vector<Op> ops;
+  for (auto i = 0; i < num_ops; ++i) {
+    LiteRtOp op;
+    litert::internal::AssertOk(LiteRtGetSubgraphOp, Get(), i, &op);
+    ops.emplace_back(Op(op));
+  }
+  return ops;
 }
 
 }  // namespace litert

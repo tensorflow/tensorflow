@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <cstdlib>
+#include <cassert>
 #include <string_view>
 
 #include "fuzztest/fuzztest.h"
@@ -27,7 +26,7 @@ limitations under the License.
 namespace {
 
 void FuzzTest(std::string_view uri) {
-  tensorflow::StringPiece scheme, host, path;
+  absl::string_view scheme, host, path;
   tensorflow::io::ParseURI(uri, &scheme, &host, &path);
 
   // If a path is invalid.

@@ -1070,12 +1070,12 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
   HloModule RemoveTrivialCompare
   RemoveTrivialCompare.body {
     loop_var = (pred[], s32[]) parameter(0)
-  
+
     get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
-      
+
     cons = s32[] constant({{LOOP_CONSTANT}})
     comp = pred[] compare(get-tuple-element.2, cons), direction={{DIRECTION}}
-      
+
     constant.1 = s32[] constant(1)
     add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
     ROOT tuple = (pred[], s32[]) tuple(comp,
@@ -1144,12 +1144,12 @@ TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
   HloModule RemoveTrivialCompare
   RemoveTrivialCompare.body {
     loop_var = (pred[], s32[]) parameter(0)
-  
+
     get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
-      
+
     five = s32[] constant(5)
     comp = pred[] compare(get-tuple-element.2, five), direction=LT
-      
+
     constant.1 = s32[] constant(1)
     add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
     ROOT tuple = (pred[], s32[]) tuple(comp,

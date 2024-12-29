@@ -54,6 +54,9 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
     LlvmIrKernelSpec kernel_spec) {
   LlvmIrKernelSource& kernel_source = kernel_spec.kernel_source();
 
+  llvm::TargetOptions target_options;
+  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+
   // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
   JitCompiler::Options jit_compiler_options;
   jit_compiler_options.definition_generator =
@@ -64,7 +67,7 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 
   TF_ASSIGN_OR_RETURN(
       JitCompiler compiler,
-      JitCompiler::Create(llvm::TargetOptions{}, jit_compiler_options));
+      JitCompiler::Create(target_options, jit_compiler_options));
 
   // Intentional copy as we need to use the kernel name after consuming
   // (std::move) the kernel source.

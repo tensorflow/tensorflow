@@ -19,7 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -157,11 +156,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
   return extractor(opts_);
 }
 
-/*static*/ absl::StatusOr<std::optional<AutotunerCompileUtil>>
-AutotunerCompileUtil::Create(const AutotuneConfig& config,
-                             const DebugOptions& opts) {
+/*static*/ absl::StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
+    const AutotuneConfig& config, const DebugOptions& opts) {
   if (config.IsDeviceless()) {
-    return std::nullopt;
+    return absl::InvalidArgumentError(
+        "Deviceless autotuning is not supported.");
   }
   se::StreamExecutor* stream_exec = config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();

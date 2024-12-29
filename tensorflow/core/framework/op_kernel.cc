@@ -66,10 +66,10 @@ const char* kDisableJitKernelsEnvVar = "TF_DISABLE_JIT_KERNELS";
 
 namespace {
 
-Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
-                            const DataTypeSlice expected_outputs,
-                            const DataTypeSlice inputs,
-                            const DataTypeSlice outputs) {
+absl::Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
+                                  const DataTypeSlice expected_outputs,
+                                  const DataTypeSlice inputs,
+                                  const DataTypeSlice outputs) {
   bool signature_mismatch = false;
 
   if (inputs.size() != expected_inputs.size()) signature_mismatch = true;
@@ -188,8 +188,8 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 
 OpKernel::~OpKernel() {}
 
-Status OpKernel::InputRange(StringPiece input_name, int* start,
-                            int* stop) const {
+absl::Status OpKernel::InputRange(absl::string_view input_name, int* start,
+                                  int* stop) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
@@ -200,8 +200,8 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
   }
 }
 
-Status OpKernel::OutputRange(StringPiece output_name, int* start,
-                             int* stop) const {
+absl::Status OpKernel::OutputRange(absl::string_view output_name, int* start,
+                                   int* stop) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
@@ -261,7 +261,7 @@ OpKernelConstruction::OpKernelConstruction(
     const std::shared_ptr<const NodeProperties>& props,
     const MemoryTypeSlice& input_memory_types,
     const MemoryTypeSlice& output_memory_types, int graph_def_version,
-    Status* status)
+    absl::Status* status)
     : device_type_(std::move(device_type)),
       device_(device),
       allocator_(allocator),
@@ -273,23 +273,23 @@ OpKernelConstruction::OpKernelConstruction(
       graph_def_version_(graph_def_version),
       status_(status) {}
 
-bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+bool OpKernelConstruction::HasAttr(absl::string_view attr_name) const {
   return HasNodeAttr(def(), attr_name);
 }
 
-void OpKernelConstruction::SetStatus(const Status& status) {
+void OpKernelConstruction::SetStatus(const absl::Status& status) {
   status_->Update(status);
 }
 
-Status OpKernelConstruction::MatchSignature(
+absl::Status OpKernelConstruction::MatchSignature(
     const DataTypeSlice expected_inputs, const DataTypeSlice expected_outputs) {
   return MatchSignatureHelper(expected_inputs, expected_outputs,
                               props_->input_types, props_->output_types);
 }
 
-Status OpKernelConstruction::allocate_temp(DataType type,
-                                           const TensorShape& shape,
-                                           Tensor* out_temp) {
+absl::Status OpKernelConstruction::allocate_temp(DataType type,
+                                                 const TensorShape& shape,
+                                                 Tensor* out_temp) {
   AllocationAttributes attr;
   attr.allocation_will_be_logged = true;
   Tensor new_temp(allocator_, type, shape, attr);
@@ -306,10 +306,9 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   return absl::OkStatus();
 }
 
-Status OpKernelConstruction::allocate_temp(DataType type,
-                                           const TensorShape& shape,
-                                           Tensor* out_temp,
-                                           AllocatorAttributes allocator_attr) {
+absl::Status OpKernelConstruction::allocate_temp(
+    DataType type, const TensorShape& shape, Tensor* out_temp,
+    AllocatorAttributes allocator_attr) {
   if (allocator_attr.scope_id != 0) {
     return errors::InvalidArgument(
         "ScopedAllocator cannot be used via OpKernelConstruction.");
@@ -349,7 +348,7 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
   params_->ensure_eigen_gpu_device();
   if (params_->eigen_gpu_device != nullptr) {
     Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
-    Status s = params_->device->ReinitializeGpuDevice(
+    absl::Status s = params_->device->ReinitializeGpuDevice(
         this, params_->eigen_gpu_device, params_->op_device_context,
         eigen_gpu_allocator);
     if (!s.ok()) {
@@ -400,11 +399,12 @@ Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   }
 }
 
-void OpKernelContext::SetStatus(const Status& status) {
+void OpKernelContext::SetStatus(const absl::Status& status) {
   status_.Update(status);
 }
 
-Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
+absl::Status OpKernelContext::input(absl::string_view name,
+                                    const Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (input_is_ref(index)) {
@@ -415,7 +415,8 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
   return absl::OkStatus();
 }
 
-Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
+absl::Status OpKernelContext::input_dtype(absl::string_view name,
+                                          DataType* dtype) const {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   const TensorValue& value(params_->inputs[index]);
@@ -423,7 +424,8 @@ Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
   return absl::OkStatus();
 }
 
-Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
+absl::Status OpKernelContext::input_ref_mutex(absl::string_view name,
+                                              mutex** out_mutex) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   *out_mutex = input_ref_mutex(index);
@@ -506,8 +508,8 @@ bool OpKernelContext::forward_input_to_output_with_shape(
   }
 }
 
-Status OpKernelContext::forward_input_to_output_with_shape(
-    StringPiece input_name, StringPiece output_name,
+absl::Status OpKernelContext::forward_input_to_output_with_shape(
+    absl::string_view input_name, absl::string_view output_name,
     const TensorShape& output_shape, Tensor** output) {
   int input_index, output_index;
   TF_RETURN_IF_ERROR(get_input_index(input_name, &input_index));
@@ -588,7 +590,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
   return output_tensor;
 }
 
-Status OpKernelContext::forward_input_or_allocate_temp(
+absl::Status OpKernelContext::forward_input_or_allocate_temp(
     absl::Span<const int> candidate_input_indices, DataType type,
     const TensorShape& shape, const AllocatorAttributes& allocator_attr,
     Tensor* out_temp) {
@@ -604,7 +606,7 @@ Status OpKernelContext::forward_input_or_allocate_temp(
   return allocate_temp(type, shape, out_temp, allocator_attr);
 }
 
-Status OpKernelContext::forward_input_or_allocate_output(
+absl::Status OpKernelContext::forward_input_or_allocate_output(
     absl::Span<const int> candidate_input_indices, int output_index,
     const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
@@ -622,10 +624,11 @@ Status OpKernelContext::forward_input_or_allocate_output(
   return allocate_output(output_index, output_shape, output);
 }
 
-Status OpKernelContext::forward_input_or_allocate_output(
-    absl::Span<const StringPiece> candidate_input_names,
-    StringPiece output_name, const TensorShape& output_shape, Tensor** output) {
-  for (const StringPiece& input_name : candidate_input_names) {
+absl::Status OpKernelContext::forward_input_or_allocate_output(
+    absl::Span<const absl::string_view> candidate_input_names,
+    absl::string_view output_name, const TensorShape& output_shape,
+    Tensor** output) {
+  for (const absl::string_view& input_name : candidate_input_names) {
     if (forward_input_to_output_with_shape(input_name, output_name,
                                            output_shape, output)
             .ok()) {
@@ -648,8 +651,8 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   }
 }
 
-Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
-                                      bool lock_held) {
+absl::Status OpKernelContext::mutable_input(absl::string_view name,
+                                            Tensor* tensor, bool lock_held) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (!input_is_ref(index)) {
@@ -666,9 +669,9 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   return absl::OkStatus();
 }
 
-Status OpKernelContext::replace_ref_input(StringPiece name,
-                                          const Tensor& tensor,
-                                          bool lock_held) {
+absl::Status OpKernelContext::replace_ref_input(absl::string_view name,
+                                                const Tensor& tensor,
+                                                bool lock_held) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (!input_is_ref(index)) {
@@ -679,22 +682,24 @@ Status OpKernelContext::replace_ref_input(StringPiece name,
   return absl::OkStatus();
 }
 
-Status OpKernelContext::input_list(StringPiece name, OpInputList* list) {
+absl::Status OpKernelContext::input_list(absl::string_view name,
+                                         OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
   return absl::OkStatus();
 }
 
-Status OpKernelContext::mutable_input_list(StringPiece name,
-                                           OpMutableInputList* list) {
+absl::Status OpKernelContext::mutable_input_list(absl::string_view name,
+                                                 OpMutableInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpMutableInputList(this, start, stop);
   return absl::OkStatus();
 }
 
-Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
+absl::Status OpKernelContext::output_list(absl::string_view name,
+                                          OpOutputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   *list = OpOutputList(this, start, stop);
@@ -707,8 +712,9 @@ void OpKernelContext::maybe_initialize_scope_id_set() {
   }
 }
 
-Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                        Tensor** tensor) {
+absl::Status OpKernelContext::allocate_output(int index,
+                                              const TensorShape& shape,
+                                              Tensor** tensor) {
   if (index < 0) {
     return errors::Internal("allocate_output with bad index=", index,
                             " kernel=", params_->op_kernel->name());
@@ -730,9 +736,9 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   return allocate_output(index, shape, tensor, attr);
 }
 
-Status OpKernelContext::allocate_output(StringPiece name,
-                                        const TensorShape& shape,
-                                        Tensor** tensor) {
+absl::Status OpKernelContext::allocate_output(absl::string_view name,
+                                              const TensorShape& shape,
+                                              Tensor** tensor) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -744,10 +750,10 @@ Status OpKernelContext::allocate_output(StringPiece name,
   return allocate_output(start, shape, tensor);
 }
 
-Status OpKernelContext::allocate_output(StringPiece name,
-                                        const TensorShape& shape,
-                                        Tensor** tensor,
-                                        AllocatorAttributes attr) {
+absl::Status OpKernelContext::allocate_output(absl::string_view name,
+                                              const TensorShape& shape,
+                                              Tensor** tensor,
+                                              AllocatorAttributes attr) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -759,7 +765,7 @@ Status OpKernelContext::allocate_output(StringPiece name,
   return allocate_output(start, shape, tensor, attr);
 }
 
-Status OpKernelContext::allocate_tensor(
+absl::Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
@@ -783,9 +789,10 @@ Status OpKernelContext::allocate_tensor(
   return absl::OkStatus();
 }
 
-Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                        Tensor** output,
-                                        AllocatorAttributes attr) {
+absl::Status OpKernelContext::allocate_output(int index,
+                                              const TensorShape& shape,
+                                              Tensor** output,
+                                              AllocatorAttributes attr) {
   if (index < 0) {
     return errors::Internal("allocate_output with bad index=", index,
                             " kernel=", params_->op_kernel->name());
@@ -821,7 +828,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
       op_kernel().name_view().data(), step_id(), "output", type,
       [&shape]() { return shape.DebugString(); });
   auto output_tensor = std::make_unique<Tensor>();
-  Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
+  absl::Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
     outputs_[index] = TensorValue(output_tensor.release());
     *output = outputs_[index].tensor;
@@ -829,7 +836,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   return s;
 }
 
-Status OpKernelContext::allocate_temp(
+absl::Status OpKernelContext::allocate_temp(
     DataType type, const TensorShape& shape, Tensor* out_temp,
     AllocatorAttributes allocator_attr,
     const AllocationAttributes& allocation_attr) {
@@ -851,7 +858,7 @@ Status OpKernelContext::allocate_temp(
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel().name_view().data(), step_id(), "temp", type,
       [&shape]() { return shape.DebugString(); });
-  Status s =
+  absl::Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
@@ -867,20 +874,21 @@ Status OpKernelContext::allocate_temp(
   return s;
 }
 
-Status OpKernelContext::allocate_temp(DataType type, const TensorShape& shape,
-                                      Tensor* out_temp,
-                                      AllocatorAttributes allocator_attr) {
+absl::Status OpKernelContext::allocate_temp(
+    DataType type, const TensorShape& shape, Tensor* out_temp,
+    AllocatorAttributes allocator_attr) {
   return allocate_temp(type, shape, out_temp, allocator_attr,
                        AllocationAttributes());
 }
 
-Status OpKernelContext::allocate_temp(DataType type, const TensorShape& shape,
-                                      Tensor* out_temp) {
+absl::Status OpKernelContext::allocate_temp(DataType type,
+                                            const TensorShape& shape,
+                                            Tensor* out_temp) {
   return allocate_temp(type, shape, out_temp, AllocatorAttributes());
 }
 
-Status OpKernelContext::get_input_index(StringPiece name,
-                                        int* out_index) const {
+absl::Status OpKernelContext::get_input_index(absl::string_view name,
+                                              int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -893,8 +901,8 @@ Status OpKernelContext::get_input_index(StringPiece name,
   return absl::OkStatus();
 }
 
-Status OpKernelContext::get_output_index(StringPiece name,
-                                         int* out_index) const {
+absl::Status OpKernelContext::get_output_index(absl::string_view name,
+                                               int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -907,14 +915,16 @@ Status OpKernelContext::get_output_index(StringPiece name,
   return absl::OkStatus();
 }
 
-Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
+absl::Status OpKernelContext::set_output(absl::string_view name,
+                                         const Tensor& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, tensor);
   return absl::OkStatus();
 }
 
-Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
+absl::Status OpKernelContext::set_output(absl::string_view name,
+                                         Tensor&& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, std::move(tensor));
@@ -957,11 +967,13 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
         op_kernel().name_view().data(), step_id(), "output", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
     auto new_tensor = std::make_unique<Tensor>();
-    Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
-                               output_alloc_attr(index));
+    absl::Status s =
+        allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
+                        output_alloc_attr(index));
     TF_CHECK_OK(s);
     device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
-                                     op_device_context(), [](const Status&) {});
+                                     op_device_context(),
+                                     [](const absl::Status&) {});
     outputs_[index] = TensorValue(new_tensor.release());
   }
   return allocate_and_copy;
@@ -1021,15 +1033,16 @@ void OpKernelContext::set_output_ref(int index, mutex* mu,
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
-Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
-                                       Tensor* tensor_for_ref) {
+absl::Status OpKernelContext::set_output_ref(absl::string_view name, mutex* mu,
+                                             Tensor* tensor_for_ref) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output_ref(index, mu, tensor_for_ref);
   return absl::OkStatus();
 }
 
-Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
+absl::Status OpKernelContext::mutable_output(absl::string_view name,
+                                             Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   *tensor = mutable_output(index);
@@ -1051,8 +1064,8 @@ bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   return true;
 }
 
-Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
-                                       const DataTypeSlice expected_outputs) {
+absl::Status OpKernelContext::MatchSignature(
+    const DataTypeSlice expected_inputs, const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
   for (const TensorValue& t : params_->inputs) {
     inputs.push_back(t.dtype());
@@ -1140,7 +1153,7 @@ const string& OpKernelContext::executor_type() const {
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {
-  KernelRegistration(const KernelDef& d, StringPiece c,
+  KernelRegistration(const KernelDef& d, absl::string_view c,
                      std::unique_ptr<kernel_factory::OpKernelFactory> f)
       : def(d), kernel_class_name(c), factory(std::move(f)) {}
 
@@ -1171,7 +1184,7 @@ static const char kKernelLibPattern[] = "libtfkernel*.so";
 
 // Returns Status::OK if the dynamic library at the given path is safe to
 // load with some level of confidence.
-static Status IsProbablySafeToLoad(const string& path) {
+static absl::Status IsProbablySafeToLoad(const string& path) {
   // A map of platform string to required CPU feature.
   using port::CPUFeature;
   static const auto* feature_map =
@@ -1182,11 +1195,11 @@ static Status IsProbablySafeToLoad(const string& path) {
   std::vector<std::string> platform_strings;
   int result = GetPlatformStrings(path, &platform_strings);
   if (result) {
-    return Status(absl::StatusCode::kUnknown, strerror(result));
+    return absl::Status(absl::StatusCode::kUnknown, strerror(result));
   }
   if (platform_strings.empty()) {
-    return Status(absl::StatusCode::kFailedPrecondition,
-                  "Didn't find any platform strings");
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        "Didn't find any platform strings");
   }
   std::vector<std::string> missing_features;
   for (const auto& platform_string : platform_strings) {
@@ -1218,13 +1231,13 @@ void LoadDynamicKernelsInternal() {
   string bazel_kernel_dir =
       io::JoinPath(env->GetRunfilesDir(), "tensorflow", "core", "kernels");
   std::vector<string> files;
-  Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
+  absl::Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {
     string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
     for (const auto& file : files) {
       string fullpath = io::JoinPath(bazel_kernel_dir, file);
       if (env->MatchPath(fullpath, dll_spec)) {
-        Status s = IsProbablySafeToLoad(fullpath);
+        absl::Status s = IsProbablySafeToLoad(fullpath);
         if (!s.ok() && override_abi_check) {
           LOG(WARNING) << "Loading UNSAFE library " << fullpath
                        << " because ABI check override is set: " << s.message();
@@ -1251,8 +1264,8 @@ void LoadDynamicKernels() {
   absl::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
 }
 
-static string Key(StringPiece op_type, const DeviceType& device_type,
-                  StringPiece label) {
+static string Key(absl::string_view op_type, const DeviceType& device_type,
+                  absl::string_view label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
 }
@@ -1330,7 +1343,7 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
 namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
-                                     StringPiece kernel_class_name,
+                                     absl::string_view kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
@@ -1378,12 +1391,12 @@ const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
 }
 
 // TODO(irving): Replace with const Node& version below.
-Status FindKernelRegistration(
-    const DeviceType& device_type, StringPiece node_name,
+absl::Status FindKernelRegistration(
+    const DeviceType& device_type, absl::string_view node_name,
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
-    StringPiece node_op, AttrSlice node_attrs, const KernelRegistration** reg,
-    bool* was_attr_mismatch) {
+    absl::string_view node_op, AttrSlice node_attrs,
+    const KernelRegistration** reg, bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
 
@@ -1457,10 +1470,10 @@ Status FindKernelRegistration(
   return absl::OkStatus();
 }
 
-Status FindKernelRegistration(const DeviceType& device_type,
-                              const NodeDef& node_def,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
+absl::Status FindKernelRegistration(const DeviceType& device_type,
+                                    const NodeDef& node_def,
+                                    const KernelRegistration** reg,
+                                    bool* was_attr_mismatch) {
   return FindKernelRegistration(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(),
@@ -1473,18 +1486,18 @@ bool KernelDefAvailable(const DeviceType& device_type,
                         const NodeDef& node_def) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
-  Status result =
+  absl::Status result =
       FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch);
   return result.ok() && reg != nullptr;
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
-Status FindKernelDef(
-    const DeviceType& device_type, StringPiece node_name,
+absl::Status FindKernelDef(
+    const DeviceType& device_type, absl::string_view node_name,
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
-    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, string* kernel_class_name) {
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
   TF_RETURN_IF_ERROR(FindKernelRegistration(
@@ -1492,7 +1505,7 @@ Status FindKernelDef(
       experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
     const std::string device_str = DeviceTypeString(device_type);
-    Status s = errors::NotFound(
+    absl::Status s = errors::NotFound(
         "No registered '", node_op, "' OpKernel for ", device_str,
         " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
@@ -1521,15 +1534,16 @@ Status FindKernelDef(
   return absl::OkStatus();
 }
 
-Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name) {
+absl::Status FindKernelDef(const DeviceType& device_type,
+                           const NodeDef& node_def, const KernelDef** def,
+                           string* kernel_class_name) {
   return FindKernelDef(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(), node_def.device(),
       AttrSlice(&node_def.attr()), def, kernel_class_name);
 }
 
-Status SupportedDeviceTypesForNode(
+absl::Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     PrioritizedDeviceTypeVector* prioritized_device_types,
     const DeviceNameUtils::ParsedName* local_address_spec) {
@@ -1538,7 +1552,7 @@ Status SupportedDeviceTypesForNode(
   // a user-defined function and only calls this
   // SupportedDeviceTypesForNode for primitive ops.
   const OpRegistrationData* op_reg_data;
-  const Status s = OpRegistry::Global()->LookUp(def.op(), &op_reg_data);
+  const absl::Status s = OpRegistry::Global()->LookUp(def.op(), &op_reg_data);
   if (s.ok()) {
     bool exists_attr_mismatch = false;
     for (const DeviceType& device_type : prioritized_types) {
@@ -1626,12 +1640,12 @@ KernelList GetFilteredRegisteredKernels(
   return kernel_list;
 }
 
-KernelList GetRegisteredKernelsForOp(StringPiece op_name) {
+KernelList GetRegisteredKernelsForOp(absl::string_view op_name) {
   auto op_pred = [op_name](const KernelDef& k) { return k.op() == op_name; };
   return GetFilteredRegisteredKernels(op_pred);
 }
 
-string KernelsRegisteredForOp(StringPiece op_name) {
+string KernelsRegisteredForOp(absl::string_view op_name) {
   KernelList kernel_list = GetRegisteredKernelsForOp(op_name);
   if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
   string ret;
@@ -1654,7 +1668,7 @@ string KernelsRegisteredForOp(StringPiece op_name) {
  * copying the NodeDef. */
 std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
-    const NodeDef& node_def, int graph_def_version, Status* status) {
+    const NodeDef& node_def, int graph_def_version, absl::Status* status) {
   // Look up the Op registered for this op name.
   std::shared_ptr<const NodeProperties> props;
   status->Update(NodeProperties::CreateFromNodeDef(
@@ -1671,31 +1685,31 @@ std::unique_ptr<OpKernel> CreateOpKernel(
 std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const std::shared_ptr<const NodeProperties>& props, int graph_def_version,
-    Status* status) {
+    absl::Status* status) {
   OpKernel* kernel = nullptr;
   *status = CreateOpKernel(std::move(device_type), device, allocator,
                            /*flib=*/nullptr, props, graph_def_version, &kernel);
   return std::unique_ptr<OpKernel>(kernel);
 }
 
-Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
-                      Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const std::shared_ptr<const NodeProperties>& props,
-                      int graph_def_version, OpKernel** kernel) {
+absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                            Allocator* allocator, FunctionLibraryRuntime* flib,
+                            const std::shared_ptr<const NodeProperties>& props,
+                            int graph_def_version, OpKernel** kernel) {
   return CreateOpKernel(std::move(device_type), device, allocator, flib,
                         /* resource_mgr= */ nullptr, props, graph_def_version,
                         kernel);
 }
 
-Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
-                      Allocator* allocator, FunctionLibraryRuntime* flib,
-                      ResourceMgr* resource_mgr,
-                      const std::shared_ptr<const NodeProperties>& props,
-                      int graph_def_version, OpKernel** kernel) {
+absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                            Allocator* allocator, FunctionLibraryRuntime* flib,
+                            ResourceMgr* resource_mgr,
+                            const std::shared_ptr<const NodeProperties>& props,
+                            int graph_def_version, OpKernel** kernel) {
   const NodeDef& node_def = props->node_def;
   bool was_attr_mismatch;
   const KernelRegistration* registration = nullptr;
-  Status s;
+  absl::Status s;
   if (props != nullptr) {
     VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
@@ -1748,7 +1762,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
 namespace {
 
-bool FindArgInOp(StringPiece arg_name,
+bool FindArgInOp(absl::string_view arg_name,
                  const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
   for (const auto& arg : args) {
     if (arg_name == arg.name()) {
@@ -1760,13 +1774,15 @@ bool FindArgInOp(StringPiece arg_name,
 
 }  // namespace
 
-Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
+absl::Status ValidateKernelRegistrations(
+    const OpRegistryInterface& op_registry) {
   auto typed_registry = GlobalKernelRegistryTyped();
   tf_shared_lock lock(typed_registry->mu);
   for (const auto& key_registration : typed_registry->registry) {
     const KernelDef& kernel_def(key_registration.second.def);
     const OpRegistrationData* op_reg_data;
-    const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
+    const absl::Status status =
+        op_registry.LookUp(kernel_def.op(), &op_reg_data);
     if (!status.ok()) {
       LOG(WARNING) << "OpKernel ('" << kernel_def.ShortDebugString()
                    << "') for unknown op: " << kernel_def.op();
@@ -1795,48 +1811,49 @@ const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
 
-void OpKernelConstruction::CtxFailure(const Status& s) {
+void OpKernelConstruction::CtxFailure(const absl::Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
+void OpKernelConstruction::CtxFailureWithWarning(const absl::Status& s) {
   LOG(WARNING) << s;
   SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailure(const char* file, int line,
-                                      const Status& s) {
+                                      const absl::Status& s) {
   VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
           << " : " << s;
   SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
-                                                 const Status& s) {
+                                                 const absl::Status& s) {
   LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
                << " : " << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailure(const Status& s) {
+void OpKernelContext::CtxFailure(const absl::Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailureWithWarning(const Status& s) {
+void OpKernelContext::CtxFailureWithWarning(const absl::Status& s) {
   LOG(WARNING) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
+void OpKernelContext::CtxFailure(const char* file, int line,
+                                 const absl::Status& s) {
   VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
           << " : " << s;
   SetStatus(s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
-                                            const Status& s) {
+                                            const absl::Status& s) {
   LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
                << " : " << s;
   SetStatus(s);

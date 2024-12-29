@@ -46,6 +46,7 @@ litert_dynamic_lib(
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",

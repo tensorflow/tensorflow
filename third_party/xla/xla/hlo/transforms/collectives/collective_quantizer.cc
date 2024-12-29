@@ -148,7 +148,7 @@ std::vector<HloInstruction*> FindDequantizationSubgraphRecursive(
     return {};
   }
 
-  subgraph.emplace_back(instr);
+  subgraph.push_back(instr);
   if (Match(instr, ConvertToWiderType())) {
     return subgraph;
   }
@@ -231,7 +231,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
                          BitcastPreservesElementType(), m::Copy(), m::Reshape(),
                          m::Slice(), m::Multiply(), m::Divide(), m::Clamp()))) {
       if (instr->user_count() > 0) {
-        ops.emplace_back(instr);
+        ops.push_back(instr);
         instr = instr->users()[0];
         continue;
       }
@@ -239,7 +239,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
     }
 
     if (Match(instr, ConvertToNarrowerType())) {
-      ops.emplace_back(instr);
+      ops.push_back(instr);
       break;
     }
     VLOG(5) << "Unsupported instruction.";

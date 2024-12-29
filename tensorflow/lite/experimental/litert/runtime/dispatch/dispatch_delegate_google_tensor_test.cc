@@ -234,8 +234,7 @@ TEST(DispatchDelegate, CompiledModel) {
                   "GoogleTensor eTPU";
 #endif
 
-  auto res_compiled_model =
-      CompiledModel::Create(*model, kLiteRtHwAccelatorNpu);
+  auto res_compiled_model = CompiledModel::Create(*model);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

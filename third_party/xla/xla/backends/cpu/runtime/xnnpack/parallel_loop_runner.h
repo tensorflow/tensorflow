@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_PARALLEL_LOOP_RUNNER_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_PARALLEL_LOOP_RUNNER_H_
 
+#include <atomic>
 #include <cstddef>
 #include <functional>
 
@@ -43,7 +44,7 @@ namespace xla::cpu {
 // synchronized by the user.
 class ParallelLoopRunner {
  public:
-  explicit ParallelLoopRunner(Eigen::ThreadPoolDevice* device);
+  explicit ParallelLoopRunner(const Eigen::ThreadPoolDevice* device);
 
   // Takes ownership of the runner and returns a done event. After the done
   // event is transferred to the caller, it is illegal to schedule more parallel
@@ -51,22 +52,108 @@ class ParallelLoopRunner {
   static tsl::AsyncValueRef<tsl::Chain> TakeDoneEvent(
       ParallelLoopRunner&& runner);
 
-  using Task1D = std::function<void(size_t offset, size_t extent)>;
+  using Task1D = std::function<void(size_t offset)>;
+
+  using Task1DTile1D = std::function<void(size_t offset, size_t extent)>;
+
+  using Task2DTile1D =
+      std::function<void(size_t offset_i, size_t offset_j, size_t extent_j)>;
+
+  using Task3DTile2D =
+      std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
+                         size_t extent_j, size_t extent_k)>;
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range; i++)
+  //     task(i);
+  void Parallelize(size_t range, Task1D task);
 
   // This function implements a parallel version of a following loop:
   //
   //   for (size_t i = 0; i < range; i += tile)
   //     task(i, std::min(range - i, tile));
-  void Parallelize(size_t range, size_t tile, Task1D task);
+  void Parallelize(size_t range, size_t tile, Task1DTile1D task);
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range_i; i++)
+  //     for (size_t j = 0; j < range_j; j += tile_j)
+  //       task(i, j, min(range_j - j, tile_j));
+  void Parallelize(size_t range_i, size_t range_j, size_t tile_j,
+                   Task2DTile1D task);
+
+  // This function implements a parallel version of a following loop:
+  //
+  //   for (size_t i = 0; i < range_i; i++)
+  //     for (size_t j = 0; j < range_j; j += tile_j)
+  //       for (size_t k = 0; k < range_k; k += tile_k)
+  //         task(i, j, k, min(range_j - j, tile_j), min(range_k - k, tile_k));
+  void Parallelize(size_t range_i, size_t range_j, size_t range_k,
+                   size_t tile_j, size_t tile_k, Task3DTile2D task);
+
+  // Resets the parallel loop runner `done_event` and returns the previous one
+  // to the caller.
+  tsl::AsyncValueRef<tsl::Chain> ResetDoneEvent();
 
   tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
-  Eigen::ThreadPoolDevice* device() const { return device_; }
+
+  const Eigen::ThreadPoolDevice* device() const { return device_; }
+  void set_device(const Eigen::ThreadPoolDevice* device) { device_ = device; }
+
+  size_t num_threads() const;
 
  private:
+  // When parallelizing loops, we split the loop iteration space of `num_tasks`
+  // size into `num_parallel_tasks` parallel tasks, each of which processes
+  // `parallel_task_size` original tasks sequentially on a single thread. We do
+  // this to avoid excessive task scheduling overheads at run time.
+  struct ParallelTaskConfig {
+    struct TaskRange {
+      size_t begin;
+      size_t end;
+    };
+
+    TaskRange ParallelTaskRange(size_t parallel_task_index) const;
+
+    size_t num_tasks;
+    size_t parallel_task_size;
+    size_t num_parallel_tasks;
+  };
+
+  ParallelTaskConfig ComputeParallelTaskConfig(size_t num_tasks) const;
+
+  // Schedules tasks in the [start_index, end_index) range into the Eigen thread
+  // pool using recursive work splitting. Executes the `start_index` task in the
+  // caller thread.
+  template <typename ParallelTask>
+  void Parallelize(tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
+                   size_t start_index, size_t end_index,
+                   ParallelTask&& parallel_task);
+
+  // Schedules `task` as the AndThen callback of the `done_event_`. Updates
+  // `done_event_` to the new completion event.
+  template <typename Task>
+  void ScheduleOne(Task&& task);
+
+  // Schedules `num_tasks` invocation of the `parallel_task` into the Eigen
+  // thread pool when the `done_event_` becomes available. Updates `done_event_`
+  // to the new completion event.
+  template <typename ParallelTask>
+  void ScheduleAll(size_t num_tasks, ParallelTask&& parallel_task);
+
   // Async value that signals completion of the last scheduled parallel loop.
   tsl::AsyncValueRef<tsl::Chain> done_event_;
 
-  Eigen::ThreadPoolDevice* device_;
+  // We keep a pointer to the Eigen thread pool device as an atomic variable
+  // because we might update it between concurrent runs of XNNPACK operations
+  // and non-atomic access to the `device_` pointer might lead to a data race.
+  //
+  // In practice PjRt CPU client owns the intra-op thread pool and passes it to
+  // XLA via Thunk::ExecuteParams, and PjRt client might have multiple thread
+  // pools for different NUMA nodes, and we have to be able to switch between
+  // them from run to run.
+  std::atomic<const Eigen::ThreadPoolDevice*> device_;
 };
 
 }  // namespace xla::cpu

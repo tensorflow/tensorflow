@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_PROFILER_PYWRAP_IMPL_H_
 #define TENSORFLOW_PYTHON_PROFILER_INTERNAL_PROFILER_PYWRAP_IMPL_H_
 
+#include <memory>
 #include <string>
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"

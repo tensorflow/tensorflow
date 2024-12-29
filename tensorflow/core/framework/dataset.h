@@ -87,7 +87,7 @@ void MergeOptions(const protobuf::MessageLite& source,
                   protobuf::MessageLite* destination);
 }  // namespace internal
 
-using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
+using TraceMeMetadata = std::vector<std::pair<absl::string_view, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
@@ -135,28 +135,32 @@ inline bool IsTFDataFunction(const FunctionDef& func) {
 class IteratorStateReader {
  public:
   // Determines whether the iterator state contains the given key.
-  virtual bool Contains(StringPiece key) const = 0;
-  virtual bool Contains(StringPiece name, StringPiece key) const = 0;
+  virtual bool Contains(absl::string_view key) const = 0;
+  virtual bool Contains(absl::string_view name,
+                        absl::string_view key) const = 0;
 
   // Reads an integer for the given key.
-  virtual Status ReadScalar(StringPiece key, int64_t* val) const = 0;
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            int64_t* val) const = 0;
+  virtual absl::Status ReadScalar(absl::string_view key,
+                                  int64_t* val) const = 0;
+  virtual absl::Status ReadScalar(absl::string_view name, absl::string_view key,
+                                  int64_t* val) const = 0;
 
   // Reads a string for the given key.
-  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            tstring* val) const = 0;
+  virtual absl::Status ReadScalar(absl::string_view key,
+                                  tstring* val) const = 0;
+  virtual absl::Status ReadScalar(absl::string_view name, absl::string_view key,
+                                  tstring* val) const = 0;
 
   // Reads a tensor for the given key.
   // TODO(jsimsa): Remove non-FLR overrides once all callers are updated.
-  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
-  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece key,
-                            Tensor* val) const = 0;
-  virtual Status ReadTensor(StringPiece name, StringPiece key,
-                            Tensor* val) const = 0;
-  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece name,
-                            StringPiece key, Tensor* val) const = 0;
+  virtual absl::Status ReadTensor(absl::string_view key, Tensor* val) const = 0;
+  virtual absl::Status ReadTensor(FunctionLibraryRuntime* flr,
+                                  absl::string_view key, Tensor* val) const = 0;
+  virtual absl::Status ReadTensor(absl::string_view name, absl::string_view key,
+                                  Tensor* val) const = 0;
+  virtual absl::Status ReadTensor(FunctionLibraryRuntime* flr,
+                                  absl::string_view name, absl::string_view key,
+                                  Tensor* val) const = 0;
 
   virtual ~IteratorStateReader() {}
 };
@@ -173,19 +177,25 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   // Writes an integer for the given key.
-  virtual Status WriteScalar(StringPiece key, const int64_t val) = 0;
-  virtual Status WriteScalar(StringPiece name, StringPiece key,
-                             const int64_t val) = 0;
+  virtual absl::Status WriteScalar(absl::string_view key,
+                                   const int64_t val) = 0;
+  virtual absl::Status WriteScalar(absl::string_view name,
+                                   absl::string_view key,
+                                   const int64_t val) = 0;
 
   // Writes a string for the given key.
-  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
-  virtual Status WriteScalar(StringPiece name, StringPiece key,
-                             const tstring& val) = 0;
+  virtual absl::Status WriteScalar(absl::string_view key,
+                                   const tstring& val) = 0;
+  virtual absl::Status WriteScalar(absl::string_view name,
+                                   absl::string_view key,
+                                   const tstring& val) = 0;
 
   // Writes a tensor for the given key.
-  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
-  virtual Status WriteTensor(StringPiece name, StringPiece key,
-                             const Tensor& val) = 0;
+  virtual absl::Status WriteTensor(absl::string_view key,
+                                   const Tensor& val) = 0;
+  virtual absl::Status WriteTensor(absl::string_view name,
+                                   absl::string_view key,
+                                   const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 
@@ -201,7 +211,7 @@ class IteratorStateWriter {
 std::string FullName(const std::string& prefix, const std::string& name);
 
 // Extracts iterator prefix from key generated by `FullName`.
-Status ExtractIteratorPrefix(StringPiece key, string* prefix);
+absl::Status ExtractIteratorPrefix(absl::string_view key, string* prefix);
 
 // Interface for objects that can be checkpointed.
 class Checkpointable {
@@ -209,9 +219,10 @@ class Checkpointable {
   Checkpointable() = default;
   virtual ~Checkpointable() = default;
 
-  virtual Status Save(SerializationContext* ctx,
-                      IteratorStateWriter* writer) = 0;
-  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) = 0;
+  virtual absl::Status Save(SerializationContext* ctx,
+                            IteratorStateWriter* writer) = 0;
+  virtual absl::Status Restore(IteratorContext* ctx,
+                               IteratorStateReader* reader) = 0;
 };
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
@@ -224,7 +235,7 @@ class GraphDefBuilderWrapper {
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
   template <typename T>
-  Status AddScalar(const T& val, Node** output) {
+  absl::Status AddScalar(const T& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
     val_t.scalar<T>()() = val;
     AddTensorInternal(val_t, output);
@@ -240,7 +251,7 @@ class GraphDefBuilderWrapper {
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
   // TODO(shivaniagrawal): Consider changing to gtl::ArraySlice?
   template <typename T>
-  Status AddVector(const std::vector<T>& val, Node** output) {
+  absl::Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
                           TensorShape({static_cast<int64_t>(val.size())}));
     for (size_t i = 0; i < val.size(); i++) {
@@ -253,7 +264,7 @@ class GraphDefBuilderWrapper {
     return absl::OkStatus();
   }
 
-  Status AddVector(const std::vector<string>& val, Node** output) {
+  absl::Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
                           TensorShape({static_cast<int64_t>(val.size())}));
     for (size_t i = 0; i < val.size(); i++) {
@@ -271,7 +282,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status. The returned `Node`
   // pointer is owned by the backing graph of `GraphDefBuilder`.
-  Status AddTensor(const Tensor& val, Node** output) {
+  absl::Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
       return errors::Internal("AddTensor: Failed to build Const op.");
@@ -284,7 +295,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status. The returned `Node`
   // pointer is owned by the backing graph of `GraphDefBuilder`.
-  Status AddPlaceholder(const Tensor& val, Node** output) {
+  absl::Status AddPlaceholder(const Tensor& val, Node** output) {
     AddPlaceholderInternal(val, output);
     if (*output == nullptr) {
       return errors::Internal(
@@ -310,25 +321,25 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status. The returned `Node`
   // pointer is owned by the backing `Graph` of `GraphDefBuilder`.
-  Status AddDataset(const DatasetBase* dataset,
-                    const std::vector<Node*>& inputs, Node** output);
-  Status AddDataset(const DatasetBase* dataset,
-                    const std::vector<Node*>& inputs,
-                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
-                    Node** output);
-  Status AddDataset(
-      const DatasetBase* dataset,
-      const std::vector<std::pair<size_t, Node*>>& inputs,
-      const std::vector<std::pair<size_t, absl::Span<Node* const>>>&
-          list_inputs,
-      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+  absl::Status AddDataset(const DatasetBase* dataset,
+                          const std::vector<Node*>& inputs, Node** output);
+  absl::Status AddDataset(
+      const DatasetBase* dataset, const std::vector<Node*>& inputs,
+      const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
       Node** output);
-  Status AddDataset(
+  absl::Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, absl::Span<Node* const>>>&
           list_inputs,
-      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
+      Node** output);
+  absl::Status AddDataset(
+      const DatasetBase* dataset,
+      const std::vector<std::pair<size_t, Node*>>& inputs,
+      const std::vector<std::pair<size_t, absl::Span<Node* const>>>&
+          list_inputs,
+      const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
       bool use_dataset_name, Node** output);
 
   // Adds a user-defined function with name `function_name` to the graph and
@@ -338,8 +349,9 @@ class GraphDefBuilderWrapper {
   // returns an InvalidArgumentError. If the function with name `function_name`
   // or any of its dependent functions are stateful, and the context does not
   // explicitly permit stateful functions, returns an InvalidArgument error.
-  Status AddFunction(SerializationContext* ctx, const string& function_name,
-                     const FunctionLibraryDefinition& lib_def);
+  absl::Status AddFunction(SerializationContext* ctx,
+                           const string& function_name,
+                           const FunctionLibraryDefinition& lib_def);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -370,9 +382,9 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
-  Status AddAttrFunctions(SerializationContext* ctx,
-                          const AttrValue& attr_value,
-                          const FunctionLibraryDefinition& lib_def) {
+  absl::Status AddAttrFunctions(SerializationContext* ctx,
+                                const AttrValue& attr_value,
+                                const FunctionLibraryDefinition& lib_def) {
     if (attr_value.has_func()) {
       TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name(), lib_def));
     } else if (attr_value.has_list()) {
@@ -417,15 +429,16 @@ class SplitProvider {
   virtual ~SplitProvider() {}
   // Stores the next split in `*split`, setting `*end_of_splits` to indicate
   // whether there were any splits left.
-  virtual Status GetNext(Tensor* split, bool* end_of_splits) = 0;
+  virtual absl::Status GetNext(Tensor* split, bool* end_of_splits) = 0;
   // Resets the split provider to its beginning.
-  virtual Status Reset() = 0;
+  virtual absl::Status Reset() = 0;
   // Saves the state of this split provider.
-  virtual Status Save(std::function<std::string(std::string)> full_name,
-                      IteratorStateWriter* writer) = 0;
+  virtual absl::Status Save(std::function<std::string(std::string)> full_name,
+                            IteratorStateWriter* writer) = 0;
   // Restores the state of this split provider.
-  virtual Status Restore(std::function<std::string(std::string)> full_name,
-                         IteratorStateReader* reader) = 0;
+  virtual absl::Status Restore(
+      std::function<std::string(std::string)> full_name,
+      IteratorStateReader* reader) = 0;
   // Returns the number of splits:
   // - If there are a finite number of splits, returns a non-negative count.
   // - If there are an infinite number of splits, returns kInfiniteCardinality.
@@ -495,34 +508,35 @@ class MemoryCheckpoint final : public IteratorStateWriter {
   }
 
   // BEGIN implementation of `IteratorStateWriter` interface
-  Status WriteScalar(StringPiece key, int64_t val) override {
+  absl::Status WriteScalar(absl::string_view key, int64_t val) override {
     string prefix;
     TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
     return WriteScalar(prefix, key, val);
   }
-  Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override {
+  absl::Status WriteScalar(absl::string_view name, absl::string_view key,
+                           int64_t val) override {
     auto id = id_registry_->Add(string(name), string(key));
     int_values_[id] = val;
     return absl::OkStatus();
   }
-  Status WriteScalar(StringPiece key, const tstring& val) override {
+  absl::Status WriteScalar(absl::string_view key, const tstring& val) override {
     string prefix;
     TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
     return WriteScalar(prefix, key, val);
   }
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const tstring& val) override {
+  absl::Status WriteScalar(absl::string_view name, absl::string_view key,
+                           const tstring& val) override {
     auto id = id_registry_->Add(string(name), string(key));
     str_values_[id] = val;
     return absl::OkStatus();
   }
-  Status WriteTensor(StringPiece key, const Tensor& val) override {
+  absl::Status WriteTensor(absl::string_view key, const Tensor& val) override {
     string prefix;
     TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
     return WriteTensor(prefix, key, val);
   }
-  Status WriteTensor(StringPiece name, StringPiece key,
-                     const Tensor& val) override {
+  absl::Status WriteTensor(absl::string_view name, absl::string_view key,
+                           const Tensor& val) override {
     auto id = id_registry_->Add(string(name), string(key));
     tensor_values_[id] = val;
     return absl::OkStatus();
@@ -533,7 +547,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
   std::string DebugString() const;
 
   // Returns the status of the in-memory checkpoint.
-  Status GetStatus() const { return status_; }
+  absl::Status GetStatus() const { return status_; }
 
   // Merges state of another checkpoint into this checkpoint, overwriting
   // existing state (if applicable).
@@ -546,17 +560,17 @@ class MemoryCheckpoint final : public IteratorStateWriter {
   void Purge(const std::string& prefix);
 
   // Stores the in-memory checkpoint to the given writer.
-  Status Save(IteratorStateWriter* writer) const;
+  absl::Status Save(IteratorStateWriter* writer) const;
 
   // Updates the status of the in-memory checkpoint with the given status.
-  void UpdateStatus(Status status) { status_.Update(status); }
+  void UpdateStatus(absl::Status status) { status_.Update(status); }
 
  private:
   explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
       : is_root_(is_root), id_registry_(registry) {}
   void operator=(const MemoryCheckpoint&) = delete;
 
-  Status status_ = absl::OkStatus();
+  absl::Status status_ = absl::OkStatus();
   // Only set to true for the checkpoint in IteratorResource.
   // Root checkpoint does not track expired prefixes.
   const bool is_root_ = false;
@@ -574,7 +588,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
 class SerializationContext {
  public:
   // Handles the external state according to the external state policy.
-  Status HandleCheckExternalStateStatus(Status s) {
+  absl::Status HandleCheckExternalStateStatus(absl::Status s) {
     if (s.ok()) {
       return s;
     }
@@ -1001,7 +1015,7 @@ class IteratorContext {
   }
 
   // Updates the status of the checkpoint with the given status.
-  void UpdateCheckpointStatus(std::function<Status()> status_fn) {
+  void UpdateCheckpointStatus(std::function<absl::Status()> status_fn) {
     if (symbolic_checkpoint()) {
       checkpoint_.UpdateStatus(status_fn());
     }
@@ -1070,11 +1084,12 @@ class IteratorBase : public Checkpointable {
   //
   // TODO(mrry): Define `GetNextAsync()` or `GetNextManyAsync()`, and
   // potentially remove this method.
-  virtual Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) = 0;
+  virtual absl::Status GetNext(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) = 0;
 
-  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) {
+  absl::Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
@@ -1092,11 +1107,11 @@ class IteratorBase : public Checkpointable {
   // `*end_of_sequence = true` and return `OkStatus()`. `*num_skipped` will
   // store the number of outputs that are skipped. When `*end_of_sequence` is
   // `false`, `*num_skipped` should equal to `num_to_skip`.
-  virtual Status Skip(IteratorContext* ctx, int num_to_skip,
-                      bool* end_of_sequence, int* num_skipped) = 0;
+  virtual absl::Status Skip(IteratorContext* ctx, int num_to_skip,
+                            bool* end_of_sequence, int* num_skipped) = 0;
 
-  virtual Status Skip(IteratorContext&& ctx, int num_to_skip,
-                      bool* end_of_sequence, int* num_skipped) {
+  virtual absl::Status Skip(IteratorContext&& ctx, int num_to_skip,
+                            bool* end_of_sequence, int* num_skipped) {
     return Skip(&ctx, num_to_skip, end_of_sequence, num_skipped);
   }
 
@@ -1119,13 +1134,16 @@ class IteratorBase : public Checkpointable {
 
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
-  virtual Status Initialize(IteratorContext* ctx) { return absl::OkStatus(); }
+  virtual absl::Status Initialize(IteratorContext* ctx) {
+    return absl::OkStatus();
+  }
 
   // Performs initialization of the base iterator.
-  Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
+  absl::Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
 
   // Saves the state of this iterator.
-  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override {
+  absl::Status Save(SerializationContext* ctx,
+                    IteratorStateWriter* writer) override {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
@@ -1134,7 +1152,8 @@ class IteratorBase : public Checkpointable {
   }
 
   // Restores the state of this iterator.
-  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) override {
+  absl::Status Restore(IteratorContext* ctx,
+                       IteratorStateReader* reader) override {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     ctx->SaveCheckpoint(this);
@@ -1157,8 +1176,8 @@ class IteratorBase : public Checkpointable {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
-  Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
-                   const std::unique_ptr<IteratorBase>& input) {
+  absl::Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
+                         const std::unique_ptr<IteratorBase>& input) {
     if (ctx->symbolic_checkpoint()) {
       return absl::OkStatus();
     }
@@ -1167,13 +1186,13 @@ class IteratorBase : public Checkpointable {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their input iterators.
-  Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
-                      const std::unique_ptr<IteratorBase>& input) {
+  absl::Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
+                            const std::unique_ptr<IteratorBase>& input) {
     return input->Restore(ctx, reader);
   }
 
-  Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
-                      const std::unique_ptr<IteratorBase>& input) {
+  absl::Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
+                            const std::unique_ptr<IteratorBase>& input) {
     return RestoreInput(&ctx, reader, input);
   }
 
@@ -1181,8 +1200,8 @@ class IteratorBase : public Checkpointable {
   //
   // This method is used to store the state of the iterator in a checkpoint.
   // implementations have an override.
-  virtual Status SaveInternal(SerializationContext* ctx,
-                              IteratorStateWriter* writer) = 0;
+  virtual absl::Status SaveInternal(SerializationContext* ctx,
+                                    IteratorStateWriter* writer) = 0;
 
   // Restores the state of this iterator.
   //
@@ -1192,8 +1211,8 @@ class IteratorBase : public Checkpointable {
   // its `Initialize` method has been called, but its `GetNext` method has
   // never been called.
   // implementations have an override.
-  virtual Status RestoreInternal(IteratorContext* ctx,
-                                 IteratorStateReader* reader) = 0;
+  virtual absl::Status RestoreInternal(IteratorContext* ctx,
+                                       IteratorStateReader* reader) = 0;
 
   // Returns a pointer to the node representing this iterator in the performance
   // model. It may be null, if performance modeling is not enabled for this
@@ -1256,13 +1275,13 @@ int64_t GetTotalBytes(const std::vector<Tensor>& element);
 // by the tensor. The consumer must either acquire its own reference to the
 // dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
 // destroyed or mutated while the retrieved pointer is in use.
-Status GetDatasetFromVariantTensor(const Tensor& tensor,
-                                   DatasetBase** out_dataset);
+absl::Status GetDatasetFromVariantTensor(const Tensor& tensor,
+                                         DatasetBase** out_dataset);
 
 // Stores a `DatasetBase` object in `tensor`.
 //
 // The ownership of `dataset` is transferred to `tensor`.
-Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+absl::Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
 // Represents a (potentially infinite) range of outputs, where each
 // output is a tuple of tensors.
@@ -1304,18 +1323,18 @@ class DatasetBase : public core::RefCounted {
   //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  Status MakeIterator(IteratorContext* ctx, const IteratorBase* parent,
-                      const string& output_prefix,
-                      std::unique_ptr<IteratorBase>* iterator) const;
+  absl::Status MakeIterator(IteratorContext* ctx, const IteratorBase* parent,
+                            const string& output_prefix,
+                            std::unique_ptr<IteratorBase>* iterator) const;
 
-  Status MakeIterator(IteratorContext&& ctx, const IteratorBase* parent,
-                      const string& output_prefix,
-                      std::unique_ptr<IteratorBase>* iterator) const {
+  absl::Status MakeIterator(IteratorContext&& ctx, const IteratorBase* parent,
+                            const string& output_prefix,
+                            std::unique_ptr<IteratorBase>* iterator) const {
     return MakeIterator(&ctx, parent, output_prefix, iterator);
   }
 
   // Returns a new iterator restored from the checkpoint data in `reader`.
-  Status MakeIteratorFromCheckpoint(
+  absl::Status MakeIteratorFromCheckpoint(
       IteratorContext* ctx, const string& output_prefix,
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
@@ -1331,7 +1350,7 @@ class DatasetBase : public core::RefCounted {
     return absl::OkStatus();
   }
 
-  Status MakeIteratorFromCheckpoint(
+  absl::Status MakeIteratorFromCheckpoint(
       IteratorContext&& ctx, const string& output_prefix,
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
@@ -1341,7 +1360,7 @@ class DatasetBase : public core::RefCounted {
   // Returns a split provider which partitions the dataset's data into splits
   // and provides them in a sequence. The split provider is stored in
   // `*split_provider`.
-  virtual Status MakeSplitProviders(
+  virtual absl::Status MakeSplitProviders(
       std::vector<std::unique_ptr<SplitProvider>>* split_providers) const;
 
   // Returns a vector of DataType values, representing the respective
@@ -1388,26 +1407,27 @@ class DatasetBase : public core::RefCounted {
   // subclass. Implementing `InputDatasets` enables `DatasetBase` to provide a
   // default implementation of `MakeSplitProvider` when there is a single input
   // dataset.
-  virtual Status InputDatasets(std::vector<const DatasetBase*>* inputs) const;
+  virtual absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const;
 
   // Indicates whether the dataset depends on any external state which would
   // prevent it from being serializable. If so, the method returns
   // `errors::FailedPrecondition` with a message that identifies the external
   // state. Otherwise, the method returns `OkStatus()`.
-  virtual Status CheckExternalState() const = 0;
+  virtual absl::Status CheckExternalState() const = 0;
 
   // Indicates whether the dataset is compatible with random access.
-  Status CheckRandomAccessCompatible(const int64 index) const;
+  absl::Status CheckRandomAccessCompatible(const int64 index) const;
 
   // Return the element at a particular index for a randomly accessible dataset.
-  virtual Status Get(OpKernelContext* ctx, int64 index,
-                     std::vector<Tensor>* out_tensors) const;
+  virtual absl::Status Get(OpKernelContext* ctx, int64 index,
+                           std::vector<Tensor>* out_tensors) const;
 
   // Same as above, but with an `AnyContext`, which can be constructed from
   // either an `OpKernelContext` or `IteratorContext`. Used to support datasets
   // that provide random access through both the dataset and iterator APIs.
-  virtual Status Get(AnyContext ctx, int64 index,
-                     std::vector<Tensor>* out_tensors) const;
+  virtual absl::Status Get(AnyContext ctx, int64 index,
+                           std::vector<Tensor>* out_tensors) const;
 
   // Returns true if the dataset and its inputs support random access.
   virtual absl::Status RandomIndexingCompatible() const {
@@ -1428,19 +1448,19 @@ class DatasetBase : public core::RefCounted {
    public:
     explicit DatasetGraphDefBuilder(GraphDefBuilder* b)
         : GraphDefBuilderWrapper(b) {}
-    Status AddInputDataset(SerializationContext* ctx,
-                           const DatasetBase* dataset, Node** output);
-    Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
-                              Node** output);
-    Status AddIdentity(SerializationContext* ctx,
-                       const std::string& name_prefix, Node** input,
-                       Node** output);
+    absl::Status AddInputDataset(SerializationContext* ctx,
+                                 const DatasetBase* dataset, Node** output);
+    absl::Status AddDatasetOrTensor(SerializationContext* ctx,
+                                    const Tensor& val, Node** output);
+    absl::Status AddIdentity(SerializationContext* ctx,
+                             const std::string& name_prefix, Node** input,
+                             Node** output);
 
    private:
-    Status AddDatasetOrTensorHelper(SerializationContext* ctx,
-                                    const Tensor& val, Node** output);
-    Status AddResourceHelper(SerializationContext* ctx, const Tensor& val,
-                             Node** output);
+    absl::Status AddDatasetOrTensorHelper(SerializationContext* ctx,
+                                          const Tensor& val, Node** output);
+    absl::Status AddResourceHelper(SerializationContext* ctx, const Tensor& val,
+                                   Node** output);
   };
 
  protected:
@@ -1456,9 +1476,9 @@ class DatasetBase : public core::RefCounted {
   // 2) To save the dataset so that it can restore at a later point (possibly in
   // different environment). If a subclass of `DatasetBase` does not implement
   // this method, then this migration will not be possible.
-  virtual Status AsGraphDefInternal(SerializationContext* ctx,
-                                    DatasetGraphDefBuilder* b,
-                                    Node** node) const = 0;
+  virtual absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                          DatasetGraphDefBuilder* b,
+                                          Node** node) const = 0;
 
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
@@ -1467,17 +1487,17 @@ class DatasetBase : public core::RefCounted {
 
  private:
   // Computes and stores the cardinality of a given dataset.
-  Status ComputeCardinality();
+  absl::Status ComputeCardinality();
 
   // Computes the number of source datasets feeding into this dataset. A source
   // dataset is a leaf in the subtree of dataset inputs.
-  Status ComputeNumSources();
+  absl::Status ComputeNumSources();
 
   // Merges options from inputs to this dataset. If there is a conflict in a
   // field value, the options set on this dataset takes precedence over those in
   // the inputs. The order of precedence on the inputs is in the same order as
   // how they appear for this dataset.
-  Status MergeOptionsFromInputs();
+  absl::Status MergeOptionsFromInputs();
 
   const string type_string_;
   const string node_name_;
@@ -1526,18 +1546,19 @@ class DatasetBaseIterator : public IteratorBase {
   // following format "name#arg_1=value_,...,arg_n=value_n".
   string BuildTraceMeName();
 
-  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) final;
+  absl::Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence) final;
 
-  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) {
+  absl::Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
-  Status Skip(IteratorContext* ctx, int num_to_skip, bool* end_of_sequence,
-              int* num_skipped) final;
+  absl::Status Skip(IteratorContext* ctx, int num_to_skip,
+                    bool* end_of_sequence, int* num_skipped) final;
 
-  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
+  absl::Status Save(SerializationContext* ctx,
+                    IteratorStateWriter* writer) final {
     VLOG(2) << "Attempting to save checkpoints on iterator (prefix: "
             << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Save(ctx, writer);
@@ -1545,16 +1566,18 @@ class DatasetBaseIterator : public IteratorBase {
 
   // Returns a copy of the `status` where the error message is prepended with
   // dataset name and the iterator prefix.
-  Status AddErrorContext(const Status& status) const {
-    return Status(status.code(),
-                  strings::StrCat("Error in user-defined function passed to ",
-                                  dataset()->metadata().name(),
-                                  " transformation with iterator: ", prefix(),
-                                  ": ", status.message()));
+  absl::Status AddErrorContext(const absl::Status& status) const {
+    return absl::Status(
+        status.code(),
+        strings::StrCat("Error in user-defined function passed to ",
+                        dataset()->metadata().name(),
+                        " transformation with iterator: ", prefix(), ": ",
+                        status.message()));
   }
 
  protected:
-  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) final {
+  absl::Status Restore(IteratorContext* ctx,
+                       IteratorStateReader* reader) final {
     VLOG(2) << "Attempting to restore checkpoints on iterator (prefix: "
             << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Restore(ctx, reader);
@@ -1565,13 +1588,13 @@ class DatasetBaseIterator : public IteratorBase {
   // See the docstring of `GetNext` method regaring the contract for
   // `out_tensors` and `end_of_sequence`. Implementations may assume that
   // `*out_tensors` is empty.
-  virtual Status GetNextInternal(IteratorContext* ctx,
-                                 std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) = 0;
+  virtual absl::Status GetNextInternal(IteratorContext* ctx,
+                                       std::vector<Tensor>* out_tensors,
+                                       bool* end_of_sequence) = 0;
 
   // Internal implementation of Skip that is wrapped in tracing logic
-  virtual Status SkipInternal(IteratorContext* ctx, int num_to_skip,
-                              bool* end_of_sequence, int* num_skipped);
+  virtual absl::Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                                    bool* end_of_sequence, int* num_skipped);
 
   string full_name(const string& name) const {
     return FullName(params_.prefix, name);
@@ -1693,8 +1716,9 @@ class DatasetIterator : public DatasetBaseIterator {
 };
 
 template <typename T>
-Status ParseScalarArgument(OpKernelContext* ctx,
-                           const StringPiece& argument_name, T* output) {
+absl::Status ParseScalarArgument(OpKernelContext* ctx,
+                                 const absl::string_view& argument_name,
+                                 T* output) {
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
   if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
@@ -1705,9 +1729,9 @@ Status ParseScalarArgument(OpKernelContext* ctx,
 }
 
 template <typename T>
-Status ParseVectorArgument(OpKernelContext* ctx,
-                           const StringPiece& argument_name,
-                           std::vector<T>* output) {
+absl::Status ParseVectorArgument(OpKernelContext* ctx,
+                                 const absl::string_view& argument_name,
+                                 std::vector<T>* output) {
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
   if (!TensorShapeUtils::IsVector(argument_t->shape())) {

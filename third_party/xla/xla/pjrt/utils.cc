@@ -251,7 +251,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
     if (attr != nullptr) {
       TF_ASSIGN_OR_RETURN(MemorySpaceColor memory_space,
                           GetMemorySpaceColor(attr.getValue().str()));
-      result.emplace_back(memory_space);
+      result.push_back(memory_space);
     } else {
       result.emplace_back(xla::Layout::kDefaultMemorySpace);
     }
@@ -420,7 +420,7 @@ GetMemoryKindsFromFrontendAttr(absl::string_view attr) {
   for (const std::string& str_mem_space : str_memory_spaces) {
     MemorySpaceColor memory_space;
     CHECK(absl::SimpleAtoi(str_mem_space, &memory_space));
-    result.emplace_back(memory_space);
+    result.push_back(memory_space);
   }
   return result;
 }

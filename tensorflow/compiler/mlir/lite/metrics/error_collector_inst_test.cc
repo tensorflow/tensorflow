@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
-#include <cstddef>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>

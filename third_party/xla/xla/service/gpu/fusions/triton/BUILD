@@ -26,7 +26,9 @@ package_group(
 cc_library(
     name = "emitter_helpers",
     srcs = ["emitter_helpers.cc"],
-    hdrs = ["emitter_helpers.h"],
+    hdrs = [
+        "emitter_helpers.h",
+    ],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -37,6 +39,7 @@ cc_library(
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/mlir_hlo:transformation_helpers",
         "//xla/service/gpu:target_util",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
@@ -138,6 +141,7 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
@@ -231,6 +235,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu:triton_tiling_propagation",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -280,6 +285,7 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
@@ -304,6 +310,7 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -367,6 +374,7 @@ gentbl_cc_library(
 cc_library(
     name = "xla_triton_passes",
     srcs = [
+        "xla_triton_int4_passes.cc",
         "xla_triton_prevent_mmav3_loop_unrolling_pass.cc",
         "xla_triton_sparse_passes.cc",
     ],
@@ -376,9 +384,12 @@ cc_library(
     deps = [
         ":xla_triton",
         ":xla_triton_passes_inc_gen",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:IR",
@@ -386,6 +397,7 @@ cc_library(
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@triton//:TritonAnalysis",
@@ -499,6 +511,29 @@ cc_library(
 )
 
 xla_test(
+    name = "triton_fusion_emitter_deviceless_test",
+    srcs = ["triton_fusion_emitter_deviceless_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":triton_fusion_emitter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "triton_fusion_emitter_device_legacy_test",
     srcs = if_gpu_is_configured(["triton_fusion_emitter_device_legacy_test.cc"]),
     # TODO(b/372714955): Fix the memory leak!
@@ -537,17 +572,55 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "triton_fusion_emitter_int4_device_test",
+    srcs = if_gpu_is_configured(["triton_fusion_emitter_int4_device_test.cc"]),
+    # TODO(b/372714955): Fix the memory leak!
+    backend_args = if_google(
+        {
+            "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
+        },
+        {},
+    ),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b100",
+        "gpu_amd_any",
+    ],
+    shard_count = 20,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
@@ -624,12 +697,13 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
@@ -723,12 +797,12 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu/fusions:emitter_loc_op_builder",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log:check",

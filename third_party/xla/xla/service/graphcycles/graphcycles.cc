@@ -125,7 +125,7 @@ int32_t GraphCycles::NewNode() {
     Node n;
     n.visited = false;
     n.rank = rep_->nodes_.size();
-    rep_->nodes_.emplace_back(n);
+    rep_->nodes_.push_back(n);
     rep_->node_io_.emplace_back();
     rep_->node_data_.push_back(nullptr);
     return n.rank;

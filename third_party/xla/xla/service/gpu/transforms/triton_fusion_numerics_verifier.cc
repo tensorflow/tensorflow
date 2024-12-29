@@ -243,9 +243,8 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       false);
 
-  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
+  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
-  TF_RET_CHECK(opt_compile_util.has_value());
 
   TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads, [&](const HloFusionInstruction& fusion) {
@@ -255,8 +254,8 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
           ++cache_hits_;
           return it->second;
         }
-        auto result = VerifyTritonFusion(*opt_compile_util, fusion, config_,
-                                         debug_options);
+        auto result =
+            VerifyTritonFusion(compile_util, fusion, config_, debug_options);
         fusion_result_cache_[key] = result;
         return result;
       }));

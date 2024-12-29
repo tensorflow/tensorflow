@@ -1716,12 +1716,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
+extern template class HloEvaluatorTypedVisitor<u1, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u2, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u4, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
+extern template class HloEvaluatorTypedVisitor<s1, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s2, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s4, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;

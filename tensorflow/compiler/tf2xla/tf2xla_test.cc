@@ -55,7 +55,7 @@ AttrValue TypeAttrValue(DataType type) {
   return attr_value;
 }
 
-AttrValue StringAttrValue(StringPiece str) {
+AttrValue StringAttrValue(absl::string_view str) {
   AttrValue attr_value;
   SetAttrValue(str, &attr_value);
   return attr_value;

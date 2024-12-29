@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -372,7 +370,7 @@ class CompileOnlyPyClient : public PyClient {
   }
 
   absl::StatusOr<std::shared_ptr<ifrt::Executable>> CompileUnloaded(
-      std::string_view mlir_module, CompileOptions options,
+      absl::string_view mlir_module, CompileOptions options,
       std::vector<nb::capsule> host_callbacks) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
@@ -422,7 +420,7 @@ void RegisterCompileOnlyClient(nb::module_& m) {
           [](CompileOnlyPyClient& self, nb::bytes mlir_module,
              CompileOptions options, std::vector<nb::capsule> host_callbacks) {
             return ValueOrThrow(self.CompileUnloaded(
-                std::string_view(mlir_module.c_str(), mlir_module.size()),
+                absl::string_view(mlir_module.c_str(), mlir_module.size()),
                 std::move(options), std::move(host_callbacks)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),

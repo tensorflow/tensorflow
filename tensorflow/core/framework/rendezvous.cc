@@ -39,15 +39,15 @@ namespace tensorflow {
 Rendezvous::ParsedKey& Rendezvous::ParsedKey::operator=(const ParsedKey& b) {
   const char* b_base = b.buf_.data();
   buf_ = b.buf_;
-  src_device = StringPiece(buf_.data() + (b.src_device.data() - b_base),
-                           b.src_device.size());
+  src_device = absl::string_view(buf_.data() + (b.src_device.data() - b_base),
+                                 b.src_device.size());
   src = b.src;
   src_incarnation = b.src_incarnation;
-  dst_device = StringPiece(buf_.data() + (b.dst_device.data() - b_base),
-                           b.dst_device.size());
+  dst_device = absl::string_view(buf_.data() + (b.dst_device.data() - b_base),
+                                 b.dst_device.size());
   dst = b.dst;
-  edge_name = StringPiece(buf_.data() + (b.edge_name.data() - b_base),
-                          b.edge_name.size());
+  edge_name = absl::string_view(buf_.data() + (b.edge_name.data() - b_base),
+                                b.edge_name.size());
   return *this;
 }
 
@@ -70,22 +70,22 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
 // Return the prefix of "*s" up to the next occurrence of "delim", or
 // the whole remaining string if "delim" is not found.  "*s" is advanced
 // past the string returned plus the delimiter (if found).
-static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
+static absl::string_view ConsumeNextPart(absl::string_view* s, char delim) {
   for (size_t offset = 0; offset < s->size(); offset++) {
     if ((*s)[offset] == delim) {
-      StringPiece result(s->data(), offset);
+      absl::string_view result(s->data(), offset);
       s->remove_prefix(offset + 1);  // +1: remove delim, as well
       return result;
     }
   }
   // No delimiter found: return rest of string
-  StringPiece result(s->data(), s->size());
+  absl::string_view result(s->data(), s->size());
   s->remove_prefix(s->size());
   return result;
 }
 
 /* static */
-Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
+absl::Status Rendezvous::ParseKey(absl::string_view key, ParsedKey* out) {
   if (key.data() == out->buf_.data()) {
     // Caller used our buf_ string directly, so we don't need to copy.  (The
     // SendOp and RecvOp implementations do this, for example).
@@ -95,8 +95,8 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
     // for the lifetime of the ParsedKey object.
     out->buf_.assign(key.data(), key.size());
   }
-  StringPiece s(out->buf_);
-  StringPiece parts[5];
+  absl::string_view s(out->buf_);
+  absl::string_view parts[5];
   for (int i = 0; i < 5; i++) {
     parts[i] = ConsumeNextPart(&s, ';');
   }
@@ -106,9 +106,9 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
       strings::HexStringToUint64(parts[1], &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
-    out->src_device = StringPiece(parts[0].data(), parts[0].size());
-    out->dst_device = StringPiece(parts[2].data(), parts[2].size());
-    out->edge_name = StringPiece(parts[3].data(), parts[3].size());
+    out->src_device = absl::string_view(parts[0].data(), parts[0].size());
+    out->dst_device = absl::string_view(parts[2].data(), parts[2].size());
+    out->edge_name = absl::string_view(parts[3].data(), parts[3].size());
     return absl::OkStatus();
   }
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);
@@ -116,15 +116,15 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 
 RendezvousInterface::~RendezvousInterface() {}
 
-Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
-                                 Tensor* val, bool* is_dead,
-                                 int64_t timeout_ms) {
-  Status ret;
+absl::Status RendezvousInterface::Recv(const ParsedKey& key,
+                                       const Args& recv_args, Tensor* val,
+                                       bool* is_dead, int64_t timeout_ms) {
+  absl::Status ret;
   Notification n;
   RecvAsync(key, recv_args,
-            [&ret, &n, val, is_dead](const Status& s, const Args& send_args,
-                                     const Args& recv_args, const Tensor& v,
-                                     const bool dead) {
+            [&ret, &n, val, is_dead](
+                const absl::Status& s, const Args& send_args,
+                const Args& recv_args, const Tensor& v, const bool dead) {
               ret = s;
               *val = v;
               *is_dead = dead;
@@ -134,8 +134,8 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
     int64_t timeout_us = timeout_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
-      return Status(absl::StatusCode::kDeadlineExceeded,
-                    "Timed out waiting for notification");
+      return absl::Status(absl::StatusCode::kDeadlineExceeded,
+                          "Timed out waiting for notification");
     }
   } else {
     n.WaitForNotification();
@@ -143,8 +143,8 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
   return ret;
 }
 
-Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
-                                 Tensor* val, bool* is_dead) {
+absl::Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
+                                       Tensor* val, bool* is_dead) {
   const int64_t no_timeout = 0;
   return Recv(key, args, val, is_dead, no_timeout);
 }
@@ -154,8 +154,8 @@ class LocalRendezvousWrapper : public Rendezvous {
  public:
   LocalRendezvousWrapper(int num_shards) : impl_(this, num_shards) {}
 
-  Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
-              const bool is_dead) override {
+  absl::Status Send(const ParsedKey& key, const Args& send_args,
+                    const Tensor& val, const bool is_dead) override {
     return impl_.Send(key, send_args, val, is_dead);
   }
 
@@ -164,7 +164,9 @@ class LocalRendezvousWrapper : public Rendezvous {
     impl_.RecvAsync(key, recv_args, std::move(done));
   }
 
-  void StartAbort(const Status& status) override { impl_.StartAbort(status); }
+  void StartAbort(const absl::Status& status) override {
+    impl_.StartAbort(status);
+  }
 
  private:
   LocalRendezvous impl_;

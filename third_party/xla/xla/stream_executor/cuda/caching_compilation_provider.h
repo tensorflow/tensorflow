@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -52,10 +51,10 @@ class CachingCompilationProvider : public CompilationProvider {
   bool SupportsCompileAndLink() const override;
 
   absl::StatusOr<Assembly> Compile(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
   absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
   absl::StatusOr<Assembly> CompileAndLink(
       const CudaComputeCapability& cc,

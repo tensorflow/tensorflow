@@ -120,8 +120,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -514,7 +516,7 @@ AllocateDestinationBuffer(
     // put it as the first definition event so that we can guarantee only the
     // first one might not have event recorded.
     if (definition_event) {
-      definition_events.emplace_back(definition_event);
+      definition_events.push_back(definition_event);
     }
     if (local_device->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
@@ -532,7 +534,7 @@ AllocateDestinationBuffer(
     // We have at least one definition event, for the copy completing to
     // the device buffers.
     if (definition_event) {
-      definition_events.emplace_back(definition_event);
+      definition_events.push_back(definition_event);
     } else {
       definition_events.emplace_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
@@ -3175,6 +3177,21 @@ PjRtStreamExecutorLoadedExecutable::Execute(
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
+  if (input_hlo_snapshot_bits_.has_value()) {
+    HloUnoptimizedSnapshot hlo_snapshot;
+    *hlo_snapshot.mutable_hlo_module() = input_hlo_snapshot_bits_->hlo_module;
+    for (const auto& argument_handle : argument_handles) {
+      HloInputs hlo_inputs;
+      for (const auto& buffer : argument_handle) {
+        TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteralSync());
+        *hlo_inputs.add_arguments() = literal->ToProto();
+      }
+      *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
+
+      DumpHloUnoptimizedSnapshotIfEnabled(
+          hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
+    }
+  }
 
   RunId run_id;
   tsl::profiler::TraceMeProducer activity(
@@ -3566,6 +3583,12 @@ PjRtStreamExecutorClient::CompileInternal(
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
+  const auto& ex_options = options.executable_build_options;
+  if (ex_options.has_debug_options() &&
+      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots()) {
+    executable->SetInputHloSnapshotBits(
+        computation.proto(), options.executable_build_options.debug_options());
+  }
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 

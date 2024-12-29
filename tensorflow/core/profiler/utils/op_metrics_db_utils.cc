@@ -187,6 +187,7 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
     op_metrics->set_min_time_ps(min_duration_ps);
     op_metrics->set_self_time_ps(self_duration_ps);
     op_metrics->set_dma_stall_ps(dma_stall_ps);
+    op_metrics->set_num_cores(1);
   } else {
     op_metrics->set_occurrences(op_metrics->occurrences() +
                                 hlo_event.NumOccurrences());

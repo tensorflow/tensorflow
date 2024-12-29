@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <string_view>
 #include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
@@ -159,7 +159,7 @@ class CommandBuffer {
   //
   enum class Mode { kPrimary, kNested };
 
-  friend std::string_view ModeToString(Mode mode) {
+  friend absl::string_view ModeToString(Mode mode) {
     switch (mode) {
       case CommandBuffer::Mode::kPrimary:
         return "primary";

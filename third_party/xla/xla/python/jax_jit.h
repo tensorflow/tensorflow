@@ -19,10 +19,10 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -60,7 +60,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> enable_memories;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -140,8 +139,8 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occurred "
           "while trying to hash an object of type ",
-          nanobind::cast<std::string_view>(nanobind::str(static_arg.type())),
-          ", ", nanobind::cast<std::string_view>(nanobind::str(static_arg)),
+          nanobind::cast<absl::string_view>(nanobind::str(static_arg.type())),
+          ", ", nanobind::cast<absl::string_view>(nanobind::str(static_arg)),
           ". The error was:\n", e.what(), "\n"));
     }
     h = H::combine(std::move(h), hash);
@@ -185,7 +184,7 @@ absl::Status ParseArguments(
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
   // Not part of the signature, but we need it for error messages.
-  std::string_view function_name;
+  absl::string_view function_name;
 
   ArgumentSignature arg_signature;
 
@@ -206,7 +205,6 @@ struct CallSignature {
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_enable_memories = false;
 
   // For JIT on PJIT, we need to fallback to python whenever default_device
   // changes.

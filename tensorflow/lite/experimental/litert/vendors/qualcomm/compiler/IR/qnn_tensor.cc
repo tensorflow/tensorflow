@@ -199,12 +199,19 @@ LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
     LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeQuntizationParameter(src, dest));
   }
 
+  auto src_ranked_tensor_type = src.RankedTensorType();
+  if (!src_ranked_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_ranked_tensor_type.Error().Message().data());
+    return src_ranked_tensor_type.Error().Status();
+  }
+
   Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeElementType(src.RankedTensorType().ElementType(), qnn_data_type));
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeElementType(
+      src_ranked_tensor_type->ElementType(), qnn_data_type));
 
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeShapeInfo(src.RankedTensorType().Layout(), dest));
+      LegalizeShapeInfo(src_ranked_tensor_type->Layout(), dest));
 
   const bool is_subgraph_in = src.IsSubgraphInput();
   const bool is_subgraph_out = src.IsSubgraphOutput();

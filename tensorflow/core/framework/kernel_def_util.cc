@@ -33,8 +33,8 @@ bool InTypeList(DataType dt, const AttrValue& type_list) {
 }
 }  // namespace
 
-Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
-                        bool* match) {
+absl::Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
+                              bool* match) {
   *match = false;
   for (const auto& constraint : kernel_def.constraint()) {
     auto constraint_value_case = AttrValue::VALUE_NOT_SET;

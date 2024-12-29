@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 bool TpuOpFilter(KernelDef* kdef) {
-  StringPiece op(kdef->op());
+  absl::string_view op(kdef->op());
   VLOG(2) << "TpuOpFilter " << op;
   // Enable const string operands to Assert op (b/69167214).
   if (op == "Const") {

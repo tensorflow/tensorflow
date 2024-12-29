@@ -224,9 +224,8 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
   }
 
   const DebugOptions& debug_options = module->config().debug_options();
-  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> compile_util,
+  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
-  TF_RET_CHECK(compile_util.has_value());
 
   bool hlo_changed = false;
   for (const HloComputation* computation : module->computations()) {
@@ -234,7 +233,7 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
       TF_ASSIGN_OR_RETURN(
           bool instruction_changed,
           AutotuneCustomKernelFusion(computation->FusionInstruction(), config_,
-                                     compile_util.value(), debug_options));
+                                     compile_util, debug_options));
       if (instruction_changed) {
         hlo_changed = true;
       }

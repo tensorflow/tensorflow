@@ -22,9 +22,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/now_seconds_env.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/notification.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -493,6 +491,10 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
                      char* buffer, size_t* bytes_transferred) {
     if (counter.DecrementCount()) {
       notification.Notify();
+      // This call to `Wait()` is not expected to block. Calling `Wait()` here
+      // allows us to satisfy `BlockingCounter`'s requirement: "When `Wait()`
+      // returns, it is legal to destroy the `BlockingCounter`.".
+      counter.Wait();
     }
     if (!notification.WaitForNotificationWithTimeout(absl::Seconds(10))) {
       // This avoids having the test time out, which is harder to debug.
@@ -524,7 +526,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
   // Concurrent reads to the same file blocks should be de-duplicated.
   const size_t block_size = 16;
   int num_requests = 0;
-  Notification notification;
+  absl::Notification notification;
   auto fetcher = [&num_requests, &notification, block_size](
                      const string& filename, size_t offset, size_t n,
                      char* buffer, size_t* bytes_transferred) {

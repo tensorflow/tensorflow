@@ -167,7 +167,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Node* drop_remainder = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
 
-    std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    std::vector<std::pair<absl::string_view, AttrValue>> attrs;
     // Attr: parallel_copy
     AttrValue parallel_copy_attr;
     b->BuildAttrValue(parallel_copy_, &parallel_copy_attr);

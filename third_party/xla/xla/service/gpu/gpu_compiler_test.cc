@@ -604,7 +604,7 @@ TEST_F(GpuCompilerTestWithAutotuneDb,
         << "Autotuning results have only been generated for Hopper GPUs";
   }
   const absl::string_view hlo_string = R"(
-HloModule test 
+HloModule test
 
 ENTRY main {
   p0 = f8e4m3fn[12288,4096]{0,1} parameter(0)
@@ -1325,6 +1325,40 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
+  // Fails if any of the passes matching `other_pass_regex` runs before
+  // the first occurrence of the pass matching `first_pass_regex`.
+  void VerifyPassRunsAtLeastOnceBefore(absl::string_view first_pass_regex,
+                                       absl::string_view other_pass_regex) {
+    if (!optimized_module_) {
+      CompileModule(GetModuleConfigForTest());
+    }
+    int first_pass_first_run = std::numeric_limits<int>::max();
+    int other_pass_first_run = std::numeric_limits<int>::max();
+    int run_index = 0;
+    for (const HloPassMetadata& pass_metadata :
+         optimized_module_->metadata()->proto().pass_metadata()) {
+      if (RE2::FullMatch(pass_metadata.pass_name(), first_pass_regex)) {
+        VLOG(2) << "Pass " << pass_metadata.pass_name()
+                << " matches first_pass_regex." << std::endl;
+        first_pass_first_run = std::min(first_pass_first_run, run_index);
+      }
+      if (RE2::FullMatch(pass_metadata.pass_name(), other_pass_regex)) {
+        VLOG(2) << "Pass " << pass_metadata.pass_name()
+                << " matches other_pass_regex." << std::endl;
+        other_pass_first_run = std::min(other_pass_first_run, run_index);
+      }
+      ++run_index;
+    }
+
+    EXPECT_NE(first_pass_first_run, std::numeric_limits<int>::max())
+        << "Did not run a pass matching " << first_pass_regex;
+    EXPECT_NE(other_pass_first_run, std::numeric_limits<int>::max())
+        << "Did not run a pass matching " << other_pass_regex;
+    EXPECT_LE(first_pass_first_run, other_pass_first_run)
+        << "A pass matching " << first_pass_regex
+        << " did not run before passes matching " << other_pass_regex;
+  }
+
   // Fails if any of the passes with names matching the regular expression
   // `first_pass_regex` run after any of the passes matching `last_pass_regex`
   // or if none of the executed passes matches `first_pass_regex` or
@@ -1405,8 +1439,24 @@ TEST_F(PassOrderTest, PassesAreRunInCorrectOrder) {
                   /*last_pass_regex=*/"priority-fusion");
   VerifyPassOrder(/*first_pass_regex=*/"layout-assignment",
                   /*last_pass_regex=*/"layout_normalization");
-  VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
-                  /*last_pass_regex=*/"layout_normalization");
+}
+
+TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
+  // HostOffloadLegalize must run before LayoutNormalization to prevent
+  // the creation of invalid transpose/bitcast operations within
+  // host memory offloading segments.
+  VerifyPassRunsAtLeastOnceBefore(/*first_pass_regex=*/"host-offload-legalize",
+                                  /*other_pass_regex=*/"layout_normalization");
+
+  // CSE should not run between HostOffloadLegalize and HostOffloader
+  // because it could break the invariants established
+  // by the legalize pass, such as the buffer initialization broadcasts
+  // before loops having only a single use
+  // (see https://github.com/openxla/xla/issues/20373).
+  auto pass_range =
+      VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
+                      /*last_pass_regex=*/"host-offloader");
+  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"cse");
 }
 
 TEST_F(PassOrderTest, FusionBlockLevelRewriterRunsAfterAllFusionPasses) {

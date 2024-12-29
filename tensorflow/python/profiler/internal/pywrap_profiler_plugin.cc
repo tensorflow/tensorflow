@@ -21,6 +21,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/status_casters.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace py = ::pybind11;
 

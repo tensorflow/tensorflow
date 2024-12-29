@@ -1,11 +1,43 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+cc_library(
+    name = "emitter_loc_op_builder",
+    srcs = ["emitter_loc_op_builder.cc"],
+    hdrs = ["emitter_loc_op_builder.h"],
+    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform",
+    ] + if_google(["@com_google_absl//absl/types:source_location"]),
+)
+
+xla_test(
+    name = "emitter_loc_op_builder_test",
+    srcs = ["emitter_loc_op_builder_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":emitter_loc_op_builder",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
 
 cc_library(
@@ -267,30 +299,35 @@ cc_library(
     hdrs = ["scatter_mlir.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/ir:xla_gpu",
         "//xla/codegen/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service:scatter_simplifier",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu/fusions/mlir:computation_partitioner",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
+        "//xla/service/gpu/fusions/mlir:type_util",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:DataLayoutInterfaces",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 

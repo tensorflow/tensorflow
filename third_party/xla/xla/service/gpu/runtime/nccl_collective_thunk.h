@@ -143,6 +143,7 @@ class NcclCollectiveThunk : public Thunk {
    private:
     friend class NcclCollectiveThunk;
     friend class NcclCollectiveDoneThunk;
+    friend class NcclGroupThunk;
 
     absl::Status Initialize(se::StreamExecutor* executor);
     absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);

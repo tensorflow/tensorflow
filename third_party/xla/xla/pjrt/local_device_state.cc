@@ -128,6 +128,16 @@ LocalDeviceState::~LocalDeviceState() {
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
+
+  // Explicitly delete all the streams to ensure that their callbacks are
+  // executed before the destruction of the LocalDeviceState and its callback
+  // threads.
+  external_ready_event_streams_.clear();
+  fixed_size_pool_usage_streams_.clear();
+  device_to_device_streams_.clear();
+  device_to_host_streams_.clear();
+  host_to_device_stream_.reset();
+  compute_stream_.reset();
 }
 
 absl::Status LocalDeviceState::SynchronizeAllActivity() {

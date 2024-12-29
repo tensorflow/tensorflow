@@ -23,7 +23,6 @@
 #include <cstdint>
 #include <ostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -159,6 +158,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
       break;
     case kLiteRtOpCodeTflGreater:
       out << "TFL_GREATER";
+      break;
+    case kLiteRtOpCodeTflGelu:
+      out << "TFL_GELU";
       break;
     default:
       out << "UKNOWN_OP_CODE: " << code;

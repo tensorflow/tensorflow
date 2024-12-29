@@ -252,6 +252,7 @@ class LiteralUtil {
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
   static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
   static Literal ConvertS32ToF32(const LiteralSlice& s32_literal);
+  static Literal ConvertS32ToS1(const LiteralSlice& s32_literal);
 
   // Creates a scalar literal whose value is the maximum value of a given
   // literal slice.

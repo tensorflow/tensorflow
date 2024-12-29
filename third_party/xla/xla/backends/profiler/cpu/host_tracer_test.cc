@@ -51,7 +51,7 @@ using ::tsl::profiler::XPlaneVisitor;
 using ::tsl::profiler::XStatVisitor;
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  tsl::uint32 thread_id;
+  int64_t thread_id;
   std::string thread_name = "MyThreadName";
   tensorflow::profiler::XSpace space;
 

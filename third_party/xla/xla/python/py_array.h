@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -114,6 +113,8 @@ struct PyArray_Storage {
   // duplicate PjRtBuffers in this list.
   PyArray_Storage* next;
   PyArray_Storage* prev;
+
+  uint8_t thread_id_bucket;
 };
 
 // The C++ implementation of jax.Array. A few key methods and data members are
@@ -295,7 +296,7 @@ class PyArray : public nanobind::object {
       std::vector<nanobind::object> objs);
 
  private:
-  absl::StatusOr<PyArray> AssertUnsharded(std::string_view api);
+  absl::StatusOr<PyArray> AssertUnsharded(absl::string_view api);
 
   void CheckAndRearrange();
 

@@ -79,7 +79,7 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string);
 // classes are part of the new runtime and will eventually replace IrEmitter.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
-  class CpuElementalIrEmitter;
+  class ElementalIrEmitter;
 
  public:
   using GeneratorForOperandIrArrays =
@@ -637,7 +637,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilderBase* current_builder_;
   std::stack<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
-  bool allow_reassociation_;
+  // The state of allow_reassociation_ is required so that that it is
+  // transitive to all nested computations.
+  bool allow_reassociation_ = false;
 
   // The buffer allocation slice for the root of the computation being compiled.
   // Only relevant for thread local computations.

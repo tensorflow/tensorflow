@@ -80,7 +80,12 @@ bool MatchOpType(
     if (!expected.has_value()) {
       return true;
     }
-    return MatchRankedTensorType(actual.RankedTensorType(), expected.value());
+    auto actual_ranked_tensor_type = actual.RankedTensorType();
+    // Don't return a match if the tensor is unranked.
+    if (!actual_ranked_tensor_type) {
+      return false;
+    }
+    return MatchRankedTensorType(*actual_ranked_tensor_type, expected.value());
   };
 
   const bool inputs_match = AllZip(absl::MakeConstSpan(op.Inputs()),

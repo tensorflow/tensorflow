@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

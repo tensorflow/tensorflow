@@ -26,6 +26,8 @@ Environment* Environment::the_instance_ = nullptr;
 
 Expected<void> Environment::CreateWithOptions(
     absl::Span<const LiteRtEnvOption> options) {
+  LITERT_LOG(LITERT_INFO, "Environment::CreateWithOptions the_instance_=%p",
+             the_instance_);
   if (the_instance_) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "LiteRT environment cannot be created with options, it has "

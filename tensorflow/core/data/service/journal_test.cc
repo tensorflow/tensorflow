@@ -67,7 +67,7 @@ Update MakeRegisterDatasetUpdate() {
   return update;
 }
 
-absl::Status CheckJournalContent(StringPiece journal_dir,
+absl::Status CheckJournalContent(absl::string_view journal_dir,
                                  const std::vector<Update>& expected) {
   FileJournalReader reader(Env::Default(), journal_dir);
   for (const auto& update : expected) {

@@ -1057,15 +1057,6 @@ class ShapeUtil {
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);
 
-  // Validates the shape size is sane. This makes sure it's safe to do
-  // calculations in int64_t without overflowing.
-  static absl::Status ValidateShapeSize(const Shape& shape);
-
-  // Validates all of the non-layout properties of the shape -- this is a helper
-  // used by both the layout-optional and layout-required public method.
-  static absl::Status ValidateShapeWithOptionalLayoutInternal(
-      const Shape& shape);
-
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
   template <typename Fn>

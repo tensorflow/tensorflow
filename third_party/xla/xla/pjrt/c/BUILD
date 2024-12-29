@@ -120,6 +120,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_memory_descriptions_extension_hdrs",
+    hdrs = ["pjrt_c_api_memory_descriptions_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -128,6 +137,7 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -151,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -177,12 +188,14 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_layouts_extension_hdrs",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -399,6 +412,7 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -455,6 +469,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_test_base",
         "//xla:literal",
         "//xla:literal_util",
@@ -466,6 +481,7 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_future",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",

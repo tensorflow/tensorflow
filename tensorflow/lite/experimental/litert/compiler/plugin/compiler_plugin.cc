@@ -14,8 +14,11 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,7 +26,9 @@
 #include "absl/log/absl_check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -34,9 +39,11 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -138,9 +145,9 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
   return kLiteRtStatusOk;
 }
 
-Expected<SmallVec<std::string>> GetSocModels(
+Expected<std::vector<std::string>> GetSocModels(
     const LiteRtCompilerPluginApi& api, LiteRtCompilerPlugin plugin_handle) {
-  SmallVec<std::string> soc_models;
+  std::vector<std::string> soc_models;
 
   LiteRtParamIndex num_models;
   LITERT_EXPECT_OK(
@@ -158,15 +165,26 @@ Expected<SmallVec<std::string>> GetSocModels(
   return soc_models;
 }
 
-std::string ResolveSocModel(const CompilerPlugin& plugin,
-                            absl::string_view soc_model = "") {
-  const auto& default_model = plugin.SocModels().front();
-  if (soc_model.empty()) {
-    LITERT_LOG(LITERT_INFO, "Using default soc_model: %s",
-               default_model.c_str());
-    return default_model;
-  }
-  return std::string(soc_model);
+// Sort plugins so that we first apply those supporting NPU, then those
+// supporting GPU, and finally those supporting CPU.
+void SortPlugins(std::vector<CompilerPlugin>& compiler_plugins) {
+  std::sort(compiler_plugins.begin(), compiler_plugins.end(),
+            [](auto& x, auto& y) {
+              auto x_supported_hardware = x.SupportedHardware();
+              auto y_supported_hardware = y.SupportedHardware();
+              if (x_supported_hardware && y_supported_hardware) {
+                bool x_npu = (*x_supported_hardware & kLiteRtHwAccelatorNpu);
+                bool x_gpu = (*x_supported_hardware & kLiteRtHwAccelatorGpu);
+                bool x_cpu = (*x_supported_hardware & kLiteRtHwAccelatorCpu);
+                bool y_npu = (*y_supported_hardware & kLiteRtHwAccelatorNpu);
+                bool y_gpu = (*y_supported_hardware & kLiteRtHwAccelatorGpu);
+                bool y_cpu = (*y_supported_hardware & kLiteRtHwAccelatorCpu);
+                int x_score = 100 * x_npu + 10 * x_gpu + x_cpu;
+                int y_score = 100 * y_npu + 10 * y_gpu + y_cpu;
+                return x_score < y_score;
+              }
+              return true;
+            });
 }
 
 }  // namespace
@@ -213,7 +231,7 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   return plugin;
 }
 
-Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
+Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     absl::Span<const absl::string_view> lib_search_paths) {
   std::vector<std::string> plugin_lib_paths;
   for (auto search_path : lib_search_paths) {
@@ -223,7 +241,7 @@ Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     }
   }
 
-  SmallVec<CompilerPlugin> loaded_plugins;
+  std::vector<CompilerPlugin> loaded_plugins;
   loaded_plugins.reserve(lib_search_paths.size());
 
   for (const auto& lib_path : plugin_lib_paths) {
@@ -235,31 +253,17 @@ Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     loaded_plugins.push_back(std::move(plugin.Value()));
   }
 
+  // Sort plugins.
+  SortPlugins(loaded_plugins);
+
   return loaded_plugins;
-}
-
-Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
-    absl::Span<const absl::string_view> lib_search_paths,
-    absl::string_view soc_manufacturer) {
-  auto compiler_plugins = LoadPlugins(lib_search_paths);
-  if (!compiler_plugins) {
-    return compiler_plugins.Error();
-  }
-
-  for (auto& plugin : *compiler_plugins) {
-    if (plugin.SocManufacturer() == soc_manufacturer) {
-      return std::move(plugin);
-    }
-  }
-
-  return Error(kLiteRtStatusErrorNotFound);
 }
 
 CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
     : soc_models_(std::move(other.soc_models_)),
-      lib_handle_(other.lib_handle_),
+      lib_handle_(std::move(other.lib_handle_)),
       plugin_api_(std::move(other.plugin_api_)),
-      plugin_handle_(other.plugin_handle_) {
+      plugin_handle_(std::move(other.plugin_handle_)) {
   other.soc_models_ = {};
   other.plugin_api_ = {};
   other.lib_handle_ = nullptr;
@@ -268,17 +272,10 @@ CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
 
 CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
   if (this != &other) {
-    soc_models_ = std::move(other.soc_models_);
-    other.soc_models_ = {};
-
-    lib_handle_ = other.lib_handle_;
-    other.lib_handle_ = nullptr;
-
-    plugin_api_ = std::move(other.plugin_api_);
-    other.plugin_api_ = {};
-
-    plugin_handle_ = other.plugin_handle_;
-    other.plugin_handle_ = nullptr;
+    std::swap(soc_models_, other.soc_models_);
+    std::swap(lib_handle_, other.lib_handle_);
+    std::swap(plugin_api_, other.plugin_api_);
+    std::swap(plugin_handle_, other.plugin_handle_);
   }
   return *this;
 }
@@ -318,10 +315,14 @@ Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
 Expected<CompiledResult> CompilerPlugin::Compile(
     absl::Span<LiteRtSubgraph> partitions, absl::string_view soc_model) {
   CompiledResult result = MakeResult();
-  const auto soc_model_str = ResolveSocModel(*this, soc_model);
+  // If the user has passed an soc_model, then we use it; otherwise we let the
+  // backend pick the appropriate one by passing nullptr as soc_model. This is
+  // important for on-device compilation, where the backend must determine the
+  // SoC model based on the user device.
+  const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
   LITERT_EXPECT_OK(plugin_api_.compiler_plugin_compile(
-      plugin_handle_, soc_model_str.c_str(), partitions.data(),
-      partitions.size(), &result.compiled_result_handle_));
+      plugin_handle_, soc_model_str, partitions.data(), partitions.size(),
+      &result.compiled_result_handle_));
   return result;
 }
 
@@ -368,25 +369,23 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
   return result;
 }
 
-LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                   absl::string_view soc_model, Serialization serialization) {
+Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                           absl::string_view soc_model,
+                           Serialization serialization) {
   // Collect partitions to pass to compilation.
   auto partitions = PartitionModel(compiler_plugin, model);
   if (!partitions) {
-    LITERT_LOG(LITERT_ERROR, "Failed to partition model");
-    return partitions.Error().Status();
+    return partitions.Error();
   }
 
   auto& dispatch_ops = partitions->first;
   auto& subgraphs = partitions->second;
 
   // Pass sliced subgraphs to plugin for compilation.
-  const auto soc_model_str = ResolveSocModel(compiler_plugin, soc_model);
   auto compiled_result =
-      compiler_plugin.Compile(subgraphs.Elements(), soc_model_str);
+      compiler_plugin.Compile(subgraphs.Elements(), soc_model);
   if (!compiled_result) {
-    LITERT_LOG(LITERT_ERROR, "Failed to compile");
-    return compiled_result.Error().Status();
+    return compiled_result.Error();
   }
 
   // Attach per-partition call info to the respective op.
@@ -394,14 +393,11 @@ LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
   for (auto i = 0; i < dispatch_ops.size(); ++i) {
     auto call_info = compiled_result->CallInfo(i);
     if (!call_info) {
-      LITERT_LOG(LITERT_ERROR,
-                 "Failed to get call info from compilation result");
-      return call_info.Error().Status();
+      return call_info.Error();
     }
     auto exec_info = MakeExecInfo(*call_info, kByteCodeMetadataKey);
     if (!exec_info) {
-      LITERT_LOG(LITERT_ERROR, "Failed to serialize call info");
-      return exec_info.Error().Status();
+      return exec_info.Error();
     }
     dispatch_ops.at(i)->SetCustomOptions(std::move(*exec_info));
   }
@@ -410,22 +406,84 @@ LiteRtStatus Apply(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
   // serialization. Just passthrough for now.
   auto byte_code = compiled_result->ByteCode();
   if (!byte_code) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get bytecode from compiled result");
-    return byte_code.Error().Status();
+    return byte_code.Error();
   }
   model.PushMetadata(kByteCodeMetadataKey, byte_code->StrView());
 
   // Tag the model with make/model from the plugin.
   auto build_stamp = MakeBuildStamp(compiler_plugin.SocManufacturer(),
-                                    soc_model_str, serialization);
+                                    soc_model, serialization);
   if (!build_stamp) {
-    LITERT_LOG(LITERT_ERROR, "Failed to stamp model");
-    return build_stamp.Error().Status();
+    return build_stamp.Error();
   }
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      model.PushMetadata(kLiteRtBuildStampKey, std::move(*build_stamp)));
 
-  return kLiteRtStatusOk;
+  if (auto status =
+          model.PushMetadata(kLiteRtBuildStampKey, std::move(*build_stamp));
+      status != kLiteRtStatusOk) {
+    return Error(status);
+  }
+
+  return {};
+}
+
+Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
+    LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators) {
+  auto environment = litert::internal::Environment::Instance();
+  if (!environment) {
+    return environment.Error();
+  }
+
+  std::string compiler_plugin_lib_path = ".";
+  auto option =
+      (*environment)->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
+  if (option.has_value() && option->type == kLiteRtAnyTypeString) {
+    compiler_plugin_lib_path = option->str_value;
+  }
+
+  const std::array<const absl::string_view, 1>
+      compiler_plugin_lib_search_paths = {compiler_plugin_lib_path};
+
+  auto compiler_plugins = litert::internal::CompilerPlugin::LoadPlugins(
+      compiler_plugin_lib_search_paths);
+  if (!compiler_plugins) {
+    return compiler_plugins.Error();
+  }
+
+  std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
+
+  for (auto& compiler_plugin : *compiler_plugins) {
+    auto plugin_supported_hardware = compiler_plugin.SupportedHardware();
+    if (!plugin_supported_hardware) {
+      return plugin_supported_hardware.Error();
+    }
+
+    if (*plugin_supported_hardware & selected_hw_accelerators) {
+      // FIXME: the following code is quite inefficient and convoluted. We
+      // shouldn't be needing to serialize a model to then read it again from
+      // the serialized buffer when applying a compiler plugin.
+      if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
+        return status.Error();
+      }
+      auto serialized_model =
+          litert::internal::SerializeModel(std::move(*model));
+      if (!serialized_model) {
+        return serialized_model.Error();
+      }
+      auto new_model = litert::Model::CreateFromBuffer(*serialized_model);
+      if (!new_model) {
+        return new_model.Error();
+      }
+      new_flatbuffer = std::move(*serialized_model);
+      *model = std::move(*new_model->Get());
+    }
+  }
+
+  if (!new_flatbuffer.has_value()) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "No applicable compiler plugin found");
+  }
+
+  return *new_flatbuffer;
 }
 
 }  // namespace litert::internal

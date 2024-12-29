@@ -18,11 +18,14 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
@@ -455,13 +458,26 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
 
   bool cache_enabled = (response_cache_ != nullptr && request_id != 0);
 
-  auto do_response = [response, done, cache_enabled](
+  auto do_response = [request, response, done = std::move(done), cache_enabled](
                          const Tensor& tensor, bool is_dead,
                          const absl::Status& status) {
+    absl::Status updated_status;
     if (status.ok()) {
-      grpc::EncodeTensorToByteBuffer(is_dead, tensor, cache_enabled, response);
+      updated_status = grpc::EncodeTensorToByteBuffer(is_dead, tensor,
+                                                      cache_enabled, response);
+      if (!updated_status.ok()) {
+        updated_status = absl::InternalError(absl::StrCat(
+            "Failed to encode tensor to byte buffer: ",
+            updated_status.message(), " (request_id: ", request->request_id(),
+            " step_id: ", request->step_id(),
+            " rendezvous_key: ", request->rendezvous_key(), ")"));
+        LOG(ERROR) << "Failure to encode response during GrpcRecvTensorAsync: "
+                   << updated_status;
+      }
+    } else {
+      updated_status = status;
     }
-    done(status);
+    done(updated_status);
   };
 
   // If response cache is enabled and the response cache already contains the

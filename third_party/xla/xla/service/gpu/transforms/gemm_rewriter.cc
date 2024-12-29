@@ -210,21 +210,21 @@ std::optional<InstrPath> FindF8SubgraphRecursive(
     // The initial operand index is meaningless. Arbitrarily use -1.
     return InstrPath{{instr, -1}};
   }
-  if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide ||
-      instr->opcode() == HloOpcode::kDynamicSlice ||
-      instr->opcode() == HloOpcode::kPad) {
+  if (instr->operand_count() == 1 ||
+      HloPredicateIsOp<HloOpcode::kDivide, HloOpcode::kDynamicSlice,
+                       HloOpcode::kPad>(instr)) {
     std::optional<InstrPath> subgraph =
         FindF8SubgraphRecursive(instr->mutable_operand(0), visited_instrs);
     if (subgraph) {
       subgraph->emplace_back(std::make_pair(instr, 0));
     }
     return subgraph;
-  } else if (instr->opcode() == HloOpcode::kMultiply ||
-             instr->opcode() == HloOpcode::kSelect) {
+  } else if (HloPredicateIsOp<HloOpcode::kMultiply, HloOpcode::kSelect>(
+                 instr)) {
     for (int k = 0; k < 2; ++k) {
       // Iterate over operands 0 and 1 for multiply and operands 1 and 2 for
       // select.
-      int operand_idx = k + (instr->opcode() == HloOpcode::kSelect);
+      int operand_idx = k + (HloPredicateIsOp<HloOpcode::kSelect>(instr));
       std::optional<InstrPath> subgraph = FindF8SubgraphRecursive(
           instr->mutable_operand(operand_idx), visited_instrs);
       if (subgraph) {
@@ -650,7 +650,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             bool supported_by_cublaslt,
             GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
         std::optional<MatchedFp8Param> a, b;
-        if (supported_by_cublaslt && instr->opcode() == HloOpcode::kDot &&
+        if (supported_by_cublaslt && HloPredicateIsOp<HloOpcode::kDot>(instr) &&
             (a = MatchFp8Param(
                  const_cast<HloInstruction *>(instr->operand(0)))) &&
             (b = MatchFp8Param(
@@ -873,9 +873,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Do not fuse broadcast unless we can fuse its input, as it will cause
     // broadcast materialization.
-    auto is_not_broadcast = [](const HloInstruction *instr) {
-      return instr->opcode() != HloOpcode::kBroadcast;
-    };
+    auto is_not_broadcast = HloPredicateIsNotOp<HloOpcode::kBroadcast>;
 
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
@@ -1013,7 +1011,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                       .WithOneUser()))) {
       return F8ConvertD(
           instr, existing_gemm, d_scale, clamp_lower, clamp_upper,
-          /*mult_scale=*/(binary && binary->opcode() == HloOpcode::kMultiply));
+          /*mult_scale=*/
+          (binary && HloPredicateIsOp<HloOpcode::kMultiply>(binary)));
     }
     return absl::OkStatus();
   }
@@ -1223,13 +1222,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       for (std::pair<HloInstruction *, int> op : x_ops) {
         std::vector<HloInstruction *> operands = {x};
         // Insert the additional operands of dynamic-slice ops.
-        if (op.first->opcode() == HloOpcode::kDynamicSlice) {
+        if (HloPredicateIsOp<HloOpcode::kDynamicSlice>(op.first)) {
           for (int i = 1; i < op.first->operand_count(); ++i) {
             operands.emplace_back(op.first->mutable_operand(i));
           }
         }
         // Convert the second operand of pad ops.
-        if (op.first->opcode() == HloOpcode::kPad) {
+        if (HloPredicateIsOp<HloOpcode::kPad>(op.first)) {
           HloInstruction *convert =
               instr->AddInstruction(HloInstruction::CreateConvert(
                   ShapeUtil::ChangeElementType(op.first->operand(1)->shape(),
@@ -1238,7 +1237,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           operands.push_back(convert);
         }
         // Convert and insert the additional operands of select ops.
-        if (op.first->opcode() == HloOpcode::kSelect) {
+        if (HloPredicateIsOp<HloOpcode::kSelect>(op.first)) {
           // The first operand is the predicate.
           operands.emplace(operands.begin(), op.first->mutable_operand(0));
           // Convert the remaining operand.
@@ -1367,8 +1366,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // If necessary, invert the scaling factor of D and convert to F32.
     TF_ASSIGN_OR_RETURN(
-        d_scale,
-        InvertAndConvertScalar(d_scale, instr->opcode() == HloOpcode::kDivide));
+        d_scale, InvertAndConvertScalar(
+                     d_scale, HloPredicateIsOp<HloOpcode::kDivide>(instr)));
 
     TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, d_scale));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
@@ -1430,7 +1429,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           maybe_reduce = gemm_users[i];
         }
 
-        if (maybe_reduce->opcode() == HloOpcode::kReduce &&
+        if (HloPredicateIsOp<HloOpcode::kReduce>(maybe_reduce) &&
             maybe_reduce->operands().size() == 2 &&
             maybe_reduce->operand(1)->opcode() == HloOpcode::kConstant &&
             ShapeUtil::IsScalar(maybe_reduce->operand(1)->shape())) {
@@ -1438,7 +1437,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
           if (reduce->operand(1)->literal().GetAsDouble({}) <= 0. &&
-              reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+              HloPredicateIsOp<HloOpcode::kMaximum>(reduce_comp_root) &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
             reduce_damax = reduce;
@@ -1571,7 +1570,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       }
 
-      if (bias->opcode() != HloOpcode::kParameter) {
+      if (HloPredicateIsNotOp<HloOpcode::kParameter>(bias)) {
         // Not a parameter; can overwrite.
         return true;
       }

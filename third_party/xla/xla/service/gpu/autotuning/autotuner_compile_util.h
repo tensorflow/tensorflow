@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -61,10 +60,7 @@ class AutotunerCompileUtil {
           const DebugOptions&)>;
 
   // Generates a compile util for a platform associated with the `stream`.
-  //
-  // Returns an empty optional if the AutotuneConfig is deviceless, as
-  // autotuning is impossible in that case.
-  static absl::StatusOr<std::optional<AutotunerCompileUtil>> Create(
+  static absl::StatusOr<AutotunerCompileUtil> Create(
       const AutotuneConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {

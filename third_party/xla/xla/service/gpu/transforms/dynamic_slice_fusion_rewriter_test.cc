@@ -1988,7 +1988,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
   HloModule lax_scan
 
   // This is the HLO generated for the following:
-  // 
+  //
   // inp = jax.random.uniform(jax.random.key(128), (128, 128, 128))
   // init = jnp.identity(128)
   // ans = jax.lax.scan(lambda carry, x : (init, x@carry), init, inp)
@@ -2157,14 +2157,14 @@ TEST_F(DynamicSliceFusionRewriterTest,
       iter.1 = s32[] get-tuple-element(param.1), index=0
       src = s32[32,32] get-tuple-element(param.1), index=1
       dest = s32[32,32] get-tuple-element(param.1), index=2
-      
+
       // offset as a function of only the loop induction variable.
       add.1 = s32[] add(iter.1, iter.1)
       c3 = s32[] constant(3)
       multiply.1 = s32[] multiply(add.1, c3)
       c16 = s32[] constant(16)
       offset.1 = s32[] subtract(multiply.1, c16)
-      
+
       c0 = s32[] constant(0)
       rs = s32[16,32] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
       dus = s32[32,32] dynamic-update-slice(dest, rs, offset.1, c0)

@@ -108,6 +108,7 @@ cc_library(
     hdrs = ["stack_frame_index_builder.h"],
     deps = [
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -179,7 +180,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:types",
         "@stablehlo//:base",

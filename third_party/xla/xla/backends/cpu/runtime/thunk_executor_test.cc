@@ -36,18 +36,20 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 
@@ -92,17 +94,6 @@ template <typename Runner, typename WorkerId>
 auto MakeTaskRunnerFrom(Runner&& runner, WorkerId&& worker_id) {
   return TaskRunnerAdaptor<Runner, WorkerId>(std::forward<Runner>(runner),
                                              std::forward<WorkerId>(worker_id));
-}
-
-template <typename T>
-std::vector<MaybeOwningDeviceMemory> AsDeviceMemory(
-    absl::Span<std::vector<T>* const> data) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  for (auto& vec : data) {
-    buffers.emplace_back(
-        se::DeviceMemoryBase(vec->data(), vec->size() * sizeof(T)));
-  }
-  return buffers;
 }
 
 // A test-only thunk for verifying thunk executor implementation:
@@ -483,10 +474,9 @@ TEST(ThunkExecutorTest, Execute) {
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
 
-  std::vector<int32_t> data(20, 1);  // shared src and dst allocation
-
-  auto buffers = AsDeviceMemory<int32_t>({&data});
-  BufferAllocations allocations(buffers);
+  // Shared src and dst allocation.
+  auto data = LiteralUtil::CreateFull({20}, int32_t{1});
+  BufferAllocations allocations = CreateBufferAllocations(data);
 
   auto task_runner = MakeTaskRunnerFrom(
       [&](Thunk::Task task) {
@@ -507,9 +497,10 @@ TEST(ThunkExecutorTest, Execute) {
   ASSERT_TRUE(execute_event.IsConcrete());
 
   EXPECT_THAT(trace, ElementsAre("<TaskRunner>", "b", "a", "c"));
-  EXPECT_THAT(data, ElementsAre(2, 2, 2, 2, 2,                 // slice0
-                                4, 4, 4, 4, 4, 4, 4, 4, 4, 4,  // slice2
-                                2, 2, 2, 2, 2));               // slice1
+  EXPECT_EQ(data, LiteralUtil::CreateR1<int32_t>({2, 2, 2, 2, 2,     // slice0
+                                                  4, 4, 4, 4, 4,     // slice2
+                                                  4, 4, 4, 4, 4,     // ...
+                                                  2, 2, 2, 2, 2}));  // slice1
 }
 
 //===----------------------------------------------------------------------===//
@@ -572,10 +563,8 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
 
-  std::vector<char> data(60, 1);  // shared src and dst allocation
-
-  auto buffers = AsDeviceMemory<char>({&data});
-  BufferAllocations allocations(buffers);
+  auto data = LiteralUtil::CreateFull({60}, uint8_t{1});
+  BufferAllocations allocations = CreateBufferAllocations(data);
 
   // Task runner must be used only when ThunkExecutor detects that it runs on a
   // wrong thread and has to jump into the task runner.
@@ -609,17 +598,27 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
 enum class SharedResourceUse { kNo, kAll, kRandom };
 
 struct GeneratedThunkSequence {
+  explicit GeneratedThunkSequence(int64_t num_elements)
+      : src(LiteralUtil::CreateFull({num_elements}, int32_t{1})),
+        dst(LiteralUtil::CreateFull({num_elements}, int32_t{0})),
+        expected(LiteralUtil::CreateFull({num_elements}, int32_t{0})),
+        src_alloc(CreateBufferAllocation(0, src)),
+        dst_alloc(CreateBufferAllocation(1, dst)),
+        expected_shared_resource_value(0),
+        expected_literals({&src, &expected}),
+        literals({&src, &dst}) {}
+
+  Literal src;
+  Literal dst;
+  Literal expected;
+
   BufferAllocation src_alloc;
   BufferAllocation dst_alloc;
 
-  std::vector<int32_t> src;
-  std::vector<int32_t> dst;
-  std::vector<int32_t> expected;
-
   int32_t expected_shared_resource_value;
 
-  std::vector<MaybeOwningDeviceMemory> expected_buffers;
-  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<Literal*> expected_literals;
+  std::vector<Literal*> literals;
 
   ThunkSequence sequence;
 };
@@ -628,18 +627,8 @@ static absl::StatusOr<std::unique_ptr<GeneratedThunkSequence>>
 GenerateThunkSequence(size_t num_elements, size_t num_thunks,
                       SharedResourceUse shared_resource_use,
                       bool inject_errors) {
-  auto g = std::make_unique<GeneratedThunkSequence>(GeneratedThunkSequence{
-      BufferAllocation(/*index=*/0, num_elements * sizeof(int32_t), 0),
-      BufferAllocation(/*index=*/1, num_elements * sizeof(int32_t), 0),
-      /*src=*/std::vector<int32_t>(num_elements, 1),
-      /*dst=*/std::vector<int32_t>(num_elements, 0),
-      /*expected=*/std::vector<int32_t>(num_elements, 0),
-      /*expected_shared_resource_value=*/0,
-  });
-
+  auto g = std::make_unique<GeneratedThunkSequence>(num_elements);
   g->sequence.reserve(num_thunks);
-  g->expected_buffers = AsDeviceMemory<int32_t>({&g->src, &g->expected});
-  g->buffers = AsDeviceMemory<int32_t>({&g->src, &g->dst});
 
   std::minstd_rand0 engine;
 
@@ -661,7 +650,8 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
     BufferAllocation::Slice dst = random_slice(&g->dst_alloc);
 
     // Pre-compute expected result while building the thunk sequence.
-    BufferAllocations allocations(g->expected_buffers);
+    BufferAllocations allocations =
+        CreateBufferAllocations(absl::MakeSpan(g->expected_literals));
     TF_RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
 
     bool use_resource = [&] {
@@ -747,7 +737,8 @@ TEST_P(ThunkExecutorStressTest, Execute) {
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(g->sequence), executor_options));
 
-  BufferAllocations allocations(g->buffers);
+  BufferAllocations allocations =
+      CreateBufferAllocations(absl::MakeSpan(g->literals));
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, device(),
                                  task_runner()};
 
@@ -886,7 +877,8 @@ static void BM_SequentialThunkExecutor(benchmark::State& state) {
   auto e =
       ThunkExecutor::Create(std::move(g->sequence), OptionsForTest()).value();
 
-  BufferAllocations allocations(g->buffers);
+  BufferAllocations allocations =
+      CreateBufferAllocations(absl::MakeSpan(g->literals));
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
   for (auto _ : state) {
@@ -901,16 +893,15 @@ static void BM_SyncThunkExecutor(benchmark::State& state) {
 
   auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
                                  /*shared_resource_use=*/SharedResourceUse::kNo,
-                                 /*inject_errors=*/false)
-               .value();
-  auto e =
-      ThunkExecutor::Create(std::move(g->sequence), OptionsForTest()).value();
+                                 /*inject_errors=*/false);
+  auto e = ThunkExecutor::Create(std::move((*g)->sequence), OptionsForTest());
 
-  BufferAllocations allocations(g->buffers);
+  BufferAllocations allocations =
+      CreateBufferAllocations(absl::MakeSpan((*g)->literals));
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
   for (auto _ : state) {
-    auto execute_event = e.Execute(params);
+    auto execute_event = e->Execute(params);
     tsl::BlockUntilReady(execute_event);
     CHECK(execute_event.IsConcrete());
   }
@@ -925,19 +916,18 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
 
   auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
                                  /*shared_resource_use=*/SharedResourceUse::kNo,
-                                 /*inject_errors=*/false)
-               .value();
-  auto e =
-      ThunkExecutor::Create(std::move(g->sequence), OptionsForTest()).value();
+                                 /*inject_errors=*/false);
+  auto e = ThunkExecutor::Create(std::move((*g)->sequence), OptionsForTest());
 
-  BufferAllocations allocations(g->buffers);
+  BufferAllocations allocations =
+      CreateBufferAllocations(absl::MakeSpan((*g)->literals));
   ThreadPoolTaskRunner task_runner(thread_pool.AsEigenThreadPool());
 
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, &device,
                                  &task_runner};
 
   for (auto _ : state) {
-    auto execute_event = e.Execute(params);
+    auto execute_event = e->Execute(params);
     tsl::BlockUntilReady(execute_event);
     CHECK(execute_event.IsConcrete());
   }

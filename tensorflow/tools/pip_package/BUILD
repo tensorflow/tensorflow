@@ -7,6 +7,10 @@ load(
     "@local_tsl//third_party/py:py_import.bzl",
     "py_import",
 )
+load(
+    "@local_tsl//third_party/py:py_manylinux_compliance_test.bzl",
+    "verify_manylinux_compliance_test",
+)
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load(
@@ -278,12 +282,6 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
-    manylinux_compliance_tag = select({
-        "@platforms//cpu:aarch64": "manylinux_2_17_aarch64",
-        "@platforms//cpu:arm64": "manylinux_2_17_aarch64",
-        "@platforms//cpu:x86_64": "manylinux_2_17_x86_64",
-        "//conditions:default": "",
-    }),
     platform_name = select({
         "@platforms//os:osx": "macosx",
         "@platforms//os:macos": "macosx",
@@ -347,6 +345,7 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "cpu",
+        "manual",
         "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
@@ -365,6 +364,7 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
@@ -376,6 +376,7 @@ py_test(
     main = "import_api_packages_test.py",
     tags = [
         "cpu",
+        "manual",
         "windows_excluded",
     ],
     deps = [
@@ -393,11 +394,23 @@ py_test(
     main = "import_api_packages_test.py",
     tags = [
         "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = [
         ":tf_py_import",
     ],
+)
+
+verify_manylinux_compliance_test(
+    name = "manylinux_compliance_test",
+    aarch64_compliance_tag = "manylinux_2_17_aarch64",
+    test_tags = [
+        "mac_excluded",
+        "windows_excluded",
+    ],
+    wheel = ":wheel",
+    x86_64_compliance_tag = "manylinux_2_17_x86_64",
 )
 
 py_import(

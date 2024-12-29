@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
-#include <iostream>
+#include <cstddef>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -127,7 +130,7 @@ void GetReachableNodesAndVariables(
 }
 
 // Gets a map from variable name to variable value.
-Status GetVariableNameToTensorMap(
+absl::Status GetVariableNameToTensorMap(
     Session* session,
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     std::unordered_set<string> variable_names_set,
@@ -220,9 +223,9 @@ StatusOr<string> GetHandleNameIfNeedsToFreeze(
 }
 
 // Freezes the subgraph of all nodes needed by `outputs`.
-Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
-                      const std::unordered_set<string>& outputs,
-                      GraphDef* frozen_graph_def) {
+absl::Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
+                            const std::unordered_set<string>& outputs,
+                            GraphDef* frozen_graph_def) {
   GraphDef graph_def = saved_model_bundle.meta_graph_def.graph_def();
   // Copy versions and library as-is from original graph.
   *frozen_graph_def->mutable_versions() = graph_def.versions();
@@ -282,10 +285,10 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
 
 }  // namespace
 
-Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
-                        GraphDef* frozen_graph_def,
-                        std::unordered_set<string>* inputs,
-                        std::unordered_set<string>* outputs) {
+absl::Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
+                              GraphDef* frozen_graph_def,
+                              std::unordered_set<string>* inputs,
+                              std::unordered_set<string>* outputs) {
   GetSignatureDefsInputsAndOutputs(saved_model_bundle, inputs, outputs);
   TF_RETURN_IF_ERROR(
       FreezeGraphDef(saved_model_bundle, *outputs, frozen_graph_def));

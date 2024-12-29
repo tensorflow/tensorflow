@@ -79,7 +79,15 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
     LITERT_LOG(LITERT_ERROR, "Sum op axes are not weights tensors");
     return kLiteRtStatusErrorInvalidLegalization;
   }
-  int32_t dest_axes_size = src_axes.RankedTensorType().Layout().Dimensions()[0];
+
+  auto src_axes_tensor_type = src_axes.RankedTensorType();
+  if (!src_axes_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_axes_tensor_type.Error().Message().data());
+    return src_axes_tensor_type.Error().Status();
+  }
+
+  int32_t dest_axes_size = src_axes_tensor_type->Layout().Dimensions()[0];
   auto src_axes_data = src_axes.Weights().Bytes();
   Qnn_ClientBuffer_t axes_tensor_client_buf = BuildDefaultClientBuffer();
   axes_tensor_client_buf.data = (void*)src_axes_data.data();

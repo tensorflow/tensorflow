@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -57,7 +56,7 @@ class DeferRelocatableCompilationCompilationProvider
   }
 
   absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
   absl::StatusOr<Assembly> CompileAndLink(
@@ -66,7 +65,7 @@ class DeferRelocatableCompilationCompilationProvider
       const CompilationOptions& options) const override;
 
   absl::StatusOr<Assembly> Compile(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
  private:

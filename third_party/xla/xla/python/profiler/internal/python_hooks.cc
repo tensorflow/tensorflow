@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/python/profiler/internal/python_hooks.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 #include "absl/log/log.h"
@@ -60,7 +61,7 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                       " ", function);
 }
 
-std::string GetEventName(std::string_view method_name, PyObject* module) {
+std::string GetEventName(absl::string_view method_name, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
   std::string filename;
@@ -202,7 +203,7 @@ void PythonHookContext::CollectData(tensorflow::profiler::XPlane* raw_plane) {
   }
   tsl::profiler::XPlaneBuilder plane(raw_plane);
   for (auto& it : entries_) {
-    uint32_t thread_id = it.first;
+    int64_t thread_id = it.first;
     auto& thread_events = it.second;
     VLOG(1) << "Collecting " << thread_events.completed.size() << ":"
             << thread_events.active.size() << " events on thread " << thread_id;
@@ -283,7 +284,7 @@ void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
                                     PyObject* arg) {
-  const uint32_t thread_id = tsl::Env::Default()->GetCurrentThreadId();
+  const int64_t thread_id = tsl::Env::Default()->GetCurrentThreadId();
   uint64_t now = tsl::profiler::GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 

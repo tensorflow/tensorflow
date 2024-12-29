@@ -53,6 +53,8 @@ class LlvmIrKernelSource : public KernelSource {
     return module_->getFunction(kernel_name_);
   }
 
+  std::string ToString() const;
+
  private:
   llvm::orc::ThreadSafeContext context_;
   std::unique_ptr<llvm::Module> module_;

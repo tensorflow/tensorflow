@@ -11,6 +11,7 @@ load(
     "xla_internal",
     "xla_py_proto_library",
 )
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -188,8 +189,15 @@ xla_cc_binary(
     testonly = True,
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
-        "//xla/tools/hlo_opt:opt_main",
-    ],
+        "//xla/hlo/tools/hlo_opt:opt_main",
+        "//xla/tools/hlo_opt:cpu_opt",
+    ] + if_gpu_is_configured([
+        "//xla/tools/hlo_opt:gpu_opt",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
+    ]),
 )
 
 cc_library(
@@ -344,6 +352,7 @@ cc_library(
     deps = [
         ":run_hlo_module_proto_cc",
         "//xla:debug_options_flags",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -354,6 +363,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",

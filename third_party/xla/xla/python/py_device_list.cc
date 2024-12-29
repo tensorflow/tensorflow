@@ -113,27 +113,40 @@ int64_t PyDeviceList::Hash() {
   return *hash_;
 }
 
-bool PyDeviceList::operator==(nb::handle other) {
+/*static*/ bool PyDeviceList::Equal(xla::nb_class_ptr<PyDeviceList> self,
+                                    nb::handle other) {
   if (!nb::isinstance<PyDeviceList>(other)) {
     return false;
   }
   auto o = nb::cast<PyDeviceList*>(other);
   // Fast-path using a pointer equality check.
-  if (this == o) {
+  if (self.get() == o) {
     return true;
   }
-  if (Hash() != o->Hash()) {
+  int64_t h1, h2;
+  {
+    nb::ft_object_guard lock(self);
+    h1 = self->Hash();
+  }
+  {
+    nb::ft_object_guard lock(other);
+    h2 = o->Hash();
+  }
+  if (h1 != h2) {
     return false;
   }
-  if (device_list_.index() == 0 && o->device_list_.index() == 0) {
+  if (self->device_list_.index() == 0 && o->device_list_.index() == 0) {
     nb::gil_scoped_release gil_release;
-    return *std::get<0>(device_list_) == *std::get<0>(o->device_list_);
+    return *std::get<0>(self->device_list_) == *std::get<0>(o->device_list_);
   } else {
-    return AsTuple().equal(o->AsTuple());
+    return self->AsTuple().equal(o->AsTuple());
   }
 }
 
-bool PyDeviceList::operator!=(nb::handle other) { return !(*this == other); }
+/*static*/ bool PyDeviceList::NotEqual(xla::nb_class_ptr<PyDeviceList> self,
+                                       nb::handle other) {
+  return !Equal(std::move(self), other);
+}
 
 int PyDeviceList::Len() const {
   switch (device_list_.index()) {
@@ -281,6 +294,7 @@ bool PyDeviceList::IsFullyAddressable() {
 
 /*static*/ xla::nb_class_ptr<PyDeviceList> PyDeviceList::AddressableDeviceList(
     xla::nb_class_ptr<PyDeviceList> self) {
+  nb::ft_object_guard lock(self);
   if (self->IsFullyAddressable()) {
     // Do not cache this result in `addressable_device_list_`. Otherwise, it
     // will create a cycle that prevents deletion of this object.
@@ -395,38 +409,36 @@ void PyDeviceList::PopulateMemoryKindInfoForDuckTypedDevices() {
   }
 }
 
-absl::StatusOr<nb::tuple> PyDeviceList::MemoryKinds() {
-  if (!GetEnableMemories()) {
-    return nb::tuple();
+/*static*/ absl::StatusOr<nb::tuple> PyDeviceList::MemoryKinds(
+    xla::nb_class_ptr<PyDeviceList> self) {
+  nb::ft_object_guard lock(self);
+  if (!self->memory_kind_info_.has_value()) {
+    self->PopulateMemoryKindInfo();
   }
-  if (!memory_kind_info_.has_value()) {
-    PopulateMemoryKindInfo();
+  if (!self->memory_kind_info_->ok()) {
+    return self->memory_kind_info_->status();
   }
-  if (!memory_kind_info_->ok()) {
-    return memory_kind_info_->status();
-  }
-  return (*memory_kind_info_)->memory_kinds;
+  return (*self->memory_kind_info_)->memory_kinds;
 }
 
-absl::StatusOr<nb::object> PyDeviceList::DefaultMemoryKind() {
-  if (!GetEnableMemories()) {
-    return nb::none();
+/*static*/ absl::StatusOr<nb::object> PyDeviceList::DefaultMemoryKind(
+    xla::nb_class_ptr<PyDeviceList> self) {
+  nb::ft_object_guard lock(self);
+  if (!self->memory_kind_info_.has_value()) {
+    self->PopulateMemoryKindInfo();
   }
-  if (!memory_kind_info_.has_value()) {
-    PopulateMemoryKindInfo();
+  if (!self->memory_kind_info_->ok()) {
+    return self->memory_kind_info_->status();
   }
-  if (!memory_kind_info_->ok()) {
-    return memory_kind_info_->status();
-  }
-  return (*memory_kind_info_)->default_memory_kind;
+  return (*self->memory_kind_info_)->default_memory_kind;
 }
 
-void RegisterDeviceList(nb::module_& m) {
+/*static*/ void PyDeviceList::Register(nb::module_& m) {
   nb::class_<PyDeviceList>(m, "DeviceList")
       .def(nb::init<nb::tuple>())
-      .def("__hash__", &PyDeviceList::Hash)
-      .def("__eq__", &PyDeviceList::operator==)
-      .def("__ne__", &PyDeviceList::operator!=)
+      .def("__hash__", &PyDeviceList::Hash, nb::lock_self())
+      .def("__eq__", &PyDeviceList::Equal)
+      .def("__ne__", &PyDeviceList::NotEqual)
       .def("__len__", &PyDeviceList::Len)
       .def("__getitem__", &PyDeviceList::GetItem)
       .def("__getitem__", &PyDeviceList::GetSlice)
@@ -438,21 +450,22 @@ void RegisterDeviceList(nb::module_& m) {
            [](PyDeviceList& self, nb::tuple t) {
              new (&self) PyDeviceList(std::move(t));
            })
-      .def_prop_ro("is_fully_addressable", &PyDeviceList::IsFullyAddressable)
+      .def_prop_ro("is_fully_addressable", &PyDeviceList::IsFullyAddressable,
+                   nb::lock_self())
       .def_prop_ro("addressable_device_list",
                    &PyDeviceList::AddressableDeviceList)
       // `xla::ValueOrThrowWrapper` does not work with
       // `def_prop_ro()`. Manually convert an error into an exception.
       .def_prop_ro("default_memory_kind",
-                   [](PyDeviceList* l) {
-                     auto kind = l->DefaultMemoryKind();
+                   [](xla::nb_class_ptr<PyDeviceList> l) {
+                     auto kind = DefaultMemoryKind(l);
                      if (!kind.ok()) {
                        throw nb::value_error(kind.status().ToString().c_str());
                      }
                      return *kind;
                    })
-      .def_prop_ro("memory_kinds", [](PyDeviceList* l) {
-        auto kinds = l->MemoryKinds();
+      .def_prop_ro("memory_kinds", [](xla::nb_class_ptr<PyDeviceList> l) {
+        auto kinds = MemoryKinds(l);
         if (!kinds.ok()) {
           throw nb::value_error(kinds.status().ToString().c_str());
         }

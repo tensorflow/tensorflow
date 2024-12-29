@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"

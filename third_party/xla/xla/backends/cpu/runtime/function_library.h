@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -69,7 +68,7 @@ class FunctionLibrary {
   }
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
-  absl::StatusOr<F*> ResolveFunction(std::string_view name) {
+  absl::StatusOr<F*> ResolveFunction(absl::string_view name) {
     TF_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
     return reinterpret_cast<F*>(ptr);
   }
@@ -79,7 +78,7 @@ class FunctionLibrary {
   // id. Implementation might choose not to verify the type id and then it is up
   // to the caller to ensure the resolved function is of the correct type.
   virtual absl::StatusOr<void*> ResolveFunction(TypeId type_id,
-                                                std::string_view name) = 0;
+                                                absl::string_view name) = 0;
 
  private:
   // Returns a type id for a given function type.

@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -78,14 +77,14 @@ using RendezvousResultType = typename RendezvousResult<R>::Type;
 // make easy to debug stuck and timed out attempts.
 template <typename R, typename K, typename V, typename Fn>
 RendezvousResultType<R> RendezvousSingle(
-    std::string_view name, const K& key, const V& value, size_t num_threads,
+    absl::string_view name, const K& key, const V& value, size_t num_threads,
     Fn fn, absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
 // A rendezvous for a group of threads that do not have any value arguments.
 template <typename R, typename K, typename Fn>
 RendezvousResultType<R> RendezvousSingle(
-    std::string_view name, const K& key, size_t num_threads, Fn fn,
+    absl::string_view name, const K& key, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
@@ -93,7 +92,7 @@ RendezvousResultType<R> RendezvousSingle(
 // and simply acts as a barrier for a group of thread.
 template <typename K>
 void RendezvousSingle(
-    std::string_view name, const K& key, size_t num_threads,
+    absl::string_view name, const K& key, size_t num_threads,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
@@ -152,7 +151,7 @@ class RendezvousSingleFlag {
 // pointer result.
 template <typename R, typename K, typename Fn>
 RendezvousResultType<R> RendezvousSingle(
-    RendezvousSingleFlag& flag, std::string_view name, const K& key,
+    RendezvousSingleFlag& flag, absl::string_view name, const K& key,
     size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
@@ -162,7 +161,7 @@ RendezvousResultType<R> RendezvousSingle(
 // rendezvous.
 template <typename K>
 void RendezvousSingle(
-    RendezvousSingleFlag& flag, std::string_view name, const K& key,
+    RendezvousSingleFlag& flag, absl::string_view name, const K& key,
     size_t num_threads,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
@@ -273,7 +272,7 @@ class RendezvousMap {
 };
 
 void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
-                        std::string_view name,
+                        absl::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout);
 }  // namespace internal
@@ -283,7 +282,7 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
 //===----------------------------------------------------------------------===//
 
 template <typename R, typename K, typename V, typename Fn>
-RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
+RendezvousResultType<R> RendezvousSingle(absl::string_view name, const K& key,
                                          const V& value, size_t num_threads,
                                          Fn fn,
                                          absl::Duration warn_stuck_timeout,
@@ -347,7 +346,7 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
 }
 
 template <typename R, typename K, typename Fn>
-RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
+RendezvousResultType<R> RendezvousSingle(absl::string_view name, const K& key,
                                          size_t num_threads, Fn fn,
                                          absl::Duration warn_stuck_timeout,
                                          absl::Duration terminate_timeout) {
@@ -357,7 +356,7 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
 }
 
 template <typename K>
-void RendezvousSingle(std::string_view name, const K& key, size_t num_threads,
+void RendezvousSingle(absl::string_view name, const K& key, size_t num_threads,
                       absl::Duration warn_stuck_timeout,
                       absl::Duration terminate_timeout) {
   RendezvousSingle<std::nullopt_t, K, std::nullopt_t>(
@@ -367,7 +366,7 @@ void RendezvousSingle(std::string_view name, const K& key, size_t num_threads,
 
 template <typename R, typename K, typename Fn>
 RendezvousResultType<R> RendezvousSingle(RendezvousSingleFlag& flag,
-                                         std::string_view name, const K& key,
+                                         absl::string_view name, const K& key,
                                          size_t num_threads, Fn fn,
                                          absl::Duration warn_stuck_timeout,
                                          absl::Duration terminate_timeout) {
@@ -380,7 +379,7 @@ RendezvousResultType<R> RendezvousSingle(RendezvousSingleFlag& flag,
 }
 
 template <typename K>
-void RendezvousSingle(RendezvousSingleFlag& flag, std::string_view name,
+void RendezvousSingle(RendezvousSingleFlag& flag, absl::string_view name,
                       const K& key, size_t num_threads,
                       absl::Duration warn_stuck_timeout,
                       absl::Duration terminate_timeout) {

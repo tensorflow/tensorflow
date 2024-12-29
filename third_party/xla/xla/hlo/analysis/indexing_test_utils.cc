@@ -22,7 +22,6 @@ limitations under the License.
 #include <limits>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -161,7 +160,7 @@ AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
       .getResult(0);
 }
 
-bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
+bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs) {
   size_t lhs_length = lhs.size();
   size_t rhs_length = rhs.size();
   size_t l = 0, r = 0;

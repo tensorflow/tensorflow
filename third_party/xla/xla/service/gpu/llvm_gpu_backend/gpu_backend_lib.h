@@ -90,26 +90,6 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
 
 }  // namespace nvptx
 
-namespace amdgpu {
-// Get path to libdevice file.
-std::string LibDevicePath(std::string gcn_arch_name,
-                          const std::string& rocdl_dir_path);
-// Compiles the argument module and returns it with LLVM AMDGPU backend.
-// rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
-// The contents of the module may be changed.
-absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options,
-    const std::string& module_config_cache_key);
-}  // namespace amdgpu
-
-namespace spir {
-// Compiles the argument module and returns it.
-absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
-    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options);
-}  // namespace spir
-
 }  // namespace gpu
 }  // namespace xla
 

@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/complex.h"  // IWYU pragma: keep
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/py_array.h"
@@ -83,7 +82,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
         "Unable to convert Python scalar to %s. This most likely means the "
         "value (%s) overflows the range of the type.",
         PrimitiveType_Name(primitive_util::NativeToPrimitiveType<T>()),
-        nb::cast<std::string_view>(nb::repr(obj)));
+        nb::cast<absl::string_view>(nb::repr(obj)));
   }
 
   std::variant<T, SquashedT> data;
@@ -130,7 +129,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S32;
   } else {
@@ -141,7 +140,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S64;
   }
@@ -451,7 +450,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
                   "Not supported: The C++ jax jit execution path, only accepts "
                   "DeviceArray, Numpy arrays scalars of supported types "
                   "(see implementation), or Python scalars. Got type ",
-                  nb::cast<std::string_view>(nb::str(arg.type()))));
+                  nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, client, to_device, options, to_memory_kind);
 }
@@ -641,7 +640,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
                      "Buffer/DeviceArray, Numpy "
                      "arrays scalars of supported types "
                      "(see implementation), or Python scalars. Got type ",
-                     nb::cast<std::string_view>(nb::str(arg.type()))));
+                     nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, jax_enable_x64);
 }

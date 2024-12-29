@@ -174,6 +174,9 @@ enum class CuptiTracerEventType {
   HostRegister = 13,
   HostUnregister = 14,
   CudaGraph = 15,
+  ThreadMarkerRange = 16,
+  ThreadMarkerStart = 17,
+  ThreadMarkerEnd = 18,
   Generic = 100,
 };
 
@@ -187,8 +190,8 @@ enum class CuptiTracerEventSource {
 };
 
 struct CuptiTracerEvent {
-  static constexpr uint32_t kInvalidThreadId =
-      std::numeric_limits<uint32_t>::max();
+  static constexpr uint64_t kInvalidThreadId =
+      std::numeric_limits<uint64_t>::max();
   static constexpr uint32_t kInvalidCorrelationId =
       std::numeric_limits<uint32_t>::max();
   static constexpr uint64_t kInvalidContextId =
@@ -209,7 +212,7 @@ struct CuptiTracerEvent {
   uint64_t end_time_ns = 0;
   uint32_t device_id = 0;
   uint32_t correlation_id = kInvalidCorrelationId;
-  uint32_t thread_id = kInvalidThreadId;
+  uint64_t thread_id = kInvalidThreadId;
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;

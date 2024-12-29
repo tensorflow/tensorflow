@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -69,7 +68,7 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   VLOG(3) << "Create NCCL unique clique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return CliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
+  return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
 bool NcclCollectives::IsGlobalConfig() const {

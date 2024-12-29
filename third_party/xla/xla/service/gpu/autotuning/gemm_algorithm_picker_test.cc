@@ -68,7 +68,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
   }
 
   void SetUp() override {
-    std::string_view name =
+    absl::string_view name =
         ::testing::UnitTest::GetInstance()->current_test_info()->name();
     // We need special handling for BlasGetVersion test.
     bool blas_get_version = name.rfind("BlasGetVersion") == 0;

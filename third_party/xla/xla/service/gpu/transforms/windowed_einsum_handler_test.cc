@@ -825,11 +825,11 @@ ENTRY main.9_spmd {
   constant.20 = u32[] constant(0)
   scale_lhs = f32[] parameter(3)
   scale_lhs_bcast = f32[2,2048,24576]{2,1,0} broadcast(scale_lhs), dimensions={}
-  lhs_bf16 = f32[2,2048,24576]{2,1,0} convert(param.8)  
+  lhs_bf16 = f32[2,2048,24576]{2,1,0} convert(param.8)
   lhs_scaled = f32[2,2048,24576]{2,1,0} multiply(lhs_bf16, scale_lhs_bcast)
   scale_rhs = f32[] parameter(4)
   scale_rhs_bcast = f32[24576,24576]{1,0} broadcast(scale_rhs), dimensions={}
-  rhs_bf16 = f32[24576,24576]{1,0} convert(param.6)  
+  rhs_bf16 = f32[24576,24576]{1,0} convert(param.6)
   rhs_scaled = f32[24576,24576]{1,0} multiply(rhs_bf16, scale_rhs_bcast)
   tuple.3 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) tuple(lhs_scaled, rhs_scaled, param.7, param.7, constant.20)
   while.1 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) while(tuple.3), condition=windowed_dot_general_cond_rs, body=windowed_dot_general_body_rs

@@ -27,10 +27,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -67,16 +67,18 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
-#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -89,7 +91,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"
@@ -99,6 +100,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -106,7 +108,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -114,6 +115,7 @@ limitations under the License.
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/setround.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -149,8 +151,6 @@ absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBufferAndAvs(
       shape, std::move(definition_events),
       tensorflow::down_cast<TfrtCpuDevice*>(device), client);
 }
-
-const char kCpuPlatformName[] = "cpu";
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
                  absl::AnyInvocable<void()> callee) {
@@ -253,127 +253,19 @@ class TfrtCpuAsyncHostToDeviceTransferManager
   TfrtCpuDevice* device_;
 };
 
+// Converts a const span of unique_ptr<TfrtCpuDevice> to a const span of
+// unique_ptr<PjRtDevice>. This is a safe operation because the resulting span
+// only permits access to elements via pointer dereference, and unique_ptr
+// values remain immutable.
+absl::Span<const std::unique_ptr<PjRtDevice>> GetPjRtDeviceSpan(
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+  static_assert(std::is_base_of_v<PjRtDevice, TfrtCpuDevice>);
+  return absl::Span<const std::unique_ptr<PjRtDevice>>(
+      reinterpret_cast<const std::unique_ptr<PjRtDevice>*>(devices.data()),
+      devices.size());
+}
+
 }  // namespace
-
-TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int process_id,
-                                                   int local_device_id)
-    : id_(PackCpuDeviceId(process_id, local_device_id)),
-      process_index_(process_id),
-      local_hardware_id_(local_device_id) {
-  debug_string_ = absl::StrCat("TFRT_CPU_", id_.value());
-  to_string_ = absl::StrCat("CpuDevice(id=", id_.value(), ")");
-}
-
-absl::string_view TfrtCpuDeviceDescription::device_kind() const {
-  return kCpuPlatformName;
-}
-
-absl::string_view TfrtCpuDeviceDescription::DebugString() const {
-  return debug_string_;
-}
-
-absl::string_view TfrtCpuDeviceDescription::ToString() const {
-  return to_string_;
-}
-
-/*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
-    PjRtPlatformId platform_id, absl::string_view platform_name,
-    absl::string_view platform_version,
-    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
-    absl::Span<const std::string> machine_attributes) {
-  std::vector<CpuTopology::CpuDevice> cpu_devices;
-  cpu_devices.reserve(devices.size());
-  for (auto& device : devices) {
-    cpu_devices.push_back(CpuTopology::CpuDevice{
-        device->process_index(), device->local_hardware_id().value()});
-  }
-  return TfrtCpuTopologyDescription(platform_id, platform_name,
-                                    platform_version, cpu_devices,
-                                    machine_attributes);
-}
-
-absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
-    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
-}
-
-absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
-  std::string result;
-  if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
-    return absl::InternalError("Failed to serialize cpu_topology");
-  }
-  return result;
-}
-
-std::vector<std::unique_ptr<const PjRtDeviceDescription>>
-TfrtCpuTopologyDescription::DeviceDescriptions() const {
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-  devices.reserve(cpu_topology_.number_of_devices());
-  for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
-    devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
-        device.process_id, device.local_device_id));
-  }
-  return devices;
-}
-
-TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
-                             int max_inflight_computations)
-    : description_(process_id, local_device_id),
-      max_inflight_computations_semaphore_(
-          /*capacity=*/max_inflight_computations) {}
-
-absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
-}
-
-absl::Status TfrtCpuDevice::TransferFromOutfeed(
-    MutableBorrowingLiteral literal) {
-  return TransferLiteralFromOutfeedOnCpu(local_hardware_id().value(), literal);
-}
-
-void TfrtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
-  CHECK(memory_space != nullptr);
-  CHECK(client_ == memory_space->client()) << absl::StrFormat(
-      "Could not attach a TfrtCpuDevice to a PjRtMemorySpace owned by a "
-      "different client, the device's client: %s, the memory space's client: "
-      "%s.",
-      client_->platform_name(), memory_space->client()->platform_name());
-
-  memory_spaces_.push_back(memory_space);
-  memory_spaces_by_id_.emplace(memory_space->kind_id(), memory_space);
-}
-
-absl::Span<PjRtMemorySpace* const> TfrtCpuDevice::memory_spaces() const {
-  return memory_spaces_;
-}
-
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::default_memory_space() const {
-  return memory_space_by_kind_id(UnpinnedHostMemorySpace::kKindId);
-}
-
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind(
-    absl::string_view memory_space_kind) const {
-  auto it =
-      absl::c_find_if(memory_spaces_, [memory_space_kind](PjRtMemorySpace* ms) {
-        return ms->kind() == memory_space_kind;
-      });
-  if (it != memory_spaces_.end()) {
-    return *it;
-  }
-  return absl::InternalError(
-      absl::StrCat("No memory space found (kind: ", memory_space_kind, ")"));
-}
-
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind_id(
-    int id) const {
-  auto it = memory_spaces_by_id_.find(id);
-  if (it == memory_spaces_by_id_.end()) {
-    return absl::InternalError(
-        absl::StrCat("No memory space found (kind_id: ", id, ")"));
-  }
-  return it->second;
-}
 
 static int CpuDeviceCount() {
   // By default we fix the number of devices to one.  However we do let the user
@@ -440,9 +332,9 @@ TfrtCpuClient::TfrtCpuClient(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
-      topology_(TfrtCpuTopologyDescription::Create(
-          platform_id(), platform_name(), platform_version(), owned_devices_,
-          cpu::DetectMachineAttributes())),
+      topology_(CpuTopologyDescription::Create(
+          platform_id(), platform_name(), platform_version(),
+          GetPjRtDeviceSpan(owned_devices_), cpu::DetectMachineAttributes())),
       asynchronous_(asynchronous),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
@@ -742,6 +634,11 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
   static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
+
+  // RunHloPasses and RunBackend both look at the LLVM command line options.
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      hlo_module->config().debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   // Run Hlo Passes
   cpu::CpuCompiler compiler;
@@ -1183,16 +1080,18 @@ TfrtCpuExecutable::TfrtCpuExecutable(
           computation_layout.parameter_shape(0).tuple_shapes(i)));
     }
   }
+
+  // Compute fingerprint of the executable from the HloModule.
+  tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
+  fingerprint = tsl::FingerprintCat128(
+      tsl::Fingerprint128(fingerprint_),
+      tsl::Fingerprint128(cpu_executable_->module().ToString()));
+  fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
 }
 
 void TfrtCpuExecutable::Delete() {}
 
 bool TfrtCpuExecutable::IsDeleted() { return false; }
-
-absl::StatusOr<std::optional<std::string>> TfrtCpuExecutable::Fingerprint()
-    const {
-  return std::optional<std::string>();
-}
 
 absl::Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,

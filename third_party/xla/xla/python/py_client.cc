@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -91,7 +89,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -192,6 +189,7 @@ absl::StatusOr<nb_class_ptr<PyDevice>> PyClient::DeviceFromLocalHardwareId(
 
 nb::list PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
+  nb::ft_lock_guard lock(executables_mutex_);
   nb::list executables;
   for (PyLoadedExecutable* exec = executables_; exec; exec = exec->next_) {
     if (!exec->is_deleted()) {
@@ -226,15 +224,16 @@ absl::Status PyClient::Defragment() {
   // Synchronously copy all buffers to host
   absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
 
-  for (PyArray_Storage* array = arrays_; array; array = array->next) {
+  std::vector<PyArray> arrays = LiveArrays();
+  for (const PyArray& array : arrays) {
     // TODO(hyeontaek): Support non-PjRt Arrays.
     // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
     // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
-    if (array->ifrt_array == nullptr) {
+    if (array.ifrt_array() == nullptr) {
       continue;
     }
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-        array->ifrt_array.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(array.ifrt_array());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend "
@@ -489,7 +488,7 @@ PyClient::DeserializeExecutable(nb_class_ptr<PyClient> client,
     TF_ASSIGN_OR_RETURN(
         ifrt_loaded_executable,
         client->ifrt_client_->GetDefaultCompiler()->DeserializeLoadedExecutable(
-            std::string_view(serialized.c_str(), serialized.size()),
+            absl::string_view(serialized.c_str(), serialized.size()),
             std::move(ifrt_deserialize_options)));
   }
   TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
@@ -549,12 +548,13 @@ absl::StatusOr<nb::bytes> PyClient::HeapProfile() {
     return absl::OkStatus();
   };
 
-  for (PyArray_Storage* array = arrays_; array; array = array->next) {
-    if (array->ifrt_array == nullptr) {
+  std::vector<PyArray> arrays = LiveArrays();
+  for (const PyArray& array : arrays) {
+    if (array.ifrt_array() == nullptr) {
       continue;
     }
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-        array->ifrt_array.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(array.ifrt_array());
     // TODO(hyeontaek): Support non-PjRt Arrays.
     if (arr == nullptr) {
       throw XlaRuntimeError(
@@ -563,7 +563,8 @@ absl::StatusOr<nb::bytes> PyClient::HeapProfile() {
     }
     for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(add_buffer_to_profile(
-          buffer.get(), array->traceback ? array->traceback->get() : nullptr));
+          buffer.get(),
+          array.traceback() ? array.traceback()->get() : nullptr));
     }
   }
 
@@ -785,7 +786,7 @@ PyType_Slot PyClient::slots_[] = {
           },
           nb::arg("dtype"), nb::arg("shard_shape"), nb::arg("device"))
       .def("__getattr__",
-           [](PyClient& client, std::string_view name) -> nb::object {
+           [](PyClient& client, absl::string_view name) -> nb::object {
              const auto& attrs = client.Attributes().map();
              auto it = attrs.find(name);
              if (it != attrs.end()) {

@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -31,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -46,8 +46,11 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -202,8 +205,8 @@ void SetCAPIString(JAX_CustomCallPartitioner_string& out, std::string result,
   out.size = scratch.back().size();
 }
 
-std::string_view ToStringView(JAX_CustomCallPartitioner_string data) {
-  return std::string_view(data.data, data.size);
+absl::string_view ToStringView(JAX_CustomCallPartitioner_string data) {
+  return absl::string_view(data.data, data.size);
 }
 
 void SetCAPIAval(JAX_CustomCallPartitioner_aval& result,
@@ -343,7 +346,7 @@ PartitionScratch PopulateArgs(JAX_CustomCallPartitioner_Partition_Args* args,
 
 absl::StatusOr<std::tuple<
     std::vector<xla::Shape>, std::vector<std::optional<xla::HloSharding>>,
-    xla::Shape, std::optional<xla::HloSharding>, std::string_view>>
+    xla::Shape, std::optional<xla::HloSharding>, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
   std::vector<xla::Shape> shapes;
   std::vector<std::optional<xla::HloSharding>> shardings;
@@ -369,14 +372,14 @@ ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
   }
   return std::tuple<std::vector<xla::Shape>,
                     std::vector<std::optional<xla::HloSharding>>, xla::Shape,
-                    std::optional<xla::HloSharding>, std::string_view>(
+                    std::optional<xla::HloSharding>, absl::string_view>(
       std::move(shapes), std::move(shardings), std::move(result_shape),
       std::move(result_sharding), ToStringView(args->backend_config));
 }
 
 absl::StatusOr<std::tuple<std::vector<xla::Shape>,
                           std::vector<std::optional<xla::HloSharding>>,
-                          xla::Shape, std::string_view>>
+                          xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
   std::vector<xla::Shape> shapes;
   std::vector<std::optional<xla::HloSharding>> shardings;
@@ -397,9 +400,9 @@ ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
   TF_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->result_shape));
   return std::tuple<std::vector<xla::Shape>,
                     std::vector<std::optional<xla::HloSharding>>, xla::Shape,
-                    std::string_view>(std::move(shapes), std::move(shardings),
-                                      std::move(result_shape),
-                                      ToStringView(args->backend_config));
+                    absl::string_view>(std::move(shapes), std::move(shardings),
+                                       std::move(result_shape),
+                                       ToStringView(args->backend_config));
 }
 
 PartitionScratch PopulateArgs(
@@ -455,11 +458,11 @@ absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
   return ReadHloSharding(args->result_sharding);
 }
 
-absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, std::string_view>>
+absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
   TF_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->result_shape));
   TF_ASSIGN_OR_RETURN(auto sharding, ReadHloSharding(args->result_sharding));
-  return std::tuple<xla::HloSharding, xla::Shape, std::string_view>(
+  return std::tuple<xla::HloSharding, xla::Shape, absl::string_view>(
       std::move(sharding), std::move(shape),
       ToStringView(args->backend_config));
 }

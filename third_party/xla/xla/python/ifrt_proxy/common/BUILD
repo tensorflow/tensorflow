@@ -173,6 +173,7 @@ cc_library(
         "//xla/python/ifrt:plugin_program_serdes",
         "//xla/python/ifrt/hlo:hlo_program_serdes",
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",
+        "//xla/python/pjrt_ifrt:xla_sharding_serdes",
     ],
     alwayslink = True,
 )

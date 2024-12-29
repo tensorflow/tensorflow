@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,7 +36,7 @@ PartitionScratch PopulateArgs(JAX_CustomCallPartitioner_Partition_Args* args,
                               const xla::HloInstruction* instruction);
 absl::StatusOr<std::tuple<
     std::vector<xla::Shape>, std::vector<std::optional<xla::HloSharding>>,
-    xla::Shape, std::optional<xla::HloSharding>, std::string_view>>
+    xla::Shape, std::optional<xla::HloSharding>, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args);
 void PopulateResults(
     absl::StatusOr<std::tuple<std::string, std::vector<xla::HloSharding>,
@@ -50,7 +49,7 @@ ConsumeResults(JAX_CustomCallPartitioner_Partition_Args* args);
 
 absl::StatusOr<std::tuple<std::vector<xla::Shape>,
                           std::vector<std::optional<xla::HloSharding>>,
-                          xla::Shape, std::string_view>>
+                          xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args);
 PartitionScratch PopulateArgs(
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args,
@@ -61,7 +60,7 @@ void PopulateResults(
 absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args);
 
-absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, std::string_view>>
+absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_PropagateUserSharding_Args* args);
 PartitionScratch PopulateArgs(
     JAX_CustomCallPartitioner_PropagateUserSharding_Args* args,

@@ -16,14 +16,20 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
-#include <memory>
 #include <numeric>
 #include <string>
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -38,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.

@@ -80,12 +80,18 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override;
 
+  absl::Span<const PjRtMemorySpaceDescription* const> memory_spaces()
+      const override;
+
  private:
   const PJRT_Api* c_api_;
   // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_DeviceDescription* device_description_;
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+  mutable std::vector<PjRtMemorySpaceDescription> memory_space_descriptions_;
+  mutable std::vector<PjRtMemorySpaceDescription*>
+      memory_space_description_pointers_;
 
   // Initializes device specific attributes.
   void InitAttributes();
@@ -318,23 +324,25 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtDevice* device) override;
+
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+                                    PjRtDevice* device) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -456,8 +464,6 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<PjRtDevice*> addressable_devices_;
   absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
   std::vector<std::unique_ptr<PjRtCApiMemorySpace>> owned_memory_spaces_;
-  // TODO(yueshengys): Add a `memory_spaces_` member when global memories are
-  // supported.
   std::vector<PjRtMemorySpace*> addressable_memory_spaces_;
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
   // There may be an error fetching the topology desc via the C API

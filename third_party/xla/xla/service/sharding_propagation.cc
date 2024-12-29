@@ -397,6 +397,7 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kReduce:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
       return true;
     case HloOpcode::kParameter:

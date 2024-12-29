@@ -45,22 +45,22 @@ string SummarizeGraphDef(const GraphDef& graph_def) {
   return ret;
 }
 
-Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
+absl::Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
   for (const NodeDef& node : graph_def.node()) {
     TF_RETURN_IF_ERROR(ValidateExternalNodeDefSyntax(node));
   }
   return absl::OkStatus();
 }
 
-Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
-                                 const OpRegistryInterface& op_registry,
-                                 int node_offset) {
+absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                       const OpRegistryInterface& op_registry,
+                                       int node_offset) {
   return AddDefaultAttrsToGraphDef(graph_def, op_registry, node_offset, false);
 }
 
-Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
-                                 const OpRegistryInterface& op_registry,
-                                 int node_offset, bool skip_unknown_ops) {
+absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                       const OpRegistryInterface& op_registry,
+                                       int node_offset, bool skip_unknown_ops) {
   if (node_offset > graph_def->node_size()) {
     return errors::InvalidArgument(
         "Tried to add default attrs to GraphDef "
@@ -71,7 +71,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
     const OpDef* op_def;
-    Status s = op_registry.LookUpOpDef(node_def->op(), &op_def);
+    absl::Status s = op_registry.LookUpOpDef(node_def->op(), &op_def);
     if (s.ok()) {
       AddDefaultsToNodeDef(*op_def, node_def);
     } else if (!skip_unknown_ops) {
@@ -82,7 +82,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   return absl::OkStatus();
 }
 
-static Status RemoveNewDefaultAttrsFromNodeDef(
+static absl::Status RemoveNewDefaultAttrsFromNodeDef(
     NodeDef* node_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed) {
@@ -134,7 +134,7 @@ static bool IsFunction(const GraphDef& graph_def, const string& op_name) {
   return false;
 }
 
-Status RemoveNewDefaultAttrsFromGraphDef(
+absl::Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed) {
@@ -171,7 +171,7 @@ void StripDefaultAttributes(const OpRegistryInterface& op_registry,
 
     const OpDef* op_def;
     const OpRegistrationData* op_reg_data = nullptr;
-    Status s = op_registry.LookUp(node->op(), &op_reg_data);
+    absl::Status s = op_registry.LookUp(node->op(), &op_reg_data);
     if (!s.ok()) {
       VLOG(1) << "Ignoring encountered unknown operation "
               << SummarizeNodeDef(*node)
@@ -246,9 +246,9 @@ void OpsUsedByGraph(const GraphDef& graph_def,
   }
 }
 
-Status StrippedOpListForGraph(const GraphDef& graph_def,
-                              const OpRegistryInterface& op_registry,
-                              OpList* stripped_op_list) {
+absl::Status StrippedOpListForGraph(const GraphDef& graph_def,
+                                    const OpRegistryInterface& op_registry,
+                                    OpList* stripped_op_list) {
   std::set<string> used_ops;
   OpsUsedByGraph(graph_def, &used_ops);
 

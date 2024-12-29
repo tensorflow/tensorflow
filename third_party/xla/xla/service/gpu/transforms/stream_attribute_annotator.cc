@@ -44,7 +44,7 @@ namespace {
 bool IsOnlyRootNonDefaultStream(HloComputation* computation) {
   HloInstruction* root = computation->root_instruction();
   auto root_gpu_config = root->backend_config<GpuBackendConfig>();
-  if (!root_gpu_config.ok() || root->opcode() == HloOpcode::kTuple) {
+  if (!root_gpu_config.ok() || HloPredicateIsOp<HloOpcode::kTuple>(root)) {
     return false;
   }
   int64_t root_stream_id = root_gpu_config->operation_queue_id();
@@ -155,7 +155,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
   }
   std::vector<HloInstruction*> all_consumers;
   for (auto user : instr->users()) {
-    if (user->opcode() == HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user)) {
       user = user->users()[0];
     }
     all_consumers.push_back(user);
@@ -194,13 +194,12 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
       // For fusion instruction, only annotate
       // when the root of fusion is a single instruction
       // running on non-default stream.
-      if (instr->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             AnnotateStreamAttributesForInstruction(
                                 instr, instr_gpu_config.value()));
         changed |= comp_result;
-      } else if (instr->opcode() == HloOpcode::kCopyStart &&
-                 module->has_schedule()) {
+      } else if (instr->opcode() == HloOpcode::kCopyStart) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             AnnotateStreamAttributesForCopyStart(
                                 instr, channel_id, instr_gpu_config.value()));
@@ -208,8 +207,7 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
         continue;
       } else if (comp->IsAsyncComputation() &&
                  (instr->opcode() == HloOpcode::kDynamicSlice ||
-                  instr->opcode() == HloOpcode::kDynamicUpdateSlice) &&
-                 module->has_schedule()) {
+                  instr->opcode() == HloOpcode::kDynamicUpdateSlice)) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             WrapIntoFusionAndAnnotateStreamAttributes(
                                 instr, channel_id, instr_gpu_config.value(),

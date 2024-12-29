@@ -398,7 +398,7 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   std::vector<int> perm;
   perm.reserve(rank + expand_tile_sizes.size());
   for (int64_t dim = 0; dim < rank; dim++) {
-    perm.emplace_back(dim);
+    perm.push_back(dim);
     if (expand_tile_dims_indices[dim] > -1) {
       perm.emplace_back(expand_tile_dims_indices[dim] + rank);
     }
@@ -530,7 +530,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
     // If src sharding at this dimension is not partitioned, simply pad to
     // the desired shape.
     if (src_shard_count == 1) {
-      expand_dims_without_halo_exchange.emplace_back(dim);
+      expand_dims_without_halo_exchange.push_back(dim);
       continue;
     }
 

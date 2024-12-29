@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_TOOLS_MULTIHOST_HLO_RUNNER_FUNCTIONAL_HLO_RUNNER_H_
 #define XLA_TOOLS_MULTIHOST_HLO_RUNNER_FUNCTIONAL_HLO_RUNNER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -273,7 +275,7 @@ class FunctionalHloRunner {
   static absl::Status LoadAndCompile(
       PjRtClient& client, const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
-      const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
+      const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
       InputFormat input_format, int task_id = 0, int num_nodes = 1,
       std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
       bool use_gpu_count_workaround = true);

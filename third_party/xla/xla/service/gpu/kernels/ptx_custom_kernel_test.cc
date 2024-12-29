@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/device_memory.h"

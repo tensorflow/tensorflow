@@ -21,12 +21,14 @@
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -158,7 +160,7 @@ absl::string_view Context::CmdStr(ApplyPluginRun::Cmd cmd) {
   }
 }
 
-Expected<SmallVec<CompilerPlugin>> LoadAllPlugins(Context& ctx) {
+Expected<std::vector<CompilerPlugin>> LoadAllPlugins(Context& ctx) {
   ctx.Dump().Start("Load Plugins");
   ctx.Dump().Labeled() << "Loading plugins from: ";
   const auto paths = ctx.LibSearchPaths();
@@ -210,7 +212,7 @@ Expected<Model> LoadModel(Context& ctx) {
                                              ctx.Run().model.value());
   auto model_result = Model::CreateFromFile(ctx.Run().model->data());
   if (!model_result.HasValue()) {
-    ctx.Dump().Labeled() << "Failed to load model from file.\n";
+    ctx.Dump().Labeled() << "Failed to load model from file.";
     ctx.Dump().Fail();
     return model_result;
   }
@@ -420,9 +422,12 @@ LiteRtStatus Apply(Context& ctx) {
   }
 
   ctx.Dump().Start("Applying plugin");
-  auto apply_stat = ::litert::internal::Apply(
-      *plugin, model, ctx.SocModelTarget(), ctx.Serialization());
-  LITERT_RETURN_STATUS_IF_NOT_OK(apply_stat);
+  if (auto status = litert::internal::ApplyPlugin(
+          *plugin, model, ctx.SocModelTarget(), ctx.Serialization());
+      !status) {
+    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().data());
+    return status.Error().Status();
+  }
   ctx.Dump().Done();
 
   ctx.Dump().Start("Serializing model");

@@ -36,7 +36,7 @@ class WorkerCacheInterface;
 // This callback should have the same definition as DeviceMgr::LookupDevice
 // It assigns *device with pointer to Device of the given 'name', where 'name'
 // is either a full device name, or just the replica-local suffix.
-typedef std::function<absl::Status(StringPiece name, Device** device)>
+typedef std::function<absl::Status(absl::string_view name, Device** device)>
     LookupLocalDevice;
 
 // Creates Remote Devices for the provided device attributes. Helpful when the

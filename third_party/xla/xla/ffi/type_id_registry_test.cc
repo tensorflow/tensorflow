@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"

@@ -1,7 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/pjrt/cpu:package_groups.bzl", "xla_cpu_internal_packages")
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
-load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -105,33 +104,30 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "cpu_topology_proto",
-    srcs = ["cpu_topology.proto"],
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
-    name = "cpu_topology",
-    srcs = ["cpu_topology.cc"],
-    hdrs = ["cpu_topology.h"],
+    name = "cpu_device",
+    srcs = ["cpu_device.cc"],
+    hdrs = ["cpu_device.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_topology_users"]),
     deps = [
-        ":cpu_topology_proto_cc",
+        "//xla:literal",
+        "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:semaphore",
+        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
+        "//xla/service/cpu:cpu_xfeed",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "cpu_topology_test",
-    srcs = ["cpu_topology_test.cc"],
-    deps = [
-        ":cpu_topology",
-        ":cpu_topology_proto_cc",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -142,7 +138,7 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":abstract_tfrt_cpu_buffer",
-        ":cpu_topology",
+        ":cpu_device",
         ":tracked_tfrt_cpu_device_buffer",
         "//xla:array",
         "//xla:cpu_function_runtime",
@@ -168,13 +164,15 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
@@ -194,12 +192,10 @@ cc_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_runtime",
-        "//xla/service/cpu:cpu_xfeed",
+        "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/lib/strings:proto_serialization",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",

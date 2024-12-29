@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <map>
 #include <string>
-#include <string_view>
 #include <tuple>
 
+#include "absl/strings/string_view.h"
 #include "mlir/IR/Location.h"
 #include "xla/service/hlo.pb.h"
 
@@ -46,8 +46,8 @@ class StackFrameIndexBuilder {
 
   xla::StackFrameIndexProto indexes_;
 
-  std::map<std::string_view, int> function_name_to_id_;
-  std::map<std::string_view, int> file_name_to_id_;
+  std::map<absl::string_view, int> function_name_to_id_;
+  std::map<absl::string_view, int> file_name_to_id_;
   std::map<std::tuple<int, int, int, int>, int> file_location_to_id_;
   std::map<std::tuple<int, int>, int> frame_to_id_;
 };

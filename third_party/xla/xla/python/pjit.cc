@@ -26,7 +26,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <thread>  // NOLINT
 #include <unordered_map>
 #include <utility>
@@ -131,10 +130,12 @@ class PjitFunctionCache {
 
   // We include as part of the cache key `global_cache_key` (and any other
   // fields that aren't subsumed by the CallSignature we compute for each call).
-  std::shared_ptr<Cache> Lookup(nb::handle function,
-                                nb::object global_cache_key);
+  static std::shared_ptr<Cache> Lookup(
+      xla::nb_class_ptr<PjitFunctionCache> self, nb::handle function,
+      nb::object global_cache_key);
   std::shared_ptr<Cache> DefaultCache();
 
+  // These methods require the GIL or the object's lock in no-GIL mode.
   int Size() const { return lru_list_.Size(); }
   int Capacity() const { return lru_list_.Capacity(); }
   void Clear() {
@@ -192,10 +193,14 @@ class PjitFunctionCache {
     std::optional<nb::weakref> weakref;
   };
 
+  // lru_list_ and functions_ are protected by the GIL in GIL mode, and by the
+  // self object lock in freethreading mode.
   Cache::LRUList lru_list_;
-  absl::Mutex mu_;  // Non-trivial hashes need to be mutex locked.
-  // ABSL containers are not exception safe:
+  // We use std::unordered_map because ABSL containers are not exception safe:
   std::unordered_map<Key, std::unique_ptr<Value>, absl::Hash<Key>> functions_;
+  // mu_ prevents concurrent insertions into functions_ if the gil or critical
+  // section lock is released during insertion.
+  absl::Mutex mu_;
 };
 
 PjitFunctionCache::PjitFunctionCache(int capacity) : lru_list_(capacity) {}
@@ -204,31 +209,38 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
   return std::make_shared<Cache>(&lru_list_);
 }
 
-std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
-    nb::handle function,
+/*static*/ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
+    xla::nb_class_ptr<PjitFunctionCache> self, nb::handle function,
     nb::object global_cache_key) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  // In no-GIL mode, a critical section on self plays the same role that
+  // the GIL plays in GIL mode.
+  nb::ft_object_guard lock(self);
   {
-    // Because the gil can be released during cache insertion, this forces
-    // the lock order to be mu_ then gil so we must release the gil first.
+    // Because the gil (or the critical section lock) can be released during
+    // cache insertion, this forces the lock order to be mu_ then gil so we
+    // must release the gil first.
     nb::gil_scoped_release release;
     // Acquire a mutex to avoid problems where the gil is released during
     // cache insertion and then a second thread invalidates the cache order.
-    mu_.Lock();
+    self->mu_.Lock();
   }
-  absl::Cleanup unlock = [this]() ABSL_UNLOCK_FUNCTION(mu_) { mu_.Unlock(); };
+  absl::Cleanup unlock = [&self]() ABSL_UNLOCK_FUNCTION(self->mu_) {
+    self->mu_.Unlock();
+  };
   Key key;
   key.function = function;
   key.global_cache_key = global_cache_key;
-  auto insert = functions_.emplace(key, nullptr);
+  auto insert = self->functions_.emplace(key, nullptr);
   if (!insert.second) {
     return insert.first->second->cache;
   }
-  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
+  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&self->lru_list_);
   auto callback =
-      nb::cpp_function([this, key{std::move(key)}](nb::handle weakref) {
-        auto it = functions_.find(key);
-        if (it != functions_.end()) {
-          functions_.erase(it);
+      nb::cpp_function([self, key{std::move(key)}](nb::handle weakref) {
+        nb::ft_object_guard lock(self);
+        auto it = self->functions_.find(key);
+        if (it != self->functions_.end()) {
+          self->functions_.erase(it);
         }
       });
   PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
@@ -241,7 +253,7 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
     // `function` is not weak-referenceable. Don't bother adding it to the
     // shared cache in that case; the `jit` object will hold the only shared
     // reference to the cache entry.
-    functions_.erase(insert.first);
+    self->functions_.erase(insert.first);
   }
   return cache;
 }
@@ -254,7 +266,7 @@ class PjitFunction {
                nb::object global_cache_key,
                xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
                nb::callable shard_arg_fallback,
-               std::shared_ptr<PjitFunctionCache> cache);
+               xla::nb_class_ptr<PjitFunctionCache> cache);
   ~PjitFunction();
 
   PjitFunction(const PjitFunction&) = delete;
@@ -301,11 +313,17 @@ class PjitFunction {
     return static_argnames_;
   }
   const nb::object& global_cache_key() const { return global_cache_key_; }
-  const std::shared_ptr<PjitFunctionCache>& cache() const { return cache_; }
+  const xla::nb_class_ptr<PjitFunctionCache>& cache() const { return cache_; }
 
-  int cache_capacity() const { return executables_->Size(); }
+  int cache_capacity() const {
+    nb::ft_object_guard lock(cache_);
+    return executables_->Size();
+  }
 
-  void ClearCache() { executables_->Clear(); }
+  void ClearCache() {
+    nb::ft_object_guard lock(cache_);
+    executables_->Clear();
+  }
 
   nb::object PythonSignature() {
     if (!fun_.has_value()) {
@@ -337,29 +355,43 @@ class PjitFunction {
 
   xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry_;
   nb::callable shard_arg_fallback_;
-  std::shared_ptr<PjitFunctionCache> cache_;
+  xla::nb_class_ptr<PjitFunctionCache> cache_;
+
+  // In no-GIL mode executables_ is protected by the object lock on cache_,
+  // because it shared an LRU list with cache_.
   std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
 
-// thread-compatible.
+// Thread-safe.
 class PjitFunctionStore {
  public:
-  void Insert(PjitFunction* function) { compiled_functions_.insert(function); }
+  void Insert(PjitFunction* function) {
+    nb::ft_lock_guard lock(mu_);
+    compiled_functions_.insert(function);
+  }
 
-  void Erase(PjitFunction* function) { compiled_functions_.erase(function); }
+  void Erase(PjitFunction* function) {
+    nb::ft_lock_guard lock(mu_);
+    compiled_functions_.erase(function);
+  }
 
   void ClearFunctionCache() {
-    for (auto* function : compiled_functions_) {
+    absl::flat_hash_set<PjitFunction*> functions;
+    {
+      nb::ft_lock_guard lock(mu_);
+      std::swap(functions, compiled_functions_);
+    }
+    for (auto* function : functions) {
       function->ClearCache();
     }
-    compiled_functions_.clear();
   }
 
  private:
+  // Protected by the GIL in GIL mode, and by mu_ in freethreading mode.
+  nb::ft_mutex mu_;
   absl::flat_hash_set<PjitFunction*> compiled_functions_;
 };
 
-// Protected by GIL.
 PjitFunctionStore& GetGlobalPjitFunctionStore() {
   static auto* const store = new PjitFunctionStore();
   return *store;
@@ -370,7 +402,7 @@ PjitFunction::PjitFunction(
     nb::callable cache_miss, std::vector<int> static_argnums,
     std::vector<nb::str> static_argnames, nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
-    nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache)
+    nb::callable shard_arg_fallback, xla::nb_class_ptr<PjitFunctionCache> cache)
     : function_name_(std::move(function_name)),
       fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
@@ -391,10 +423,12 @@ PjitFunction::PjitFunction(
 }
 
 void PjitFunction::InitExecutables() {
+  // Construction of the object hasn't completed yet, so we don't need to hold
+  // the cache lock to mutate executables_.
   if (!fun_.has_value()) {
     executables_ = cache_->DefaultCache();
   } else {
-    executables_ = cache_->Lookup(fun_.value(), global_cache_key_);
+    executables_ = cache_->Lookup(cache_, fun_.value(), global_cache_key_);
   }
 }
 
@@ -660,12 +694,15 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
 
   VLOG(2) << "CallSignature:\n" << call_signature.DebugString();
   bool inserted = false;
-  std::shared_ptr<PjitCacheEntry> cache_entry =
-      executables_->GetOrCreateIfAbsent(
-          call_signature, [this, &inserted](const CallSignature& unused) {
-            inserted = true;
-            return std::make_shared<PjitCacheEntry>(pytree_registry_.get());
-          });
+  std::shared_ptr<PjitCacheEntry> cache_entry;
+  {
+    nb::ft_object_guard lock(cache_);
+    cache_entry = executables_->GetOrCreateIfAbsent(
+        call_signature, [this, &inserted](const CallSignature& unused) {
+          inserted = true;
+          return std::make_shared<PjitCacheEntry>(pytree_registry_.get());
+        });
+  }
 
   if (!cache_entry->compilation_complete.HasBeenNotified()) {
     // In case of several threads attempting to compile the executable, only
@@ -698,6 +735,7 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
       cache_entry->compilation_complete.Notify();
 
       if (remove_cache) {
+        nb::ft_object_guard lock(cache_);
         executables_->Remove(call_signature);
       }
 
@@ -805,7 +843,6 @@ absl::Status PjitFunction::ComputeCallSignature(
 
   signature.default_device = GetDefaultDevice();
   signature.jax_enable_x64 = jax_enable_x64;
-  signature.jax_enable_memories = GetEnableMemories();
 
   auto& dynamic_arg_signatures = signature.dynamic_arg_signatures;
   dynamic_arg_signatures.reserve(flat_dynamic_args.size());
@@ -1069,8 +1106,8 @@ static PyGetSetDef PjitFunction_tp_getset[] = {
 PyObject* PjitFunction_tp_repr(PyObject* self) {
   try {
     const std::string& repr = absl::StrFormat(
-        "<PjitFunction of %s>",
-        nb::cast<std::string_view>(nb::repr(nb::getattr(self, "__wrapped__"))));
+        "<PjitFunction of %s>", nb::cast<absl::string_view>(nb::repr(
+                                    nb::getattr(self, "__wrapped__"))));
     return PyUnicode_FromString(repr.c_str());
   } catch (...) {
     // Ignore all errors when accessing a repr.
@@ -1086,7 +1123,8 @@ void InitializePjitFunction(
     std::vector<int> static_argnums, std::vector<nb::str> static_argnames,
     nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
-    nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache) {
+    nb::callable shard_arg_fallback,
+    xla::nb_class_ptr<PjitFunctionCache> cache) {
   if (nb::isinstance<nb::list>(global_cache_key)) {
     global_cache_key = nb::tuple(global_cache_key);
   }
@@ -1106,12 +1144,12 @@ nb::object MakePjitFunction(
     std::vector<nb::str> static_argnames, nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback,
-    std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
+    std::optional<xla::nb_class_ptr<PjitFunctionCache>> cache) {
   nb::object obj = nb::steal<nb::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
   if (!cache) {
-    cache = std::make_shared<PjitFunctionCache>(
+    cache = xla::make_nb_class<PjitFunctionCache>(
         PjitFunctionCache::kDefaultCapacity);
   }
   InitializePjitFunction(
@@ -1160,19 +1198,21 @@ void BuildPjitSubmodule(nb::module_& m) {
   nb::class_<PjitFunctionCache> cache(m, "PjitFunctionCache");
   cache.def(nb::init<int>(),
             nb::arg("capacity") = PjitFunctionCache::kDefaultCapacity);
-  cache.def("size", &PjitFunctionCache::Size);
-  cache.def("capacity", &PjitFunctionCache::Capacity);
-  cache.def("clear", &PjitFunctionCache::Clear);
+  cache.def("size", &PjitFunctionCache::Size, nb::lock_self());
+  cache.def("capacity", &PjitFunctionCache::Capacity, nb::lock_self());
+  cache.def("clear", &PjitFunctionCache::Clear, nb::lock_self());
   cache.def_static("clear_all",
                    []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
-  cache.def("__getstate__",
-            // Pickles as an empty cache; the client can repopulate as needed.
-            [](const PjitFunctionCache& cache) {
-              nb::dict pickle;
-              pickle["version"] = kPjitFunctionPickleVersion;
-              pickle["capacity"] = cache.Capacity();
-              return pickle;
-            });
+  cache.def(
+      "__getstate__",
+      // Pickles as an empty cache; the client can repopulate as needed.
+      [](const PjitFunctionCache& cache) {
+        nb::dict pickle;
+        pickle["version"] = kPjitFunctionPickleVersion;
+        pickle["capacity"] = cache.Capacity();
+        return pickle;
+      },
+      nb::lock_self());
   cache.def("__setstate__",
             [](PjitFunctionCache* cache, const nb::dict& pickle) {
               int version = nb::cast<int>(pickle["version"]);
@@ -1264,8 +1304,8 @@ void BuildPjitSubmodule(nb::module_& m) {
                 nb::handle(pickle["pytree_registry"].ptr()));
         nb::callable shard_arg_fallback =
             nb::cast<nb::callable>(pickle["shard_arg_fallback"]);
-        std::shared_ptr<PjitFunctionCache> cache =
-            nb::cast<std::shared_ptr<PjitFunctionCache>>(pickle["cache"]);
+        xla::nb_class_ptr<PjitFunctionCache> cache =
+            nb::cast<xla::nb_class_ptr<PjitFunctionCache>>(pickle["cache"]);
         InitializePjitFunction(
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
             std::move(function_name), std::move(fun), std::move(cache_miss),
@@ -1298,7 +1338,7 @@ void BuildPjitSubmodule(nb::module_& m) {
          nb::callable cache_miss, std::vector<int> static_argnums,
          std::vector<nb::str> static_argnames, nb::object global_cache_key,
          nb::object pytree_registry, nb::callable shard_arg_fallback,
-         std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
+         std::optional<xla::nb_class_ptr<PjitFunctionCache>> cache) {
         xla::nb_class_ptr<xla::PyTreeRegistry> registry =
             nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pytree_registry.ptr()));

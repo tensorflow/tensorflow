@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_TFLITE_TFL_TENSOR_REF_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_TFLITE_TFL_TENSOR_REF_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/ml_adjacent/lib.h"
 

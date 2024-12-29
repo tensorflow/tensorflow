@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "xla/executable_run_options.h"
@@ -37,7 +36,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-std::string_view Thunk::KindToString(Kind kind) {
+absl::string_view Thunk::KindToString(Kind kind) {
   switch (kind) {
     case Kind::kAllGather:
       return "all-gather";
@@ -81,6 +80,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "topk";
     case Kind::kWhile:
       return "while";
+    case Kind::kXnnFusion:
+      return "xnn-fusion";
   }
 }
 Thunk::Thunk(Kind kind, Info info)

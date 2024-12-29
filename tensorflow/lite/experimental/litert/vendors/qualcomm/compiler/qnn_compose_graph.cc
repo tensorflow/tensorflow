@@ -40,6 +40,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/div_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/embedding_lookup_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/fully_connected_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/gelu_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/greater_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/less_op_legalization.h"
@@ -85,6 +86,7 @@ LiteRtStatus RegisterAllLegalizations(
   legalizations.push_back(LogicalAndOpLegalization::Create());
   legalizations.push_back(LessOpLegalization::Create());
   legalizations.push_back(GreaterOpLegalization::Create());
+  legalizations.push_back(GeluOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }

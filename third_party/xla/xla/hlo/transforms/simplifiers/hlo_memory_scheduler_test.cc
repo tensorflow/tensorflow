@@ -20,7 +20,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -429,7 +428,7 @@ TEST_F(HloSchedulingTest, BFSScheduler) {
     instructions_by_name[instruction->name()] = instruction;
   }
 
-  auto index = [&](std::string_view name) -> size_t {
+  auto index = [&](absl::string_view name) -> size_t {
     const HloInstruction* instruction = instructions_by_name.at(name);
     return std::distance(sequence.begin(), absl::c_find(sequence, instruction));
   };

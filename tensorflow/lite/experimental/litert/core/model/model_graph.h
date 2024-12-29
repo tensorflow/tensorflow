@@ -21,6 +21,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_consts.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
@@ -65,11 +66,13 @@ std::optional<LiteRtParamIndex> FindOutput(const LiteRtSubgraphT& subgraph,
 // Check if tensor is part of subgraph IO.
 bool IsIO(const LiteRtSubgraphT& subgraph, const LiteRtTensorT& tensor);
 
+using UseIndices =
+    absl::InlinedVector<LiteRtParamIndex, kExpectedMaxNumOfTensorUses>;
+
 // Checks if tensor is used by op, return the use inds for each use of tensor by
 // op (there may be multiple). These are the indexes to call
 // LiteRtTensorT::GetUse with.
-SmallVec<LiteRtParamIndex> FindUseInds(const LiteRtTensorT& tensor,
-                                       const LiteRtOpT& op);
+UseIndices FindUseInds(const LiteRtTensorT& tensor, const LiteRtOpT& op);
 
 // Is this tensor a constant tensor?
 bool IsConstant(const LiteRtTensorT& tensor);

@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/types.h"
-#include "xla/xla.pb.h"
 
 namespace xla {
 

@@ -619,14 +619,17 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   XStatMetadata* kGroupId = aggregated_plane.GetOrCreateStatMetadata(
       GetStatTypeStr(StatType::kGroupId));
 
+  // TODO(b/384550563): Remove this offset once we have a better way to
+  // aggregate XPlanes.
+  int64_t metadata_id_offset = aggregated_plane.CreateEventMetadata()->id() - 1;
   for (const auto& [line_id, stats_by_group] : stats) {
     XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
     for (const auto& [group_id, stat_by_event] : stats_by_group) {
       for (const auto& [event_id, event_stat] : stat_by_event) {
         const auto& src_event_metadata = *plane.GetEventMetadata(event_id);
         XEventMetadata& event_metadata =
-            *aggregated_plane.GetOrCreateEventMetadata(
-                src_event_metadata.name());
+            *aggregated_plane.GetOrCreateEventMetadata(src_event_metadata.id() +
+                                                       metadata_id_offset);
         CopyEventMetadata(src_event_metadata, plane, event_metadata,
                           aggregated_plane);
         XEventBuilder aggregated_event =

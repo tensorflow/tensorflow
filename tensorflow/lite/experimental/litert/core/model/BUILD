@@ -242,7 +242,10 @@ cc_test(
 cc_library(
     name = "model_graph",
     srcs = ["model_graph.cc"],
-    hdrs = ["model_graph.h"],
+    hdrs = [
+        "model_graph.h",
+        "//tensorflow/lite/experimental/litert/cc:litert_consts.h",
+    ],
     deps = [
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_common",

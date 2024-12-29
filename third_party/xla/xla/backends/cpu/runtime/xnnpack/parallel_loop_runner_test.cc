@@ -18,14 +18,15 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -33,27 +34,118 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(ParallelLoopRunnerTest, BackToBack1DLoops) {
+TEST(ParallelLoopRunnerTest, Parallelize1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
   ParallelLoopRunner runner(&device);
 
-  std::vector<int32_t> data(1024);
-  auto inc_range = [&](size_t offset, size_t extent) {
+  constexpr int32_t d0 = 128;
+
+  auto* data = new int32_t[d0]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t offset) { data[offset] += 1; };
+
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+  runner.Parallelize(d0, increment);
+
+  tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0], d0),
+                             [](int32_t value) { return value == 5; }));
+}
+
+TEST(ParallelLoopRunnerTest, Parallelize1DTile1D) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  constexpr int32_t d0 = 128;
+
+  auto* data = new int32_t[d0]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t offset, size_t extent) {
     for (size_t i = offset; i < offset + extent; ++i) {
       data[i] += 1;
     }
   };
 
-  runner.Parallelize(1024, 1, inc_range);
-  runner.Parallelize(1024, 2, inc_range);
-  runner.Parallelize(1024, 3, inc_range);
-  runner.Parallelize(1024, 4, inc_range);
-  runner.Parallelize(1024, 5, inc_range);
+  runner.Parallelize(d0, 1, increment);
+  runner.Parallelize(d0, 2, increment);
+  runner.Parallelize(d0, 3, increment);
+  runner.Parallelize(d0, 4, increment);
+  runner.Parallelize(d0, 5, increment);
 
   tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
-  ASSERT_TRUE(absl::c_all_of(data, [](int32_t value) { return value == 5; }));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0], d0),
+                             [](int32_t value) { return value == 5; }));
+}
+
+TEST(ParallelLoopRunnerTest, Parallelize2DTile1D) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  constexpr int32_t d0 = 4;
+  constexpr int32_t d1 = 39;
+
+  auto* data = new int32_t[d0][d1]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t i, size_t offset_j, size_t extent_j) {
+    for (size_t j = offset_j; j < offset_j + extent_j; ++j) {
+      data[i][j] += 1;
+    }
+  };
+
+  runner.Parallelize(d0, d1, 1, increment);
+  runner.Parallelize(d0, d1, 2, increment);
+  runner.Parallelize(d0, d1, 3, increment);
+  runner.Parallelize(d0, d1, 4, increment);
+  runner.Parallelize(d0, d1, 5, increment);
+
+  tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0][0], d0 * d1),
+                             [](int32_t value) { return value == 5; }));
+}
+
+TEST(ParallelLoopRunnerTest, Parallelize3DTile2D) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  constexpr int32_t d0 = 4;
+  constexpr int32_t d1 = 39;
+  constexpr int32_t d2 = 63;
+
+  auto* data = new int32_t[d0][d1][d2]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t i, size_t offset_j, size_t offset_k,
+                       size_t extent_j, size_t extent_k) {
+    for (size_t j = offset_j; j < offset_j + extent_j; ++j) {
+      for (size_t k = offset_k; k < offset_k + extent_k; ++k) {
+        data[i][j][k] += 1;
+      }
+    }
+  };
+
+  runner.Parallelize(d0, d1, d2, 1, 5, increment);
+  runner.Parallelize(d0, d1, d2, 2, 4, increment);
+  runner.Parallelize(d0, d1, d2, 3, 4, increment);
+  runner.Parallelize(d0, d1, d2, 4, 3, increment);
+  runner.Parallelize(d0, d1, d2, 5, 1, increment);
+
+  tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0][0][0], d0 * d1 * d2),
+                             [](int32_t value) { return value == 5; }));
 }
 
 //===----------------------------------------------------------------------===//
@@ -73,6 +165,41 @@ static void BM_SingleTask1DLoop(benchmark::State& state) {
 }
 
 BENCHMARK(BM_SingleTask1DLoop);
+
+static void BM_Parallelize2DTile1D(benchmark::State& state) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  size_t range = 4;
+  size_t tile = 1;
+
+  for (auto _ : state) {
+    runner.Parallelize(range, range, tile, [](size_t, size_t, size_t) {});
+    tsl::BlockUntilReady(runner.done_event());
+  }
+}
+
+BENCHMARK(BM_Parallelize2DTile1D);
+
+static void BM_Parallelize3DTile2D(benchmark::State& state) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  size_t range = 4;
+  size_t tile = 1;
+
+  for (auto _ : state) {
+    runner.Parallelize(range, range, range, tile, tile,
+                       [](size_t, size_t, size_t, size_t, size_t) {});
+    tsl::BlockUntilReady(runner.done_event());
+  }
+}
+
+BENCHMARK(BM_Parallelize3DTile2D);
 
 }  // namespace
 }  // namespace xla::cpu
