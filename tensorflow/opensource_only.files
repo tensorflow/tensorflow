@@ -360,7 +360,6 @@ tf_staging/third_party/systemlibs/boringssl.BUILD:
 tf_staging/third_party/systemlibs/build_defs.bzl.tpl:
 tf_staging/third_party/systemlibs/curl.BUILD:
 tf_staging/third_party/systemlibs/cython.BUILD:
-tf_staging/third_party/systemlibs/double_conversion.BUILD:
 tf_staging/third_party/systemlibs/gif.BUILD:
 tf_staging/third_party/systemlibs/google_cloud_cpp.BUILD:
 tf_staging/third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:

@@ -57,7 +57,6 @@ pybind_extension(
         "@compute_library//:__subpackages__",
         "@cpuinfo//:__subpackages__",
         "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@farmhash_archive//:__subpackages__",
         "@farmhash_gpu_archive//:__subpackages__",

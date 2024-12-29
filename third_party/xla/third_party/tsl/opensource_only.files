@@ -132,7 +132,6 @@ third_party/systemlibs/boringssl.BUILD:
 third_party/systemlibs/build_defs.bzl.tpl:
 third_party/systemlibs/curl.BUILD:
 third_party/systemlibs/cython.BUILD:
-third_party/systemlibs/double_conversion.BUILD:
 third_party/systemlibs/gif.BUILD:
 third_party/systemlibs/google_cloud_cpp.BUILD:
 third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
