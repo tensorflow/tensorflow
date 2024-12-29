@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
