@@ -15,27 +15,43 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -76,6 +92,92 @@ llvm::FunctionType* KernelFunctionTy(llvm::LLVMContext& ctx) {
                                  /*isVarArg=*/false);
 }
 
+// Check that all kernel arguments are coming from non-overlapping slices. It
+// is fine to pass same slice as different arguments. This property is not
+// used anywhere during the codegen, it acts mostly as a sanity check for
+// the buffer assignment. In the future we might emit better aliasing metadata
+// based on this property.
+absl::Status VerifyKernelArgumentsNonOverlapping(
+    absl::Span<const KernelApiIrBuilder::KernelParameter> arguments) {
+  for (size_t i = 0; i < arguments.size(); ++i) {
+    for (size_t j = i + 1; j < arguments.size(); ++j) {
+      const KernelApiIrBuilder::KernelParameter& a = arguments[i];
+      const KernelApiIrBuilder::KernelParameter& b = arguments[j];
+
+      if (a.slice != b.slice && a.slice.OverlapsWith(b.slice)) {
+        return Internal(
+            "Kernel arguments must not overlap: result #%d (%s) overlaps "
+            "with result #%d (%s)",
+            i, a.slice.ToString(), j, b.slice.ToString());
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// Check that all kernel results are unique and coming from non-overlapping
+// slices. We rely on this property to create LLVM `!alias.scope` for each
+// kernel result buffer and to construct `!noalias` metadata for arguments.
+absl::Status VerifyKernelResultsNonOverlapping(
+    absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
+  for (size_t i = 0; i < results.size(); ++i) {
+    for (size_t j = i + 1; j < results.size(); ++j) {
+      const KernelApiIrBuilder::KernelParameter& a = results[i];
+      const KernelApiIrBuilder::KernelParameter& b = results[j];
+
+      if (a.slice.OverlapsWith(b.slice)) {
+        return Internal(
+            "Kernel results must not overlap: result #%d (%s) overlaps "
+            "with result #%d (%s)",
+            i, a.slice.ToString(), j, b.slice.ToString());
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// Check that results do not overlap with arguments, or if they do, they must
+// be the same as one of the arguments, which can happen for inplace kernels.
+absl::Status VerifyKernelResultsNonOverlappingWithArguments(
+    absl::Span<const KernelApiIrBuilder::KernelParameter> arguments,
+    absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
+  for (size_t i = 0; i < results.size(); ++i) {
+    for (size_t j = 0; j < arguments.size(); ++j) {
+      const KernelApiIrBuilder::KernelParameter& result = results[i];
+      const KernelApiIrBuilder::KernelParameter& argument = arguments[j];
+
+      if (result.slice.OverlapsWith(argument.slice) &&
+          result.slice != argument.slice) {
+        return Internal(
+            "Kernel results must not partially overlap with arguments: result "
+            "#%d (%s) overlaps with argument #%d (%s)",
+            i, result.slice.ToString(), j, argument.slice.ToString());
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyKernelParameters(
+    absl::Span<const KernelApiIrBuilder::KernelParameter> arguments,
+    absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
+  // IMPORTANT: Buffer slice non-overlapping property checked below does not
+  // necessarily mean that the buffers do not alias. Parameter allocations
+  // might have different index but at run time might be backed by the same
+  // memory (or aliased memory). We conservatively do not emit noalias metadata
+  // for buffers coming from parameter allocations.
+
+  TF_RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
+  TF_RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
+  TF_RETURN_IF_ERROR(
+      VerifyKernelResultsNonOverlappingWithArguments(arguments, results));
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
@@ -86,6 +188,144 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
   arg_ty_ = KernelArgTy(context_);
   call_frame_ty_ = KernelCallFrameTy(context_);
   kernel_function_ty_ = KernelFunctionTy(context_);
+}
+
+auto KernelApiIrBuilder::EmitKernelPrototype(
+    llvm::Module& module, absl::string_view name,
+    absl::Span<const KernelParameter> arguments,
+    absl::Span<const KernelParameter> results)
+    -> absl::StatusOr<KernelPrototype> {
+  CHECK(&module.getContext() == &context_) << "Module context mismatch";
+
+  VLOG(3) << "Emit kernel prototype: " << name
+          << ", #arguments=" << arguments.size()
+          << ", #results=" << results.size();
+  for (const KernelParameter& argument : arguments) {
+    VLOG(3) << "  argument: " << argument.shape.ToString(true) << " in "
+            << argument.slice.ToString();
+  }
+  for (const KernelParameter& result : results) {
+    VLOG(3) << "  result: " << result.shape.ToString(true) << " in "
+            << result.slice.ToString();
+  }
+
+  TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+
+  llvm::MDBuilder mb(context_);
+  llvm::IRBuilder<> b(context_);
+
+  // Create an alias domain for the host kernel function.
+  llvm::MDNode* domain = mb.createAliasScopeDomain(
+      absl::StrFormat("XLA host kernel %s AA domain", name));
+
+  // Emit alias scopes for all kernel result buffers. We do not emit alias
+  // scopes for kernel arguments, because it's usually not profitable, and we
+  // mostly care about avoiding reloading data from read-only buffers. We use
+  // sorted container to make sure that emitted metadata is deterministic.
+  absl::btree_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes;
+  for (const KernelParameter& result : results) {
+    // Skip result buffers that are aliased with entry parameters as we don't
+    // know if they can alias with any other buffers.
+    if (result.slice.allocation()->is_parameter_aliased_with_output()) {
+      continue;
+    }
+    alias_scopes[result.slice] = mb.createAliasScope(
+        absl::StrFormat("result slice: %s", result.slice.ToString()), domain);
+  }
+
+  // Returns alias scope for the given buffer slice.
+  auto get_alias_scope = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
+    auto it = alias_scopes.find(slice);
+    return it == alias_scopes.end() ? nullptr
+                                    : llvm::MDNode::get(context_, it->second);
+  };
+
+  // Construct !noalias metadata for buffer slice.
+  auto get_noalias = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
+    llvm::SmallVector<llvm::Metadata*> scopes;
+    for (const auto& [alias_slice, alias_scope] : alias_scopes) {
+      if (!slice.OverlapsWith(alias_slice)) {
+        scopes.push_back(alias_scope);
+      }
+    }
+    return scopes.empty() ? nullptr : llvm::MDNode::get(context_, scopes);
+  };
+
+  // Collect all buffer slices that the kernel writes to.
+  absl::flat_hash_set<BufferAllocation::Slice> result_slices;
+  result_slices.reserve(results.size());
+  for (const KernelParameter& result : results) {
+    result_slices.insert(result.slice);
+  }
+
+  // Create a kernel function with HostKernel API.
+  llvm::Function* function = EmitKernelFunction(module, name);
+
+  // Create an entry basic block and set insert point to the end of it.
+  b.SetInsertPoint(llvm::BasicBlock::Create(context_, "", function));
+
+  llvm::Value* call_frame = function->getArg(0);
+  // Build thread coordinates from the call frame.
+  KernelApiIrBuilder::ThreadDims kernel_thread_dims =
+      EmitKernelThreadDims(b, call_frame);
+  KernelApiIrBuilder::ThreadId kernel_thread = EmitKernelThread(b, call_frame);
+
+  int64_t idx = 0;
+
+  // A set of invariant (read-only) buffer indices, feeded in the loop array in
+  // the next section.
+  absl::flat_hash_set<int64_t> invariant_arguments;
+
+  // IrArrays for the parameters.
+  std::vector<llvm_ir::IrArray> ir_arguments;
+  for (int64_t i = 0; i < arguments.size(); ++i) {
+    const KernelParameter& argument = arguments[i];
+    auto ir_argument = EmitKernelArgument(b, call_frame, idx++, argument.shape);
+    if (auto* noalias = get_noalias(argument.slice)) {
+      ir_argument.AddNoaliasMetadata(noalias);
+    }
+
+    // If a buffer slice is not a part of result set, then it must be invariant
+    // (read-only).
+    if (!result_slices.contains(argument.slice)) {
+      ir_argument.MarkInvariantOverWholeProgram(&context_);
+      invariant_arguments.insert(i);
+    }
+
+    ir_arguments.push_back(std::move(ir_argument));
+  }
+
+  // IrArrays for the results.
+  std::vector<llvm_ir::IrArray> ir_results;
+  for (const KernelParameter& result : results) {
+    auto ir_result = EmitKernelArgument(b, call_frame, idx++, result.shape);
+    if (auto* noalias = get_noalias(result.slice)) {
+      ir_result.AddNoaliasMetadata(noalias);
+    }
+    if (auto* alias_scope = get_alias_scope(result.slice)) {
+      ir_result.AddAliasScopeMetadata(alias_scope);
+    }
+    ir_results.push_back(std::move(ir_result));
+  }
+
+  // Return null pointer to signal success as we do not support error handling
+  // in the compiled host kernel.
+  llvm::BasicBlock* return_block =
+      llvm::BasicBlock::Create(context_, "return", function);
+
+  b.CreateBr(return_block);
+
+  b.SetInsertPoint(return_block);
+  b.CreateRet(
+      llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(context_)));
+
+  return KernelPrototype{function,
+                         return_block,
+                         kernel_thread_dims,
+                         kernel_thread,
+                         std::move(ir_arguments),
+                         std::move(ir_results),
+                         std::move(invariant_arguments)};
 }
 
 auto KernelApiIrBuilder::EmitKernelThreadDims(llvm::IRBuilderBase& builder,
