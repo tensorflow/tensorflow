@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <limits>

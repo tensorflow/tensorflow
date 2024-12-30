@@ -244,6 +244,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -259,7 +260,9 @@ xla_cc_test(
     srcs = ["target_util_test.cc"],
     deps = [
         ":target_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
