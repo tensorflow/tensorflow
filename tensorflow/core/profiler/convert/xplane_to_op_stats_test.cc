@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"

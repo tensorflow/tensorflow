@@ -25,7 +25,10 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
