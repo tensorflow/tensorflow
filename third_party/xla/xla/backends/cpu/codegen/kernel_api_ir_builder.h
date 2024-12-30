@@ -99,6 +99,7 @@ class KernelApiIrBuilder {
       absl::Span<const KernelParameter> results,
       bool compute_alias_metadata = true);
 
+ private:
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);
   ThreadId EmitKernelThread(llvm::IRBuilderBase& builder,
