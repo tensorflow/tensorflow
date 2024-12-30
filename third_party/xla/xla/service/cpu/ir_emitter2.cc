@@ -455,44 +455,10 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<BufferAllocation::Slice> IrEmitter2::GetAllocationSlice(
-    const HloInstruction* instruction, const ShapeIndex& index) {
-  return nested_ir_emitter_->assignment().GetUniqueSlice(instruction, index);
-}
-
-absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
-IrEmitter2::GetKernelArgumentsParameters(const HloInstruction* instruction) {
-  std::vector<KernelParameter> arguments;
-
-  for (HloInstruction* operand : instruction->operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                          GetAllocationSlice(operand, indexed.index));
-      arguments.push_back(KernelParameter{indexed.shape, slice});
-    }
-  }
-  return arguments;
-}
-
-absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
-IrEmitter2::GetKernelResultsParameters(const HloInstruction* instruction) {
-  std::vector<KernelParameter> results;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        GetAllocationSlice(instruction, indexed.index));
-    results.push_back(KernelParameter{indexed.shape, slice});
-  }
-  return results;
-}
-
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
-                      GetKernelArgumentsParameters(instr));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
-                      GetKernelResultsParameters(instr));
   return kernel_api_ir_builder_.EmitKernelPrototype(
-      *module_, instr->name(), std::move(arguments), std::move(results));
+      *module_, instr, &nested_ir_emitter_->assignment());
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(

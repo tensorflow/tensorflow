@@ -52,10 +52,72 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
 namespace {
+
+class MemoryDependencyAnalyzer {
+ public:
+  MemoryDependencyAnalyzer(
+      llvm::LLVMContext& context, absl::string_view name,
+      absl::Span<const KernelApiIrBuilder::KernelParameter> results)
+      : context_(context), mb_(context) {
+    // Create an alias domain for the host kernel function.
+    llvm::MDNode* domain = mb_.createAliasScopeDomain(
+        absl::StrFormat("XLA host kernel %s AA domain", name));
+
+    result_slices_.reserve(results.size());
+    for (const KernelApiIrBuilder::KernelParameter& result : results) {
+      result_slices_.insert(result.slice);
+
+      // Skip result buffers that are aliased with entry parameters as we don't
+      // know if they can alias with any other buffers.
+      if (result.slice.allocation()->is_parameter_aliased_with_output()) {
+        continue;
+      }
+      alias_scopes_[result.slice] = mb_.createAliasScope(
+          absl::StrFormat("result slice: %s", result.slice.ToString()), domain);
+    }
+  }
+
+  // Returns alias scope for the given buffer slice.
+  llvm::MDNode* GetAliasScope(BufferAllocation::Slice slice) {
+    if (slice.allocation() == nullptr) {
+      return nullptr;
+    }
+
+    auto it = alias_scopes_.find(slice);
+    return it == alias_scopes_.end() ? nullptr
+                                     : llvm::MDNode::get(context_, it->second);
+  };
+
+  // Construct !noalias metadata for buffer slice.
+  llvm::MDNode* GetNoAlias(BufferAllocation::Slice slice) {
+    llvm::SmallVector<llvm::Metadata*> scopes;
+    for (const auto& [alias_slice, alias_scope] : alias_scopes_) {
+      if (!slice.OverlapsWith(alias_slice)) {
+        scopes.push_back(alias_scope);
+      }
+    }
+    return scopes.empty() ? nullptr : llvm::MDNode::get(context_, scopes);
+  };
+
+  bool ResultContainsSlice(BufferAllocation::Slice slice) {
+    if (slice.allocation() == nullptr) {
+      return false;
+    }
+    return result_slices_.contains(slice);
+  }
+
+ private:
+  llvm::LLVMContext& context_;
+  llvm::MDBuilder mb_;
+
+  absl::btree_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes_;
+  absl::flat_hash_set<BufferAllocation::Slice> result_slices_;
+};
 
 // Following struct types correspond to HostKernel C API.
 // See: xla/backends/cpu/runtime/kernel_c_api.h
@@ -178,6 +240,47 @@ absl::Status VerifyKernelParameters(
   return absl::OkStatus();
 }
 
+absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
+    const BufferAssignment* buffer_assignment,
+    const HloInstruction* instruction, const ShapeIndex& index) {
+  if (buffer_assignment == nullptr) {
+    return BufferAllocation::Slice{};
+  }
+
+  return buffer_assignment->GetUniqueSlice(instruction, index);
+}
+
+absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
+GetKernelArgumentsParameters(const HloInstruction* instruction,
+                             const BufferAssignment* buffer_assignment) {
+  std::vector<KernelApiIrBuilder::KernelParameter> arguments;
+
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          GetUniqueSlice(buffer_assignment, operand, indexed.index));
+      arguments.push_back(
+          KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+    }
+  }
+  return arguments;
+}
+
+absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
+GetKernelResultsParameters(const HloInstruction* instruction,
+                           const BufferAssignment* buffer_assignment) {
+  std::vector<KernelApiIrBuilder::KernelParameter> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        GetUniqueSlice(buffer_assignment, instruction, indexed.index));
+    results.push_back(
+        KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+  }
+  return results;
+}
+
 }  // namespace
 
 KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
@@ -191,9 +294,23 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
 }
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
+    llvm::Module& module, const HloInstruction* instr,
+    const BufferAssignment* buffer_assignment, absl::string_view suffix)
+    -> absl::StatusOr<KernelPrototype> {
+  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
+                      GetKernelArgumentsParameters(instr, buffer_assignment));
+  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
+                      GetKernelResultsParameters(instr, buffer_assignment));
+
+  bool compute_alias_metadata = buffer_assignment != nullptr;
+  return EmitKernelPrototype(module, absl::StrCat(instr->name(), suffix),
+                             arguments, results, compute_alias_metadata);
+}
+
+auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results)
+    absl::Span<const KernelParameter> results, bool compute_alias_metadata)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
 
@@ -209,54 +326,15 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
             << result.slice.ToString();
   }
 
-  TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+  if (compute_alias_metadata) {
+    TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+  }
 
-  llvm::MDBuilder mb(context_);
+  MemoryDependencyAnalyzer memory_dependency_analyzer(
+      context_, name,
+      compute_alias_metadata ? results : absl::Span<const KernelParameter>{});
+
   llvm::IRBuilder<> b(context_);
-
-  // Create an alias domain for the host kernel function.
-  llvm::MDNode* domain = mb.createAliasScopeDomain(
-      absl::StrFormat("XLA host kernel %s AA domain", name));
-
-  // Emit alias scopes for all kernel result buffers. We do not emit alias
-  // scopes for kernel arguments, because it's usually not profitable, and we
-  // mostly care about avoiding reloading data from read-only buffers. We use
-  // sorted container to make sure that emitted metadata is deterministic.
-  absl::btree_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes;
-  for (const KernelParameter& result : results) {
-    // Skip result buffers that are aliased with entry parameters as we don't
-    // know if they can alias with any other buffers.
-    if (result.slice.allocation()->is_parameter_aliased_with_output()) {
-      continue;
-    }
-    alias_scopes[result.slice] = mb.createAliasScope(
-        absl::StrFormat("result slice: %s", result.slice.ToString()), domain);
-  }
-
-  // Returns alias scope for the given buffer slice.
-  auto get_alias_scope = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
-    auto it = alias_scopes.find(slice);
-    return it == alias_scopes.end() ? nullptr
-                                    : llvm::MDNode::get(context_, it->second);
-  };
-
-  // Construct !noalias metadata for buffer slice.
-  auto get_noalias = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
-    llvm::SmallVector<llvm::Metadata*> scopes;
-    for (const auto& [alias_slice, alias_scope] : alias_scopes) {
-      if (!slice.OverlapsWith(alias_slice)) {
-        scopes.push_back(alias_scope);
-      }
-    }
-    return scopes.empty() ? nullptr : llvm::MDNode::get(context_, scopes);
-  };
-
-  // Collect all buffer slices that the kernel writes to.
-  absl::flat_hash_set<BufferAllocation::Slice> result_slices;
-  result_slices.reserve(results.size());
-  for (const KernelParameter& result : results) {
-    result_slices.insert(result.slice);
-  }
 
   // Create a kernel function with HostKernel API.
   llvm::Function* function = EmitKernelFunction(module, name);
@@ -281,13 +359,13 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   for (int64_t i = 0; i < arguments.size(); ++i) {
     const KernelParameter& argument = arguments[i];
     auto ir_argument = EmitKernelArgument(b, call_frame, idx++, argument.shape);
-    if (auto* noalias = get_noalias(argument.slice)) {
+    if (auto* noalias = memory_dependency_analyzer.GetNoAlias(argument.slice)) {
       ir_argument.AddNoaliasMetadata(noalias);
     }
 
     // If a buffer slice is not a part of result set, then it must be invariant
     // (read-only).
-    if (!result_slices.contains(argument.slice)) {
+    if (!memory_dependency_analyzer.ResultContainsSlice(argument.slice)) {
       ir_argument.MarkInvariantOverWholeProgram(&context_);
       invariant_arguments.insert(i);
     }
@@ -299,10 +377,11 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   std::vector<llvm_ir::IrArray> ir_results;
   for (const KernelParameter& result : results) {
     auto ir_result = EmitKernelArgument(b, call_frame, idx++, result.shape);
-    if (auto* noalias = get_noalias(result.slice)) {
+    if (auto* noalias = memory_dependency_analyzer.GetNoAlias(result.slice)) {
       ir_result.AddNoaliasMetadata(noalias);
     }
-    if (auto* alias_scope = get_alias_scope(result.slice)) {
+    if (auto* alias_scope =
+            memory_dependency_analyzer.GetAliasScope(result.slice)) {
       ir_result.AddAliasScopeMetadata(alias_scope);
     }
     ir_results.push_back(std::move(ir_result));

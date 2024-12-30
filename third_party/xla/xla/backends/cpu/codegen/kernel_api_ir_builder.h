@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
@@ -86,10 +86,18 @@ class KernelApiIrBuilder {
 
   KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);
 
+  // Emits a kernel prototype for the given HLO instruction.
+  // buffer_assignment may be null, in which case we will not compute alias
+  // metadata.
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      llvm::Module& module, const HloInstruction* instr,
+      const BufferAssignment* buffer_assignment, absl::string_view suffix = "");
+
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
-      absl::Span<const KernelParameter> results);
+      absl::Span<const KernelParameter> results,
+      bool compute_alias_metadata = true);
 
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);

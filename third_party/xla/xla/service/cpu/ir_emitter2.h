@@ -156,19 +156,6 @@ class IrEmitter2 {
     std::vector<int64_t> outer_dimension_partitions;
   };
 
-  // Returns the buffer allocation slice assigned to the given instruction at
-  // the given shape index. Instruction must have a unique slice assigned to it!
-  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-      const HloInstruction* instruction, const ShapeIndex& index = {});
-
-  // We do not materialize buffers for tuples at run time, and work only with
-  // leaf arrays. These are the helper functions to flatten HLO instruction
-  // parameters and results into a list of leaf shapes.
-  absl::StatusOr<std::vector<KernelParameter>> GetKernelArgumentsParameters(
-      const HloInstruction* instruction);
-  absl::StatusOr<std::vector<KernelParameter>> GetKernelResultsParameters(
-      const HloInstruction* instruction);
-
   // Returns parallel config for the given instruction or std::nullopt if
   // the instruction has to be compiled to a single threaded loop.
   std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
