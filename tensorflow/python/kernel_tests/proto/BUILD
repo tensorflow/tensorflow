@@ -117,7 +117,7 @@ tf_cc_shared_object(
             ":test_example_proto_cc",
         ],
         if_true = [
-            "//tensorflow/python:_pywrap_tensorflow_common",
+            "//tensorflow/python:tensorflow_common_framework",
             ":test_example_proto_cc_stripped",
         ],
     ),

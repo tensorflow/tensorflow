@@ -66,7 +66,7 @@ tf_cc_shared_object(
         ],
         if_true = [
             ":test_file_system_stripped",
-            "//tensorflow/python:_pywrap_tensorflow_common",
+            "//tensorflow/python:tensorflow_common_framework",
         ],
     ) + ["@com_google_protobuf//:protobuf_headers"],
 )
@@ -787,6 +787,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_py_context_manager.pyi",
     ],
+    starlark_only = True,
     deps = [
         ":py_context_manager",
         "//third_party/python_runtime:headers",
@@ -836,6 +837,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_op_def_util.pyi",
     ],
+    starlark_only = True,
     deps = if_pywrap(
         if_false = [":op_def_util_headers"],
         if_true = [":op_def_util_cc"],
@@ -918,6 +920,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_parameter_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1028,6 +1031,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_info.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1185,6 +1189,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_tensor_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -3195,6 +3200,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_errors_test_helper.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core/platform:status",

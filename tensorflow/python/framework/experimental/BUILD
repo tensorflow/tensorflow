@@ -21,6 +21,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_unified_api.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
@@ -42,6 +43,7 @@ tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
@@ -71,6 +73,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_math_ops.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
@@ -98,6 +101,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_nn_ops.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],

@@ -919,6 +919,13 @@ def tf_cc_shared_library_opensource(
     """Configures the shared object file for TensorFlow."""
 
     if use_pywrap_rules():
+        # TODO(b/356020232): move to a simple top-level target once this macro is removed.
+        # This target is used solely for filtering purposes and not put directly into
+        # any final binary artifacts.
+        cc_library(
+            name = "%s_pywrap_filter" % name,
+            deps = roots,
+        )
         return
 
     names = _get_shared_library_name_os_version_matrix(
@@ -2315,7 +2322,7 @@ def tf_custom_op_library(
         gpu_deps = []
 
     if use_pywrap_rules():
-        deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow_common")] + deps
+        deps = [clean_dep("//tensorflow/python:tensorflow_common_framework")] + deps
     else:
         deps = list(deps)
 
@@ -3140,9 +3147,10 @@ def pybind_extension_opensource(
         srcs_version = "PY3",
         testonly = None,
         visibility = None,
-        win_def_file = None):
+        win_def_file = None,
+        starlark_only = False):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3325,14 +3333,18 @@ def pybind_extension_opensource(
     )
 
 # Export open source version of pybind_extension under base name as well.
-def pybind_extension(name, common_lib_packages = [], **kwargs):
+def pybind_extension(
+        name,
+        common_lib_packages = [],
+        pywrap_only = False,
+        **kwargs):
     if use_pywrap_rules():
         _pybind_extension(
             name = name,
-            common_lib_packages = common_lib_packages + ["tensorflow/python"],
+            common_lib_packages = common_lib_packages + ["tensorflow", "tensorflow/python"],
             **kwargs
         )
-    else:
+    elif not pywrap_only:
         pybind_extension_opensource(
             name = name,
             **kwargs
@@ -3452,7 +3464,8 @@ def tf_python_pybind_extension_opensource(
         visibility = None,
         win_def_file = None,
         additional_exported_symbols = None,
-        linkopts = []):
+        linkopts = [],
+        starlark_only = False):
     """A wrapper macro for pybind_extension_opensource that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -3482,6 +3495,7 @@ def tf_python_pybind_extension_opensource(
         visibility = visibility,
         win_def_file = win_def_file,
         linkopts = linkopts,
+        starlark_only = starlark_only,
     )
 
 # Export open source version of tf_python_pybind_extension under base name as well.

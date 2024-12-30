@@ -314,7 +314,7 @@ tf_wheel(
                 "//tensorflow:tensorflow_framework",
             ],
             if_true = [
-                "//tensorflow/python:_pywrap_tensorflow_binaries",
+                "//tensorflow/python:pywrap_tensorflow_binaries",
             ],
         ),
         "//tensorflow:windows": if_pywrap(

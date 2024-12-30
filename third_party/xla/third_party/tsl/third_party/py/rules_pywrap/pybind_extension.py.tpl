@@ -11,16 +11,20 @@ def __update_globals(pywrap_m):
 
 def __try_import():
   imports_paths = []  # template_val
+  exceptions = []
+  last_exception = None
   for import_path in imports_paths:
     try:
       pywrap_m = __import__(import_path, fromlist=["*"])
       __update_globals(pywrap_m)
       return
-    except ImportError:
-      # try another packge if there are any left
+    except ImportError as e:
+      exceptions.append(str(e))
+      last_exception = e
       pass
 
-  raise RuntimeError(
-    "Could not detect original test/binary location, import paths tried: %s" % imports_paths)
+  raise RuntimeError(f"""
+Could not import original test/binary location, import paths tried: {imports_paths}. 
+Previous exceptions: {exceptions}""", last_exception)
 
 __try_import()
