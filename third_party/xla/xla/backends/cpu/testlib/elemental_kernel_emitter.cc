@@ -203,14 +203,13 @@ ElementalKernelEmitter::EmitKernelSpec() {
       context_, std::move(module),
       std::string(kernel_prototype.function->getName()));
 
-  // TODO(willfroom): fill in buffer allocations and buffer uses when we support
-  // creation from a real HLO instruction.
+  // TODO(willfroom): what do we do with buffer allocations?
+  // The same data should be in buffer_uses?
   std::vector<BufferAllocation> buffer_allocations;
-  KernelSpec::BufferUses buffer_uses;
 
   return std::make_unique<LlvmIrKernelSpec>(
-      thread_dims, std::move(buffer_allocations), std::move(buffer_uses),
-      std::move(source));
+      thread_dims, std::move(buffer_allocations),
+      std::move(kernel_prototype.buffer_uses), std::move(source));
 }
 
 absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(

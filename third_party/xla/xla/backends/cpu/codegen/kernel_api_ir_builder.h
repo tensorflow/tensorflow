@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
@@ -82,6 +84,10 @@ class KernelApiIrBuilder {
     // Set containing all invariant (read-only) buffers indices. A buffer is
     // read-only if it is not aliased with any result.
     absl::flat_hash_set<int64_t> invariant_arguments;
+
+    // the set of buffer uses for this kernel, can be empty if buffer
+    // was not provided.
+    absl::InlinedVector<BufferUse, 8> buffer_uses;
   };
 
   KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);

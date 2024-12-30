@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -398,13 +400,24 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   b.CreateRet(
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(context_)));
 
+  absl::InlinedVector<BufferUse, 8> buffer_uses;
+  if (compute_alias_metadata) {
+    for (const KernelParameter& argument : arguments) {
+      buffer_uses.push_back(BufferUse::Read(argument.slice));
+    }
+    for (const KernelParameter& result : results) {
+      buffer_uses.push_back(BufferUse::Write(result.slice));
+    }
+  }
+
   return KernelPrototype{function,
                          return_block,
                          kernel_thread_dims,
                          kernel_thread,
                          std::move(ir_arguments),
                          std::move(ir_results),
-                         std::move(invariant_arguments)};
+                         std::move(invariant_arguments),
+                         std::move(buffer_uses)};
 }
 
 auto KernelApiIrBuilder::EmitKernelThreadDims(llvm::IRBuilderBase& builder,
