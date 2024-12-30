@@ -105,14 +105,11 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/stream_executor:launch_dim",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -139,16 +136,17 @@ tsl_pybind_extension(
         ":kernel_runner",
         ":llvm_ir_kernel_emitter",
         ":llvm_ir_kernel_spec",
+        # placeholder for index annotation deps  # buildcleaner: keep
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:launch_dim",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "@nanobind",
     ],
 )
 

@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/alias_analysis.h"
@@ -793,6 +794,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Returns a ConstExpr bitcast.
   llvm::Constant* EmitGlobalForLiteral(const Literal& literal);
+
+  CpuElementalIrEmitter ElementalIrEmmiterFactory();
 
   const HloModuleConfig& hlo_module_config_;
 

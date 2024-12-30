@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu/elemental_ir_emitter.h"
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 
 namespace xla::cpu {
@@ -36,6 +41,17 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
   return xla::cpu::EmitErf(module(), *b(), prim_type, value);
+}
+
+absl::StatusOr<std::vector<llvm::Value*>>
+CpuElementalIrEmitter::EmitThreadLocalCall(
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+    absl::string_view name, bool is_reducer) {
+  if (thread_local_call_fn_ == nullptr) {
+    return absl::InternalError("Thread local call function is not set.");
+  }
+
+  return thread_local_call_fn_(callee, parameters, name, is_reducer);
 }
 
 }  // namespace xla::cpu

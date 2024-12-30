@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -240,6 +241,8 @@ class IrEmitter2 {
   // Given a load instruction, annotate the load's result with the invariant
   // load metadata.
   void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* instr) const;
+
+  CpuElementalIrEmitter ElementalIrEmmiterFactory(llvm::IRBuilderBase* b) const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;

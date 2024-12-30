@@ -16,22 +16,35 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 #define XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 
+#include <utility>
+#include <vector>
+
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/elemental_ir_emitter.h"
 
 namespace xla::cpu {
 
-class CpuElementalIrEmitter : public ElementalIrEmitter {
+class CpuElementalIrEmitter final : public ElementalIrEmitter {
  public:
+  using ThreadLocalCallPrototype = absl::StatusOr<std::vector<llvm::Value*>>(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer);
+  using ThreadLocalCallCallback = absl::AnyInvocable<ThreadLocalCallPrototype>;
+
   CpuElementalIrEmitter(llvm::Module* llvm_module, llvm::IRBuilderBase* builder,
+                        ThreadLocalCallCallback thread_local_call_fn,
                         bool use_truncate_f32_to_bf16_conversion,
                         bool fast_min_max)
       : ElementalIrEmitter(llvm_module, builder,
                            Options{use_truncate_f32_to_bf16_conversion}),
+        thread_local_call_fn_(std::move(thread_local_call_fn)),
         fast_min_max_(fast_min_max) {}
 
  private:
@@ -45,8 +58,14 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
                                        llvm::Value* value) override;
 
+  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer) override;
+
   bool fast_min_max() override { return fast_min_max_; }
 
+ private:
+  ThreadLocalCallCallback thread_local_call_fn_;
   bool fast_min_max_;
 };
 
