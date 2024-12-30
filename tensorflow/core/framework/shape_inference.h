@@ -15,11 +15,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"

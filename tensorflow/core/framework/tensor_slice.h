@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 
+#include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
