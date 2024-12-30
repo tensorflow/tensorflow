@@ -23,10 +23,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
+#include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/elemental_ir_emitter.h"
@@ -156,8 +159,11 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
 }  // namespace
 
 ElementalKernelEmitter::ElementalKernelEmitter(
-    std::unique_ptr<HloInstruction> op_hlo)
+    std::unique_ptr<HloInstruction> op_hlo, const HloModule* hlo_module,
+    const BufferAssignment* buffer_assignment)
     : op_hlo_(std::move(op_hlo)),
+      hlo_module_(hlo_module),
+      buffer_assignment_(buffer_assignment),
       context_(std::make_unique<llvm::LLVMContext>()),
       kernel_api_ir_builder_(*context_.getContext(),
                              KernelApiIrBuilder::Options{true, 256}) {}
@@ -179,6 +185,10 @@ ElementalKernelEmitter::EmitKernelSpec() {
   ir_builder.SetInsertPoint(
       kernel_prototype.function->getEntryBlock().getTerminator());
 
+  TF_ASSIGN_OR_RETURN(
+      CpuElementalIrEmitter::ThreadLocalCallCallback thread_local_call_fn,
+      ThreadLocalCallbackFactory(ir_builder, *module));
+
   CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (int64_t i = 0; i < op_hlo_->operand_count(); ++i) {
     const HloInstruction* operand = op_hlo_->operand(i);
@@ -188,8 +198,8 @@ ElementalKernelEmitter::EmitKernelSpec() {
     };
   }
 
-  CpuElementalIrEmitter elemental_ir_emitter(module.get(), &ir_builder, nullptr,
-                                             true, true);
+  CpuElementalIrEmitter elemental_ir_emitter(
+      module.get(), &ir_builder, std::move(thread_local_call_fn), true, true);
 
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(op_hlo_.get(),
@@ -258,6 +268,43 @@ absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(
   TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
   return se::ThreadDim();
+}
+
+absl::StatusOr<CpuElementalIrEmitter::ThreadLocalCallCallback>
+ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
+                                                   llvm::Module& module) const {
+  if (hlo_module_ == nullptr) {
+    return nullptr;
+  }
+
+  auto ir_emitter = std::make_unique<IrEmitter>(
+      nullptr, *hlo_module_, *buffer_assignment_, &module,
+      /*instruction_to_profile_idx=*/
+      absl::flat_hash_map<const HloInstruction*, int64_t>{},
+      /*computation_to_profile_idx=*/
+      absl::flat_hash_map<const HloComputation*, int64_t>{},
+      /*computation_transitively_contains_custom_call=*/
+      absl::flat_hash_map<const HloComputation*, bool>{},
+      /*target_machine=*/nullptr,
+      /*emit_code_for_msan=*/false);
+  IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
+
+  if (op_hlo_->has_to_apply()) {
+    HloComputation* nested_computation = op_hlo_->to_apply();
+    bool is_reducer = op_hlo_->opcode() == HloOpcode::kReduce ||
+                      op_hlo_->opcode() == HloOpcode::kReduceWindow;
+    TF_RETURN_IF_ERROR(ir_emitter->EmitNestedComputation(
+        *nested_computation, llvm_ir::IrName(op_hlo_.get()), is_reducer));
+  }
+
+  return [ir_emitter = std::move(ir_emitter), &builder](
+             const HloComputation& callee,
+             absl::Span<llvm::Value* const> parameters, absl::string_view name,
+             bool is_reducer) {
+    IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
+    return ir_emitter->EmitThreadLocalCall(callee, parameters, name, is_reducer,
+                                           /*in_compute_function=*/false);
+  };
 }
 
 }  // namespace xla::cpu

@@ -177,9 +177,6 @@ class IrEmitter2 {
       const KernelPrototype& kernel_prototype,
       const llvm_ir::ElementGenerator& element_generator);
 
-  absl::Status EmitNestedComputation(const HloComputation& callee,
-                                     absl::string_view name, bool is_reducer);
-
   bool fast_min_max() const;
 
   // Returns the number of bytes within the shape.

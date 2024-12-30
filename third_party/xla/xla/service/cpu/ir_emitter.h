@@ -218,6 +218,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // This is convenient for reusing the same logic with a different builder.
   class IRBuilderGuard {
    public:
+    IRBuilderGuard() = default;
     explicit IRBuilderGuard(IrEmitter* ir_emitter, llvm::IRBuilderBase* builder)
         : ir_emitter_(ir_emitter),
           original_builder_(ir_emitter->current_builder_) {
@@ -227,11 +228,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     IRBuilderGuard(IRBuilderGuard&& other) = delete;
     IRBuilderGuard& operator=(IRBuilderGuard&& other) = delete;
 
-    ~IRBuilderGuard() { ir_emitter_->current_builder_ = original_builder_; }
+    ~IRBuilderGuard() {
+      if (ir_emitter_ != nullptr) {
+        ir_emitter_->current_builder_ = original_builder_;
+      }
+    }
 
    private:
-    IrEmitter* ir_emitter_;
-    llvm::IRBuilderBase* original_builder_;
+    IrEmitter* ir_emitter_ = nullptr;
+    llvm::IRBuilderBase* original_builder_ = nullptr;
   };
 
   // WithBuilder is a convenience function that creates and returns a
@@ -239,6 +244,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   [[nodiscard]] IRBuilderGuard WithBuilder(llvm::IRBuilderBase& builder) {
     return IRBuilderGuard(this, &builder);
   }
+
+  absl::Status EmitNestedComputation(const HloComputation& callee,
+                                     absl::string_view name, bool is_reducer);
 
  protected:
   friend class IrEmitter2;
@@ -797,6 +805,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   CpuElementalIrEmitter ElementalIrEmmiterFactory();
 
+  const HloModule& hlo_module_;
   const HloModuleConfig& hlo_module_config_;
 
   bool is_top_level_computation_;

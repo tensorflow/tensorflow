@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/cpu/ir_emitter.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -82,9 +83,14 @@ NB_MODULE(_extension, kernel_runner_module) {
             {});
       });
 
+  nb::class_<IrEmitter>(kernel_runner_module, "IrEmitter");
+
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<std::unique_ptr<HloInstruction>>());
+      .def(nb::init<std::unique_ptr<HloInstruction>, const HloModule*,
+                    const BufferAssignment*>(),
+           nb::arg("op_hlo"), nb::arg("hlo_module").none() = nullptr,
+           nb::arg("buffer_assignment").none() = nullptr);
 
   nb::class_<KernelRunner, xla::KernelRunner>(kernel_runner_module,
                                               "KernelRunner")

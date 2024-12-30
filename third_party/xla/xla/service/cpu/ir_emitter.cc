@@ -138,6 +138,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       computation_transitively_contains_custom_call_(
           std::move(computation_transitively_contains_custom_call)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
+      hlo_module_(hlo_module),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
@@ -4169,6 +4170,43 @@ CpuElementalIrEmitter IrEmitter::ElementalIrEmmiterFactory() {
       module_, b(), std::move(thread_local_call_fn),
       use_truncate_f32_to_bf16_conversion,
       hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
+}
+
+absl::Status IrEmitter::EmitNestedComputation(const HloComputation& callee,
+                                              absl::string_view name,
+                                              bool is_reducer) {
+  // Module must be scheduled to emit thread local computation.
+  if (!hlo_module_.has_schedule()) {
+    return absl::InternalError(
+        "HLO module must be scheduled to emit thread local computation.");
+  }
+
+  if (is_computation_emitted(callee, is_reducer)) {
+    return absl::OkStatus();
+  }
+
+  for (HloInstruction* instr : callee.instructions()) {
+    bool nested_is_reducer = instr->opcode() == HloOpcode::kReduce ||
+                             instr->opcode() == HloOpcode::kReduceWindow;
+    for (HloComputation* called_computation : instr->called_computations()) {
+      // reassociation is transitive so we "or" the caller and the callee.
+      TF_RETURN_IF_ERROR(
+          EmitNestedComputation(*called_computation, llvm_ir::IrName(instr),
+                                is_reducer || nested_is_reducer));
+    }
+  }
+
+  if (callee.IsFusionComputation()) {
+    return absl::OkStatus();
+  }
+
+  VLOG(2) << "Emit nested computation: " << callee.name();
+  return EmitComputation(
+             const_cast<HloComputation*>(&callee), name, false,
+             hlo_module_.schedule().sequence(&callee).instructions(),
+             /*allow_reassociation=*/is_reducer,
+             /*function_attributes=*/{llvm::Attribute::AlwaysInline})
+      .status();
 }
 
 }  // namespace cpu
