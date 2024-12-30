@@ -203,7 +203,7 @@ class BundleCache;
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, absl::string_view prefix,
+  BundleReader(Env* env, absl::string_view prefix,
                bool enable_multi_threading_for_testing = false);
 
   struct Options {
