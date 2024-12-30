@@ -618,10 +618,9 @@ def tf_gen_op_libs(
         )
 
 def _make_search_paths(prefix, levels_to_root):
-    suffix = "/python" if use_pywrap_rules() else ""
     return ",".join(
         [
-            "-rpath,%s/%s%s" % (prefix, "/".join([".."] * search_level), suffix)
+            "-rpath,%s/%s" % (prefix, "/".join([".."] * search_level))
             for search_level in range(levels_to_root + 1)
         ],
     )
