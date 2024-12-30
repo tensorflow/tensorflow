@@ -1,5 +1,7 @@
 """Utility functions for generating protobuf code."""
 
+load("@rules_proto//proto:defs.bzl", "ProtoInfo")
+
 _PROTO_EXTENSION = ".proto"
 _VIRTUAL_IMPORTS = "/_virtual_imports/"
 
