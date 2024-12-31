@@ -18,8 +18,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
