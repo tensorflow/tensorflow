@@ -228,6 +228,7 @@ xla_cc_test(
     deps = [
         ":test",
         ":types",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -347,8 +348,12 @@ xla_cc_test(
         ":test",
         ":types",
         ":util",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
@@ -1039,6 +1044,7 @@ cc_library(
         ":xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
@@ -1052,6 +1058,7 @@ xla_cc_test(
         ":test",
         ":window_util",
         ":xla_data_proto_cc",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

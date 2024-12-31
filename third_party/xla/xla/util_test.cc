@@ -26,7 +26,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/maybe_owning.h"
