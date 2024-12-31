@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_RESHAPE_OP_BUILDER_H_
 
 #include <string>
+#include <vector>
 
 #include "mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/core/c/common.h"

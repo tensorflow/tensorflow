@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_CONVOLUTION_OP_BUILDER_H_
 #define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_CONVOLUTION_OP_BUILDER_H_
 
+#include <cstdint>
 #include <string>
 
 #include "mlmodel/format/NeuralNetwork.pb.h"
