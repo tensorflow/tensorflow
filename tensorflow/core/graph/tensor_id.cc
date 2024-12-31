@@ -28,10 +28,10 @@ SafeTensorId::SafeTensorId(const TensorId& id)
     : SafeTensorId(string(id.first), id.second) {}
 
 TensorId ParseTensorName(const string& name) {
-  return ParseTensorName(StringPiece(name.data(), name.size()));
+  return ParseTensorName(absl::string_view(name.data(), name.size()));
 }
 
-TensorId ParseTensorName(StringPiece name) {
+TensorId ParseTensorName(absl::string_view name) {
   // Parse either a name, ^name, or name:digits.  To do so, we go backwards from
   // the end of the string, skipping over a run of digits.  If we hit a ':'
   // character, then we know we are in the 'name:digits' regime.  Otherwise, we
@@ -49,11 +49,11 @@ TensorId ParseTensorName(StringPiece name) {
   }
   TensorId id;
   if (p > base && *p == ':' && mul > 1) {
-    id.first = StringPiece(base, p - base);
+    id.first = absl::string_view(base, p - base);
     id.second = index;
   } else if (absl::StartsWith(name, "^")) {
     // Control edge
-    id.first = StringPiece(base + 1);
+    id.first = absl::string_view(base + 1);
     id.second = Graph::kControlSlot;
   } else {
     id.first = name;
