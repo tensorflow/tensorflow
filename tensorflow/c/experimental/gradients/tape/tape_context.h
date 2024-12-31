@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_TAPE_TAPE_CONTEXT_H_
 #define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_TAPE_TAPE_CONTEXT_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/gradients.h"
