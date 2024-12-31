@@ -181,8 +181,9 @@ bool WriteDoubleVectorToFile(const string& file_name,
     return false;
   }
   for (int i = 0; i < data.size(); ++i) {
-    if (!file->Append(StringPiece(reinterpret_cast<const char*>(&(data[i])),
-                                  sizeof(data[i])))
+    if (!file
+             ->Append(absl::string_view(
+                 reinterpret_cast<const char*>(&(data[i])), sizeof(data[i])))
              .ok()) {
       LOG(ERROR) << "Failed to append to file " << file_name;
       return false;
@@ -203,8 +204,9 @@ bool WriteFloatVectorToFile(const string& file_name,
     return false;
   }
   for (int i = 0; i < data.size(); ++i) {
-    if (!file->Append(StringPiece(reinterpret_cast<const char*>(&(data[i])),
-                                  sizeof(data[i])))
+    if (!file
+             ->Append(absl::string_view(
+                 reinterpret_cast<const char*>(&(data[i])), sizeof(data[i])))
              .ok()) {
       LOG(ERROR) << "Failed to append to file " << file_name;
       return false;
@@ -225,8 +227,9 @@ bool WriteDoubleArrayToFile(const string& file_name, int size,
     return false;
   }
   for (int i = 0; i < size; ++i) {
-    if (!file->Append(StringPiece(reinterpret_cast<const char*>(&(data[i])),
-                                  sizeof(data[i])))
+    if (!file
+             ->Append(absl::string_view(
+                 reinterpret_cast<const char*>(&(data[i])), sizeof(data[i])))
              .ok()) {
       LOG(ERROR) << "Failed to append to file " << file_name;
       return false;
@@ -247,8 +250,9 @@ bool WriteFloatArrayToFile(const string& file_name, int size,
     return false;
   }
   for (int i = 0; i < size; ++i) {
-    if (!file->Append(StringPiece(reinterpret_cast<const char*>(&(data[i])),
-                                  sizeof(data[i])))
+    if (!file
+             ->Append(absl::string_view(
+                 reinterpret_cast<const char*>(&(data[i])), sizeof(data[i])))
              .ok()) {
       LOG(ERROR) << "Failed to append to file " << file_name;
       return false;
@@ -272,16 +276,18 @@ bool WriteComplexVectorToRawFloatFile(
   for (int i = 0; i < data.size(); ++i) {
     for (int j = 0; j < data[i].size(); ++j) {
       const float real_part(real(data[i][j]));
-      if (!file->Append(StringPiece(reinterpret_cast<const char*>(&real_part),
-                                    sizeof(real_part)))
+      if (!file->Append(
+                   absl::string_view(reinterpret_cast<const char*>(&real_part),
+                                     sizeof(real_part)))
                .ok()) {
         LOG(ERROR) << "Failed to append to file " << file_name;
         return false;
       }
 
       const float imag_part(imag(data[i][j]));
-      if (!file->Append(StringPiece(reinterpret_cast<const char*>(&imag_part),
-                                    sizeof(imag_part)))
+      if (!file->Append(
+                   absl::string_view(reinterpret_cast<const char*>(&imag_part),
+                                     sizeof(imag_part)))
                .ok()) {
         LOG(ERROR) << "Failed to append to file " << file_name;
         return false;

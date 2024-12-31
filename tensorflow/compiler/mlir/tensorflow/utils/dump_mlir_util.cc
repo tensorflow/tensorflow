@@ -105,7 +105,7 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   void write_impl(const char* ptr, size_t size) override {
     // Write the file if it is still valid. If the write fails, null out the
     // file to avoid encountering another error.
-    if (file && !file->Append(StringPiece(ptr, size)).ok()) {
+    if (file && !file->Append(absl::string_view(ptr, size)).ok()) {
       file = nullptr;
     }
   }
