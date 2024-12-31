@@ -161,14 +161,14 @@ tstring KeyedSparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
 }
 
 template <>
-StringPiece SparseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
-                                                     bool strong_hash) const {
+absl::string_view SparseTensorColumn<absl::string_view>::Feature(
+    int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
 }
 
 template <>
-StringPiece KeyedSparseTensorColumn<StringPiece>::Feature(
+absl::string_view KeyedSparseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
@@ -259,13 +259,13 @@ tstring KeyedDenseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
 }
 
 template <>
-StringPiece DenseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
-                                                    bool strong_hash) const {
+absl::string_view DenseTensorColumn<absl::string_view>::Feature(
+    int64_t batch, int64_t n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
 
 template <>
-StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
+absl::string_view KeyedDenseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
@@ -961,7 +961,7 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<tstring>("internal_type"),
-                        SparseCrossOp<false, StringPiece>);
+                        SparseCrossOp<false, absl::string_view>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
