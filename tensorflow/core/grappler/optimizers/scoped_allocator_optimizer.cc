@@ -351,7 +351,7 @@ void DumpGraphToVLOG(const GraphDef& graph, int log_level) {
 
 }  // namespace
 
-void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
+void ScopedAllocatorOptimizer::ExtendNodeAttr(absl::string_view name,
                                               const std::vector<int32>& values,
                                               NodeDef* node_def) {
   if (HasNodeAttr(*node_def, name)) {

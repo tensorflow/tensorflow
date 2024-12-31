@@ -33,19 +33,19 @@ namespace lookup {
 // passed by attribute with name input_name, returns null if the table
 // doesn't exist. Use GetResourceLookupTable() or GetReferenceLookupTable() if
 // the input dtype is known.
-absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+absl::Status GetLookupTable(absl::string_view input_name, OpKernelContext* ctx,
                             LookupInterface** table);
-absl::Status GetResourceLookupTable(StringPiece input_name,
+absl::Status GetResourceLookupTable(absl::string_view input_name,
                                     OpKernelContext* ctx,
                                     LookupInterface** table);
-absl::Status GetReferenceLookupTable(StringPiece input_name,
+absl::Status GetReferenceLookupTable(absl::string_view input_name,
                                      OpKernelContext* ctx,
                                      LookupInterface** table);
 
 // Gets the InitializableLookupTable stored in the
 // ctx->resource_manager() with key passed by attribute with name
 // input_name, returns null if the table doesn't exist.
-absl::Status GetInitializableLookupTable(StringPiece input_name,
+absl::Status GetInitializableLookupTable(absl::string_view input_name,
                                          OpKernelContext* ctx,
                                          InitializableLookupTable** table);
 
