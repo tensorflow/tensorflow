@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 

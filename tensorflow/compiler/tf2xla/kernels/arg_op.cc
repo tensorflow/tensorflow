@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

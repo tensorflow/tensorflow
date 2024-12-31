@@ -14,14 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {

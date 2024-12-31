@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/case_op.h"
 
+#include <cstdint>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -28,6 +31,8 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
