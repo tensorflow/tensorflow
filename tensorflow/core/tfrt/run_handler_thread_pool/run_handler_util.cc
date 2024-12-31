@@ -30,8 +30,7 @@ namespace tf {
 double ParamFromEnvWithDefault(const char* var_name, double default_value) {
   const char* val = std::getenv(var_name);
   double num;
-  return (val && tensorflow::strings::safe_strtod(val, &num)) ? num
-                                                              : default_value;
+  return (val && absl::SimpleAtod(val, &num)) ? num : default_value;
 }
 
 std::vector<double> ParamFromEnvWithDefault(const char* var_name,
@@ -45,7 +44,7 @@ std::vector<double> ParamFromEnvWithDefault(const char* var_name,
   result.reserve(splits.size());
   for (auto& split : splits) {
     double num;
-    if (tensorflow::strings::safe_strtod(split, &num)) {
+    if (absl::SimpleAtod(split, &num)) {
       result.push_back(num);
     } else {
       LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
@@ -66,7 +65,7 @@ std::vector<int> ParamFromEnvWithDefault(const char* var_name,
   result.reserve(splits.size());
   for (auto& split : splits) {
     int num;
-    if (tensorflow::strings::safe_strto32(split, &num)) {
+    if (absl::SimpleAtoi(split, &num)) {
       result.push_back(num);
     } else {
       LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
