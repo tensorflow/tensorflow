@@ -332,7 +332,7 @@ class TfLiteSubgraphExecute : public OpKernel {
       } else if (subgraph_input->type == kTfLiteVariant) {
         InitializeVariantOrResource(tf_tensor, subgraph_input);
       } else if (!TensorCanBeShared(subgraph_input)) {
-        tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
+        absl::string_view tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
                     errors::Internal("tensor size doesn't match"));
         // TODO(b/181352924): This could incur some overhead in memory copy.
