@@ -782,7 +782,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<double>()(0);
             } else {
               double value;
-              if (!strings::safe_strtod(field, &value)) {
+              if (!absl::SimpleAtod(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid double: ", field);
