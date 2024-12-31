@@ -122,262 +122,262 @@ TEST(HumanReadableElapsedTime, Basic) {
 TEST(safe_strto32, Int32s) {
   int32 result;
 
-  EXPECT_EQ(true, safe_strto32("1", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
-  EXPECT_EQ(true, safe_strto32("123", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("123", &result));
   EXPECT_EQ(123, result);
-  EXPECT_EQ(true, safe_strto32(" -123 ", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(" -123 ", &result));
   EXPECT_EQ(-123, result);
-  EXPECT_EQ(true, safe_strto32("2147483647", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("2147483647", &result));
   EXPECT_EQ(2147483647, result);
-  EXPECT_EQ(true, safe_strto32("-2147483648", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("-2147483648", &result));
   EXPECT_EQ(-2147483648, result);
 
   // Invalid argument
-  EXPECT_EQ(false, safe_strto32(" 132as ", &result));
-  EXPECT_EQ(false, safe_strto32(" 132.2 ", &result));
-  EXPECT_EQ(false, safe_strto32(" -", &result));
-  EXPECT_EQ(false, safe_strto32("", &result));
-  EXPECT_EQ(false, safe_strto32("  ", &result));
-  EXPECT_EQ(false, safe_strto32("123 a", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" 132as ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" 132.2 ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" -", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("  ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("123 a", &result));
 
   // Overflow
-  EXPECT_EQ(false, safe_strto32("2147483648", &result));
-  EXPECT_EQ(false, safe_strto32("-2147483649", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("2147483648", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("-2147483649", &result));
 
   // Check that the StringPiece's length is respected.
-  EXPECT_EQ(true, safe_strto32(absl::string_view("123", 1), &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(absl::string_view("123", 1), &result));
   EXPECT_EQ(1, result);
-  EXPECT_EQ(true, safe_strto32(absl::string_view(" -123", 4), &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(absl::string_view(" -123", 4), &result));
   EXPECT_EQ(-12, result);
-  EXPECT_EQ(false, safe_strto32(absl::string_view(nullptr, 0), &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(absl::string_view(nullptr, 0), &result));
 }
 
 TEST(safe_strtou32, UInt32s) {
   uint32 result;
 
-  EXPECT_TRUE(safe_strtou32("0", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);
-  EXPECT_TRUE(safe_strtou32("1", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
-  EXPECT_TRUE(safe_strtou32("123", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("123", &result));
   EXPECT_EQ(123, result);
-  EXPECT_TRUE(safe_strtou32("4294967295", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("4294967295", &result));
   EXPECT_EQ(4294967295, result);
 
   // Invalid argument
-  EXPECT_FALSE(safe_strtou32(" 132as ", &result));
-  EXPECT_FALSE(safe_strtou32(" 132.2 ", &result));
-  EXPECT_FALSE(safe_strtou32(" -", &result));
-  EXPECT_FALSE(safe_strtou32("", &result));
-  EXPECT_FALSE(safe_strtou32("  ", &result));
-  EXPECT_FALSE(safe_strtou32("123 a", &result));
-  EXPECT_FALSE(safe_strtou32("123 456", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" 132as ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" 132.2 ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" -", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("  ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("123 a", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("123 456", &result));
 
   // Overflow
-  EXPECT_FALSE(safe_strtou32("4294967296", &result));
-  EXPECT_FALSE(safe_strtou32("-1", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("4294967296", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("-1", &result));
 
   // Check that the StringPiece's length is respected.
-  EXPECT_TRUE(safe_strtou32(absl::string_view("123", 1), &result));
+  EXPECT_TRUE(absl::SimpleAtoi(absl::string_view("123", 1), &result));
   EXPECT_EQ(1, result);
-  EXPECT_TRUE(safe_strtou32(absl::string_view(" 123", 3), &result));
+  EXPECT_TRUE(absl::SimpleAtoi(absl::string_view(" 123", 3), &result));
   EXPECT_EQ(12, result);
-  EXPECT_FALSE(safe_strtou32(absl::string_view(nullptr, 0), &result));
+  EXPECT_FALSE(absl::SimpleAtoi(absl::string_view(nullptr, 0), &result));
 }
 
 TEST(safe_strto64, Int64s) {
   int64 result;
 
-  EXPECT_EQ(true, safe_strto64("1", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
-  EXPECT_EQ(true, safe_strto64("123", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("123", &result));
   EXPECT_EQ(123, result);
-  EXPECT_EQ(true, safe_strto64(" -123 ", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(" -123 ", &result));
   EXPECT_EQ(-123, result);
-  EXPECT_EQ(true, safe_strto64("9223372036854775807", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("9223372036854775807", &result));
   EXPECT_EQ(9223372036854775807, result);
-  EXPECT_EQ(true, safe_strto64("-9223372036854775808", &result));
+  EXPECT_EQ(true, absl::SimpleAtoi("-9223372036854775808", &result));
   // kint64min == -9223372036854775808
   // Use -9223372036854775808 directly results in out of range error
   EXPECT_EQ(kint64min, result);
 
   // Invalid argument
-  EXPECT_EQ(false, safe_strto64(" 132as ", &result));
-  EXPECT_EQ(false, safe_strto64(" 132.2 ", &result));
-  EXPECT_EQ(false, safe_strto64(" -", &result));
-  EXPECT_EQ(false, safe_strto64("", &result));
-  EXPECT_EQ(false, safe_strto64("  ", &result));
-  EXPECT_EQ(false, safe_strto64("123 a", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" 132as ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" 132.2 ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(" -", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("  ", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("123 a", &result));
 
   // Overflow
-  EXPECT_EQ(false, safe_strto64("9223372036854775808", &result));
-  EXPECT_EQ(false, safe_strto64("-9223372036854775809", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("9223372036854775808", &result));
+  EXPECT_EQ(false, absl::SimpleAtoi("-9223372036854775809", &result));
 
   // Check that the StringPiece's length is respected.
-  EXPECT_EQ(true, safe_strto64(absl::string_view("123", 1), &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(absl::string_view("123", 1), &result));
   EXPECT_EQ(1, result);
-  EXPECT_EQ(true, safe_strto64(absl::string_view(" -123", 4), &result));
+  EXPECT_EQ(true, absl::SimpleAtoi(absl::string_view(" -123", 4), &result));
   EXPECT_EQ(-12, result);
-  EXPECT_EQ(false, safe_strto64(absl::string_view(nullptr, 0), &result));
+  EXPECT_EQ(false, absl::SimpleAtoi(absl::string_view(nullptr, 0), &result));
 }
 
 TEST(safe_strtou64, UInt64s) {
   uint64 result;
 
-  EXPECT_TRUE(safe_strtou64("0", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);
-  EXPECT_TRUE(safe_strtou64("1", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
-  EXPECT_TRUE(safe_strtou64("123", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("123", &result));
   EXPECT_EQ(123, result);
-  EXPECT_TRUE(safe_strtou64("  345  ", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("  345  ", &result));
   EXPECT_EQ(345, result);
-  EXPECT_TRUE(safe_strtou64("18446744073709551615", &result));
+  EXPECT_TRUE(absl::SimpleAtoi("18446744073709551615", &result));
   EXPECT_EQ(18446744073709551615UL, result);
 
   // Invalid argument
-  EXPECT_FALSE(safe_strtou64(" 132.2 ", &result));
-  EXPECT_FALSE(safe_strtou64(" 132.2 ", &result));
-  EXPECT_FALSE(safe_strtou64(" -", &result));
-  EXPECT_FALSE(safe_strtou64("", &result));
-  EXPECT_FALSE(safe_strtou64("  ", &result));
-  EXPECT_FALSE(safe_strtou64("123 a", &result));
-  EXPECT_FALSE(safe_strtou64("123 456", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" 132.2 ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" 132.2 ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi(" -", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("  ", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("123 a", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("123 456", &result));
 
   // Overflow
-  EXPECT_FALSE(safe_strtou64("18446744073709551616", &result));
-  EXPECT_FALSE(safe_strtou64("-1", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("18446744073709551616", &result));
+  EXPECT_FALSE(absl::SimpleAtoi("-1", &result));
 
   // Check that the StringPiece's length is respected.
-  EXPECT_TRUE(safe_strtou64(absl::string_view("123", 1), &result));
+  EXPECT_TRUE(absl::SimpleAtoi(absl::string_view("123", 1), &result));
   EXPECT_EQ(1, result);
-  EXPECT_TRUE(safe_strtou64(absl::string_view(" 123", 3), &result));
+  EXPECT_TRUE(absl::SimpleAtoi(absl::string_view(" 123", 3), &result));
   EXPECT_EQ(12, result);
-  EXPECT_FALSE(safe_strtou64(absl::string_view(nullptr, 0), &result));
+  EXPECT_FALSE(absl::SimpleAtoi(absl::string_view(nullptr, 0), &result));
 }
 
 TEST(safe_strtof, Float) {
   float result = 0;
 
-  EXPECT_TRUE(safe_strtof("0.123456", &result));
+  EXPECT_TRUE(absl::SimpleAtof("0.123456", &result));
   EXPECT_EQ(0.123456f, result);
-  EXPECT_FALSE(safe_strtof("0.12345abc", &result));
+  EXPECT_FALSE(absl::SimpleAtof("0.12345abc", &result));
 
   // Overflow to infinity, underflow to 0.
-  EXPECT_TRUE(safe_strtof("1e39", &result));
+  EXPECT_TRUE(absl::SimpleAtof("1e39", &result));
   EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("-1e39", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-1e39", &result));
   EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("1e-50", &result));
+  EXPECT_TRUE(absl::SimpleAtof("1e-50", &result));
   EXPECT_EQ(0, result);
 
-  EXPECT_TRUE(safe_strtof("0xF", &result));
+  EXPECT_TRUE(absl::SimpleAtof("0xF", &result));
   EXPECT_EQ(0xF, result);
 
-  EXPECT_TRUE(safe_strtof("-0x2A", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-0x2A", &result));
   EXPECT_EQ(-42.0f, result);
 
-  EXPECT_TRUE(safe_strtof(" -0x2", &result));
+  EXPECT_TRUE(absl::SimpleAtof(" -0x2", &result));
   EXPECT_EQ(-2.0f, result);
 
-  EXPECT_TRUE(safe_strtof("8 \t", &result));
+  EXPECT_TRUE(absl::SimpleAtof("8 \t", &result));
   EXPECT_EQ(8.0f, result);
 
-  EXPECT_TRUE(safe_strtof("\t20.0\t ", &result));
+  EXPECT_TRUE(absl::SimpleAtof("\t20.0\t ", &result));
   EXPECT_EQ(20.0f, result);
 
-  EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
+  EXPECT_FALSE(absl::SimpleAtof("-infinity is awesome", &result));
 
   // Make sure we exit cleanly if the string is too long
   char test_str[2 * kFastToBufferSize];
   for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
   test_str[kFastToBufferSize + 1] = '\0';
-  EXPECT_FALSE(safe_strtof(test_str, &result));
+  EXPECT_FALSE(absl::SimpleAtof(test_str, &result));
 
-  EXPECT_TRUE(safe_strtof("-inf", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-inf", &result));
   EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("+inf", &result));
+  EXPECT_TRUE(absl::SimpleAtof("+inf", &result));
   EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("InF", &result));
+  EXPECT_TRUE(absl::SimpleAtof("InF", &result));
   EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("-INF", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-INF", &result));
   EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtof("nan", &result));
+  EXPECT_TRUE(absl::SimpleAtof("nan", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtof("-nan", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-nan", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtof("-NaN", &result));
+  EXPECT_TRUE(absl::SimpleAtof("-NaN", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtof("+NAN", &result));
+  EXPECT_TRUE(absl::SimpleAtof("+NAN", &result));
   EXPECT_TRUE(std::isnan(result));
 }
 
 TEST(safe_strtod, Double) {
   double result = 0;
 
-  EXPECT_TRUE(safe_strtod("0.1234567890123", &result));
+  EXPECT_TRUE(absl::SimpleAtod("0.1234567890123", &result));
   EXPECT_EQ(0.1234567890123, result);
-  EXPECT_FALSE(safe_strtod("0.1234567890123abc", &result));
+  EXPECT_FALSE(absl::SimpleAtod("0.1234567890123abc", &result));
 
   // Make sure we exit cleanly if the string is too long
   char test_str[2 * kFastToBufferSize];
   for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
   test_str[kFastToBufferSize + 1] = '\0';
-  EXPECT_FALSE(safe_strtod(test_str, &result));
+  EXPECT_FALSE(absl::SimpleAtod(test_str, &result));
 
   // Overflow to infinity, underflow to 0.
-  EXPECT_TRUE(safe_strtod("1e310", &result));
+  EXPECT_TRUE(absl::SimpleAtod("1e310", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("-1e310", &result));
+  EXPECT_TRUE(absl::SimpleAtod("-1e310", &result));
   EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("1e-325", &result));
+  EXPECT_TRUE(absl::SimpleAtod("1e-325", &result));
   EXPECT_EQ(0, result);
 
-  EXPECT_TRUE(safe_strtod(" -0x1c", &result));
+  EXPECT_TRUE(absl::SimpleAtod(" -0x1c", &result));
   EXPECT_EQ(-28.0, result);
 
-  EXPECT_TRUE(safe_strtod("50 \t", &result));
+  EXPECT_TRUE(absl::SimpleAtod("50 \t", &result));
   EXPECT_EQ(50.0, result);
 
-  EXPECT_TRUE(safe_strtod("\t82.0\t ", &result));
+  EXPECT_TRUE(absl::SimpleAtod("\t82.0\t ", &result));
   EXPECT_EQ(82.0, result);
 
-  EXPECT_TRUE(safe_strtod("infinity", &result));
+  EXPECT_TRUE(absl::SimpleAtod("infinity", &result));
 
-  EXPECT_TRUE(safe_strtod("-inf", &result));
+  EXPECT_TRUE(absl::SimpleAtod("-inf", &result));
   EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("+inf", &result));
+  EXPECT_TRUE(absl::SimpleAtod("+inf", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("InF", &result));
+  EXPECT_TRUE(absl::SimpleAtod("InF", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("-INF", &result));
+  EXPECT_TRUE(absl::SimpleAtod("-INF", &result));
   EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
 
-  EXPECT_TRUE(safe_strtod("nan", &result));
+  EXPECT_TRUE(absl::SimpleAtod("nan", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtod("-nan", &result));
+  EXPECT_TRUE(absl::SimpleAtod("-nan", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtod("-NaN", &result));
+  EXPECT_TRUE(absl::SimpleAtod("-NaN", &result));
   EXPECT_TRUE(std::isnan(result));
 
-  EXPECT_TRUE(safe_strtod("+NAN", &result));
+  EXPECT_TRUE(absl::SimpleAtod("+NAN", &result));
   EXPECT_TRUE(std::isnan(result));
 }
 
