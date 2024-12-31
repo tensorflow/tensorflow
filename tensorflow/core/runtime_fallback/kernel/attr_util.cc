@@ -39,7 +39,7 @@ namespace tensorflow {
 
 // TODO(annarev): merge this file with attr_util.cc
 // after reducing attr_util dependencies.
-DataType ParseTFDataType(StringPiece dtype) {
+DataType ParseTFDataType(absl::string_view dtype) {
   if (dtype == "DT_INT8") {
     return DataType::DT_INT8;
   } else if (dtype == "DT_INT32") {
@@ -56,7 +56,7 @@ DataType ParseTFDataType(StringPiece dtype) {
   }
 }
 
-bool ParseBoolAttrValue(StringPiece attr_value) {
+bool ParseBoolAttrValue(absl::string_view attr_value) {
   if (attr_value == "false") {
     return false;
   } else if (attr_value == "true") {
@@ -67,12 +67,12 @@ bool ParseBoolAttrValue(StringPiece attr_value) {
   }
 }
 
-absl::Status ParseValue(StringPiece input, bool* value) {
+absl::Status ParseValue(absl::string_view input, bool* value) {
   *value = ParseBoolAttrValue(input);
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(StringPiece input, int32* value) {
+absl::Status ParseValue(absl::string_view input, int32* value) {
   bool parse_result = absl::SimpleAtoi(input, value);
   if (!parse_result) {
     return errors::InvalidArgument("Could not parse int32 from ", input);
@@ -80,17 +80,17 @@ absl::Status ParseValue(StringPiece input, int32* value) {
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(StringPiece input, DataType* value) {
+absl::Status ParseValue(absl::string_view input, DataType* value) {
   *value = ParseTFDataType(input);
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(StringPiece input, std::string* value) {
+absl::Status ParseValue(absl::string_view input, std::string* value) {
   *value = std::string(input);
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(StringPiece input, std::vector<int32>* value) {
+absl::Status ParseValue(absl::string_view input, std::vector<int32>* value) {
   std::vector<std::string> parts = str_util::Split(input, ",");
   value->reserve(parts.size());
   for (const auto& value_str : parts) {
@@ -105,7 +105,7 @@ absl::Status ParseValue(StringPiece input, std::vector<int32>* value) {
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(StringPiece input, Padding* value) {
+absl::Status ParseValue(absl::string_view input, Padding* value) {
   return GetPaddingFromString(input, value);
 }
 
