@@ -61,7 +61,7 @@ std::string GetPaddingAttrStringWithExplicit();
 std::string GetExplicitPaddingsAttrString();
 
 // Sets padding value based on the given string padding value.
-absl::Status GetPaddingFromString(StringPiece str_value, Padding* value);
+absl::Status GetPaddingFromString(absl::string_view str_value, Padding* value);
 
 }  // end namespace tensorflow
 

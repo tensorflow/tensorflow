@@ -45,7 +45,7 @@ string GetMirrorPadModeAttrString();
 class NodeDef;
 
 // Specialization to parse an attribute directly into a MirrorPadMode enum.
-absl::Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
+absl::Status GetNodeAttr(const NodeDef& node_def, absl::string_view attr_name,
                          MirrorPadMode* value);
 
 }  // end namespace tensorflow

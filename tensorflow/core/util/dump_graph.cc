@@ -121,7 +121,7 @@ class StderrWritableFile : public WritableFile {
  public:
   StderrWritableFile() = default;
 
-  absl::Status Append(StringPiece data) override {
+  absl::Status Append(absl::string_view data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
     return absl::OkStatus();
   }
@@ -133,7 +133,7 @@ class StderrWritableFile : public WritableFile {
     return absl::OkStatus();
   }
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = "stderr";
     return absl::OkStatus();
   }
@@ -200,7 +200,7 @@ absl::Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
         absl ::StrCat("Unknown format: ", format));
   }
   TF_RETURN_IF_ERROR(file->Append(s));
-  StringPiece name;
+  absl::string_view name;
   TF_RETURN_IF_ERROR(file->Name(&name));
   VLOG(5) << name;
   VLOG(5) << s;
@@ -213,7 +213,7 @@ absl::Status WriteProtoToUniqueFile(
   if (!SerializeToStringDeterministic(proto, &s)) {
     return errors::Internal("Failed to serialize proto to string.");
   }
-  StringPiece name;
+  absl::string_view name;
   TF_RETURN_IF_ERROR(file->Name(&name));
   VLOG(5) << name;
   VLOG(5) << s;

@@ -53,7 +53,7 @@ class SingleDebugEventFileWriter {
 
   absl::Status Init();
 
-  void WriteSerializedDebugEvent(tensorflow::StringPiece debug_event_str);
+  void WriteSerializedDebugEvent(absl::string_view debug_event_str);
 
   absl::Status Flush();
   absl::Status Close();
