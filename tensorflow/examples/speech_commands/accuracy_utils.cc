@@ -50,7 +50,7 @@ absl::Status ReadGroundTruthFile(
       continue;
     }
     float timestamp;
-    if (!tensorflow::strings::safe_strtof(pieces[1], &timestamp)) {
+    if (!absl::SimpleAtof(pieces[1], &timestamp)) {
       return tensorflow::errors::InvalidArgument(
           "Wrong number format at line: ", line);
     }
