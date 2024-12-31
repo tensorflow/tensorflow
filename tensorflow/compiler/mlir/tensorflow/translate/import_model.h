@@ -17,9 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_MODEL_H_
 
 #include <cstddef>
+#include <optional>
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -33,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 

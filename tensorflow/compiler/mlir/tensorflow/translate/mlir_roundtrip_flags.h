@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"

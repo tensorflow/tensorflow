@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,8 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "xla/status_macros.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
