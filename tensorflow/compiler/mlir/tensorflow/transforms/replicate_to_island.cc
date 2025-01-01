@@ -16,11 +16,13 @@ limitations under the License.
 // This pass forms `tf_executor.island` per replica from a single
 // `tf_device.replicate` island.
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
