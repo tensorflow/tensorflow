@@ -20,8 +20,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/base/attributes.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/core/collectives/collectives.h"
 #include "tsl/platform/logging.h"
 
