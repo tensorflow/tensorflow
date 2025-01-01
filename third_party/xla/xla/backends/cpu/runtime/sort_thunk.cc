@@ -152,12 +152,12 @@ class Inputs {
   // Accessing arrays with `operator[]` has zero overheads, so we don't need to
   // use pointers to data in contrast to `DInputs` below.
 
-  std::byte* ptr(size_t i, size_t offset) {
+  std::byte* ptr(size_t i, size_t offset) const {
     DCHECK_LT(i, n) << "Input index out of bounds";
     return ptrs_[i] + offset * primitive_size(i);
   }
 
-  size_t primitive_size(size_t i) { return primitive_sizes_[i]; }
+  size_t primitive_size(size_t i) const { return primitive_sizes_[i]; }
 
  private:
   std::array<std::byte*, n> ptrs_;         // pointers into the input buffers
@@ -180,12 +180,12 @@ class DInputs {
   // every call. We know that we are not going to access out of bounds, so we
   // use a pointer to data instead.
 
-  std::byte* ptr(size_t i, size_t offset) {
+  std::byte* ptr(size_t i, size_t offset) const {
     DCHECK_LT(i, n_) << "Input index out of bounds";
     return ptrs_.data()[i] + offset * primitive_size(i);
   }
 
-  size_t primitive_size(size_t i) { return primitive_sizes_.data()[i]; }
+  size_t primitive_size(size_t i) const { return primitive_sizes_.data()[i]; }
 
  private:
   size_t n_;                             // number of sorted inputs
@@ -219,7 +219,8 @@ struct DValue {
 // Reference to values stored in the input buffers.
 template <size_t n>
 struct Ref {
-  Ref(Inputs<n>* inputs, size_t offset) : inputs(inputs), offset(offset) {}
+  Ref(const Inputs<n>* inputs, size_t offset)
+      : inputs(inputs), offset(offset) {}
 
   Ref& operator=(const Value<n>& value);
   Ref& operator=(const Ref<n>& other);
@@ -229,12 +230,12 @@ struct Ref {
   std::byte* ptr(size_t i) const { return inputs->ptr(i, offset); }
   size_t primitive_size(size_t i) const { return inputs->primitive_size(i); }
 
-  Inputs<n>* inputs;
+  const Inputs<n>* inputs;
   size_t offset;
 };
 
 struct DRef {
-  DRef(DInputs* inputs, size_t offset) : inputs(inputs), offset(offset) {}
+  DRef(const DInputs* inputs, size_t offset) : inputs(inputs), offset(offset) {}
 
   DRef& operator=(const DValue& value);
   DRef& operator=(const DRef& other);
@@ -245,7 +246,7 @@ struct DRef {
   std::byte* ptr(size_t i) const { return inputs->ptr(i, offset); }
   size_t primitive_size(size_t i) const { return inputs->primitive_size(i); }
 
-  DInputs* inputs;
+  const DInputs* inputs;
   size_t offset;
 };
 
@@ -418,7 +419,7 @@ struct Ptr {
 
   Ptr() = default;
 
-  explicit Ptr(Inputs<n>* inputs, size_t offset = 0)
+  explicit Ptr(const Inputs<n>* inputs, size_t offset = 0)
       : inputs(inputs), offset(offset) {}
 
   Ref<n> operator*() const { return Ref<n>{inputs, offset}; }
@@ -452,8 +453,8 @@ struct Ptr {
   bool operator>=(const Ptr& rhs) const { return offset >= rhs.offset; }
   bool operator<=(const Ptr& rhs) const { return offset <= rhs.offset; }
 
-  Inputs<n>* inputs;  // pointer to the input arrays
-  size_t offset;      // offset into the inputs arrays
+  const Inputs<n>* inputs;  // pointer to the input arrays
+  size_t offset;            // offset into the inputs arrays
 };
 
 struct DPtr {
@@ -461,7 +462,7 @@ struct DPtr {
 
   DPtr() = default;
 
-  explicit DPtr(DInputs* inputs, size_t offset = 0)
+  explicit DPtr(const DInputs* inputs, size_t offset = 0)
       : inputs(inputs), offset(offset) {}
 
   DRef operator*() const { return DRef{inputs, offset}; }
@@ -495,8 +496,8 @@ struct DPtr {
   bool operator>=(const DPtr& rhs) const { return offset >= rhs.offset; }
   bool operator<=(const DPtr& rhs) const { return offset <= rhs.offset; }
 
-  DInputs* inputs;  // pointer to the input arrays
-  size_t offset;    // offset into the inputs arrays
+  const DInputs* inputs;  // pointer to the input arrays
+  size_t offset;          // offset into the inputs arrays
 };
 
 // We rely on `std::sort` and `std::stable_sort` to sort the raw data. We sort
