@@ -19,9 +19,11 @@ limitations under the License.
 // This file contains helper routines to deal with padding in various ops and
 // kernels.
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/tensor_format.h"
 

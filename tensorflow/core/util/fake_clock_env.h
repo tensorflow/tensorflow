@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_FAKE_CLOCK_ENV_H_
 #define TENSORFLOW_CORE_UTIL_FAKE_CLOCK_ENV_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>

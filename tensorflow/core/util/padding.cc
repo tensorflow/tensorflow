@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/padding.h"
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
