@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <map>
-#include <set>
+#include <memory>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
