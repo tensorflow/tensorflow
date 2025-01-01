@@ -146,31 +146,41 @@ using ValueStorage = std::array<std::byte, kMaxElementSize>;
 template <size_t n>
 class Inputs {
  public:
-  Inputs(std::array<std::byte*, n> ptrs, std::array<size_t, n> primitive_sizes)
-      : ptrs_(ptrs), primitive_sizes_(primitive_sizes) {}
+  Inputs(std::array<std::byte*, n> ptrs,
+         std::array<size_t, n> primitive_sizes) {
+    for (size_t i = 0; i < n; ++i) {
+      ptrs_and_primitive_sizes_[i] = {ptrs[i], primitive_sizes[i]};
+    }
+  }
 
   // Accessing arrays with `operator[]` has zero overheads, so we don't need to
   // use pointers to data in contrast to `DInputs` below.
 
   std::byte* ptr(size_t i, size_t offset) const {
     DCHECK_LT(i, n) << "Input index out of bounds";
-    return ptrs_[i] + offset * primitive_size(i);
+    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_[i];
+    return ptr + offset * primitive_size;
   }
 
-  size_t primitive_size(size_t i) const { return primitive_sizes_[i]; }
+  size_t primitive_size(size_t i) const {
+    return ptrs_and_primitive_sizes_[i].second;
+  }
 
  private:
-  std::array<std::byte*, n> ptrs_;         // pointers into the input buffers
-  std::array<size_t, n> primitive_sizes_;  // each input's primitive size
+  // Pointers into the input buffers and each input's primitive size. Keep
+  // pointers and primitives sizes next to each other to avoid cache misses
+  // on a hot path.
+  std::array<std::pair<std::byte*, size_t>, n> ptrs_and_primitive_sizes_;
 };
 
 class DInputs {
  public:
   DInputs(std::vector<std::byte*> ptrs, std::vector<size_t> primitive_sizes)
-      : n_(ptrs.size()),
-        ptrs_(std::move(ptrs)),
-        primitive_sizes_(std::move(primitive_sizes)) {
-    DCHECK_EQ(ptrs_.size(), primitive_sizes_.size());
+      : n_(ptrs.size()), ptrs_and_primitive_sizes_(ptrs.size()) {
+    DCHECK_EQ(ptrs.size(), primitive_sizes.size());
+    for (size_t i = 0; i < ptrs.size(); ++i) {
+      ptrs_and_primitive_sizes_[i] = {ptrs[i], primitive_sizes[i]};
+    }
   }
 
   size_t n() const { return n_; }
@@ -182,15 +192,21 @@ class DInputs {
 
   std::byte* ptr(size_t i, size_t offset) const {
     DCHECK_LT(i, n_) << "Input index out of bounds";
-    return ptrs_.data()[i] + offset * primitive_size(i);
+    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_.data()[i];
+    return ptr + offset * primitive_size;
   }
 
-  size_t primitive_size(size_t i) const { return primitive_sizes_.data()[i]; }
+  size_t primitive_size(size_t i) const {
+    return ptrs_and_primitive_sizes_.data()[i].second;
+  }
 
  private:
-  size_t n_;                             // number of sorted inputs
-  std::vector<std::byte*> ptrs_;         // pointers into the input buffers
-  std::vector<size_t> primitive_sizes_;  // each input's primitive size
+  size_t n_;  // number of sorted inputs
+
+  // Pointers into the input buffers and each input's primitive size. Keep
+  // pointers and primitives sizes next to each other to avoid cache misses
+  // on a hot path.
+  std::vector<std::pair<std::byte*, size_t>> ptrs_and_primitive_sizes_;
 };
 
 // Forward declare reference type defined below.
