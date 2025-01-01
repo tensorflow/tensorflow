@@ -16,7 +16,7 @@ limitations under the License.
 // This transformation pass converts stateful and stateless partitioned calls
 // with _xla_compile_device_type attribute to XLA launch ops.
 
-#include <stack>
+#include <memory>
 
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"

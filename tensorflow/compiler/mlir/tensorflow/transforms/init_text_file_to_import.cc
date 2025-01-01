@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
 #include <numeric>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
