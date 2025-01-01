@@ -46,6 +46,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:cpu_plugin",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

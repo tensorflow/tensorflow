@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
