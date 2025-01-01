@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <numeric>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"

@@ -16,6 +16,8 @@ limitations under the License.
 // This pass folds the tf.Identity op if the operation has the same device as
 // its operand.
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
