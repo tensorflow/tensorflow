@@ -16,6 +16,9 @@ limitations under the License.
 // Rewrites ops that require quantized inputs or outputs to ops that allow
 // non-quantized inputs and outputs.
 
+#include <memory>
+#include <utility>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
