@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -38,8 +37,6 @@ struct DotSlices {
   BufferAllocation::Slice out_buffer;
   Shape out_shape;
 };
-
-// TODO(ezhulenev): Merge DotCanonicalDims into DotShape.
 
 // Shape of the batched dot operation supported by the XLA:CPU runtime.
 struct DotShape {
