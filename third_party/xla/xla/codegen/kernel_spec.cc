@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 
 #include <cstddef>
-#include <memory>
 #include <optional>
 #include <utility>
 
