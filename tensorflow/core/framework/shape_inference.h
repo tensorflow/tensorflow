@@ -340,7 +340,7 @@ class InferenceContext {
   void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
 
   ShapeHandle input(int64_t idx) const { return inputs_[idx]; }
-  absl::Status input(StringPiece input_name,
+  absl::Status input(absl::string_view input_name,
                      std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
@@ -394,20 +394,20 @@ class InferenceContext {
 
   ShapeHandle output(int64_t idx) const { return outputs_.at(idx); }
   void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
-  absl::Status set_output(StringPiece output_name,
+  absl::Status set_output(absl::string_view output_name,
                           const std::vector<ShapeHandle>& shapes);
 
   int num_outputs() const { return outputs_.size(); }
   ShapeHandle output(int idx) const { return outputs_.at(idx); }
-  absl::Status output(StringPiece output_name,
+  absl::Status output(absl::string_view output_name,
                       std::vector<ShapeHandle>* output) const;
 
   // Returns the value for attribute named `attr_name`.
-  absl::Status GetAttr(StringPiece attr_name,
+  absl::Status GetAttr(absl::string_view attr_name,
                        const AttrValue** attr_value) const {
     return attrs_.Find(attr_name, attr_value);
   }
-  const AttrValue* GetAttr(StringPiece attr_name) const {
+  const AttrValue* GetAttr(absl::string_view attr_name) const {
     return attrs_.Find(attr_name);
   }
 
@@ -611,7 +611,7 @@ class InferenceContext {
   // value. If no attr with attr_name is found in def(), or the attr does not
   // have a matching type, a non-ok status will be returned.
   template <class T>
-  absl::Status GetAttr(StringPiece attr_name, T* value) const;
+  absl::Status GetAttr(absl::string_view attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
@@ -919,7 +919,8 @@ inline DimensionOrConstant::DimensionOrConstant(int64_t val) : val(val) {
 }
 
 template <class T>
-absl::Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
+absl::Status InferenceContext::GetAttr(absl::string_view attr_name,
+                                       T* value) const {
   return GetNodeAttr(attrs_, attr_name, value);
 }
 

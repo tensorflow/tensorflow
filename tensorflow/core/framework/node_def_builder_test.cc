@@ -51,7 +51,8 @@ class NodeDefBuilderTest : public ::testing::Test {
   // expectations.
   void ExpectSuccess(NodeDefBuilder& builder,  // NOLINT
                      DataTypeSlice expected_in_types,
-                     DataTypeSlice expected_out_types, StringPiece proto) {
+                     DataTypeSlice expected_out_types,
+                     absl::string_view proto) {
     NodeDef node_def;
     absl::Status status = builder.Finalize(&node_def);
     TF_EXPECT_OK(status);
