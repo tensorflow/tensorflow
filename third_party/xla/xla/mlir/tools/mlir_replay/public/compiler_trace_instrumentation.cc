@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
