@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
@@ -449,10 +450,18 @@ void ReduceScatterImpl(const ExecutableRunOptions* run_options,
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+
+  auto dtype = static_cast<PrimitiveType>(element_type);
+
+  se::DeviceMemoryBase input_buffer_data(input_buffer,
+                                         primitive_util::ByteWidth(dtype));
+  se::DeviceMemoryBase output_buffer_data(output_buffer,
+                                          primitive_util::ByteWidth(dtype));
+
+  CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
   TF_CHECK_OK(communicator->ReduceScatter(
-      rendezvous_key, static_cast<ReductionKind>(reduction_kind),
-      static_cast<PrimitiveType>(element_type), chunk_elems, input_buffer,
-      output_buffer, DefaultCollectiveTimeout()));
+      input_buffer_data, output_buffer_data, dtype, chunk_elems,
+      static_cast<ReductionKind>(reduction_kind), executor));
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
