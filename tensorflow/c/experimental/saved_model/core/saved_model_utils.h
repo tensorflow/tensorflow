@@ -20,8 +20,11 @@ limitations under the License.
 // separately unit-testable header.
 
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"

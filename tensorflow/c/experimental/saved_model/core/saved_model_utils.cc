@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/restored_resource_revival_state.h"
@@ -30,6 +34,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -37,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
