@@ -102,9 +102,11 @@ xla_cc_test(
     deps = [
         ":constants",
         ":shardy_xla_pass",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:remote_mtest_lib_buffer_donation_test_gpu_b100",
         "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",

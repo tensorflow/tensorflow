@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
