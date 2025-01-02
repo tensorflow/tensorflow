@@ -44,7 +44,7 @@ inline PyObject* CodeToPyExc(const int code) {
   }
 }
 
-inline PyObject* StatusToPyExc(const Status& status) {
+inline PyObject* StatusToPyExc(const absl::Status& status) {
   return CodeToPyExc(status.raw_code());
 }
 
