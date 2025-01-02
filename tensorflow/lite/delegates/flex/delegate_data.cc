@@ -109,7 +109,7 @@ void BuildFunctionDefProto(const std::string& function_name,
 }
 
 // Returns a list of subgraph names which have associated function attributes.
-tensorflow::Status GetSubgraphNamesForFunctionExecution(
+absl::Status GetSubgraphNamesForFunctionExecution(
     const std::vector<std::unique_ptr<Subgraph>>& subgraphs,
     std::set<std::string>* result) {
   tensorflow::NodeDef node_def;
@@ -134,8 +134,8 @@ tensorflow::Status GetSubgraphNamesForFunctionExecution(
               .AsVector();
       // TODO(b/181352924): Use proto arena if we see performance regression.
       if (!node_def.ParseFromString(v[1].AsString().str())) {
-        return tensorflow::Status(absl::StatusCode::kInternal,
-                                  "could not parse NodeDef");
+        return absl::Status(absl::StatusCode::kInternal,
+                            "could not parse NodeDef");
       }
       // Loop through all the attributes in this node to check if it has
       // function attribute.
@@ -151,9 +151,9 @@ tensorflow::Status GetSubgraphNamesForFunctionExecution(
 
 }  // namespace
 
-tensorflow::Status RegisterFunctionDefForSubgraphs(
+absl::Status RegisterFunctionDefForSubgraphs(
     Subgraph& main_subgraph,
-    const std::function<tensorflow::Status(
+    const std::function<absl::Status(
         const std::vector<std::unique_ptr<Subgraph>>&, std::set<std::string>*)>&
         select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
@@ -200,14 +200,14 @@ DelegateData::~DelegateData() {
   }
 }
 
-tensorflow::Status DelegateData::Prepare(
+absl::Status DelegateData::Prepare(
     const tensorflow::SessionOptions& session_options, Subgraph* main_subgraph,
     TfLiteDelegate* flex_delegate) {
   if (eager_context_) {
-    return tensorflow::Status();
+    return absl::Status();
   }
   if (flex_delegate == nullptr && main_subgraph != nullptr) {
-    return tensorflow::Status(
+    return absl::Status(
         absl::StatusCode::kFailedPrecondition,
         "flex_delegate must be non-null when main_subgraph is provided.");
   }
@@ -234,7 +234,7 @@ tensorflow::Status DelegateData::Prepare(
         eager_context_->HostCPU()->resource_manager(), eager_context_,
         flex_delegate));
   }
-  return tensorflow::Status();
+  return absl::Status();
 }
 
 }  // namespace flex
