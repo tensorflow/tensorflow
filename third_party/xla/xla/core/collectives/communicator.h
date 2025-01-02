@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
@@ -103,20 +103,20 @@ class Communicator {
 
   // Send data from `send_buff` to rank `peer`.
   virtual absl::Status Send(se::DeviceMemoryBase send_buffer,
-                            PrimitiveType dtype, size_t count, int32_t peer,
+                            PrimitiveType dtype, size_t count, RankId peer,
                             const Executor& executor) = 0;
 
   // Send a pointer `ptr` to rank `peer`.
-  virtual absl::Status SendPtrToPeer(void* ptr, int32_t peer,
+  virtual absl::Status SendPtrToPeer(void* ptr, RankId peer,
                                      const Executor& executor) = 0;
 
   // Receive data from rank `peer` into `recv_buff`.
   virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
-                            PrimitiveType dtype, size_t count, int32_t peer,
+                            PrimitiveType dtype, size_t count, RankId peer,
                             const Executor& executor) = 0;
 
   // Receive a pointer from rank `peer` into `ptr`.
-  virtual absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
+  virtual absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
                                        const Executor& executor) = 0;
 
   virtual std::string ToString() const = 0;

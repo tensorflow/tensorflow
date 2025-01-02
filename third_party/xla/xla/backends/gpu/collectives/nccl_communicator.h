@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -75,15 +76,15 @@ class NcclCommunicator : public Communicator {
                          size_t count, const Executor& executor) final;
 
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, const Executor& executor) final;
+                    size_t count, RankId peer, const Executor& executor) final;
 
-  absl::Status SendPtrToPeer(void* ptr, int32_t peer,
+  absl::Status SendPtrToPeer(void* ptr, RankId peer,
                              const Executor& executor) final;
 
   absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, const Executor& executor) final;
+                    size_t count, RankId peer, const Executor& executor) final;
 
-  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
+  absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
                                const Executor& executor) final;
 
   std::string ToString() const final;

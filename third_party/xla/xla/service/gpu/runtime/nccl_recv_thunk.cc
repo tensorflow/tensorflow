@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -33,9 +34,10 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -131,8 +133,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
     }
     if (should_run) {
       TF_RETURN_IF_ERROR(comm_handle.comm->Recv(
-          dest_addr, buffer.element_type, buffer.element_count, *source_id,
-          GpuCollectives::On(stream)));
+          dest_addr, buffer.element_type, buffer.element_count,
+          RankId(*source_id), GpuCollectives::On(stream)));
     }
 
   } else {

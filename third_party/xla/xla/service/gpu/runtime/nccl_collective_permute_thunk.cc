@@ -22,25 +22,36 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
 absl::StatusOr<const int64_t> GetCurrentId(
     Thunk::CollectiveExecuteParams* collective_params,
     const NcclP2PConfig& config) {
@@ -295,14 +306,14 @@ absl::Status RunCollectivePermute(
     // Send source buffer to target peer if needed.
     if (target_id) {
       TF_RETURN_IF_ERROR(comm->Send(src_addr, buffer.element_type,
-                                    buffer.element_count, *target_id,
+                                    buffer.element_count, RankId(*target_id),
                                     GpuCollectives::On(stream)));
     }
 
     // Receive data from the source peer to the destination buffer.
     if (source_id) {
       TF_RETURN_IF_ERROR(comm->Recv(dest_addr, buffer.element_type,
-                                    buffer.element_count, *source_id,
+                                    buffer.element_count, RankId(*source_id),
                                     GpuCollectives::On(stream)));
     }
     if (is_nccl_group_needed) {

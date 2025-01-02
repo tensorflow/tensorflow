@@ -23,12 +23,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -39,10 +41,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -246,11 +247,11 @@ absl::Status RunAllToAllOnIndexBuffer(
     se::DeviceMemoryBase recv_slice = collectives->Slice(
         destination_buffer, element_type, /*offset=*/peer, /*count=*/1);
 
-    TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type, /*count=*/1, peer,
-                                  GpuCollectives::On(stream)));
+    TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type, /*count=*/1,
+                                  RankId(peer), GpuCollectives::On(stream)));
 
-    TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type, /*count=*/1, peer,
-                                  GpuCollectives::On(stream)));
+    TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type, /*count=*/1,
+                                  RankId(peer), GpuCollectives::On(stream)));
   }
 
   TF_RETURN_IF_ERROR(collectives->GroupEnd());
@@ -309,11 +310,11 @@ absl::Status RunRaggedAllToAll(
 
     TF_RETURN_IF_ERROR(comm->Send(send_slice, data_buffer.element_type,
                                   send_sizes[peer] * ragged_row_element_size,
-                                  peer, GpuCollectives::On(stream)));
+                                  RankId(peer), GpuCollectives::On(stream)));
 
     TF_RETURN_IF_ERROR(comm->Recv(recv_slice, data_buffer.element_type,
                                   recv_sizes[peer] * ragged_row_element_size,
-                                  peer, GpuCollectives::On(stream)));
+                                  RankId(peer), GpuCollectives::On(stream)));
   }
 
   return collectives->GroupEnd();

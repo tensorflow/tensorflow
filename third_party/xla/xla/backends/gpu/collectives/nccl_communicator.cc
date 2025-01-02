@@ -25,16 +25,17 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -294,64 +295,64 @@ absl::Status NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
 
 absl::Status NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
                                     PrimitiveType dtype, size_t count,
-                                    int32_t peer, const Executor& executor) {
+                                    RankId peer, const Executor& executor) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
-      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer, comm_,
-      stream);
+      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
+      comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  return XLA_NCCL_STATUS(ncclSend(send_buffer.opaque(),
-                                  ToNcclCount(dtype, count), nccl_dtype, peer,
-                                  comm_, se::gpu::AsGpuStreamValue(stream)));
+  return XLA_NCCL_STATUS(
+      ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+               peer.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclCommunicator::SendPtrToPeer(void* ptr, int32_t peer,
+absl::Status NcclCommunicator::SendPtrToPeer(void* ptr, RankId peer,
                                              const Executor& executor) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL RecvPtrFromPeer operation on device #%d;  "
       "peer=%d; comm=%p; stream=%p",
-      stream->parent()->device_ordinal(), peer, comm_, stream);
-  return XLA_NCCL_STATUS(ncclSend(ptr, 1, ncclUint64, peer, comm_,
+      stream->parent()->device_ordinal(), peer.value(), comm_, stream);
+  return XLA_NCCL_STATUS(ncclSend(ptr, 1, ncclUint64, peer.value(), comm_,
                                   se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::Status NcclCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
-                                    int32_t peer, const Executor& executor) {
+                                    RankId peer, const Executor& executor) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), recv_buffer.opaque(),
-      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer, comm_,
-      stream);
+      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
+      comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  return XLA_NCCL_STATUS(ncclRecv(recv_buffer.opaque(),
-                                  ToNcclCount(dtype, count), nccl_dtype, peer,
-                                  comm_, se::gpu::AsGpuStreamValue(stream)));
+  return XLA_NCCL_STATUS(
+      ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+               peer.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclCommunicator::RecvPtrFromPeer(void* ptr, int32_t peer,
+absl::Status NcclCommunicator::RecvPtrFromPeer(void* ptr, RankId peer,
                                                const Executor& executor) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL RecvPtrFromPeer operation on device #%d; "
       "peer=%d; comm=%p; stream=%p",
-      stream->parent()->device_ordinal(), peer, comm_, stream);
+      stream->parent()->device_ordinal(), peer.value(), comm_, stream);
 
-  return XLA_NCCL_STATUS(ncclRecv(ptr, 1, ncclUint64, peer, comm_,
+  return XLA_NCCL_STATUS(ncclRecv(ptr, 1, ncclUint64, peer.value(), comm_,
                                   se::gpu::AsGpuStreamValue(stream)));
 }
 
