@@ -118,11 +118,8 @@ class DummyAddKernelRunner final : public KernelRunner {
 NB_MODULE(_extension, kernel_runner_module) {
   namespace nb = nanobind;
 
-  nb::class_<KernelSource>(kernel_runner_module, "KernelSource");
-
-  nb::class_<LlvmIrKernelSource, KernelSource>(kernel_runner_module,
-                                               "LlvmIrKernelSource")
-      .def("__str__", &LlvmIrKernelSource::ToString);
+  nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
+      .def("__str__", &KernelSource::ToString);
 
   nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec")
       .def("kernel_source", &KernelSpec::kernel_source,

@@ -31,7 +31,7 @@ namespace xla {
 // implementation we might emit a single LLVM module with multiple kernels or a
 // separate LLVM module for each kernel. Kernel function signature is defined by
 // the backend specific ABI.
-class LlvmIrKernelSource : public KernelSource {
+class LlvmIrKernelSource final : public KernelSource {
  public:
   LlvmIrKernelSource(llvm::orc::ThreadSafeContext context,
                      std::unique_ptr<llvm::Module> module,
@@ -53,7 +53,7 @@ class LlvmIrKernelSource : public KernelSource {
     return module_->getFunction(kernel_name_);
   }
 
-  std::string ToString() const;
+  std::string ToString() const final;
 
  private:
   llvm::orc::ThreadSafeContext context_;
