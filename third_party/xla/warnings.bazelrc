@@ -36,6 +36,7 @@ build:warnings --copt=-Wno-deprecated-enum-compare-conditional
 build:warnings --copt=-Wno-deprecated-enum-float-conversion
 build:warnings --copt=-Wno-deprecated-this-capture
 build:warnings --copt=-Wno-return-type-c-linkage
+build:warnings --copt=-Wno-nullability-completeness
 build:warnings --copt=-Wno-bitfield-constant-conversion
 build:warnings --copt=-Wno-bitwise-instead-of-logical
 build:warnings --copt=-Wno-comment
