@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/primitive_util.h"
@@ -35,9 +37,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -102,12 +103,12 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
   return ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+        CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
           TF_RETURN_IF_ERROR(comm.AllReduce(
-              key, reduction_kind_, shape.element_type(),
-              ShapeUtil::ElementsIn(shape), data.source[i].opaque(),
-              data.destination[i].opaque(), DefaultCollectiveTimeout()));
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), reduction_kind_, executor));
         }
         return absl::OkStatus();
       });

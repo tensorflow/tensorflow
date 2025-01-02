@@ -18,8 +18,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/util.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
@@ -35,5 +39,25 @@ CpuCollectives* CpuCollectives::Default() {
 
   LOG(FATAL) << "Unsupported collectives implementation for CPU";
 }
+
+absl::StatusOr<const CpuCollectives::Device*> CpuCollectives::TryCast(
+    const Collectives::Device* device) {
+  if (auto* cpu_device = tsl::down_cast<const Device*>(device)) {
+    return cpu_device;
+  }
+  return InvalidArgument("Collectives device is not a CPU device");
+}
+
+absl::StatusOr<const CpuCollectives::Executor*> CpuCollectives::TryCast(
+    const Communicator::Executor* executor) {
+  if (auto* cpu_executor = tsl::down_cast<const Executor*>(executor)) {
+    return cpu_executor;
+  }
+  return InvalidArgument("Collectives executor is not a CPU executor");
+}
+
+CpuCollectives::Executor::Executor(RendezvousKey rendezvous_key,
+                                   absl::Duration timeout)
+    : rendezvous_key_(rendezvous_key), timeout_(timeout) {}
 
 }  // namespace xla::cpu

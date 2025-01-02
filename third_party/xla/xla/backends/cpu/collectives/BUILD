@@ -25,10 +25,12 @@ cc_library(
         "//xla/core/collectives",
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
+        "//xla/service:collective_ops_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:casts",
     ],
 )

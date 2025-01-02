@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu::runtime {
@@ -39,10 +40,10 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                                    int size);
   ~InProcessCollectivesCommunicator() override;
 
-  absl::Status AllReduce(const RendezvousKey& key, ReductionKind reduction_kind,
-                         PrimitiveType element_type, size_t num_elements,
-                         const void* input_buffer, void* output_buffer,
-                         absl::Duration timeout) override;
+  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, ReductionKind reduction_kind,
+                         const Executor& executor) override;
 
   absl::Status CollectivePermute(const RendezvousKey& key, size_t num_bytes,
                                  std::optional<int> source_rank,

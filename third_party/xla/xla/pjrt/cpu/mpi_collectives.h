@@ -41,10 +41,10 @@ class MpiCollectivesCommunicator : public CollectivesCommunicator {
   explicit MpiCollectivesCommunicator(int color, int key);
   ~MpiCollectivesCommunicator() override;
 
-  absl::Status AllReduce(const RendezvousKey& key, ReductionKind reduction_kind,
-                         PrimitiveType element_type, size_t num_elements,
-                         const void* input_buffer, void* output_buffer,
-                         absl::Duration timeout) override;
+  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, ReductionKind reduction_kind,
+                         const Executor& executor) override;
   absl::Status CollectivePermute(const RendezvousKey& key, size_t num_bytes,
                                  std::optional<int> source_rank,
                                  absl::Span<int const> target_ranks,

@@ -25,12 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#if defined(__linux__)
-#include "gloo/transport/tcp/attr.h"
-#include "gloo/transport/tcp/device.h"
-#elif defined(__APPLE__)
-#include "gloo/transport/uv/device.h"
-#endif  // defined(__linux__)
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -38,13 +33,21 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+
+#if defined(__linux__)
+#include "gloo/transport/tcp/attr.h"
+#include "gloo/transport/tcp/device.h"
+#elif defined(__APPLE__)
+#include "gloo/transport/uv/device.h"
+#endif  // defined(__linux__)
 
 namespace xla::cpu {
 
@@ -77,6 +80,12 @@ RendezvousKey MakeRendezvousKey(std::vector<GlobalDeviceId> global_devices) {
 
 // TODO(cobley) - add tests for other collectives.
 
+template <typename T>
+static se::DeviceMemoryBase AsDeviceMemory(const std::vector<T>& data) {
+  return se::DeviceMemoryBase(const_cast<T*>(data.data()),
+                              data.size() * sizeof(T));
+}
+
 absl::StatusOr<std::vector<uint8_t>> AllReduce(
     const std::shared_ptr<xla::KeyValueStoreInterface>& kv_store,
     const std::vector<uint8_t>& input_buffer,
@@ -87,9 +96,10 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
       auto communicator,
       GetCommunicator(kNumParticipants, global_devices, kv_store, rank));
 
+  CpuCollectives::Executor executor(rendezvous_key, kTimeout);
   TF_RETURN_IF_ERROR(communicator->AllReduce(
-      rendezvous_key, xla::ReductionKind::SUM, xla::PrimitiveType::U8,
-      kBufferSize, input_buffer.data(), output_buffer.data(), kTimeout));
+      AsDeviceMemory(input_buffer), AsDeviceMemory(output_buffer),
+      xla::PrimitiveType::U8, kBufferSize, xla::ReductionKind::SUM, executor));
 
   return output_buffer;
 }

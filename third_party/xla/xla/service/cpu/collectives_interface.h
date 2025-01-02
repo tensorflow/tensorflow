@@ -24,23 +24,28 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
+// TODO(b/380457503): We are in the middle of migrating this API to the new XLA
+// collectives API defined under `xla/core/collectives`.
 class CollectivesCommunicator {
  public:
+  using Executor = Communicator::Executor;
+
   virtual ~CollectivesCommunicator() = default;
 
   // Performs an all-reduce.
-  virtual absl::Status AllReduce(const RendezvousKey& key,
+  virtual absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
                                  ReductionKind reduction_kind,
-                                 PrimitiveType element_type,
-                                 size_t num_elements, const void* input_buffer,
-                                 void* output_buffer,
-                                 absl::Duration timeout) = 0;
+                                 const Executor& executor) = 0;
 
   // Performs a collective permute.
   // Arguments:

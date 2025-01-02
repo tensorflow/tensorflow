@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_COLLECTIVES_CPU_COLLECTIVES_H_
 #define XLA_BACKENDS_CPU_COLLECTIVES_CPU_COLLECTIVES_H_
 
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -33,10 +36,27 @@ class CpuCollectives : public Collectives {
     Device() = default;
   };
 
+  // Executor allows CPU collectives clients to pass additional information to
+  // the collectives implementation.
   class Executor : public Communicator::Executor {
    public:
-    Executor() = default;
+    Executor(RendezvousKey rendezvous_key, absl::Duration timeout);
+
+    const RendezvousKey& rendezvous_key() const { return rendezvous_key_; }
+    const absl::Duration& timeout() const { return timeout_; }
+
+   private:
+    RendezvousKey rendezvous_key_;
+    absl::Duration timeout_;
   };
+
+  // Tries to cast a Collectives::Device to a CpuCollectives::Device.
+  static absl::StatusOr<const Device*> TryCast(
+      const Collectives::Device* device);
+
+  // Tries to cast a Communicator::Executor to a CpuCollectives::Executor.
+  static absl::StatusOr<const Executor*> TryCast(
+      const Communicator::Executor* executor);
 };
 
 }  // namespace xla::cpu

@@ -136,13 +136,13 @@ MpiCollectivesCommunicator::~MpiCollectivesCommunicator() {
 };
 
 absl::Status MpiCollectivesCommunicator::AllReduce(
-    const RendezvousKey& key, ReductionKind reduction_kind,
-    PrimitiveType element_type, size_t num_elements, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
-  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(element_type));
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
+    const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
   TF_ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
-  return MpiErrorToAbslStatus(MPI_Allreduce(input_buffer, output_buffer,
-                                            num_elements, type, op, comm_));
+  return MpiErrorToAbslStatus(MPI_Allreduce(
+      send_buffer.opaque(), recv_buffer.opaque(), count, type, op, comm_));
 }
 
 absl::Status MpiCollectivesCommunicator::CollectivePermute(

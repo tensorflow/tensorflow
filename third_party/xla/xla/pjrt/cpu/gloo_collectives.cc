@@ -47,15 +47,17 @@ limitations under the License.
 #include "gloo/transport/device.h"
 #include "gloo/transport/unbound_buffer.h"
 #include "gloo/types.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 
@@ -66,14 +68,16 @@ GlooCollectivesCommunicator::~GlooCollectivesCommunicator() = default;
 
 template <typename T>
 static absl::Status SetAllReduceOptions(ReductionKind reduction_kind,
-                                        const void* input_buffer,
-                                        void* output_buffer,
+                                        se::DeviceMemoryBase input_buffer,
+                                        se::DeviceMemoryBase output_buffer,
                                         size_t num_elements,
                                         gloo::AllreduceOptions& options) {
-  options.setInput(reinterpret_cast<T*>(const_cast<void*>(input_buffer)),
-                   num_elements);
-  options.setOutput(reinterpret_cast<T*>(const_cast<void*>(output_buffer)),
-                    num_elements);
+  options.setInput(
+      reinterpret_cast<T*>(const_cast<void*>(input_buffer.opaque())),
+      num_elements);
+  options.setOutput(
+      reinterpret_cast<T*>(const_cast<void*>(output_buffer.opaque())),
+      num_elements);
 
   using ReductionFn = void (*)(void*, const void*, const void*, size_t);
 
@@ -105,75 +109,77 @@ static absl::Status SetAllReduceOptions(ReductionKind reduction_kind,
 }
 
 absl::Status GlooCollectivesCommunicator::AllReduce(
-    const RendezvousKey& key, ReductionKind reduction_kind,
-    PrimitiveType element_type, size_t num_elements, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
+    const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+
   gloo::AllreduceOptions options(context_);
   // TODO(phawkins): how to do tags?
   // options.setTag(tag);
-  switch (element_type) {
+  switch (dtype) {
     case S8:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<int8_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case PRED:
     case U8:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<uint8_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case S16:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<int16_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case U16:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<uint16_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case S32:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<int32_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case U32:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<uint32_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case S64:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<int64_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case U64:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<uint64_t>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case F16:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<gloo::float16>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case BF16:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<bfloat16>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case F32:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<float>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case F64:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<double>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case C64:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<std::complex<float>>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     case C128:
       TF_RETURN_IF_ERROR(SetAllReduceOptions<std::complex<double>>(
-          reduction_kind, input_buffer, output_buffer, num_elements, options));
+          reduction_kind, send_buffer, recv_buffer, count, options));
       break;
     default:
       return absl::InvalidArgumentError("Unknown datatype in allreduce");
   }
   options.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
-  options.setTimeout(absl::ToChronoMilliseconds(timeout));
+  options.setTimeout(absl::ToChronoMilliseconds(cpu_executor->timeout()));
 
   try {
     gloo::allreduce(options);
