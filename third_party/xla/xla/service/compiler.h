@@ -300,7 +300,7 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() {
+  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() const {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
     return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());

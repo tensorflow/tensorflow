@@ -1436,28 +1436,11 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   const bool embed_ir_in_executable =
       debug_options.xla_embed_ir_in_executable();
 
-  // Select a memory scheduler optimized for concurrency vs minimal memory.
-  auto scheduler =
-      debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
-          ? BFSMemoryScheduler
-          : DFSMemoryScheduler;
-
-  // Select an order for emitting the HLO instructions for each
-  // computation. Using this sequence enables tighter buffer liveness analysis
-  // and reduced memory usage (as compared to using `DependencyHloOrdering`).
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                     ComputationSchedulerToModuleScheduler(scheduler)));
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
   TF_RETURN_IF_ERROR(module->set_schedule(schedule));
 
-  // Run buffer allocation on the HLO graph.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(module.get(),
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          BufferSizeBytesFunction(), memory_alignment,
-                          /*allocate_buffers_for_constants=*/true));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
+                      CreateBufferAssignment(*module));
   DumpHloModuleIfEnabled(*module, *assignment,
                          absl::StrCat("cpu_", kAfterOptimizationsDumpName));
 
@@ -2247,6 +2230,31 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   return CpuExecutableAotCompilationResult::FromString(serialized_aot_result);
+}
+
+absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
+    const HloModule& hlo_module) const {
+  // Select a memory scheduler optimized for concurrency vs minimal memory.
+  auto scheduler = hlo_module.config()
+                           .debug_options()
+                           .xla_cpu_enable_concurrency_optimized_scheduler()
+                       ? BFSMemoryScheduler
+                       : DFSMemoryScheduler;
+
+  // Select an order for emitting the HLO instructions for each
+  // computation. Using this sequence enables tighter buffer liveness analysis
+  // and reduced memory usage (as compared to using `DependencyHloOrdering`).
+  return ScheduleModule(&hlo_module, BufferSizeBytesFunction(),
+                        ComputationSchedulerToModuleScheduler(scheduler));
+}
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
+  // Run buffer allocation on the HLO graph.
+  return BufferAssigner::Run(
+      &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
+      BufferSizeBytesFunction(), memory_alignment,
+      /*allocate_buffers_for_constants=*/true);
 }
 
 }  // namespace cpu

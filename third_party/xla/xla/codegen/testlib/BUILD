@@ -54,7 +54,9 @@ tsl_pybind_extension(
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/hlo/ir:hlo",
+        "//xla/python:nb_absl_inlined_vector",
         "//xla/python:nb_absl_span",
+        "//xla/service:buffer_assignment",
     ],
 )
 
@@ -70,6 +72,7 @@ pytype_strict_library(
         ":_extension",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
+        "@ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
     ],
 )
 

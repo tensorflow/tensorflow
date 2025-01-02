@@ -28,6 +28,8 @@ limitations under the License.
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
@@ -36,7 +38,11 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/cpu/ir_emitter.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -83,20 +89,109 @@ NB_MODULE(_extension, kernel_runner_module) {
             {});
       });
 
-  nb::class_<IrEmitter>(kernel_runner_module, "IrEmitter");
+  nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")
+      .def(nb::init<>())
+      .def("create_buffer_assignment",
+           [](const CpuCompiler& self, const HloModule& hlo_module) {
+             absl::StatusOr<std::unique_ptr<BufferAssignment>>
+                 buffer_assignment = self.CreateBufferAssignment(hlo_module);
+
+             if (!buffer_assignment.ok()) {
+               throw std::runtime_error(
+                   std::string(buffer_assignment.status().message()));
+             }
+
+             return std::move(buffer_assignment).value();
+           })
+      .def("create_hlo_schedule", [](const CpuCompiler& self,
+                                     const HloModule& hlo_module) {
+        absl::StatusOr<HloSchedule> schedule =
+            self.CreateHloSchedule(hlo_module);
+
+        if (!schedule.ok()) {
+          throw std::runtime_error(std::string(schedule.status().message()));
+        }
+
+        return std::move(schedule).value();
+      });
+
+  nb::class_<HloModule>(kernel_runner_module, "HloModule")
+      .def_static("parse_from_string",
+                  [](absl::string_view str) {
+                    absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
+                        ParseAndReturnUnverifiedModule(str);
+
+                    if (!hlo_module.ok()) {
+                      throw std::runtime_error(
+                          std::string(hlo_module.status().message()));
+                    }
+
+                    return std::move(hlo_module).value();
+                  })
+      .def("set_schedule",
+           [](HloModule& self, HloSchedule schedule) {
+             absl::Status status = self.set_schedule(std::move(schedule));
+             if (!status.ok()) {
+               throw std::runtime_error(std::string(status.message()));
+             }
+           })
+      .def(
+          "get_root_instruction",
+          [](HloModule* self) {
+            return self->entry_computation()->root_instruction();
+          },
+          nb::rv_policy::reference_internal);
+
+  nb::class_<TargetMachineFeatures>(kernel_runner_module,
+                                    "TargetMachineFeatures")
+      .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<std::unique_ptr<HloInstruction>, const HloModule*,
-                    const BufferAssignment*>(),
-           nb::arg("op_hlo"), nb::arg("hlo_module").none() = nullptr,
-           nb::arg("buffer_assignment").none() = nullptr);
+      .def(nb::init<const HloInstruction&>(), nb::keep_alive<1, 2>())
+      .def(nb::init<const HloModule*, const BufferAssignment*,
+                    const TargetMachineFeatures*>(),
+           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+           nb::keep_alive<1, 4>());
+
+  nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
+      .def(nb::new_([]() {
+        absl::StatusOr<JitCompiler> compiler =
+            KernelRunner::CreateJitCompiler();
+
+        if (!compiler.ok()) {
+          throw std::runtime_error(std::string(compiler.status().message()));
+        }
+
+        return std::make_unique<JitCompiler>(
+            JitCompiler(std::move(compiler).value()));
+      }))
+      .def(
+          "get_target_machine",
+          [](JitCompiler* self) {
+            return std::make_unique<TargetMachineFeatures>(
+                self->target_machine());
+          },
+          nb::rv_policy::reference_internal);
 
   nb::class_<KernelRunner, xla::KernelRunner>(kernel_runner_module,
                                               "KernelRunner")
+      .def_static(
+          "create",
+          [](std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+             std::unique_ptr<JitCompiler> jit_compiler) {
+            absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
+                std::move(*kernel_spec), std::move(*jit_compiler));
+
+            if (!runner.ok()) {
+              throw std::runtime_error(std::string(runner.status().message()));
+            }
+
+            return std::move(runner).value();
+          })
       .def_static("create", [](std::unique_ptr<LlvmIrKernelSpec> kernel_spec) {
         absl::StatusOr<KernelRunner> runner =
-            KernelRunner::Create(std::move(*kernel_spec));
+            KernelRunner::Create(std::move(kernel_spec));
 
         if (!runner.ok()) {
           throw std::runtime_error(std::string(runner.status().message()));

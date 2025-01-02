@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_TESTLIB_ELEMENTAL_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_TESTLIB_ELEMENTAL_KERNEL_EMITTER_H_
 
+#include <cstddef>
 #include <memory>
 
 #include "absl/status/statusor.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,9 +37,11 @@ namespace xla::cpu {
 
 class ElementalKernelEmitter final : public KernelEmitter {
  public:
-  explicit ElementalKernelEmitter(std::unique_ptr<HloInstruction> op_hlo,
-                                  const HloModule* hlo_module,
-                                  const BufferAssignment* buffer_assignment);
+  explicit ElementalKernelEmitter(const HloInstruction& op_hlo);
+
+  ElementalKernelEmitter(const HloModule* hlo_module,
+                         const BufferAssignment* buffer_assignment,
+                         const TargetMachineFeatures* target_machine);
 
   absl::StatusOr<std::unique_ptr<KernelSpec>> EmitKernelSpec() override;
 
@@ -57,10 +61,11 @@ class ElementalKernelEmitter final : public KernelEmitter {
                              llvm::Module& module) const;
 
  private:
-  std::unique_ptr<HloInstruction> op_hlo_;
+  const HloInstruction& op_hlo_;
 
-  const HloModule* hlo_module_;
-  const BufferAssignment* buffer_assignment_;
+  const HloModule* hlo_module_ = nullptr;
+  const BufferAssignment* buffer_assignment_ = nullptr;
+  const TargetMachineFeatures* target_machine_ = nullptr;
 
   llvm::orc::ThreadSafeContext context_;
 

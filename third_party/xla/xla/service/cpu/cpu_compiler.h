@@ -28,15 +28,16 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
-#include "xla/service/cpu/xla_framework.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_compiler.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -187,6 +188,12 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module,
       mlir::DialectRegistry* registry = nullptr);
+
+  absl::StatusOr<HloSchedule> CreateHloSchedule(
+      const HloModule& hlo_module) const;
+
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
+      const HloModule& module) const;
 
  private:
   // Initialize the LLVM target.

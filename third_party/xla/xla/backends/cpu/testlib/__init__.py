@@ -18,7 +18,11 @@ from xla.backends.cpu.testlib import _extension
 
 # go/keep-sorted start
 ElementalKernelEmitter = _extension.ElementalKernelEmitter
+HloCompiler = _extension.HloCompiler
+HloModule = _extension.HloModule
+JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
 LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
 LlvmIrKernelSpec = _extension.LlvmIrKernelSpec
+TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,30 +45,16 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
   // creation of KernelRunner from different kernel spec types.
   if (auto* llvm_kernel_spec =
           dynamic_cast<LlvmIrKernelSpec*>(kernel_spec.get())) {
-    return Create(std::move(*llvm_kernel_spec));
+    TF_ASSIGN_OR_RETURN(JitCompiler compiler, CreateJitCompiler());
+    return Create(std::move(*llvm_kernel_spec), std::move(compiler));
   }
 
   return absl::InvalidArgumentError("Unrecognised kernel spec type");
 }
 
-absl::StatusOr<KernelRunner> KernelRunner::Create(
-    LlvmIrKernelSpec kernel_spec) {
+absl::StatusOr<KernelRunner> KernelRunner::Create(LlvmIrKernelSpec kernel_spec,
+                                                  JitCompiler compiler) {
   LlvmIrKernelSource& kernel_source = kernel_spec.kernel_source();
-
-  llvm::TargetOptions target_options;
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
-
-  // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
-  JitCompiler::Options jit_compiler_options;
-  jit_compiler_options.definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
-      };
-
-  TF_ASSIGN_OR_RETURN(
-      JitCompiler compiler,
-      JitCompiler::Create(target_options, jit_compiler_options));
 
   // Intentional copy as we need to use the kernel name after consuming
   // (std::move) the kernel source.
@@ -100,6 +87,21 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   }
 
   return kernel_.Launch(thread_dim_, kernel_args);
+}
+
+absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler() {
+  llvm::TargetOptions target_options;
+  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+
+  // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
+  JitCompiler::Options jit_compiler_options;
+  jit_compiler_options.definition_generator =
+      [](llvm::TargetMachine* target_machine) {
+        return std::make_unique<RuntimeSymbolGenerator>(
+            target_machine->createDataLayout());
+      };
+
+  return JitCompiler::Create(target_options, jit_compiler_options);
 }
 
 }  // namespace xla::cpu

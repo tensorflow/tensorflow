@@ -38,6 +38,9 @@ class TargetMachineFeatures {
   explicit TargetMachineFeatures(llvm::TargetMachine* target_machine);
   virtual ~TargetMachineFeatures() = default;
 
+  TargetMachineFeatures(TargetMachineFeatures&&) = default;
+  TargetMachineFeatures& operator=(TargetMachineFeatures&&) = default;
+
   // Return the vectorization factor, which is the number of bytes of data
   // explicitly vectorized routines will try to process at once.
   virtual int32_t vectorization_factor_in_bytes() const;

@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
-#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
@@ -42,12 +42,15 @@ class KernelRunner final : public xla::KernelRunner {
   // Keep this llvm specific constructor for python bindings:
   // nanobind will do the downcasting for us and give the python specific
   // error if there is not a valid Create(...) call.
-  static absl::StatusOr<KernelRunner> Create(LlvmIrKernelSpec kernel_spec);
+  static absl::StatusOr<KernelRunner> Create(LlvmIrKernelSpec kernel_spec,
+                                             JitCompiler compiler);
 
   KernelRunner(KernelRunner&&) = default;
   KernelRunner& operator=(KernelRunner&&) = default;
 
   absl::Status Call(absl::Span<const Argument> arguments) final;
+
+  static absl::StatusOr<JitCompiler> CreateJitCompiler();
 
  private:
   KernelRunner(std::unique_ptr<FunctionLibrary> library, Kernel kernel,
