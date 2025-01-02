@@ -68,7 +68,7 @@ class CudnnGraph : public dnn::DnnGraph {
                        int64_t local_device_ordinal) const override;
   const cudnn_frontend::graph::Graph& Graph() const { return graph_; }
   void InitDropoutState(int64_t local_device_count, int64_t seed,
-                        int64_t increment) {
+                        int64_t increment) override {
     dropout_rng_seed_ = seed;
     current_dropout_rng_offset_ = std::vector<int64_t>(local_device_count, 0);
     dropout_rng_offset_increment_ = increment;
