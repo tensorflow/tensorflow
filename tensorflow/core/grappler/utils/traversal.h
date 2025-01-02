@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_TRAVERSAL_H_
 
 #include <functional>
+#include <utility>
 
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 
 namespace tensorflow {

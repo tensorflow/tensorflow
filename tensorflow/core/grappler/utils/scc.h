@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
 
 #include <unordered_map>
+#include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/lib/io/path.h"
