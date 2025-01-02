@@ -1,8 +1,13 @@
 # Description:
 #   XLA’s HLO Intermediate Representation implementation.
 
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+    "tf_pyclif_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -16,6 +21,30 @@ package_group(
     includes = [
         "//xla:friends",
     ],
+)
+
+tf_proto_library(
+    name = "hlo_ir_proto",
+    srcs = ["hlo_ir.proto"],
+    make_default_target_header_only = True,
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/service:metrics_proto",
+    ] + if_google(["@com_google_protobuf//:any"]),
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "hlo_ir_pyclif",
+    proto_lib = ":hlo_ir_proto",
+    proto_srcfile = "hlo_ir.proto",
+    visibility = ["//visibility:public"],
+)
+
+xla_py_proto_library(
+    name = "hlo_ir_pb2",
+    visibility = ["//visibility:public"],
+    deps = [":hlo_ir_proto"],
 )
 
 cc_library(
