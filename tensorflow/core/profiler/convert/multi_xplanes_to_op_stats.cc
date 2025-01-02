@@ -41,7 +41,7 @@ absl::Status ConvertMultiXSpacesToCombinedOpStats(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
     PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
-                               /*derived_timeline=*/false);
+                               /*derived_timeline=*/true);
     all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
   }
 
