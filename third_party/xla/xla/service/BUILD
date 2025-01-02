@@ -51,10 +51,12 @@ tf_proto_library(
     srcs = ["hlo.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "//xla:xla_data_proto",
-        "//xla/service:metrics_proto",
+        "//xla/hlo/ir:hlo_ir_proto",
     ] + if_google(["@com_google_protobuf//:any"]),
     visibility = ["//visibility:public"],
+    exports = [
+        "//xla/hlo/ir:hlo_ir_proto",
+    ],
 )
 
 tf_pyclif_proto_library(
