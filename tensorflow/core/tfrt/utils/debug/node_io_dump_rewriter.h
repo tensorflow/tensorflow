@@ -29,13 +29,14 @@ namespace tfrt_stub {
 // Rewrites `graph` by inserting dump nodes for `nodes_to_dump`. During graph
 // execution, the inputs and outputs of `nodes_to_dump` will be dumped to the
 // folder specified by env var `TF_DUMP_GRAPH_PREFIX`.
-Status InsertDumpOps(Graph& graph,
-                     const absl::flat_hash_set<std::string>& nodes_to_dump,
-                     absl::string_view dump_dir = "");
+absl::Status InsertDumpOps(
+    Graph& graph, const absl::flat_hash_set<std::string>& nodes_to_dump,
+    absl::string_view dump_dir = "");
 // Similar to the above, but rewrites a `meta_graph_def`.
-Status InsertDumpOps(MetaGraphDef& meta_graph_def,
-                     const absl::flat_hash_set<std::string>& nodes_to_dump,
-                     absl::string_view dump_dir = "");
+absl::Status InsertDumpOps(
+    MetaGraphDef& meta_graph_def,
+    const absl::flat_hash_set<std::string>& nodes_to_dump,
+    absl::string_view dump_dir = "");
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow
