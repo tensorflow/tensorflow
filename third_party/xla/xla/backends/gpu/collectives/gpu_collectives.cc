@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 
