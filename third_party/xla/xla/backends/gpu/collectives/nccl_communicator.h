@@ -78,14 +78,8 @@ class NcclCommunicator : public Communicator {
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
                     size_t count, RankId peer, const Executor& executor) final;
 
-  absl::Status SendPtrToPeer(void* ptr, RankId peer,
-                             const Executor& executor) final;
-
   absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                     size_t count, RankId peer, const Executor& executor) final;
-
-  absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
-                               const Executor& executor) final;
 
   std::string ToString() const final;
 

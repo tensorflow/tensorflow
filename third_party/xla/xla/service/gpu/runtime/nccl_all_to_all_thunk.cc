@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -277,6 +278,26 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
   return collectives->GroupEnd();
 }
 
+static absl::Status SendPtrToPeer(void* ptr, RankId peer, Communicator* comm,
+                                  se::Stream& stream) {
+  VLOG(3) << absl::StreamFormat(
+      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
+      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
+
+  return comm->Send(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1, peer,
+                    GpuCollectives::On(stream));
+}
+
+static absl::Status RecvPtrFromPeer(void* ptr, RankId peer, Communicator* comm,
+                                    se::Stream& stream) {
+  VLOG(3) << absl::StreamFormat(
+      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
+      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
+
+  return comm->Recv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1, peer,
+                    GpuCollectives::On(stream));
+}
+
 absl::Status RunMemCpyAllToAll(
     GpuCollectives* collectives, bool has_split_dimension,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
@@ -309,11 +330,10 @@ absl::Status RunMemCpyAllToAll(
                                peer * chunk_elements, chunk_elements);
         send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
 
-        TF_RETURN_IF_ERROR(comm->SendPtrToPeer(
-            &send_pointer_map[peer], RankId(peer), GpuCollectives::On(stream)));
-        TF_RETURN_IF_ERROR(comm->RecvPtrFromPeer(&receive_pointer_map[peer],
-                                                 RankId(peer),
-                                                 GpuCollectives::On(stream)));
+        TF_RETURN_IF_ERROR(
+            SendPtrToPeer(&send_pointer_map[peer], RankId(peer), comm, stream));
+        TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
+                                           RankId(peer), comm, stream));
       }
       TF_RETURN_IF_ERROR(collectives->GroupEnd());
       TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
@@ -337,11 +357,10 @@ absl::Status RunMemCpyAllToAll(
       send_pointer_map[peer] =
           (uint64_t)buffers[peer].destination_buffer.opaque();
 
-      TF_RETURN_IF_ERROR(comm->SendPtrToPeer(
-          &send_pointer_map[peer], RankId(peer), GpuCollectives::On(stream)));
-      TF_RETURN_IF_ERROR(comm->RecvPtrFromPeer(&receive_pointer_map[peer],
-                                               RankId(peer),
-                                               GpuCollectives::On(stream)));
+      TF_RETURN_IF_ERROR(
+          SendPtrToPeer(&send_pointer_map[peer], RankId(peer), comm, stream));
+      TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
+                                         RankId(peer), comm, stream));
     }
     TF_RETURN_IF_ERROR(collectives->GroupEnd());
     TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());

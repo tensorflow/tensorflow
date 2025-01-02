@@ -106,18 +106,10 @@ class Communicator {
                             PrimitiveType dtype, size_t count, RankId peer,
                             const Executor& executor) = 0;
 
-  // Send a pointer `ptr` to rank `peer`.
-  virtual absl::Status SendPtrToPeer(void* ptr, RankId peer,
-                                     const Executor& executor) = 0;
-
   // Receive data from rank `peer` into `recv_buff`.
   virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
                             PrimitiveType dtype, size_t count, RankId peer,
                             const Executor& executor) = 0;
-
-  // Receive a pointer from rank `peer` into `ptr`.
-  virtual absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
-                                       const Executor& executor) = 0;
 
   virtual std::string ToString() const = 0;
 };
