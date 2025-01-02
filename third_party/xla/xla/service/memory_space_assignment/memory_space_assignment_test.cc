@@ -8720,23 +8720,15 @@ entry {
   AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
-  // The fusion instruction should have 5 operands: the 3 original operands
-  // plus 2 window prefetch buffers.
-  EXPECT_EQ(fusion->operand_count(), 5);
+  // The fusion instruction should have 7 operands: the 3 original operands
+  // plus 2 window prefetch buffers, plus 2 sync flags.
+  EXPECT_EQ(fusion->operand_count(), 7);
 
-  // The 2 added operands are async calls to WindowPrefetch.
-  for (int i = 3; i < 5; i++) {
-    const HloInstruction* async_done = fusion->operand(i);
-    EXPECT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
-    EXPECT_EQ(async_done->operand_count(), 1);
-    EXPECT_TRUE(async_done->async_wrapped_instruction()->IsCustomCall(
-        "WindowPrefetch"));
-
-    const HloInstruction* async_start = async_done->operand(0);
-    EXPECT_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
-    EXPECT_EQ(async_start->operand_count(), 1);
-    EXPECT_TRUE(async_start->async_wrapped_instruction()->IsCustomCall(
-        "WindowPrefetch"));
+  // The added operands are GetTupleElements of WindowPrefetch custom calls.
+  for (int i = 3; i < 7; i++) {
+    EXPECT_EQ(fusion->operand(i)->opcode(), HloOpcode::kGetTupleElement);
+    const HloInstruction* window_prefetch = fusion->operand(i)->operand(0);
+    EXPECT_TRUE(window_prefetch->IsCustomCall("WindowPrefetch"));
   }
 
   VLOG(2) << "module: " << module->ToString();
