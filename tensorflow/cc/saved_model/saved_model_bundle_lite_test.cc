@@ -98,7 +98,7 @@ class LoaderTest : public ::testing::Test {
     RunOptions run_options;
     run_options.set_output_partition_graphs(true);
     RunMetadata run_metadata;
-    Status s =
+    absl::Status s =
         bundle.GetSession()->Run(run_options, {{input_name, input}},
                                  {output_name}, {}, &outputs, &run_metadata);
     ASSERT_TRUE(errors::IsInvalidArgument(s));
@@ -132,7 +132,7 @@ TEST_F(LoaderTest, ExtendFailsTest) {
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
-  Status s = bundle.GetSession()->Extend({});
+  absl::Status s = bundle.GetSession()->Extend({});
   ASSERT_TRUE(errors::IsUnimplemented(s));
 }
 
@@ -155,8 +155,8 @@ TEST_F(LoaderTest, NoTagMatch) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {"missing-tag"}, &bundle);
+  absl::Status st = LoadSavedModel(session_options, run_options, export_dir,
+                                   {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
       st.message(),
@@ -171,8 +171,9 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {kSavedModelTagServe, "missing-tag"}, &bundle);
+  absl::Status st =
+      LoadSavedModel(session_options, run_options, export_dir,
+                     {kSavedModelTagServe, "missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
       st.message(), "Could not find meta graph def matching supplied tags: "))
@@ -190,8 +191,8 @@ TEST_F(LoaderTest, SessionCreationFailure) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {kSavedModelTagServe}, &bundle);
+  absl::Status st = LoadSavedModel(session_options, run_options, export_dir,
+                                   {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(st.message(), kInvalidTarget)) << st.message();
 }
@@ -227,8 +228,8 @@ TEST_F(LoaderTest, InvalidExportPath) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), "missing-path");
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {kSavedModelTagServe}, &bundle);
+  absl::Status st = LoadSavedModel(session_options, run_options, export_dir,
+                                   {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
 }
 
