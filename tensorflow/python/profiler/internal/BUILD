@@ -254,7 +254,6 @@ tsl_pybind_extension(
         "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "@local_xla//xla/tsl/protobuf:test_log_proto_cc_impl",
         "@pybind11",
-    ] + if_macos([
         "@local_xla//xla/tsl/lib/histogram",
         "@local_xla//xla/tsl/lib/io:record_writer",
         "@local_xla//xla/tsl/lib/monitoring:collection_registry",
@@ -268,5 +267,5 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:resource",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
-    ]),
+    ]
 )
