@@ -18,7 +18,6 @@ limitations under the License.
 #include <cassert>
 #include <complex>
 #include <cstdint>
-#include <memory>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
