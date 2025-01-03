@@ -445,6 +445,7 @@ xla_test(
     srcs = ["nvtx_with_cuda_kernels_test.cc"],
     backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
+    disabled_backends = ["gpu_h100"],
     tags = [
         "no_mac",
         "requires-gpu-nvidia",
