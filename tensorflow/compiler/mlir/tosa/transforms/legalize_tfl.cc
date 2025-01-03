@@ -3177,6 +3177,13 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   Value input = tfl_pad_op.getInput();
   Value constant_value = tfl_pad_op.getConstantValues();
 
+  Value rank1_scalar_value =
+      reshapeScalarTo1D(rewriter, op->getLoc(), constant_value);
+  if (!rank1_scalar_value) {
+    return rewriter.notifyMatchFailure(
+        op, "cannot reshape constant_value input to rank 1");
+  }
+
   SmallVector<int64_t> padding_vals;
   if (failed(getVectorFromValue64(tfl_pad_op.getPadding(), padding_vals))) {
     return rewriter.notifyMatchFailure(op, "padding is not a constant value");
@@ -3185,7 +3192,7 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   Value padding = getTosaConstShape(rewriter, op->getLoc(), padding_vals);
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tfl_pad_op.getType(),
-                                       input, padding, constant_value);
+                                       input, padding, rank1_scalar_value);
 
   return success();
 }
