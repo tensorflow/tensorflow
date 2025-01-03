@@ -137,6 +137,7 @@ cc_library(
         "//tensorflow/core/util/tensor_bundle",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + if_not_windows([
         "//tensorflow/core:sparse_ops_op_lib",
