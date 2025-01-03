@@ -65,7 +65,7 @@ namespace m = ::xla::match;
 namespace op = xla::testing::opcode_matchers;
 
 OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
-  if (hlo->opcode() != HloOpcode::kCustomCall) {
+  if (HloPredicateIsNotOp<HloOpcode::kCustomCall>(hlo)) {
     return OpDynamismSupport::kNoSupport;
   }
   if (hlo->custom_call_target() == "OpWithDynamicLowering") {
@@ -591,7 +591,7 @@ ENTRY main {
   HloInstruction* while_inst = nullptr;
   for (HloInstruction* inst :
        module_->entry_computation()->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(inst)) {
       ASSERT_EQ(while_inst, nullptr)
           << "while_inst: " << while_inst->name() << ", inst: " << inst->name();
       while_inst = inst;
@@ -674,7 +674,7 @@ ENTRY main {
   module_ = GetHloModule(hlo_text);
 
   auto op_supports_dynamism = [](HloInstruction* hlo) {
-    if (hlo->opcode() != HloOpcode::kCustomCall) {
+    if (HloPredicateIsNotOp<HloOpcode::kCustomCall>(hlo)) {
       return OpDynamismSupport::kNoSupport;
     }
     if (hlo->custom_call_target() == "ComputeActivations" ||
@@ -697,7 +697,7 @@ ENTRY main {
 
   for (HloComputation* computation : module_->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCustomCall) {
+      if (HloPredicateIsOp<HloOpcode::kCustomCall>(instruction)) {
         EXPECT_NE(instruction->custom_call_target(), "PadToStatic");
         EXPECT_NE(instruction->custom_call_target(), "SliceToDynamic");
         if (instruction->custom_call_target() == "ComputeActivations") {
@@ -705,7 +705,7 @@ ENTRY main {
         } else if (instruction->custom_call_target() == "ApplyGradients") {
           EXPECT_TRUE(instruction->operand(1)->shape().is_dynamic());
         }
-      } else if (instruction->opcode() == HloOpcode::kWhile) {
+      } else if (HloPredicateIsOp<HloOpcode::kWhile>(instruction)) {
         const Shape& shape = instruction->shape();
         EXPECT_TRUE(shape.tuple_shapes(1).is_dynamic());
         EXPECT_TRUE(shape.tuple_shapes(3).is_dynamic());
