@@ -308,7 +308,8 @@ struct XlaDeviceOpRegistrations {
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
     const char* device, const char* jit_device,
-    OpKernel* (*factory)(OpKernelConstruction*), StringPiece kernel_class_name);
+    OpKernel* (*factory)(OpKernelConstruction*),
+    absl::string_view kernel_class_name);
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
