@@ -15,13 +15,15 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/ctc/ctc_beam_search.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
