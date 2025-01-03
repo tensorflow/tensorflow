@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_TESTLIB_LLVM_IR_KERNEL_SPEC_H_
-#define XLA_BACKENDS_CPU_TESTLIB_LLVM_IR_KERNEL_SPEC_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_LLVM_IR_KERNEL_SPEC_H_
+#define XLA_BACKENDS_CPU_CODEGEN_LLVM_IR_KERNEL_SPEC_H_
 
 #include <memory>
 #include <vector>
@@ -47,4 +47,4 @@ class LlvmIrKernelSpec final : public xla::KernelSpec {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_TESTLIB_LLVM_IR_KERNEL_SPEC_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_LLVM_IR_KERNEL_SPEC_H_

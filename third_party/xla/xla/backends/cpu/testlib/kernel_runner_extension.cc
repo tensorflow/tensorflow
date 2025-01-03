@@ -29,11 +29,11 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
-#include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"

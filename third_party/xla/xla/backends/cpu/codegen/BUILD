@@ -232,3 +232,15 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "llvm_ir_kernel_spec",
+    srcs = ["llvm_ir_kernel_spec.cc"],
+    hdrs = ["llvm_ir_kernel_spec.h"],
+    deps = [
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:launch_dim",
+    ],
+)

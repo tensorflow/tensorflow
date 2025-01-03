@@ -23,8 +23,8 @@ cc_library(
     srcs = ["kernel_runner.cc"],
     hdrs = ["kernel_runner.h"],
     deps = [
-        ":llvm_ir_kernel_spec",
         "//xla/backends/cpu/codegen:jit_compiler",
+        "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:kernel",
         "//xla/backends/cpu/runtime:kernel_c_api",
@@ -70,8 +70,8 @@ cc_library(
     srcs = ["llvm_ir_kernel_emitter.cc"],
     hdrs = ["llvm_ir_kernel_emitter.h"],
     deps = [
-        ":llvm_ir_kernel_spec",
         "//xla:util",
+        "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
@@ -93,10 +93,10 @@ cc_library(
     srcs = ["elemental_kernel_emitter.cc"],
     hdrs = ["elemental_kernel_emitter.h"],
     deps = [
-        ":llvm_ir_kernel_spec",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
@@ -125,19 +125,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "llvm_ir_kernel_spec",
-    testonly = 1,
-    srcs = ["llvm_ir_kernel_spec.cc"],
-    hdrs = ["llvm_ir_kernel_spec.h"],
-    deps = [
-        "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/service:buffer_assignment",
-        "//xla/stream_executor:launch_dim",
-    ],
-)
-
 tsl_pybind_extension(
     name = "_extension",
     testonly = 1,
@@ -147,7 +134,6 @@ tsl_pybind_extension(
         ":elemental_kernel_emitter",
         ":kernel_runner",
         ":llvm_ir_kernel_emitter",
-        ":llvm_ir_kernel_spec",
         # placeholder for index annotation deps  # buildcleaner: keep
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -155,6 +141,7 @@ tsl_pybind_extension(
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/backends/cpu/codegen:jit_compiler",
+        "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",

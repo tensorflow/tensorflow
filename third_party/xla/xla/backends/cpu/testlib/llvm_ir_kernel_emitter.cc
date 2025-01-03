@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 
 #include <memory>
 #include <optional>
