@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/coreml/builders/convolution_op_builder.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 
