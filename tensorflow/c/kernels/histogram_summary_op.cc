@@ -15,6 +15,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
