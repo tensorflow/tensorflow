@@ -17,45 +17,20 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/execution_metadata_exporter.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
+#include "tensorflow/compiler/mlir/lite/experimental/tac/tac_importer_exporter.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tac_module.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tflite_import_export.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/utils/utils.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/core/platform/init_main.h"
 
 using llvm::cl::opt;
 
