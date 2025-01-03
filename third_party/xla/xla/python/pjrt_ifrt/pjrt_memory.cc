@@ -31,7 +31,7 @@ char PjRtCompatibleMemory::ID = 0;
 char PjRtMemory::ID = 0;
 
 PjRtMemory::PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory)
-    : client_(client), pjrt_memory_(pjrt_memory), kind_(pjrt_memory->kind()) {
+    : pjrt_memory_(pjrt_memory), kind_(pjrt_memory->kind()) {
   for (xla::PjRtDevice* device : pjrt_memory->devices()) {
     devices_.push_back(*client->LookupPjRtDevice(device));
   }
