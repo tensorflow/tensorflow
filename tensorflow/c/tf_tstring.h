@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TSTRING_H_
 #define TENSORFLOW_C_TF_TSTRING_H_
 
+#include <cstddef>
+
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/ctstring.h"
