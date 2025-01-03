@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
+#include <algorithm>
+#include <memory>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
