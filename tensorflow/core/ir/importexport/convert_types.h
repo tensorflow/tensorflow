@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
 
+#include <cstdint>
+
+#include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_shape.h"
