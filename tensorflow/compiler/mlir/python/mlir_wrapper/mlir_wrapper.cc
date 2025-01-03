@@ -15,18 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 
+#include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
 
 PYBIND11_MODULE(mlir_wrapper, m) {
   m.def("preloadTensorFlowDialects", [](mlir::MLIRContext &context) {
