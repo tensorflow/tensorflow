@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
