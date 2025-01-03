@@ -12,6 +12,11 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 
+#include <memory>
+#include <string>
+
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
