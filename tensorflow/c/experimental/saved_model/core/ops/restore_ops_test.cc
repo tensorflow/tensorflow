@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/tensor_interface.h"
