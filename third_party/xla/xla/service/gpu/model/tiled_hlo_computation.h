@@ -104,10 +104,6 @@ class TiledHloComputation {
     return instructions_.back().get();
   }
 
-  // Returns a string representation of the computation. Used only for error
-  // messages and debugging.
-  std::string ToString() const;
-
  private:
   explicit TiledHloComputation(
       std::vector<std::unique_ptr<TiledHloInstruction>> instructions,
