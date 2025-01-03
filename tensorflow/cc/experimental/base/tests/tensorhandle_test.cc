@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
