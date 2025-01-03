@@ -212,8 +212,8 @@ class OpNode {
     return op_kernel_runner_;
   }
 
-  tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
-                                       int custom_initial_data_size) {
+  absl::Status InitializeNodeDef(const void* custom_initial_data,
+                                 int custom_initial_data_size) {
     if (!custom_initial_data) {
       return tensorflow::errors::Internal(
           "Cannot convert empty data into a valid NodeDef");
@@ -257,8 +257,7 @@ class OpNode {
     return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelRunner(
-      tensorflow::EagerContext* eager_context) {
+  absl::Status BuildOpKernelRunner(tensorflow::EagerContext* eager_context) {
     // Create tensorflow::OpKernel on host CPU.
     TF_ASSIGN_OR_RETURN(op_kernel_runner_,
                         tensorflow::tfrt_stub::OpKernelRunner::Create(
@@ -273,7 +272,7 @@ class OpNode {
     return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelInputs(
+  absl::Status BuildOpKernelInputs(
       const BufferMap* buffer_map,
       tensorflow::tfrt_stub::OpKernelRunState* run_state) {
     run_state->input_tf_tensors.resize(inputs_.Size());
@@ -339,7 +338,7 @@ class OpNode {
       // the Tensorflow tensor.
       CopyShapeAndType(context, *tf_tensor, tensor);
     }
-    tensorflow::StringPiece t_data = tf_tensor->tensor_data();
+    absl::string_view t_data = tf_tensor->tensor_data();
     if (tf_tensor->NumElements() != NumElements(tensor) ||
         tf_tensor->TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
@@ -359,9 +358,9 @@ class OpNode {
 
   // TODO(b/204479285): Release tensors from BufferMap if it has no future
   // uses.
-  tensorflow::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
-                                                   OpDataInfo* shared_info,
-                                                   int node_index) {
+  absl::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
+                                             OpDataInfo* shared_info,
+                                             int node_index) {
     auto* tensors = outputs_.GetTensors();
 
     for (int i = 0; i < outputs_.Size(); ++i) {
@@ -373,8 +372,8 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(absl::StatusCode::kInternal,
-                                      "failed to copy data from TF tensor");
+            return absl::Status(absl::StatusCode::kInternal,
+                                "failed to copy data from TF tensor");
           }
         } else {
           shared_info->buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i),
@@ -419,7 +418,7 @@ struct OpData {
   OpDataInfo shared_info;
 };
 
-tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
+absl::Status DelegateKernel::ExecuteOpKernelRunner(
     tensorflow::tfrt_stub::OpKernelRunState* run_state, TfLiteContext* context,
     OpNode* node_data) {
   const auto& op_kernel_runner = node_data->op_kernel_runner();
@@ -484,7 +483,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   op_data_->nodes.reserve(params->nodes_to_replace->size);
 
   CHECK(params->nodes_to_replace);
-  tensorflow::Status status;
+  absl::Status status;
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
@@ -671,7 +670,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
     }
     c.set_input_tensors(input_tensors_vector);
 
-    tensorflow::Status status = c.construction_status();
+    absl::Status status = c.construction_status();
     if (!status.ok()) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "Shape construction failed for op '%s'", op_name);
@@ -820,7 +819,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
                          NumElements(tensor));
       return kTfLiteError;
     }
-    tensorflow::StringPiece t_data = tf_tensor.tensor_data();
+    absl::string_view t_data = tf_tensor.tensor_data();
     memcpy(tensor->data.raw, t_data.data(), t_data.size());
   }
 
