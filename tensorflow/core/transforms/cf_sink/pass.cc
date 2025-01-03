@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Dominance.h"  // from @llvm-project
