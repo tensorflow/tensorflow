@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/while_loop_invariant_code_motion.h"
 
+#include <cstdint>
+#include <memory>
+
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
