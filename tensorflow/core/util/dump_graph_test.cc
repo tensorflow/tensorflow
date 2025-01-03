@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"

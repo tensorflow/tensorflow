@@ -15,12 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
+#include <cstddef>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/descriptor.h"
+#include "third_party/protobuf/util/json_util.h"
+#include "third_party/protobuf/util/type_resolver_util.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"

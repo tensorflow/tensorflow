@@ -16,6 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/message_lite.h"
+#include "tensorflow/core/util/memmapped_file_system.pb.h"
+
 namespace tensorflow {
 
 absl::Status MemmappedFileSystemWriter::InitializeToFile(

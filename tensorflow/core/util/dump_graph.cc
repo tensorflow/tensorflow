@@ -18,14 +18,26 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <unordered_map>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
+#include "third_party/protobuf/text_format.h"
 #include "xla/tsl/util/env_var.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"

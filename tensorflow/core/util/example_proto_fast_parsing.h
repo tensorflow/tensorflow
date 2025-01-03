@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
 #define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
