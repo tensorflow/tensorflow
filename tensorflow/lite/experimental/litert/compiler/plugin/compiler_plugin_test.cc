@@ -22,7 +22,6 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
@@ -37,7 +36,7 @@ namespace litert::internal {
 namespace {
 
 using ::testing::HasSubstr;
-using ::testing::UniqueTestDirectory;
+using testing::UniqueTestDirectory;
 
 constexpr absl::string_view kTestPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -55,8 +54,9 @@ TEST(CompilerPluginTest, LoadTestPlugin) {
 }
 
 TEST(CompilerPluginTest, LoadTestPluginWithMalformed) {
-  const auto dir = UniqueTestDirectory();
-  Touch(Join({dir, "notLibLiteRt.so"}));
+  const auto dir = UniqueTestDirectory::Create();
+  ASSERT_TRUE(dir);
+  Touch(Join({dir->Str(), "notLibLiteRt.so"}));
 
   auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
 

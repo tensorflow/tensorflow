@@ -99,6 +99,12 @@ litert_test(
         # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
         "nosan",
     ],
+    # This test can be run only on Android and Linux.
+    target_compatible_with = select({
+        "//third_party/bazel_platforms/os:android": [],
+        "//third_party/bazel_platforms/os:linux": [],
+        "//conditions:default": ["//third_party/bazel_platforms:incompatible"],
+    }),
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/litert/test:common",
