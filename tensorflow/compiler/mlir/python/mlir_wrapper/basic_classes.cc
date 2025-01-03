@@ -24,7 +24,7 @@ limitations under the License.
 void init_basic_classes(py::module& m) {
   py::class_<mlir::MLIRContext>(m, "MLIRContext").def(py::init<>());
 
-  py::class_<mlir::Location>(m, "Location");
+  py::class_<mlir::Location> give_me_a_name(m, "Location");
 
   py::class_<mlir::UnknownLoc>(m, "UnknownLoc")
       .def("get", [](mlir::MLIRContext* context) -> mlir::Location {
@@ -38,7 +38,7 @@ void init_basic_classes(py::module& m) {
       .def("push_back", &mlir::Region::push_back)
       .def("size", [](mlir::Region& r) { return r.getBlocks().size(); })
       .def("front", &mlir::Region::front, py::return_value_policy::reference);
-  py::class_<mlir::Block::iterator>(m, "Block_Iterator");
+  py::class_<mlir::Block::iterator> give_me_a_name(m, "Block_Iterator");
   py::class_<mlir::Block>(m, "Block")
       .def("new", ([]() { return new mlir::Block; }),
            py::return_value_policy::reference)
@@ -48,6 +48,6 @@ void init_basic_classes(py::module& m) {
       });
 
   py::class_<mlir::Value>(m, "Value").def("getType", &mlir::Value::getType);
-  py::class_<mlir::OpResult, mlir::Value>(m, "OpResult");
+  py::class_<mlir::OpResult, mlir::Value> give_me_a_name(m, "OpResult");
   py::class_<mlir::BlockArgument, mlir::Value>(m, "BlockArgument");
 }
