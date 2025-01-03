@@ -96,7 +96,7 @@ ENTRY main {
 
   HloInstruction* while_instr = nullptr;
   for (auto* instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       ASSERT_EQ(while_instr, nullptr)
           << "Expected exactly one while instruction in the entry computation "
              "after gather expansion";
@@ -159,7 +159,7 @@ ENTRY main {
 
   HloInstruction* while_instr = nullptr;
   for (auto* instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       ASSERT_EQ(while_instr, nullptr)
           << "Expected exactly one while instruction in the entry computation "
              "after gather expansion";
