@@ -26,6 +26,7 @@ cc_library(
     visibility = ["//xla:internal"],
     deps = [
         ":profiler_c_api_hdrs",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -43,6 +44,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":profiler_c_api_hdrs",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -61,6 +63,7 @@ cc_library(
     deps = [
         ":profiler_c_api_hdrs",
         ":profiler_error",
+        "@com_google_absl//absl/log",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:profiler_collection",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
@@ -82,6 +85,7 @@ xla_cc_test(
         ":profiler_error",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
