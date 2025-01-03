@@ -82,7 +82,7 @@ absl::Status ParseTextFormatFromString(absl::string_view input,
   StringErrorCollector err_collector(&err, /*one-indexing=*/true);
   protobuf::TextFormat::Parser parser;
   parser.RecordErrorsTo(&err_collector);
-  if (!parser.ParseFromString(string(input), output)) {
+  if (!parser.ParseFromString(input, output)) {
     return absl::Status(absl::StatusCode::kInvalidArgument, err);
   }
   return absl::OkStatus();

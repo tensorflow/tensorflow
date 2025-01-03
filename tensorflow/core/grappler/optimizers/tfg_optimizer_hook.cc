@@ -132,7 +132,7 @@ Status TFGGrapplerOptimizer::Optimize(
         &status, "when importing GraphDef to MLIR module in GrapplerHook");
     // Import errors are not fatal. Log the error here and return `Aborted` so
     // the meta optimizer knows to swallow the error.
-    LOG(ERROR) << name() << " failed: " << status.ToString();
+    LOG(ERROR) << name() << " failed: " << status;
     return absl::AbortedError(status.message());
   }
   metrics.ReportAndStop();
