@@ -48,6 +48,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:status",
     ],
 )
