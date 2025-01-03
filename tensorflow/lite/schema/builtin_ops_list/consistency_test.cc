@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <fstream>
+#include <ios>
+#include <iterator>
+#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
