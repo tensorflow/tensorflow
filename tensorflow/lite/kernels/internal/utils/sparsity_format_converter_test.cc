@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 
