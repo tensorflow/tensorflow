@@ -602,6 +602,22 @@ TEST_F(ConversionTest, MtkNeuronSettings) {
   EXPECT_EQ(output_settings.inference_abort_time_ms(), 42);
 }
 
+TEST_F(ConversionTest, IntelOpenVINOSettings) {
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->intel_openvino_settings =
+      std::make_unique<IntelOpenVINOSettingsT>();
+  IntelOpenVINOSettingsT* input_settings =
+      settings_.tflite_settings->intel_openvino_settings.get();
+
+  input_settings->allow_fp16_precision_for_fp32 = true;
+
+  const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  const proto::IntelOpenVINOSettings& output_settings =
+      compute.tflite_settings().intel_openvino_settings();
+
+  EXPECT_TRUE(output_settings.allow_fp16_precision_for_fp32());
+}
+
 TEST_F(ConversionTest, MiniBenchmarkSettings) {
   settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
   settings_.tflite_settings->cpu_settings = std::make_unique<CPUSettingsT>();
