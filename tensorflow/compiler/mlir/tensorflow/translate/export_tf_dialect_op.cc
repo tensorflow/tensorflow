@@ -46,8 +46,8 @@ template <typename ContainerT,
           typename = typename std::enable_if<
               std::is_same<mlir::Type, decltype(*std::declval<ContainerT>()
                                                      .begin())>::value>::type>
-Status SetTypeAttribute(absl::string_view name, ContainerT types,
-                        AttrValueMap* values) {
+absl::Status SetTypeAttribute(absl::string_view name, ContainerT types,
+                              AttrValueMap* values) {
   AttrValue value;
   auto& type_list = *value.mutable_list();
   for (auto type : types) {
@@ -93,7 +93,7 @@ void SetShapeAttribute(absl::string_view name, ContainerT shapes,
 // Collects all the unregistered attributes for an TF dialect operation.
 // Attributes "name" and "device" are not included because they are not part
 // of an TF op attributes.
-Status GetUnregisteredAttrs(
+absl::Status GetUnregisteredAttrs(
     mlir::Operation* inst, const tensorflow::OpRegistrationData* op_reg_data,
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
@@ -166,10 +166,11 @@ absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
 
 // Populates all derived attributes of a MLIR operation in a proto
 // map<string, AttrValue>.
-Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
-                                 mlir::DictionaryAttr derived_attrs,
-                                 bool ignore_unregistered_attrs,
-                                 AttrValueMap* attributes) {
+absl::Status PopulateDerivedAttributes(mlir::Operation* inst,
+                                       llvm::StringRef name,
+                                       mlir::DictionaryAttr derived_attrs,
+                                       bool ignore_unregistered_attrs,
+                                       AttrValueMap* attributes) {
   if (derived_attrs) {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         ConvertAttributes(derived_attrs.getValue(), /*attrs_to_ignore=*/{},
@@ -219,7 +220,7 @@ void RemoveIdentityCast(NodeDef* node_def) {
 
 }  // namespace
 
-Status GetAttrValuesFromOperation(
+absl::Status GetAttrValuesFromOperation(
     mlir::Operation* inst, llvm::StringRef name,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs, AttrValueMap* attributes) {
