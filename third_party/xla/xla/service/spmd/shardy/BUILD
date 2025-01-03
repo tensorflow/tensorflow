@@ -37,6 +37,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms:hlo_dce",
         "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/hlo/utils:hlo_sharding_util",

@@ -57,6 +57,34 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
   }
   return absl::OkStatus();
 }
+
+// TODO(b/385393967) Separate createCanonicalizerPass from StableHLO -> HLO
+// Translation
+absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
+  mlir::MLIRContext* context = module->getContext();
+  mlir::PassManager pm(context);
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
+  if (run_canonicalizer) {
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  }
+  // In order to export to XLA, we must sink constants to control flow
+  // regions, since XLA uses functional control flow.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  if (failed(pm.run(module))) {
+    VLOG(1) << "MHLO->HLO lowering passes failed. Module:\n" << module;
+    return diagnostic_handler.ConsumeStatus();
+  }
+
+  VLOG(5) << "MHLO module after lowering, before HLO import, Module:\n"
+          << module;
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
@@ -113,33 +141,29 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  mlir::MLIRContext* context = module->getContext();
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
-  {
-    mlir::PassManager pm(context);
-    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    // In order to export to XLA, we must sink constants to control flow
-    // regions, since XLA uses functional control flow.
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createSinkConstantsToControlFlowPass());
-    if (failed(pm.run(module))) {
-      VLOG(1) << "MHLO->HLO lowering passes failed.";
-      module->dump();
-      return diagnostic_handler.ConsumeStatus();
-    }
-
-    VLOG(5) << "MHLO module after lowering, before HLO import ";
-    if (VLOG_IS_ON(5)) {
-      module->dump();
-    }
-  }
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/true));
 
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = false;
   options.use_tuple_args = false;
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
+  return absl::OkStatus();
+}
+
+absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
+                                                    xla::HloProto* hlo_proto,
+                                                    bool use_tuple_args) {
+  if (!module) return absl::InvalidArgumentError("Module is null");
+
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/false));
+
+  mlir::MlirToHloConversionOptions options;
+  options.return_tuple = false;
+  options.use_tuple_args = use_tuple_args;
+  // Remove attributes introduced by `import_all_computation=true` at
+  // ConvertHloToStablehlo.
+  module->removeAttr("mhlo.xla_entry_computation_parameter_layouts");
+  module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
   return absl::OkStatus();
 }

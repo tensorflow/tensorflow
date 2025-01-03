@@ -48,6 +48,15 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
 absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto);
 
+// Convert StableHLO module to HloModuleProto.
+// Some platforms run out of memory when the argument list is too long.
+// This API wraps the arguments in a tuple (if use_tuple_args = true)
+// as a workaround. The long-term solution is to add an HLO pass to do this.
+// In general, prefer the other ConvertStablehloToHloProto method.
+absl::Status ConvertStablehloWithManyArgsToHloProto(
+    mlir::ModuleOp module, xla::HloProto* hlo_proto,
+    bool use_tuple_args = false);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_STABLEHLO_H_
