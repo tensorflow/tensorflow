@@ -53,12 +53,6 @@ class PartitioningAlgorithm {
   // Returns the kind of this algorithm.
   const AlgorithmKind& kind() const;
 
-  // Returns the name of this algorithm.
-  absl::string_view name() const;
-
-  // Returns the number of shards/partitions.
-  int64_t num_partitions() const;
-
   // Assigns shardings to the given module.
   virtual absl::StatusOr<bool> Run(HloModule* module) const = 0;
 
