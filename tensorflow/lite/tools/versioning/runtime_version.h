@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_RUNTIME_VERSION_H_
 
+#include <cstdint>
 #include <string>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
