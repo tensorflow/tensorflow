@@ -42,7 +42,7 @@ absl::Status NumElements(const TensorT& tensor, uint64_t* num_elements);
 
 // LINT.IfChange(fill_per_channel_min_max)
 // Populates the max and min values for per channel quantization.
-absl::Status FillPerChannelMinMax(const float* const input,
+absl::Status FillPerChannelMinMax(const float* input,
                                   const std::vector<int32_t>& dimension,
                                   int32_t channel_dim_index,
                                   QuantizationParametersT* quantization_params);
@@ -62,7 +62,7 @@ absl::Status FillPerChannelMinMax(const float* const input,
 // - output_value is the output data, the size of which equals the number of
 //   inputs.
 absl::Status SymmetricPerChannelQuantization(TensorT* tensor,
-                                             const float* const input,
+                                             const float* input,
                                              int32_t channel_dim_index,
                                              std::vector<float>* output_scales,
                                              std::vector<int8_t>* output_value);
@@ -70,7 +70,7 @@ absl::Status SymmetricPerChannelQuantization(TensorT* tensor,
 
 // LINT.IfChange(symmetric_per_channel_quantize_values)
 // Quantize the values given an array of scales.
-void SymmetricPerChannelQuantizeValues(const float* const input,
+void SymmetricPerChannelQuantizeValues(const float* input,
                                        const std::vector<float>& scales_inv,
                                        const std::vector<int32_t>& dimension,
                                        int32_t channel_dim_index,
