@@ -328,10 +328,19 @@ absl::Status CopyAllocation::Process() {
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
-    TF_ASSIGN_OR_RETURN(copy_done_,
-                        computation->CreateAsyncInstructions(
-                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
-                            HloInstruction::kMainExecutionThread, false));
+    if (sync_mem_op_->opcode() == HloOpcode::kSlice) {
+      TF_ASSIGN_OR_RETURN(copy_done_,
+                          computation->CreateAsyncInstructions(
+                              sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
+                              HloInstruction::kMainExecutionThread, false));
+    } else if (sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
+      TF_ASSIGN_OR_RETURN(
+          copy_done_,
+          computation->CreateAsyncInstructions(
+              sync_mem_op_,
+              {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})},
+              HloInstruction::kMainExecutionThread, false));
+    }
     copy_start_ = copy_done_->mutable_operand(0);
     // If the shape of the copy start operand is not compatible with the
     // shape of the producing instruction, we insert a bitcast to make them
