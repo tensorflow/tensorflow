@@ -90,7 +90,7 @@ limitations under the License.
 namespace xla::gpu {
 
 using ExecutionScopeId = se::CommandBuffer::ExecutionScopeId;
-using MemoryAccess = CommandBufferCmd::MemoryAccess;
+using MemoryAccess = BufferUse::MemoryAccess;
 
 std::string CommandBufferCmdString(CommandBufferCmdType type) {
   switch (type) {
@@ -196,13 +196,13 @@ CommandBufferCmdSequence::CommandBufferCmdSequence(
     : synchronization_mode_(synchronization_mode) {}
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
-  for (const CommandBufferCmd::BufferUsage& buffer : cmd->buffers()) {
+  for (const BufferUse& buffer : cmd->buffers()) {
     buffers_.insert(buffer);
-    allocs_indices_.insert(buffer.slice.index());
+    allocs_indices_.insert(buffer.slice().index());
   }
 
   ExecutionStreamId execution_stream_id = cmd->execution_stream_id();
-  CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
+  CommandBufferCmd::BufferUseVector buffers = cmd->buffers();
   bool requires_barrier = HasConflicts(execution_stream_id, buffers);
 
   // Always add barriers between commands if we want to serialize execution.
@@ -244,7 +244,7 @@ absl::Status CommandBufferCmdSequence::Initialize(
 
 bool CommandBufferCmdSequence::HasConflicts(
     ExecutionStreamId execution_stream_id,
-    const CommandBufferCmd::BufferUsageVector& buffers) {
+    const CommandBufferCmd::BufferUseVector& buffers) {
   auto& rwset = read_write_sets_[execution_stream_id];
 
   // Returns true if slice overlaps with any of the slices in read set.
@@ -264,19 +264,21 @@ bool CommandBufferCmdSequence::HasConflicts(
   };
 
   return absl::c_any_of(buffers, [&](const auto& buffer) {
-    return buffer.access == MemoryAccess::kWrite
-               ? write_overlap(buffer.slice) || read_overlap(buffer.slice)
-               : write_overlap(buffer.slice);
+    return buffer.access() == MemoryAccess::kWrite
+               ? write_overlap(buffer.slice()) || read_overlap(buffer.slice())
+               : write_overlap(buffer.slice());
   });
 }
 
 void CommandBufferCmdSequence::TrackBuffers(
     ExecutionStreamId execution_stream_id,
-    const CommandBufferCmd::BufferUsageVector& buffers) {
+    const CommandBufferCmd::BufferUseVector& buffers) {
   auto& rwset = read_write_sets_[execution_stream_id];
-  for (const CommandBufferCmd::BufferUsage& buffer : buffers) {
-    if (buffer.access == MemoryAccess::kWrite) rwset.write.insert(buffer.slice);
-    if (buffer.access == MemoryAccess::kRead) rwset.read.insert(buffer.slice);
+  for (const BufferUse& buffer : buffers) {
+    if (buffer.access() == MemoryAccess::kWrite)
+      rwset.write.insert(buffer.slice());
+    if (buffer.access() == MemoryAccess::kRead)
+      rwset.read.insert(buffer.slice());
   }
 }
 
@@ -351,8 +353,8 @@ absl::Status CommandBufferCmdSequence::Record(
   return absl::OkStatus();
 }
 
-const absl::flat_hash_set<CommandBufferCmd::BufferUsage>&
-CommandBufferCmdSequence::buffers() const {
+const absl::flat_hash_set<BufferUse>& CommandBufferCmdSequence::buffers()
+    const {
   return buffers_;
 }
 
@@ -374,13 +376,13 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
 
 TracedCommandBuffer::TracedCommandBuffer(
     const CommandBufferCmd* trace_cmd,
-    CommandBufferCmd::BufferUsageVector buffers, int64_t capacity)
+    CommandBufferCmd::BufferUseVector buffers, int64_t capacity)
     : trace_cmd_(trace_cmd), capacity_(capacity), entries_(capacity) {
   CHECK_GT(capacity, 0) << "capacity must be larger than 0";  // NOLINT
   // Collect unique buffer allocation indices in a set first and convert to
   // vector as flat hash set iteration has measurable overheads.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
-  for (auto& buffer : buffers) allocs_indices.insert(buffer.slice.index());
+  for (auto& buffer : buffers) allocs_indices.insert(buffer.slice().index());
   allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
@@ -540,7 +542,7 @@ ComputationIdCmd::ComputationIdCmd(ExecutionStreamId execution_stream_id,
       dest_(dest),
       kind_(kind) {}
 
-CommandBufferCmd::BufferUsageVector ComputationIdCmd::buffers() {
+CommandBufferCmd::BufferUseVector ComputationIdCmd::buffers() {
   return {{dest_, MemoryAccess::kWrite}};
 }
 
@@ -673,8 +675,8 @@ absl::Status LaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 dims_.block_counts(), *kernel, *kernel_args);
 }
 
-CommandBufferCmd::BufferUsageVector LaunchCmd::buffers() {
-  BufferUsageVector buffers;
+CommandBufferCmd::BufferUseVector LaunchCmd::buffers() {
+  BufferUseVector buffers;
   for (int32_t i = 0; i < args_.size(); ++i) {
     buffers.emplace_back(args_[i], args_access_[i]);
   }
@@ -745,8 +747,8 @@ absl::Status CustomKernelLaunchCmd::Record(
       custom_kernel_.block_dims(), *kernel, kernel_args);
 }
 
-CommandBufferCmd::BufferUsageVector CustomKernelLaunchCmd::buffers() {
-  BufferUsageVector buffers;
+CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() {
+  BufferUseVector buffers;
   for (int32_t i = 0; i < args_.size(); ++i) {
     buffers.emplace_back(args_[i], args_access_[i]);
   }
@@ -789,7 +791,7 @@ absl::Status MemcpyDeviceToDeviceCmd::Record(
                                               num_bytes_);
 }
 
-CommandBufferCmd::BufferUsageVector MemcpyDeviceToDeviceCmd::buffers() {
+CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() {
   return {{dst_, MemoryAccess::kWrite}, {src_, MemoryAccess::kRead}};
 }
 
@@ -821,7 +823,7 @@ absl::Status MemzeroCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 /*num_elements=*/dst_.size());
 }
 
-CommandBufferCmd::BufferUsageVector MemzeroCmd::buffers() {
+CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() {
   return {{dst_, MemoryAccess::kWrite}};
 }
 
@@ -856,7 +858,7 @@ absl::Status Memset32Cmd::Record(const Thunk::ExecuteParams& execute_params,
       /*num_elements=*/dst_.size() / sizeof(uint32_t));
 }
 
-CommandBufferCmd::BufferUsageVector Memset32Cmd::buffers() {
+CommandBufferCmd::BufferUseVector Memset32Cmd::buffers() {
   return {{dst_, MemoryAccess::kWrite}};
 }
 
@@ -893,8 +895,8 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
 
 bool IfCmd::force_update() { return then_commands_.force_update(); }
 
-CommandBufferCmd::BufferUsageVector IfCmd::buffers() {
-  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+CommandBufferCmd::BufferUseVector IfCmd::buffers() {
+  absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(pred_, MemoryAccess::kRead);
   buffers.insert(then_commands_.buffers().begin(),
                  then_commands_.buffers().end());
@@ -941,8 +943,8 @@ bool IfElseCmd::force_update() {
   return (then_commands_.force_update() || else_commands_.force_update());
 }
 
-CommandBufferCmd::BufferUsageVector IfElseCmd::buffers() {
-  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+CommandBufferCmd::BufferUseVector IfElseCmd::buffers() {
+  absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(pred_, MemoryAccess::kRead);
   buffers.insert(then_commands_.buffers().begin(),
                  then_commands_.buffers().end());
@@ -991,8 +993,8 @@ bool CaseCmd::force_update() {
                         [](const auto& seq) { return seq.force_update(); });
 }
 
-CommandBufferCmd::BufferUsageVector CaseCmd::buffers() {
-  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+CommandBufferCmd::BufferUseVector CaseCmd::buffers() {
+  absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(index_, MemoryAccess::kRead);
   for (auto& branch : branches_commands_) {
     buffers.insert(branch.buffers().begin(), branch.buffers().end());
@@ -1038,8 +1040,8 @@ absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
 
 bool ForCmd::force_update() { return body_commands_.force_update(); }
 
-CommandBufferCmd::BufferUsageVector ForCmd::buffers() {
-  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+CommandBufferCmd::BufferUseVector ForCmd::buffers() {
+  absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(loop_counter_, MemoryAccess::kWrite);
   buffers.insert(body_commands_.buffers().begin(),
                  body_commands_.buffers().end());
@@ -1088,8 +1090,8 @@ bool WhileCmd::force_update() {
   return (cond_commands_.force_update() || body_commands_.force_update());
 }
 
-CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {
-  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+CommandBufferCmd::BufferUseVector WhileCmd::buffers() {
+  absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(pred_, MemoryAccess::kWrite);
   buffers.insert(cond_commands_.buffers().begin(),
                  cond_commands_.buffers().end());
@@ -1151,7 +1153,7 @@ absl::Status GemmCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
+CommandBufferCmd::BufferUseVector GemmCmd::buffers() {
   return {{lhs_buffer_, MemoryAccess::kRead},
           {rhs_buffer_, MemoryAccess::kRead},
           {output_buffer_, MemoryAccess::kWrite},
@@ -1291,8 +1293,8 @@ absl::Status CublasLtCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector CublasLtCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector CublasLtCmd::buffers() {
+  BufferUseVector buffer_usage;
   buffer_usage.reserve(13);
   buffer_usage.push_back({a_buffer_, MemoryAccess::kRead});
   buffer_usage.push_back({b_buffer_, MemoryAccess::kRead});
@@ -1365,8 +1367,8 @@ absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector CuDnnCmd::buffers() {
-  CommandBufferCmd::BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector CuDnnCmd::buffers() {
+  CommandBufferCmd::BufferUseVector buffer_usage;
   buffer_usage.reserve(args_.size());
   for (int i = 0; i < args_.size() - 1; ++i) {
     buffer_usage.push_back({args_[i], MemoryAccess::kRead});
@@ -1536,8 +1538,8 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
 #endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {
-  CommandBufferCmd::BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() {
+  CommandBufferCmd::BufferUseVector buffer_usage;
   for (auto& slices : {operands_, results_}) {
     for (const std::optional<Slice>& slice : slices) {
       if (!slice.has_value()) continue;
@@ -1570,7 +1572,7 @@ absl::Status BarrierCmd::Record(const Thunk::ExecuteParams& execute_params,
   return absl::OkStatus();
 }
 
-BarrierCmd::BufferUsageVector BarrierCmd::buffers() { return {}; }
+BarrierCmd::BufferUseVector BarrierCmd::buffers() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // CollectiveCmd
@@ -1688,8 +1690,8 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector AllReduceCmd::buffers() {
+  BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
@@ -1755,8 +1757,8 @@ absl::Status ReduceScatterCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector ReduceScatterCmd::buffers() {
+  BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
@@ -1819,8 +1821,8 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector AllToAllCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector AllToAllCmd::buffers() {
+  BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
@@ -1882,8 +1884,8 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector AllGatherCmd::buffers() {
+  BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
@@ -1947,8 +1949,8 @@ absl::Status CollectiveBroadcastCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUsageVector CollectiveBroadcastCmd::buffers() {
-  BufferUsageVector buffer_usage;
+CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() {
+  BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
@@ -2188,14 +2190,15 @@ absl::Status DynamicSliceFusionCmd::Record(
                                                 *nested_command_buffer);
 }
 
-CommandBufferCmd::BufferUsageVector DynamicSliceFusionCmd::buffers() {
-  CommandBufferCmd::BufferUsageVector buffers;
+CommandBufferCmd::BufferUseVector DynamicSliceFusionCmd::buffers() {
+  CommandBufferCmd::BufferUseVector buffers;
   auto embed_buffers = embedded_commands_->buffers();
   for (auto buffer_usage : embed_buffers) {
-    CHECK(embeded_to_origin_slice_map_[buffer_usage.slice.index()].has_value());
+    CHECK(
+        embeded_to_origin_slice_map_[buffer_usage.slice().index()].has_value());
     buffers.emplace_back(
-        embeded_to_origin_slice_map_[buffer_usage.slice.index()].value(),
-        buffer_usage.access);
+        embeded_to_origin_slice_map_[buffer_usage.slice().index()].value(),
+        buffer_usage.access());
   }
   return buffers;
 }
