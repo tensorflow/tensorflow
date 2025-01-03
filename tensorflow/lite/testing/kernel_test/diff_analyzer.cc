@@ -16,8 +16,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/testing/split.h"
