@@ -24,6 +24,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
