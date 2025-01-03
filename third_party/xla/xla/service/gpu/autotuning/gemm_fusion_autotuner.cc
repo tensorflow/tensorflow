@@ -898,6 +898,15 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
           std::min<int>(config.num_warps, meta_elements / threads_per_warp);
     }
 
+    // TMA can only load up to 256 elements in one direction and multiple calls
+    // to TMA has not been implemented yet.
+    constexpr int kTmaBlockDimLimit = 256;
+    if (debug_options_.xla_gpu_experimental_enable_triton_tma()) {
+      config.block_m = std::min(config.block_m, kTmaBlockDimLimit);
+      config.block_n = std::min(config.block_n, kTmaBlockDimLimit);
+      config.block_k = std::min(config.block_k, kTmaBlockDimLimit);
+    }
+
     if (added.insert(config).second) {
       result_configs.push_back(config);
     }

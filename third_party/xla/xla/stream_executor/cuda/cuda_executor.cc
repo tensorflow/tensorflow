@@ -45,6 +45,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -92,6 +93,8 @@ namespace stream_executor {
 namespace gpu {
 
 namespace {
+
+using xla::gpu::TmaDescriptor;
 
 bool ShouldLaunchDelayKernel() {
   // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
@@ -1332,6 +1335,86 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
     return absl::NotFoundError("Kernel not loaded in this executor.");
   }
   return static_cast<const CudaKernel*>(*it);
+}
+
+absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
+    xla::gpu::TmaDescriptor tma_desc, void* global_address) {
+  CUtensorMapDataType data_type;
+  switch (tma_desc.element_size()) {
+    case 1:
+      data_type = CU_TENSOR_MAP_DATA_TYPE_UINT8;
+      break;
+    case 2:
+      data_type = CU_TENSOR_MAP_DATA_TYPE_UINT16;
+      break;
+    case 4:
+      data_type = CU_TENSOR_MAP_DATA_TYPE_UINT32;
+      break;
+    case 8:
+      data_type = CU_TENSOR_MAP_DATA_TYPE_UINT64;
+      break;
+    default:
+      CHECK(false) << absl::StrFormat("unsupported element size: %d",
+                                      tma_desc.element_size());
+  }
+  CUtensorMapSwizzle swizzle = CU_TENSOR_MAP_SWIZZLE_NONE;
+  switch (tma_desc.swizzle()) {
+    case TmaDescriptor::TMA_SWIZZLE_NONE:
+      break;
+    case TmaDescriptor::TMA_SWIZZLE_32B:
+      swizzle = CU_TENSOR_MAP_SWIZZLE_32B;
+      break;
+    case TmaDescriptor::TMA_SWIZZLE_64B:
+      swizzle = CU_TENSOR_MAP_SWIZZLE_64B;
+      break;
+    case TmaDescriptor::TMA_SWIZZLE_128B:
+      swizzle = CU_TENSOR_MAP_SWIZZLE_128B;
+      break;
+  }
+  CUtensorMapL2promotion l2_promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;
+  switch (tma_desc.l2_promotion()) {
+    case TmaDescriptor::TMA_L2_PROMOTION_NONE:
+      break;
+    case TmaDescriptor::TMA_L2_PROMOTION_64B:
+      l2_promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_64B;
+      break;
+    case TmaDescriptor::TMA_L2_PROMOTION_128B:
+      l2_promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B;
+      break;
+    case TmaDescriptor::TMA_L2_PROMOTION_256B:
+      l2_promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_256B;
+      break;
+  }
+  CUtensorMapFloatOOBfill float_oob_fill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
+  switch (tma_desc.float_oob_fill()) {
+    case TmaDescriptor::TMA_FLOAT_OOB_FILL_NONE:
+      break;
+    case TmaDescriptor::TMA_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA:
+      float_oob_fill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA;
+      break;
+  }
+  CUtensorMapInterleave interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
+  switch (tma_desc.interleave()) {
+    case TmaDescriptor::TMA_INTERLEAVE_NONE:
+      break;
+    case TmaDescriptor::TMA_INTERLEAVE_16B:
+      interleave = CU_TENSOR_MAP_INTERLEAVE_16B;
+      break;
+    case TmaDescriptor::TMA_INTERLEAVE_32B:
+      interleave = CU_TENSOR_MAP_INTERLEAVE_32B;
+      break;
+  }
+  CUtensorMap tensor_map;
+  CHECK_EQ(cuTensorMapEncodeTiled(
+               &tensor_map, data_type, tma_desc.rank(), global_address,
+               &tma_desc.global_dims()[0], &tma_desc.global_strides()[0],
+               &tma_desc.box_dims()[0], &tma_desc.element_strides()[0],
+               interleave, swizzle, l2_promotion, float_oob_fill),
+           CUDA_SUCCESS);
+  DeviceMemoryBase device_tensor_map = Allocate(sizeof(tensor_map), 0);
+  TF_RETURN_IF_ERROR(
+      SynchronousMemcpy(&device_tensor_map, &tensor_map, sizeof(tensor_map)));
+  return device_tensor_map;
 }
 }  // namespace gpu
 }  // namespace stream_executor

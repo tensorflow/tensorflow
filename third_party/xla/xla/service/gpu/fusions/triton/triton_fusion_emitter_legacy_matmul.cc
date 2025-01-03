@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -2023,7 +2024,8 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
                         absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const BlockLevelParameters&) {
+                        mlir::triton::FuncOp fn, const BlockLevelParameters&,
+                        TmaMetadata& tma_metadata) {
   auto backend_config =
       fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
 

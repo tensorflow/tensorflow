@@ -95,10 +95,12 @@ absl::Status CreateTritonIrAndFileCheck(
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
   mlir::MLIRContext context;
+  TmaMetadata tma_metadata;
   TF_ASSIGN_OR_RETURN(
-      auto module, CreateTritonModule("triton_fn", fusion,
-                                      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                                      block_level_parameters, context));
+      auto module,
+      CreateTritonModule("triton_fn", fusion,
+                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                         block_level_parameters, context, tma_metadata));
 
   std::string out;
   llvm::raw_string_ostream os(out);

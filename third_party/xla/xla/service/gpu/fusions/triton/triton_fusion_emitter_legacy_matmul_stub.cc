@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -39,7 +40,8 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& builder,
                         absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const BlockLevelParameters&) {
+                        mlir::triton::FuncOp fn, const BlockLevelParameters&,
+                        TmaMetadata& tma_metadata) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 

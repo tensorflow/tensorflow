@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -1464,6 +1465,33 @@ ENTRY e {
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.num_ctas > 2; }));
+}
+
+TEST_F(GemmFusionAutotunerTest, LimitTmaTileSizesTo256) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+  debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          GetCudaComputeCapability(), GetToolkitVersion(), debug_options));
+  EXPECT_TRUE(std::none_of(
+      configs.begin(), configs.end(), [](const TritonGemmConfig& config) {
+        return config.block_m > 256 || config.block_n > 256 ||
+               config.block_k > 256;
+      }));
 }
 
 }  // namespace
