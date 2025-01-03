@@ -20,9 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

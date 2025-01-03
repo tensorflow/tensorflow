@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/port.h"
 

@@ -20,8 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow::full_type {
