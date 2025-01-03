@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace mlir {
 namespace TF {

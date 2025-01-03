@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <climits>
-#include <cstdint>
-#include <numeric>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
