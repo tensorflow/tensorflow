@@ -359,9 +359,9 @@ ENTRY main {
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);
-    if (root_operand->opcode() == HloOpcode::kAdd) {
+    if (HloPredicateIsOp<HloOpcode::kAdd>(root_operand)) {
       on_false_add_idx = i;
-    } else if (root_operand->opcode() == HloOpcode::kSubtract) {
+    } else if (HloPredicateIsOp<HloOpcode::kSubtract>(root_operand)) {
       on_false_sub_idx = i;
     }
   }
@@ -425,9 +425,9 @@ ENTRY main {
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);
-    if (root_operand->opcode() == HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(root_operand)) {
       on_false_gte_idx = i;
-    } else if (root_operand->opcode() == HloOpcode::kConstant) {
+    } else if (HloPredicateIsOp<HloOpcode::kConstant>(root_operand)) {
       on_false_const_idx = i;
     }
   }
@@ -501,9 +501,9 @@ ENTRY main {
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);
-    if (root_operand->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(root_operand)) {
       on_false_const_idx = i;
-    } else if (root_operand->opcode() == HloOpcode::kGetTupleElement) {
+    } else if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(root_operand)) {
       on_false_gte_idx = i;
     }
   }

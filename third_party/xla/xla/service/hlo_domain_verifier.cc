@@ -52,7 +52,7 @@ absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
     for (HloComputation* computation :
          module_->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kDomain) {
+        if (HloPredicateIsOp<HloOpcode::kDomain>(instruction)) {
           TF_RET_CHECK(instruction->user_side_metadata().Kind() ==
                        instruction->operand_side_metadata().Kind())
               << instruction->ToString();
