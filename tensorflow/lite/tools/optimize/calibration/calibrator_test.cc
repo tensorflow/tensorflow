@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <memory>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
