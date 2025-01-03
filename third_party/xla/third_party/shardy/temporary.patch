@@ -1,15 +1,85 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..94ea61a 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,65 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/clang/test/Driver/spirv-openmp-toolchain.c b/clang/test/Driver/spirv-openmp-toolchain.c
++--- a/clang/test/Driver/spirv-openmp-toolchain.c
+++++ b/clang/test/Driver/spirv-openmp-toolchain.c
++@@ -9,7 +9,7 @@
++ // CHECK: "-cc1" "-triple" "x86_64-unknown-linux-gnu"{{.*}}"-emit-obj"
++ // CHECK: clang-linker-wrapper{{.*}} "-o" "a.out"
++ 
++-// RUN: %clang -ccc-print-phases --target=x86_64-unknown-linux-gnu -fopenmp -fopenmp-targets=spirv64-intel %s 2>&1 \
+++// RUN: %clang -ccc-print-phases --target=x86_64-unknown-linux-gnu -fopenmp=libomp -fopenmp-targets=spirv64-intel %s 2>&1 \
++ // RUN: | FileCheck --check-prefix=CHECK-PHASES %s
++ 
++ // CHECK-PHASES: 0: input, "[[INPUT:.+]]", c, (host-openmp)
++@@ -28,8 +28,8 @@
++ // CHECK-PHASES: 13: assembler, {12}, object, (host-openmp)
++ // CHECK-PHASES: 14: clang-linker-wrapper, {13}, image, (host-openmp)
++ 
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -fopenmp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -fopenmp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -fopenmp=libomp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -fopenmp=libomp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS
++ 
++ // CHECK-BINDINGS: "x86_64-unknown-linux-gnu" - "clang", inputs: ["[[INPUT:.+]]"], output: "[[HOST_BC:.+]]"
++ // CHECK-BINDINGS: "spirv64-intel" - "clang", inputs: ["[[INPUT]]", "[[HOST_BC]]"], output: "[[DEVICE_TEMP_BC:.+]]"
++@@ -38,8 +38,8 @@
++ // CHECK-BINDINGS: "x86_64-unknown-linux-gnu" - "clang", inputs: ["[[HOST_BC]]", "[[DEVICE_IMAGE]]"], output: "[[HOST_OBJ:.+]]"
++ // CHECK-BINDINGS: "x86_64-unknown-linux-gnu" - "Offload::Linker", inputs: ["[[HOST_OBJ]]"], output: "a.out"
++ 
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -save-temps -fopenmp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS-TEMPS
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -save-temps -fopenmp -fopenmp-targets=spirv64-intel %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS-TEMPS
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -save-temps -fopenmp=libomp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS-TEMPS
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -ccc-print-bindings -save-temps -fopenmp=libomp -fopenmp-targets=spirv64-intel %s 2>&1 | FileCheck %s --check-prefix=CHECK-BINDINGS-TEMPS
++ // CHECK-BINDINGS-TEMPS: "x86_64-unknown-linux-gnu" - "clang", inputs: ["[[INPUT:.+]]"], output: "[[HOST_PP:.+]]"
++ // CHECK-BINDINGS-TEMPS: "x86_64-unknown-linux-gnu" - "clang", inputs: ["[[HOST_PP]]"], output: "[[HOST_BC:.+]]"
++ // CHECK-BINDINGS-TEMPS: "spirv64-intel" - "clang", inputs: ["[[INPUT]]"], output: "[[DEVICE_PP:.+]]"
++@@ -51,14 +51,14 @@
++ // CHECK-BINDINGS-TEMPS: "x86_64-unknown-linux-gnu" - "clang::as", inputs: ["[[HOST_ASM]]"], output: "[[HOST_OBJ:.+]]"
++ // CHECK-BINDINGS-TEMPS: "x86_64-unknown-linux-gnu" - "Offload::Linker", inputs: ["[[HOST_OBJ]]"], output: "a.out"
++ 
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -emit-llvm -S -fopenmp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-EMIT-LLVM-IR
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -emit-llvm -S -fopenmp=libomp -fopenmp-targets=spirv64-intel -nogpulib %s 2>&1 | FileCheck %s --check-prefix=CHECK-EMIT-LLVM-IR
++ // CHECK-EMIT-LLVM-IR: "-cc1" "-triple" "spirv64-intel"{{.*}}"-emit-llvm-bc"
++ 
++-// RUN: %clang -### --target=x86_64-unknown-linux-gnu -fopenmp -fopenmp-targets=spirv64-intel \
+++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -fopenmp=libomp -fopenmp-targets=spirv64-intel \
++ // RUN: --sysroot=%S/Inputs/spirv-openmp/ %s 2>&1 | FileCheck --check-prefix=CHECK-GPULIB %s
++ // CHECK-GPULIB: "-cc1" "-triple" "spirv64-intel"{{.*}}"-mlink-builtin-bitcode" "{{.*}}libomptarget-spirv64.bc"
++ 
++-// RUN: not %clang -### --target=x86_64-unknown-linux-gnu -fopenmp --offload-arch=spirv64-intel \
+++// RUN: not %clang -### --target=x86_64-unknown-linux-gnu -fopenmp=libomp --offload-arch=spirv64-intel \
++ // RUN:        --libomptarget-spirv-bc-path=%t/ -nogpulib %s 2>&1 \
++ // RUN: | FileCheck %s --check-prefix=CHECK-OFFLOAD-ARCH-ERROR
++ // CHECK-OFFLOAD-ARCH-ERROR: error: failed to deduce triple for target architecture 'spirv64-intel'; specify the triple using '-fopenmp-targets' and '-Xopenmp-target' instead
++diff -ruN --strip-trailing-cr a/llvm/test/ExecutionEngine/JITLink/x86-64/MachO-check-dwarf-filename.s b/llvm/test/ExecutionEngine/JITLink/x86-64/MachO-check-dwarf-filename.s
++--- a/llvm/test/ExecutionEngine/JITLink/x86-64/MachO-check-dwarf-filename.s
+++++ b/llvm/test/ExecutionEngine/JITLink/x86-64/MachO-check-dwarf-filename.s
++@@ -2,7 +2,7 @@
++ # RUN: llvm-jitlink -debug-only=orc -noexec -debugger-support %t.o 2>&1 | \
++ # RUN:     FileCheck %s
++ #
++-# REQUIRES: asserts
+++# REQUIRES: asserts && system-darwin
++ #
++ # Test that source file names can be indentified from DWARF line tables.
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index e23d7f5..33b3b01 100644
+index 33b3b01..fc9e8cf 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "1623c435948ae305220e638066e968cb3296e567"
--    LLVM_SHA256 = "6796350a7077ab7c7ef3564a8807723df8508071cb76202e890dbeef4edfbd6a"
-+    LLVM_COMMIT = "f739aa4004165dc64d3a1f418d5ad3c84886f01a"
-+    LLVM_SHA256 = "85da134e7ba044ef50ebc009d1a57a87fb0e2db208a04650ef2fe564e9564aa7"
+-    LLVM_COMMIT = "f739aa4004165dc64d3a1f418d5ad3c84886f01a"
+-    LLVM_SHA256 = "85da134e7ba044ef50ebc009d1a57a87fb0e2db208a04650ef2fe564e9564aa7"
++    LLVM_COMMIT = "3ef78188d0d39cd00429f77f1b300be9bdf85770"
++    LLVM_SHA256 = "3c8263272c72c53bdc8db53b8b2c4d3731cc1661964b9923a7c86dca0f8bd6f2"
  
      tf_http_archive(
          name = name,
