@@ -16,14 +16,3 @@ limitations under the License.
 #include <string.h>
 
 #include "xla/service/custom_call_status.h"
-
-// Call the API from a .c file to make sure it works with pure C code.
-
-void CSetSuccess(XlaCustomCallStatus* status) {
-  XlaCustomCallStatusSetSuccess(status);
-}
-
-void CSetFailure(XlaCustomCallStatus* status, const char* message,
-                 size_t message_len) {
-  XlaCustomCallStatusSetFailure(status, message, message_len);
-}
