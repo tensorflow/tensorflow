@@ -1,4 +1,10 @@
 # PJRT C API changelog
+
+## 0.61
+
+*   Added `context` field of type `PJRT_ExecuteContext *` in
+    `PJRT_ExecuteOptions`.
+
 ## 0.60
 * Added ``PJRT_Client_CreateBuffersForAsyncHostToDevice`` and ``PJRT_AsyncHostToDeviceTransferManager_TransferRawDataToSubBuffer``.
 
