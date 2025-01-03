@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <errno.h>
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
