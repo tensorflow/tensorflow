@@ -449,16 +449,17 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "builtin_op_data",
     hdrs = ["builtin_op_data.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/lite/core/c:common",
+    legacy_target_for_deps_checks = True,
+    tflite_deps = [
+        "//tensorflow/lite/c:common",
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "kernel_api",
     hdrs = [
         "builtin_op_data.h",
@@ -466,8 +467,9 @@ cc_library(
         "context_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/lite/core/c:common",
+    legacy_target_for_deps_checks = True,
+    tflite_deps = [
+        "//tensorflow/lite/c:common",
     ],
 )
 
