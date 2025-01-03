@@ -19,8 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "grpc/compression.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
 #include "tsl/platform/grpc_credentials.h"
