@@ -174,6 +174,8 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
