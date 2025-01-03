@@ -583,7 +583,8 @@ class ResourceDeleter {
   ResourceDeleter(ResourceHandle handle, ResourceMgr* resource_manager)
       : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
 
-  ResourceDeleter(ResourceDeleter&& rhs) : deleter_(std::move(rhs.deleter_)) {
+  ResourceDeleter(ResourceDeleter&& rhs) noexcept
+      : deleter_(std::move(rhs.deleter_)) {
     VLOG(3) << "ResourceDeleter move constructor called.";
   }
 
