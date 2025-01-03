@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
@@ -353,6 +354,15 @@ class StreamExecutor {
   // Sets the argument logging mode. Returns true if 'mode' is valid.
   // The mode is a bitmask of the kLog* constants.
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
+
+  // Creates, allocates, and copies a CUtensorMap object for the given TMA
+  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
+  // CUtensorMap object to be used as an argument to a kernel.
+  // Only implemented on CUDA GPUs.
+  virtual absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
+      xla::gpu::TmaDescriptor tma_desc, void* global_address) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 };
 
 template <typename T>
