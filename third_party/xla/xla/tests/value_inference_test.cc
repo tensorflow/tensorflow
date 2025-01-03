@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/builder/value_inference.h"
 
-#include <memory>
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/global_data.h"
