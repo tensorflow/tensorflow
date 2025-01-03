@@ -1853,7 +1853,7 @@ TEST_F(LiteralUtilTest, ToProto_f16) {
   EXPECT_EQ(4, m.data<half>().size());
 
   LiteralProto p = m.ToProto();
-  EXPECT_EQ(4, ShapeUtil::ElementsIn(Shape(p.shape())));
+  EXPECT_EQ(4, ShapeUtil::ElementsIn(Shape::FromProto(p.shape())));
   EXPECT_EQ(8, p.f16s().size());
   const char* d = p.f16s().data();
   EXPECT_EQ(d[0], 0);
@@ -2379,7 +2379,8 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
   *element0->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 0).ToProto();
+      ShapeUtil::GetTupleElementShape(Shape::FromProto(proto.shape()), 0)
+          .ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
 
@@ -2397,12 +2398,14 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
   *element0->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 0).ToProto();
+      ShapeUtil::GetTupleElementShape(Shape::FromProto(proto.shape()), 0)
+          .ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
   LiteralProto* element1 = proto.add_tuple_literals();
   *element1->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 1).ToProto();
+      ShapeUtil::GetTupleElementShape(Shape::FromProto(proto.shape()), 1)
+          .ToProto();
   element1->add_f32s(42.0);
   LiteralProto* element2 = proto.add_tuple_literals();
   *element2->mutable_shape() = ShapeUtil::MakeShape(F32, {}).ToProto();
