@@ -148,6 +148,13 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
       // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
       monitoring::Buckets::Exponential(2.0 / 3.0, 2, 15));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+
+  static auto* counter = tensorflow::monitoring::Counter<2>::New(
+      "/tensorflow/serving/batching/input_batch_size_counter",
+      "Tracks the the rate at which models receive work in terms of batch "
+      "sizes pre-batching.",
+      "model_name", "op_name");
+  counter->GetCell(model_name, op_name)->IncrementBy(batch_size);
 }
 
 // Record the actual batch size without padding.
