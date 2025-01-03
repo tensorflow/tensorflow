@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/tsl/c/tsl_status_internal.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
 
 using ::tsl::Status;
 using ::tsl::error::Code;
