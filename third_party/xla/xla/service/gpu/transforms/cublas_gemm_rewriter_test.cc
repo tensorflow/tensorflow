@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_replace.h"
@@ -2166,12 +2167,13 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60000
-  auto rocm_switch = false;  // GELU is only available from ROCM 6.0
-#else
-  auto rocm_switch = true;
-#endif
-  if (!IsCuda() && rocm_switch) {
+  auto runtime_version = GetRuntimeVersion();
+  bool rocm_gelu_available = false;
+  if (IsRocm() &&
+      runtime_version >= stream_executor::SemanticVersion(6, 0, 0)) {
+    rocm_gelu_available = true;
+  }
+  if (IsRocm() && !rocm_gelu_available) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -2234,7 +2236,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWithAux) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -2294,7 +2296,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivationWithAux) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -2982,7 +2984,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF64) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt F64 datatype on ROCM";
   }
   const char* hlo_text = R"(
@@ -3170,7 +3172,7 @@ ENTRY main {
 // Test gemm matrix bias add fusion with mix type and out of place update(C !=
 // D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlace) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -3215,7 +3217,7 @@ ENTRY test {
 // Test batch gemm matrix bias add fusion with mix type and out of place
 // update(C != D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlaceBatched) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -3259,7 +3261,7 @@ ENTRY test {
 
 // Test gemm matrix bias add fusion with mix type and in place update(C = D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeInPlace) {
-  if (!IsCuda()) {
+  if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
