@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/auto_shard.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
