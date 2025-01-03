@@ -23,12 +23,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
