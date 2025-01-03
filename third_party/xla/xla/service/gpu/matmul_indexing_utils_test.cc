@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/matmul_indexing_utils.h"
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
