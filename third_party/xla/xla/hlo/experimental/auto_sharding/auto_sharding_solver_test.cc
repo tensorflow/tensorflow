@@ -677,6 +677,48 @@ TEST(AutoShardingEvaluatorTest,
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
+TEST(AutoShardingEvaluatorTest, EvaluatesHyperedgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  AutoShardingSolverRequest_Nodes hyperedge;
+  hyperedge.add_nodes(0);
+  hyperedge.add_nodes(1);
+  hyperedge.add_nodes(2);
+  const CostMatrix h = {{1000, 1010, 1020, 1030,
+                         1100, 1110, 1120, 1130,
+                         1200, 1210, 1220, 1230,
+
+                         2000, 2010, 2020, 2030,
+                         2100, 2110, 2120, 2130,
+                         2200, 2210, 2220, 2230,
+
+                         3000, 3010, 3020, 3030,
+                         3100, 3110, 3120, 3130,
+                         3200, 3210, 3220, 3230,
+
+                         4000, 4010, 4020, 4030,
+                         4100, 4110, 4120, 4130,
+                         4200, 4210, 4220, 4230}};
+  request.mutable_hyperedges()->Add(std::move(hyperedge));
+  AddCosts(request.mutable_hyperedge_costs(), h);
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};
+  const double objective_value = 16269.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, output);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.total.computation_cost = 159.0;  // 13+21+32+42+51
+  expected_evaluation.total.communication_cost = 1590.0;  // 130+210+320+420+510
+  expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total.hyperedge_cost = 4120.0;
+  expected_evaluation.lower_bound.computation_cost = 150.0;
+  expected_evaluation.lower_bound.communication_cost = 1500.0;
+  expected_evaluation.lower_bound.resharding_cost = 6000;
+  expected_evaluation.lower_bound.hyperedge_cost = 1000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
 TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 1 /* violates */, 1};
