@@ -65,7 +65,6 @@ class CollectivePermuteDecomposer : public HloModulePass {
     return "collective-permute-decomposer";
   }
 
-  using HloPassInterface::Run;
   // Runs CollectivePermuteDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.
   absl::StatusOr<bool> Run(

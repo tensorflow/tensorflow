@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/collective_permute_decomposer.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -42,25 +43,96 @@ using Pass = CollectivePermuteDecomposer;
 
 class DecomposerTest : public HloHardwareIndependentTestBase {
  protected:
-  void AssertNoTranform(absl::string_view hlo) {
-    TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(0), false));
+  void AssertNoTranform(absl::string_view hlo, int64_t threshold = 0) {
+    TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(threshold), false));
   };
-  auto Transform(absl::string_view hlo) {
-    return RunAndCheckHloRewrite(hlo, Pass(0), true);
+  auto Transform(absl::string_view hlo, int64_t threshold = 0) {
+    return RunAndCheckHloRewrite(hlo, Pass(threshold), true);
   };
+  void AssertTransform(absl::string_view hlo, int64_t threshold = 0) {
+    TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(threshold), true));
+  }
 };
+
+std::string SourceTargetPairs(HloInstruction* instr) {
+  return instr->frontend_attributes().map().at(kSendRecvSourceTargetPairsAttr);
+}
 
 TEST_F(DecomposerTest, WithCycleNotTransformed) {
   AssertNoTranform(R"(HloModule test
     ENTRY test_computation {
-      p = u32[] replica-id()
-      ROOT cp = u32[] collective-permute(p), channel_id=1,
-        source_target_pairs={{0,1}, {1,0}}
-    }
-  )");
+      data = u32[] parameter(0)
+      ROOT cp = u32[] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,0}}
+    })");
 }
 
-TEST_F(DecomposerTest, TransformedExplicitChannelId) {
+TEST_F(DecomposerTest, ThresholdNotTransformed) {
+  AssertNoTranform(R"(HloModule test
+    ENTRY test_computation {
+      p = u32[] replica-id()
+      ROOT cp = u32[] collective-permute(p), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+    })",
+                   8);
+}
+
+TEST_F(DecomposerTest, Basic) {
+  AssertTransform(R"(HloModule test
+    ENTRY test_computation {
+      data = u32[] parameter(0)
+      ROOT cp = u32[] collective-permute(data), channel_id=1, source_target_pairs={{0,1}, {1,2}}
+    })");
+}
+
+TEST_F(DecomposerTest, NoChannelId) {
+  AssertTransform(R"(HloModule test
+    ENTRY test_computation {
+      data = u32[] parameter(0)
+      ROOT cp = u32[] collective-permute(data), source_target_pairs={{0,1}, {1,2}}
+    })");
+}
+
+TEST_F(DecomposerTest, ControlDependencyFromOneCpToAnother) {
+  absl::string_view hlo = R"(HloModule test
+    ENTRY test_computation {
+      data1 = u32[] parameter(0)
+      data2 = u32[] parameter(1)
+      cp1 = u32[] collective-permute(data1), channel_id=1, source_target_pairs={{3,0}}
+      cp2 = u32[] collective-permute(data2), channel_id=2, source_target_pairs={{0,1},{1,2},{2,3}}
+      cp3 = u32[] collective-permute(data2), channel_id=2, source_target_pairs={{6,7}}
+      ROOT out = (u32[],u32[],u32[]) tuple(cp1, cp2, cp3)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  HloInstruction* send = FindInstruction(module.get(), "send");
+  HloInstruction* recv_1 = FindInstruction(module.get(), "recv.1");
+  EXPECT_EQ(SourceTargetPairs(send), "{{3,0}}")
+      << "send should come from first cp1";
+  EXPECT_EQ(SourceTargetPairs(recv_1), "{{0,1},{1,2},{2,3}}")
+      << "recv_1 should come from cp2";
+  EXPECT_THAT(recv_1->control_predecessors(), ElementsAre(send))
+      << "Recv-start from cp2 should depend on send-start from cp1";
+}
+
+// Negative test to assure that the decomposer does not create cyclic
+// instructions when there is dependency from one cp to another.
+TEST_F(DecomposerTest, DependentCPsNoCycles) {
+  absl::string_view hlo = R"(HloModule test
+    ENTRY test_computation {
+      p0 = f32[] parameter(0)
+      cp-a = f32[] collective-permute(p0), source_target_pairs={{0,1}, {1,2}, {2,3}}
+      ROOT cp-b = f32[] collective-permute(cp-a), source_target_pairs={{3,0}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  HloInstruction* send = FindInstruction(module.get(), "send");
+  HloInstruction* recv_1 = FindInstruction(module.get(), "recv.1");
+  EXPECT_EQ(SourceTargetPairs(send), "{{0,1},{1,2},{2,3}}")
+      << "send should come from first cp1";
+  EXPECT_EQ(SourceTargetPairs(recv_1), "{{3,0}}")
+      << "recv_1 should come from cp2";
+  EXPECT_THAT(recv_1->control_predecessors(), ElementsAre(send))
+      << "Recv-start from cp1 should depend on send start from cp2";
+}
+
+TEST_F(DecomposerTest, WithMetadata) {
   absl::string_view hlo = R"(
     HloModule test
     ENTRY test_computation {
@@ -111,55 +183,6 @@ TEST_F(DecomposerTest, TransformedExplicitChannelId) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
-}
-
-TEST_F(DecomposerTest, TransformedDefaultNoChannelId) {
-  absl::string_view hlo = R"(
-  HloModule test
-  ENTRY test_computation {
-    p = u32[] replica-id()
-    ROOT cp = u32[] collective-permute(p),
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
-  }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
-
-  HloInstruction* after_all = FindInstruction(module.get(), "after-all");
-  HloInstruction* recv = FindInstruction(module.get(), "recv");
-  EXPECT_EQ(recv->operand(0), after_all);
-  EXPECT_FALSE(recv->channel_id().has_value());
-  EXPECT_THAT(
-      recv->ToString(),
-      HasSubstr(
-          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
-  HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
-  EXPECT_EQ(recv_done->operand(0), recv);
-
-  HloInstruction* send = FindInstruction(module.get(), "send");
-  EXPECT_EQ(send->operand(1), after_all);
-  EXPECT_FALSE(send->channel_id().has_value());
-  EXPECT_THAT(
-      send->ToString(),
-      HasSubstr(
-          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
-  HloInstruction* send_done = FindInstruction(module.get(), "send-done");
-  EXPECT_EQ(send_done->operand(0), send);
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
-}
-
-TEST_F(DecomposerTest, ThresholdNotTransformed) {
-  absl::string_view hlo = R"(HloModule test
-    ENTRY test_computation {
-      p = u32[] replica-id()
-      ROOT cp = u32[] collective-permute(p), channel_id=1,
-        source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
-        metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
-    })";
-  TF_ASSERT_OK(
-      RunAndCheckHloRewrite(hlo, Pass(/*threshold_in_bytes=*/8), false));
 }
 
 TEST_F(DecomposerTest, Pipeline1) {
@@ -317,7 +340,7 @@ TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
   // The HLO module below is generated by passing the HLO in
   // CollectiveOpsTest.CollectivePermute_CircularPipelinePreOptimization through
   // the collective_permute_cycle_decomposer.transformation.
-  const char* const kModuleStr = R"(
+  absl::string_view hlo = R"(
   HloModule test
 
   while_body {
@@ -366,8 +389,7 @@ TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
     ROOT data_out = f32[2,2] get-tuple-element(while_result), index=1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          Transform(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
   HloModule* transformed_module = module.get();
   // Check the annotations and ordering of the decomposed send-recv pairs.
   // We expect the recv to come before the send in the while body, both for the
@@ -492,7 +514,7 @@ TEST_F(DecomposerTest, BackwardPipeline2) {
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
 
   EXPECT_THAT(send1->control_predecessors(), ElementsAre(recv1));
-  EXPECT_THAT(recv->control_predecessors(), ElementsAre(send1));
+  EXPECT_THAT(recv1->control_predecessors(), ElementsAre(send));
   EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
 }
 
