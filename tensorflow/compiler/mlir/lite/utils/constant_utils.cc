@@ -76,8 +76,8 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
 
       return mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
     } else {
-      return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                "Unsupported type");
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Unsupported type");
     }
   } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(element_type)) {
     if (element_type.isSignedInteger()) {
@@ -99,8 +99,8 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
                                                  static_cast<int64_t>(value));
           break;
         default:
-          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                    "Unsupported type");
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Unsupported type");
       }
     } else {
       switch (itype.getWidth()) {
@@ -121,13 +121,12 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
                                                   static_cast<uint64_t>(value));
           break;
         default:
-          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                    "Unsupported type");
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Unsupported type");
       }
     }
   } else {
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "Unsupported type");
+    return absl::Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
   }
 }
 
