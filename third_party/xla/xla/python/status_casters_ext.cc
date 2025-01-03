@@ -42,7 +42,8 @@ absl::StatusOr<int> StatusOrIdentity(int i) { return i; }
 
 NB_MODULE(status_casters_ext, m) {
   // Exceptions
-  nb::exception<xla::XlaRuntimeError>(m, "XlaRuntimeError", PyExc_RuntimeError);
+  nb::exception<xla::XlaRuntimeError> give_me_a_name(m, "XlaRuntimeError",
+                                                     PyExc_RuntimeError);
 
   m.def("my_lambda",
         xla::ThrowIfErrorWrapper([]() { return absl::OkStatus(); }));
