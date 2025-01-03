@@ -25,22 +25,11 @@ namespace nb = ::nanobind;
 
 namespace {
 
-absl::Status MyFunc() { return absl::OkStatus(); }
-
 class MyClass {
  public:
-  absl::Status MyMethod(int a, int b) { return absl::OkStatus(); }
-  absl::Status MyMethodConst(int a, int b) const { return absl::OkStatus(); }
-
-  absl::StatusOr<int> MyStatusOrMethod(int a, int b) { return a + b; }
-  absl::StatusOr<int> MyStatusOrMethodConst(int a, int b) const {
-    return a + b;
-  }
 };
 
-absl::StatusOr<int> StatusOrIdentity(int i) { return i; }
-
-NB_MODULE(status_casters_ext, m) {
+{
   // Exceptions
   nb::exception<xla::XlaRuntimeError>(m, "XlaRuntimeError", PyExc_RuntimeError);
 
