@@ -17,11 +17,16 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
