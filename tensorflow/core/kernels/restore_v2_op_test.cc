@@ -60,7 +60,7 @@ class RestoreV2OpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-  void RunTest(StringPiece save_op_to_use) {
+  void RunTest(absl::string_view save_op_to_use) {
     const string filename =
         io::JoinPath(testing::TmpDir(), "tensor_simple-", save_op_to_use);
     const std::vector<string> tensor_names = {
