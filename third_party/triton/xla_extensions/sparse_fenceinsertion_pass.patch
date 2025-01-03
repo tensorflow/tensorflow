@@ -1,0 +1,13 @@
+# Tracked in b/377699102
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp	2024-12-05 23:53:31.000000000 -0800
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp	2024-12-19 07:03:31.000000000 -0800
+@@ -44,7 +44,8 @@
+       return;
+     ModuleOp mod = getOperation();
+     mod.walk([&](Operation *op) {
+-      if (!op->hasTrait<OpTrait::DotLike>())
++      if (!isa<ttng::WarpGroupDotOp>(op) &&
++          op->getName().getStringRef() != "triton_xla.sparse_dot")
+         return WalkResult::advance();
+       OpBuilder builder(op);
+       auto a = op->getOperand(0);
