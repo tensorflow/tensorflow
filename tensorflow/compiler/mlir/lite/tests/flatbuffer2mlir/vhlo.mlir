@@ -176,6 +176,26 @@ func.func @reduce(%arg0: tensor<1x16x16x320xf32>, %arg3 : tensor<f32>) -> tensor
 //CHECK-NEXT:  return %0 : tensor<1x320xf32>
 //CHECK-NEXT:}
 
+func.func @reduce_mul(%arg0: tensor<1x16x16x320xf32>, %arg3 : tensor<f32>) -> tensor<1x320xf32> {
+  %0 = "vhlo.reduce_v1" (%arg0, %arg3) <{
+    dimensions = #vhlo.tensor_v1<dense<[1, 2]> : tensor<2xi64>>
+  }> ({
+    ^bb0(%arg1: tensor<1xf32>, %arg2: tensor<1xf32>):
+    %421 = "vhlo.multiply_v1"(%arg1, %arg2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    "vhlo.return_v1" (%421) : (tensor<1xf32>) -> ()
+   }) : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
+  return %0 : tensor<1x320xf32>
+}
+
+//CHECK:func.func private @reduce_mul(%arg0: tensor<1x16x16x320xf32>, %arg1: tensor<f32>) -> tensor<1x320xf32> {
+//CHECK-NEXT:  %0 = "vhlo.reduce_v1"(%arg0, %arg1) <{dimensions = #vhlo.tensor_v1<dense<[1, 2]> : tensor<2xi64>>}> ({
+//CHECK-NEXT:   ^bb0(%arg2: tensor<1xf32>, %arg3: tensor<1xf32>):
+//CHECK-NEXT:     %1 = "vhlo.multiply_v1"(%arg2, %arg3) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+//CHECK-NEXT:     "vhlo.return_v1"(%1) : (tensor<1xf32>) -> ()
+//CHECK-NEXT:   }) : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
+//CHECK-NEXT:  return %0 : tensor<1x320xf32>
+//CHECK-NEXT:}
+
 func.func @abs(%arg0: tensor<1x1x1x96xf32>) -> tensor<1x1x1x96xf32> {
   %0 = "vhlo.abs_v1" (%arg0) : (tensor<1x1x1x96xf32>) -> tensor<1x1x1x96xf32>
   func.return %0 : tensor<1x1x1x96xf32>
