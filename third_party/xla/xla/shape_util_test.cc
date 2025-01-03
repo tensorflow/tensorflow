@@ -1184,7 +1184,7 @@ TEST(ShapeUtilTest, B_250640044) {
              is_dynamic_dimension: false
            })pb",
       &proto));
-  Shape shape(proto);
+  Shape shape = Shape::FromProto(proto);
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1218,7 +1218,7 @@ TEST(ShapeUtilTest, B_251055887) {
           physical_shape { element_type: -562 }
         })pb",
       &proto));
-  Shape shape(proto);
+  Shape shape = Shape::FromProto(proto);
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
