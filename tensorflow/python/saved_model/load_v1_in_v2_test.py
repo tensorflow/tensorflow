@@ -666,8 +666,6 @@ class LoadTest(test.TestCase):
     return path
 
   def test_load_sparse_inputs(self):
-    # TODO(b/372535913): Figure out why this test fails.
-    self.skipTest("b/372535913")
     path = self._model_with_sparse_input()
     imported = load.load(path)
     imported_fn = imported.signatures["serving_default"]
