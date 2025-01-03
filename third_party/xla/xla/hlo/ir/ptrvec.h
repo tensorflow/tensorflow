@@ -45,8 +45,8 @@ class PtrVec {
   PtrVec& operator=(const PtrVec& x);
 
   // Movable.
-  PtrVec(PtrVec&& x);
-  PtrVec& operator=(PtrVec&& x);
+  PtrVec(PtrVec&& x) noexcept;
+  PtrVec& operator=(PtrVec&& x) noexcept;
 
   // Const iteration. Non-const iteration can be easily added if necessary.
   using difference_type = std::ptrdiff_t;
@@ -202,12 +202,12 @@ inline PtrVec<T>& PtrVec<T>::operator=(const PtrVec& x) {
 }
 
 template <class T>
-inline PtrVec<T>::PtrVec(PtrVec&& x) : rep_(x.rep_) {
+inline PtrVec<T>::PtrVec(PtrVec&& x) noexcept : rep_(x.rep_) {
   x.rep_ = kEmptyTag;
 }
 
 template <class T>
-inline PtrVec<T>& PtrVec<T>::operator=(PtrVec&& x) {
+inline PtrVec<T>& PtrVec<T>::operator=(PtrVec&& x) noexcept {
   if (this != &x) {
     if (is_big()) {
       FreeBig(big());
