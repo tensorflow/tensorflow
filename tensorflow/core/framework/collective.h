@@ -15,14 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
 
+#include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"

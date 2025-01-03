@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
