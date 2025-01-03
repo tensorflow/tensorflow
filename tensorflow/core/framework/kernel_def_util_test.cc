@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/kernel_def_util.h"
 
+#include "absl/log/log.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/logging.h"
