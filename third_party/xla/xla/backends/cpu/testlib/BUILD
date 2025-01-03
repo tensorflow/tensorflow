@@ -87,51 +87,12 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "elemental_kernel_emitter",
-    testonly = 1,
-    srcs = ["elemental_kernel_emitter.cc"],
-    hdrs = ["elemental_kernel_emitter.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
-        "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/codegen:kernel_emitter",
-        "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/service:elemental_ir_emitter",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:elemental_ir_emitter",
-        "//xla/service/cpu:ir_emitter",
-        "//xla/service/cpu:parallel_loop_emitter",
-        "//xla/service/cpu:shape_partition",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
-        "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 tsl_pybind_extension(
     name = "_extension",
     testonly = 1,
     srcs = ["kernel_runner_extension.cc"],
     visibility = ["//visibility:private"],  # the extension should always be linked via testlib
     deps = [
-        ":elemental_kernel_emitter",
         ":kernel_runner",
         ":llvm_ir_kernel_emitter",
         # placeholder for index annotation deps  # buildcleaner: keep
@@ -140,6 +101,7 @@ tsl_pybind_extension(
         "@com_google_absl//absl/strings:string_view",
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla/backends/cpu/codegen:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/backends/cpu/codegen:target_machine_features",
