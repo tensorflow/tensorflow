@@ -18,16 +18,21 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorCostModel.h"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/macros.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/overflow.h"
