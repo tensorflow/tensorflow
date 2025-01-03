@@ -1353,7 +1353,11 @@ Status BaseGPUDeviceFactory::CacheDeviceIds() {
 }
 
 Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
-  TF_RETURN_IF_ERROR(CacheDeviceIds());
+  // CacheDeviceIds() can fail if CUDA is not available, so we only log a
+  // warning instead of propagating the error.
+  if (auto status = CacheDeviceIds(); !status.ok()) {
+    LOG(WARNING) << "Gpu will not be available: " << status;
+  }
   for (tsl::PlatformDeviceId platform_device_id : cached_device_ids_) {
     const string device_name =
         strings::StrCat("/physical_device:GPU:", platform_device_id.value());
