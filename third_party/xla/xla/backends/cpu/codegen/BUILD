@@ -250,11 +250,11 @@ cc_library(
     srcs = ["elemental_kernel_emitter.cc"],
     hdrs = ["elemental_kernel_emitter.h"],
     deps = [
+        ":kernel_api_ir_builder",
         ":llvm_ir_kernel_spec",
+        ":target_machine_features",
         "//xla:shape_util",
         "//xla:util",
-        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
-        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",

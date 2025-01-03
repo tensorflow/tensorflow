@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -33,12 +34,12 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -187,6 +188,33 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<HloSchedule>(kernel_runner_module, "HloSchedule")
       .def("__str__", &HloSchedule::ToString);
+
+  nb::class_<HloModule>(kernel_runner_module, "HloModule")
+      .def_static("parse_from_string",
+                  [](absl::string_view str) {
+                    absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
+                        ParseAndReturnUnverifiedModule(str);
+
+                    if (!hlo_module.ok()) {
+                      throw std::runtime_error(
+                          std::string(hlo_module.status().message()));
+                    }
+
+                    return std::move(hlo_module).value();
+                  })
+      .def("set_schedule",
+           [](HloModule& self, HloSchedule schedule) {
+             absl::Status status = self.set_schedule(std::move(schedule));
+             if (!status.ok()) {
+               throw std::runtime_error(std::string(status.message()));
+             }
+           })
+      .def(
+          "get_root_instruction",
+          [](HloModule* self) {
+            return self->entry_computation()->root_instruction();
+          },
+          nb::rv_policy::reference_internal);
 }
 
 }  // namespace xla

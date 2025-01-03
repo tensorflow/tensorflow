@@ -37,9 +37,9 @@ namespace xla::cpu {
 
 class ElementalKernelEmitter final : public KernelEmitter {
  public:
-  explicit ElementalKernelEmitter(const HloInstruction& op_hlo);
+  explicit ElementalKernelEmitter(const HloInstruction* instr);
 
-  ElementalKernelEmitter(const HloModule* hlo_module,
+  ElementalKernelEmitter(const HloInstruction* instr,
                          const BufferAssignment* buffer_assignment,
                          const TargetMachineFeatures* target_machine);
 
@@ -61,9 +61,8 @@ class ElementalKernelEmitter final : public KernelEmitter {
                              llvm::Module& module) const;
 
  private:
-  const HloInstruction& op_hlo_;
+  const HloInstruction* instr_;
 
-  const HloModule* hlo_module_ = nullptr;
   const BufferAssignment* buffer_assignment_ = nullptr;
   const TargetMachineFeatures* target_machine_ = nullptr;
 

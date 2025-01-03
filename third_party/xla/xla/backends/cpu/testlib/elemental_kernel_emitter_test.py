@@ -269,14 +269,16 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
     """.format(scalar_shape=scalar_shape, shape=shape)
 
     hlo_compiler = testlib_cpu.HloCompiler()
-    hlo_module = testlib_cpu.HloModule.parse_from_string(hlo)
+    hlo_module = testlib_base.HloModule.parse_from_string(hlo)
     hlo_module.set_schedule(hlo_compiler.create_hlo_schedule(hlo_module))
     buffer_assignment = hlo_compiler.create_buffer_assignment(hlo_module)
 
     jit_compiler = testlib_cpu.JitCompiler()
 
     emitter = testlib_cpu.ElementalKernelEmitter(
-        hlo_module, buffer_assignment, jit_compiler.get_target_machine()
+        hlo_module.get_root_instruction(),
+        buffer_assignment,
+        jit_compiler.get_target_machine(),
     )
 
     input_np = create_input([0, 10], input_dimensions, dtype, shuffle=True)
@@ -342,14 +344,16 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
       )
 
       hlo_compiler = testlib_cpu.HloCompiler()
-      hlo_module = testlib_cpu.HloModule.parse_from_string(hlo)
+      hlo_module = testlib_base.HloModule.parse_from_string(hlo)
       hlo_module.set_schedule(hlo_compiler.create_hlo_schedule(hlo_module))
       buffer_assignment = hlo_compiler.create_buffer_assignment(hlo_module)
 
       jit_compiler = testlib_cpu.JitCompiler()
 
       emitter = testlib_cpu.ElementalKernelEmitter(
-          hlo_module, buffer_assignment, jit_compiler.get_target_machine()
+          hlo_module.get_root_instruction(),
+          buffer_assignment,
+          jit_compiler.get_target_machine(),
       )
 
       input_np = create_input([0, 10], input_dimensions, dtype)

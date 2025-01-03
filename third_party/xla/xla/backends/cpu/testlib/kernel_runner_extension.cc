@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -115,41 +114,14 @@ NB_MODULE(_extension, kernel_runner_module) {
         return std::move(schedule).value();
       });
 
-  nb::class_<HloModule>(kernel_runner_module, "HloModule")
-      .def_static("parse_from_string",
-                  [](absl::string_view str) {
-                    absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
-                        ParseAndReturnUnverifiedModule(str);
-
-                    if (!hlo_module.ok()) {
-                      throw std::runtime_error(
-                          std::string(hlo_module.status().message()));
-                    }
-
-                    return std::move(hlo_module).value();
-                  })
-      .def("set_schedule",
-           [](HloModule& self, HloSchedule schedule) {
-             absl::Status status = self.set_schedule(std::move(schedule));
-             if (!status.ok()) {
-               throw std::runtime_error(std::string(status.message()));
-             }
-           })
-      .def(
-          "get_root_instruction",
-          [](HloModule* self) {
-            return self->entry_computation()->root_instruction();
-          },
-          nb::rv_policy::reference_internal);
-
   nb::class_<TargetMachineFeatures>(kernel_runner_module,
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<const HloInstruction&>(), nb::keep_alive<1, 2>())
-      .def(nb::init<const HloModule*, const BufferAssignment*,
+      .def(nb::init<const HloInstruction*>(), nb::keep_alive<1, 2>())
+      .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());

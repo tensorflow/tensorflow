@@ -185,10 +185,10 @@ bool RecursivelyCheckForCustomCall(
 // calls a custom-call function, either directly or indirectly (e.g. because it
 // calls another computation that does).
 absl::flat_hash_map<const HloComputation*, bool>
-ComputationsTransitivelyContainCustomCall(const HloInstruction& op_hlo) {
+ComputationsTransitivelyContainCustomCall(const HloInstruction* instr) {
   absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
 
-  for (const HloComputation* computation : op_hlo.called_computations()) {
+  for (const HloComputation* computation : instr->called_computations()) {
     RecursivelyCheckForCustomCall(*computation, custom_call_map);
   }
 
@@ -197,17 +197,13 @@ ComputationsTransitivelyContainCustomCall(const HloInstruction& op_hlo) {
 
 }  // namespace
 
-ElementalKernelEmitter::ElementalKernelEmitter(const HloInstruction& op_hlo)
-    : op_hlo_(op_hlo),
-      context_(std::make_unique<llvm::LLVMContext>()),
-      kernel_api_ir_builder_(*context_.getContext(),
-                             KernelApiIrBuilder::Options{true, 256}) {}
+ElementalKernelEmitter::ElementalKernelEmitter(const HloInstruction* instr)
+    : ElementalKernelEmitter(instr, nullptr, nullptr) {}
 
 ElementalKernelEmitter::ElementalKernelEmitter(
-    const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+    const HloInstruction* instr, const BufferAssignment* buffer_assignment,
     const TargetMachineFeatures* target_machine)
-    : op_hlo_(*hlo_module->entry_computation()->root_instruction()),
-      hlo_module_(hlo_module),
+    : instr_(instr),
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine),
       context_(std::make_unique<llvm::LLVMContext>()),
@@ -216,15 +212,15 @@ ElementalKernelEmitter::ElementalKernelEmitter(
 
 absl::StatusOr<std::unique_ptr<KernelSpec>>
 ElementalKernelEmitter::EmitKernelSpec() {
-  VLOG(2) << "Emit elemental host kernel: " << op_hlo_.name();
+  VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
   llvm::LLVMContext& ctx = *context_.getContext();
   auto module = std::make_unique<llvm::Module>(
-      absl::StrCat(op_hlo_.name(), "_elemental_kernel_module"), ctx);
+      absl::StrCat(instr_->name(), "_elemental_kernel_module"), ctx);
 
   TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
                       kernel_api_ir_builder_.EmitKernelPrototype(
-                          *module, &op_hlo_, buffer_assignment_, "_kernel"));
+                          *module, instr_, buffer_assignment_, "_kernel"));
 
   llvm::IRBuilder<> ir_builder(ctx);
   ir_builder.SetInsertPoint(
@@ -235,8 +231,8 @@ ElementalKernelEmitter::EmitKernelSpec() {
       ThreadLocalCallbackFactory(ir_builder, *module));
 
   CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (int64_t i = 0; i < op_hlo_.operand_count(); ++i) {
-    const HloInstruction* operand = op_hlo_.operand(i);
+  for (int64_t i = 0; i < instr_->operand_count(); ++i) {
+    const HloInstruction* operand = instr_->operand(i);
     operand_to_generator[operand] = [&, i](const llvm_ir::IrArray::Index& idx) {
       return kernel_prototype.arguments[i].EmitReadArrayElement(idx,
                                                                 &ir_builder);
@@ -247,10 +243,10 @@ ElementalKernelEmitter::EmitKernelSpec() {
       module.get(), &ir_builder, std::move(thread_local_call_fn), true, true);
 
   llvm_ir::ElementGenerator element_generator =
-      elemental_ir_emitter.MakeElementGenerator(&op_hlo_, operand_to_generator);
+      elemental_ir_emitter.MakeElementGenerator(instr_, operand_to_generator);
 
   TF_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
-                      EmitElementalLoops(ir_builder, &op_hlo_, kernel_prototype,
+                      EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
   auto source = std::make_unique<LlvmIrKernelSource>(
@@ -317,28 +313,29 @@ absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(
 absl::StatusOr<CpuElementalIrEmitter::ThreadLocalCallCallback>
 ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
                                                    llvm::Module& module) const {
-  if (hlo_module_ == nullptr) {
+  const HloModule* hlo_module = instr_->GetModule();
+  if (hlo_module == nullptr) {
     return nullptr;
   }
 
   auto ir_emitter = std::make_unique<IrEmitter>(
-      nullptr, *hlo_module_, *buffer_assignment_, &module,
+      nullptr, *hlo_module, *buffer_assignment_, &module,
       /*instruction_to_profile_idx=*/
       absl::flat_hash_map<const HloInstruction*, int64_t>{},
       /*computation_to_profile_idx=*/
       absl::flat_hash_map<const HloComputation*, int64_t>{},
-      ComputationsTransitivelyContainCustomCall(op_hlo_), target_machine_,
+      ComputationsTransitivelyContainCustomCall(instr_), target_machine_,
       /*emit_code_for_msan=*/false);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
 
   TF_RETURN_IF_ERROR(ir_emitter->EmitSmallConstantGlobals());
 
-  if (op_hlo_.has_to_apply()) {
-    HloComputation* nested_computation = op_hlo_.to_apply();
-    bool is_reducer = op_hlo_.opcode() == HloOpcode::kReduce ||
-                      op_hlo_.opcode() == HloOpcode::kReduceWindow;
+  if (instr_->has_to_apply()) {
+    HloComputation* nested_computation = instr_->to_apply();
+    bool is_reducer = instr_->opcode() == HloOpcode::kReduce ||
+                      instr_->opcode() == HloOpcode::kReduceWindow;
     TF_RETURN_IF_ERROR(ir_emitter->EmitNestedComputation(
-        *nested_computation, llvm_ir::IrName(&op_hlo_), is_reducer));
+        *nested_computation, llvm_ir::IrName(instr_), is_reducer));
   }
 
   return [ir_emitter = std::move(ir_emitter), &builder](

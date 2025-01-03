@@ -109,7 +109,6 @@ tsl_pybind_extension(
         "//xla/codegen:kernel_spec",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:cpu_compiler_pure",
         "//xla/stream_executor:launch_dim",
