@@ -1497,6 +1497,7 @@ cc_library(
         "//xla/service/gpu/fusions/triton:triton_support",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service/gpu/model:sol_gpu_cost_model_stats_collection",
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/gpu/transforms:algebraic_simplifier",
         "//xla/service/gpu/transforms:algorithm_checker",

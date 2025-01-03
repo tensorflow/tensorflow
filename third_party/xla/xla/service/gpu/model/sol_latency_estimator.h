@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -46,6 +47,11 @@ class SolLatencyEstimator : public LatencyEstimator {
   int CyclesPerMicrosecond() const override {
     return latency_estimator_->CyclesPerMicrosecond();
   }
+
+  static absl::Duration ComputeCollectiveTime(
+      const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const SolGPUCostModel::Config& sol_flags);
 
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kLowLatency = 1.0;
