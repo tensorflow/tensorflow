@@ -149,7 +149,7 @@ class BundleWriter {
                         const Tensor& slice_tensor);
 
   // Finishes the writer and flushes.
-  absl::Status Finish() TF_MUST_USE_RESULT;
+  absl::Status Finish();
 
   absl::Status status() const { return status_; }
 
@@ -243,13 +243,12 @@ class BundleReader {
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
   absl::Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
-                                   TensorShape* shape) TF_MUST_USE_RESULT;
+                                   TensorShape* shape);
 
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
-  absl::Status LookupTensorShape(absl::string_view key,
-                                 TensorShape* shape) TF_MUST_USE_RESULT;
+  absl::Status LookupTensorShape(absl::string_view key, TensorShape* shape);
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
   // tensor, attempts to look up the full contents using all stored slices.
@@ -263,7 +262,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  absl::Status Lookup(absl::string_view key, Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status Lookup(absl::string_view key, Tensor* val);
 
   // Looks up the tensor pointed to by the internal iterator.
   //
@@ -271,7 +270,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok() && Valid()
-  absl::Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status ReadCurrent(Tensor* val);
 
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
@@ -281,16 +280,14 @@ class BundleReader {
   // another slice with a smaller start index in the same dimension.
   // REQUIRES: status().ok()
   absl::Status LookupTensorSlices(absl::string_view key,
-                                  std::vector<TensorSlice>* slices)
-      TF_MUST_USE_RESULT;
+                                  std::vector<TensorSlice>* slices);
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
   // namely "slice_spec" is a subset of the union of the stored slices.
   // REQUIRES: status().ok()
   absl::Status LookupSlice(absl::string_view full_tensor_key,
-                           const TensorSlice& slice_spec,
-                           Tensor* val) TF_MUST_USE_RESULT;
+                           const TensorSlice& slice_spec, Tensor* val);
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
@@ -316,20 +313,18 @@ class BundleReader {
   // On non-OK return, clears "entry" for the caller.
   // REQUIRES: status().ok()
   absl::Status GetBundleEntryProto(absl::string_view key,
-                                   BundleEntryProto* entry) TF_MUST_USE_RESULT;
+                                   BundleEntryProto* entry);
 
   // Reads the tensor value described by the metadata proto "entry".
   // Usage for "val" follows the comment of "Lookup()".
-  absl::Status GetValue(const BundleEntryProto& entry,
-                        Tensor* val) TF_MUST_USE_RESULT;
+  absl::Status GetValue(const BundleEntryProto& entry, Tensor* val);
 
   // Reads the slice described by "slice_spec".  The corresponding full tensor
   // has key "ful_tensor_key" and metadata proto "full_tensor_entry".
   // REQUIRES: full_tensor_entry.slices_size() > 0
   absl::Status GetSliceValue(absl::string_view full_tensor_key,
                              const BundleEntryProto& full_tensor_entry,
-                             const TensorSlice& slice_spec,
-                             Tensor* val) TF_MUST_USE_RESULT;
+                             const TensorSlice& slice_spec, Tensor* val);
 
   Env* env_;  // Not owned.
   const std::string prefix_;
