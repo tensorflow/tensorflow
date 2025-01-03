@@ -26,11 +26,11 @@ namespace lite {
 namespace toco_legacy {
 
 // LINT.IfChange(portable_symmetric_quantize_floats)
-void PortableSymmetricQuantizeFloats(const float* values, const int size,
+void PortableSymmetricQuantizeFloats(const float* values, int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor);
 
-void PortableSymmetricQuantizeFloats(const float* values, const int size,
+void PortableSymmetricQuantizeFloats(const float* values, int size,
                                      int8_t* quantized_values, float min_value,
                                      float max_value, float* scaling_factor);
 // LINT.ThenChange(//tensorflow/lite/kernels/internal/reference/portable_tensor_utils.h:portable_symmetric_quantize_floats)
