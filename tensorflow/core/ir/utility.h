@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_UTILITY_H_
 
 #include <optional>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
