@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
