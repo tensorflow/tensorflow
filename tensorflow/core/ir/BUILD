@@ -177,6 +177,8 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:FunctionInterfaces",
