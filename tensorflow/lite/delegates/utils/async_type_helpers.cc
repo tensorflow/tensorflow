@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/async_type_helpers.h"
 
 #include <cstring>
-#include <string_view>
 
 #include "tensorflow/lite/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/async/interop/c/constants.h"
