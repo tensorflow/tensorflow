@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/const_dedupe_hoist/pass.h"
 
-#include <forward_list>
 #include <memory>
 #include <vector>
 
