@@ -36,40 +36,14 @@ namespace gpu {
 // Helper class to work with fusion process dump.
 class FusionProcessDump {
  public:
-  static absl::StatusOr<FusionProcessDump> LoadFromFile(
-      const std::string& path);
-  static absl::StatusOr<FusionProcessDump> LoadFromData(
-      const std::string& data, absl::string_view format);
   static absl::StatusOr<FusionProcessDump> LoadFromProto(
       const FusionProcessDumpProto& fusion_process_dump_proto);
 
-  const FusionProcessDumpProto& proto() { return fusion_process_dump_proto_; }
-
   HloModule* module() { return hlo_module_.get(); }
-
-  const se::DeviceDescription& device_info() { return device_info_; }
-
-  int64_t current_step_idx() { return current_step_idx_; }
 
   // Returns computation that contains producer (and other instructions) of the
   // current step.
   HloComputation* GetCurrentComputation();
-
-  // Returns the instruction with `name`.
-  HloInstruction* GetInstructionWithName(absl::string_view name);
-
-  // Returns producer of the current step. Should not be null, since all step
-  // types have a producer.
-  HloInstruction* GetProducer();
-
-  // Returns a list of consumers of the current step. The list contains one
-  // instruction is the current step is fusion. The list is empty if the current
-  // step is `producer_ineligible`.
-  absl::InlinedVector<HloInstruction*, 2> GetConsumers();
-
-  // Returns result instruction of the last fusion step. Returns nullptr before
-  // the first fusion.
-  HloInstruction* GetLastFusion() { return last_fusion_; }
 
   // Returns current step. If current step is `fusion`, the `module` is in the
   // state *before* the fusion. Next call to `FusionProcessDump::Advance` will
