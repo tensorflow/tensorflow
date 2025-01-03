@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/builders/resize_bilinear_builder.h"
 
+#include <cstdint>
+#include <vector>
+
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
