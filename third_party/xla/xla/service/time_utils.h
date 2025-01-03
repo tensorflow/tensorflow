@@ -24,7 +24,6 @@ namespace xla {
 int64_t ExclusiveToInclusiveStartTime(int64_t exclusive_time);
 int64_t InclusiveToExclusiveStartTime(int64_t inclusive_time);
 int64_t ExclusiveToInclusiveEndTime(int64_t exclusive_time);
-int64_t InclusiveToExclusiveEndTime(int64_t inclusive_time);
 
 }  // namespace xla
 

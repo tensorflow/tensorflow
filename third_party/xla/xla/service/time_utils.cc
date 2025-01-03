@@ -31,8 +31,4 @@ int64_t ExclusiveToInclusiveEndTime(int64_t exclusive_time) {
   return exclusive_time - 1;
 }
 
-int64_t InclusiveToExclusiveEndTime(int64_t inclusive_time) {
-  return inclusive_time + 1;
-}
-
 }  // namespace xla
