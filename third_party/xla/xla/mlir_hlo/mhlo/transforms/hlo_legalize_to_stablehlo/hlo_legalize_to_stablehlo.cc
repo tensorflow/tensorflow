@@ -128,7 +128,7 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
 // frontends but are not yet part of StableHLO. Such features might be a good
 // fit for StableHLO, and are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
-std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
+std::optional<int64_t> getPublicFeaturesNotInStablehlo() {
   // StableHLO doesn't support TopK yet.
   // Proposal: https://github.com/openxla/stablehlo/pull/1593
   if constexpr (std::is_same<HloOpTy, mhlo::TopKOp>::value) {
