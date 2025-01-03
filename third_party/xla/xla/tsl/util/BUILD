@@ -243,6 +243,7 @@ cc_library(
     copts = tsl_copts(),
     visibility = internal_visibility([
         "//xla/tsl:internal",
+        "//xla/tsl/profiler:friends",
     ]),
 )
 
