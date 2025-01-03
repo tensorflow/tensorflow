@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/colocation.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
