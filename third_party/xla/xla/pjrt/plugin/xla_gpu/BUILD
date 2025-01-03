@@ -51,6 +51,7 @@ xla_test(
         ":xla_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
 )
