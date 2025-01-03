@@ -112,7 +112,7 @@ std::pair<std::unique_ptr<TensorSliceReader::VarToShapeMap>,
           std::unique_ptr<TensorSliceReader::VarToDataTypeMap>>
 CheckpointReader::BuildV2VarMaps() {
   CHECK(v2_reader_ != nullptr);
-  CHECK(v2_reader_->status().ok());
+  CHECK_OK(v2_reader_->status());
 
   // First pass: filters out the entries of the slices.
   std::unordered_set<string> filtered_keys;
