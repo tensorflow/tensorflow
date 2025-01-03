@@ -16,8 +16,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace ops {
