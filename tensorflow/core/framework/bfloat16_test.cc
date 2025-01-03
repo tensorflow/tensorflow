@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
-#include "absl/base/casts.h"
-#include "tensorflow/core/framework/numeric_types.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
