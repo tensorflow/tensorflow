@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"

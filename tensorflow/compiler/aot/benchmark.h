@@ -24,6 +24,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_AOT_BENCHMARK_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
