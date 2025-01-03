@@ -58,6 +58,7 @@ std::vector<std::string> CandidateCudaRoots() {
 
   roots.push_back(TF_CUDA_TOOLKIT_PATH);
   roots.emplace_back(std::string("/usr/local/cuda"));
+  roots.emplace_back(std::string("/opt/cuda"));
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
   Dl_info info;
