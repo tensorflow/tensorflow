@@ -152,6 +152,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
     ],
 )

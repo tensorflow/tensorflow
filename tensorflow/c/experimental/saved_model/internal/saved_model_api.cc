@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
