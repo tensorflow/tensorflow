@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 #include <map>
-#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
