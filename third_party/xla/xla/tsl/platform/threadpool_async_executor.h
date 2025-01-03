@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tsl/concurrency/async_value.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl::thread {
 

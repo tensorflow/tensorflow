@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_GCS_THROTTLE_H_
 #define XLA_TSL_PLATFORM_CLOUD_GCS_THROTTLE_H_
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 

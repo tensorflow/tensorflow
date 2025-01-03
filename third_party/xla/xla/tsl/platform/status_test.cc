@@ -19,13 +19,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stack_frame.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

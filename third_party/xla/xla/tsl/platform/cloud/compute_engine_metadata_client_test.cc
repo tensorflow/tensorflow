@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 
 #include "xla/tsl/platform/cloud/http_request_fake.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

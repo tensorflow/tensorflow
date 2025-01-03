@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace {

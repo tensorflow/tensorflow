@@ -25,9 +25,9 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "json/json.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/retrying_utils.h"
 

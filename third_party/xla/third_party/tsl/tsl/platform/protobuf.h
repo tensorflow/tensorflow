@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
 
 // Import whatever namespace protobuf comes from into the
 // ::tsl::protobuf namespace.

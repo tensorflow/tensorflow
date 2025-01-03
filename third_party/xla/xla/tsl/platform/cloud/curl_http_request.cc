@@ -18,12 +18,12 @@ limitations under the License.
 #include <algorithm>
 
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/types.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 

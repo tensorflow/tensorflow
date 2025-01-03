@@ -28,9 +28,9 @@ limitations under the License.
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include "xla/tsl/platform/cloud/curl_http_request.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 namespace tsl {
 

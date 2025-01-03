@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {

@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {

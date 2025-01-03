@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_MONITORING_TIMED_H_
 #define XLA_TSL_LIB_MONITORING_TIMED_H_
 
-#include "tsl/platform/env_time.h"
+#include "xla/tsl/platform/env_time.h"
 
 namespace tsl {
 namespace monitoring {

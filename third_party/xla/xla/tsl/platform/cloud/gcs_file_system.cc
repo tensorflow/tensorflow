@@ -37,7 +37,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "tsl/platform/strcat.h"
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
@@ -49,8 +49,8 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/google_auth_provider.h"
 #include "xla/tsl/platform/cloud/ram_file_block_cache.h"
 #include "xla/tsl/platform/cloud/time_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"

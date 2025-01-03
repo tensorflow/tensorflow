@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

@@ -21,9 +21,9 @@ limitations under the License.
 #include <cstdlib>
 #include <unordered_set>
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/windows/error_windows.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 #undef ERROR
 

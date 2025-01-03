@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/test.h"
 
 using ::tsl::tstring;
 

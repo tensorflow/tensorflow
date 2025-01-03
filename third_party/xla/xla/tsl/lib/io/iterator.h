@@ -26,7 +26,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_IO_ITERATOR_H_
 #define XLA_TSL_LIB_IO_ITERATOR_H_
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {

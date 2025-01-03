@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
 namespace tsl {

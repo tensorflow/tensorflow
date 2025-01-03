@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <random>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace random {

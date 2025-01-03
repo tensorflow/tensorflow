@@ -26,7 +26,7 @@ limitations under the License.
 #include <random>
 #include <unordered_set>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
 // https://en.wikipedia.org/wiki/Ephemeral_port

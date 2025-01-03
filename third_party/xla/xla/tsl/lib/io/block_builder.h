@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

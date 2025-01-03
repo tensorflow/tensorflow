@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

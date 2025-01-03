@@ -21,7 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

@@ -35,12 +35,12 @@ cc_library(
     hdrs = ["snappy_inputbuffer.h"],
     deps = [
         "//xla/tsl/lib/io:inputstream_interface",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -50,12 +50,12 @@ cc_library(
     srcs = ["snappy_outputbuffer.cc"],
     hdrs = ["snappy_outputbuffer.h"],
     deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -66,8 +66,8 @@ cc_library(
     hdrs = ["snappy_inputstream.h"],
     deps = [
         "//xla/tsl/lib/io:inputstream_interface",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
@@ -77,7 +77,7 @@ cc_library(
     name = "snappy_compression_options",
     hdrs = ["snappy_compression_options.h"],
     deps = [
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -93,9 +93,9 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/io:inputbuffer",
         "//xla/tsl/lib/io:random_inputstream",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
     ],
 )

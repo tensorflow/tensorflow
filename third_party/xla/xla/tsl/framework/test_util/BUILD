@@ -21,8 +21,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/framework:serving_device_selector",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

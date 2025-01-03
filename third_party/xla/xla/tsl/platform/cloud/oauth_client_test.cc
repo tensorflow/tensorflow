@@ -22,11 +22,11 @@ limitations under the License.
 #include <openssl/pem.h>
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/http_request_fake.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

@@ -29,7 +29,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/stringprintf.h"
 
 namespace tsl {

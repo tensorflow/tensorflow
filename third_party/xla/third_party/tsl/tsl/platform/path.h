@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

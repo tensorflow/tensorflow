@@ -23,9 +23,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/utils/no_init.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {

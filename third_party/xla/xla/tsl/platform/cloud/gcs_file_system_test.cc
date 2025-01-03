@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/http_request_fake.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
 
 // Undef DeleteFile macro defined in wndows.h.
 #ifdef PLATFORM_WINDOWS

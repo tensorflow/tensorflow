@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool_async_executor.h"
 
 #include "absl/synchronization/notification.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl::thread {
 namespace {

@@ -18,10 +18,10 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_inputstream.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace io {

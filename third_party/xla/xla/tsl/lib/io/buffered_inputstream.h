@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
-#include "tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system.h"
 
 namespace tsl {
 namespace io {

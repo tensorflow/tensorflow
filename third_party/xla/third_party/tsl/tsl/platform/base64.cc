@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

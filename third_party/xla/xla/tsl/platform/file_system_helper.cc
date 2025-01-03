@@ -20,14 +20,14 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {

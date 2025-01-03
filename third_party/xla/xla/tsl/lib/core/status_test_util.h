@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_CORE_STATUS_TEST_UTIL_H_
 #define XLA_TSL_LIB_CORE_STATUS_TEST_UTIL_H_
 
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 
 // Macros for testing the results of functions that return tensorflow::Status.
 #define TF_EXPECT_OK(statement) EXPECT_THAT((statement), ::tsl::testing::IsOk())

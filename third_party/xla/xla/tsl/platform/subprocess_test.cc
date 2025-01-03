@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
 
 #ifdef PLATFORM_WINDOWS
 #define WIFEXITED(code) ((code) != 3)

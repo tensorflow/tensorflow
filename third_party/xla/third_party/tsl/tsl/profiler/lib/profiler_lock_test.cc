@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {

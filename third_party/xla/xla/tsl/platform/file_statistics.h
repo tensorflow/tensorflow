@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_FILE_STATISTICS_H_
 #define XLA_TSL_PLATFORM_FILE_STATISTICS_H_
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/raw_coding.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 

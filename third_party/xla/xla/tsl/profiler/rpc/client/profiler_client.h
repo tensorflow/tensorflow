@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 

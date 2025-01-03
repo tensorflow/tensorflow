@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tsl {
 namespace io {

@@ -22,9 +22,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

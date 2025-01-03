@@ -27,7 +27,7 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #endif
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace port {

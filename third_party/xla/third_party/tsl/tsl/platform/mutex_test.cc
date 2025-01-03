@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/mutex.h"
 
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl {
 namespace {

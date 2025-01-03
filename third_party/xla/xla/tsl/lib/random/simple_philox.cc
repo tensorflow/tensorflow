@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/lib/random/simple_philox.h"
 
 #include "xla/tsl/lib/random/exact_uniform_int.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 namespace random {
