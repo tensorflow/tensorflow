@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/snapshot_dataset_op.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <random>
@@ -22,15 +24,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
