@@ -843,7 +843,8 @@ absl::Status ImporterBase::AddNodesToShapeRefiner(
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
-    if (StringPiece(node->type_string()) == FunctionLibraryDefinition::kArgOp) {
+    if (absl::string_view(node->type_string()) ==
+        FunctionLibraryDefinition::kArgOp) {
       auto* node_context = shape_refiner_->GetContext(node);
       DCHECK(node_context != nullptr);
       if (const AttrValue* attr = node->attrs().Find("shape")) {
