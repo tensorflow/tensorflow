@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
 
+#include <cassert>
+#include <cstddef>
+
 #include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
