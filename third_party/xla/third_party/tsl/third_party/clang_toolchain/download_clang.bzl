@@ -1,5 +1,16 @@
 """ Helpers to download a recent clang release."""
 
+load(
+    "//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "get_archive_name",
+)
+load(
+    "clang_versions.bzl",
+    "CLANG_VERSIONS_DICT",
+    "DEFAULT_CLANG_VERSION",
+    "LLVM_DOWNLOADS_PREFIX",
+)
+
 def _get_platform_folder(os_name):
     os_name = os_name.lower()
     if os_name.startswith("windows"):
@@ -9,6 +20,19 @@ def _get_platform_folder(os_name):
     if not os_name.startswith("linux"):
         fail("Unknown platform")
     return "Linux_x64"
+
+def _get_llvm_downloads_key(repository_ctx):
+    os_name = repository_ctx.os.name.lower()
+    os_arch = repository_ctx.os.arch.lower()
+    if os_name.startswith("windows"):
+        return "windows"
+    if os_name.startswith("mac os"):
+        return "mac"
+    if os_name.startswith("linux"):
+        if os_arch == "aarch64":
+            return "linux_aarch64"
+        return "linux_amd64"
+    fail("Unknown platform %s" % os_name)
 
 def _download_chromium_clang(
         repo_ctx,
@@ -61,4 +85,21 @@ def download_clang(repo_ctx, out_folder):
         package_version,
         checksums[platform_folder],
         out_folder,
+    )
+
+def download_llvm_clang(repository_ctx):
+    clang_version = repository_ctx.os.environ.get(
+        "HERMETIC_CLANG_VERSION",
+        DEFAULT_CLANG_VERSION,
+    )
+    llvm_downloads_key = _get_llvm_downloads_key(repository_ctx)
+    archive = CLANG_VERSIONS_DICT[clang_version][llvm_downloads_key][0]
+    strip_prefix = get_archive_name(archive)
+    full_url = "{0}/{1}".format(
+        LLVM_DOWNLOADS_PREFIX.format(clang_version),
+        archive,
+    )
+    repository_ctx.download_and_extract(
+        full_url,
+        stripPrefix = strip_prefix,
     )
