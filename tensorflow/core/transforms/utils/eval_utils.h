@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
 
 #include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
