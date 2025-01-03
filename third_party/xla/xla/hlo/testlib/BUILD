@@ -37,6 +37,7 @@ cc_library(
     srcs = ["verified_hlo_module.cc"],
     hdrs = ["verified_hlo_module.h"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -45,6 +46,7 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
