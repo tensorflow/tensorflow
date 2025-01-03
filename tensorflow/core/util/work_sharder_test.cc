@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <vector>
 

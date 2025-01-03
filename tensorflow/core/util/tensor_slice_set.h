@@ -19,14 +19,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_SET_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_SET_H_
 
+#include <cstdint>
 #include <string>  // for string
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"       // for Status
 #include "tensorflow/core/lib/core/stringpiece.h"  // for StringPiece
 #include "tensorflow/core/platform/types.h"        // for int64
