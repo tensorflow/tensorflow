@@ -119,26 +119,16 @@ TEST(NodeMatchers, CheckControlDependence) {
   EXPECT_THAT(placeholder_d.node(),
               NodeWith(Name("placeholder_d"), CtrlDeps()));
 
-  // TODO(griffithjames): Exactly match these explanations.
-  //
-  // When the OSS build has been updated to include the new error messages, the
-  // Explain() expectations can be exact strings again.
-  {
-    const std::string explanation =
-        Explain(placeholder_c.node(), NodeWith(CtrlDeps()));
-    EXPECT_NE(explanation.find("ctrl_deps, which has 2 elements"),
-              std::string::npos);
-    EXPECT_NE(explanation.find("does not match expected: is empty"),
-              std::string::npos);
-  }
-  {
-    const std::string explanation =
-        Explain(placeholder_d.node(), NodeWith(CtrlDeps(NodeWith())));
-    EXPECT_NE(explanation.find("ctrl_deps"), std::string::npos);
-    EXPECT_NE(explanation.find("does not match expected: has 1 element and "
-                               "that element is any node"),
-              std::string::npos);
-  }
+  EXPECT_EQ(Explain(placeholder_c.node(), NodeWith(CtrlDeps())),
+            R"error(ctrl_deps, which has 2 elements
+
+and where the following elements don't match any matchers:
+element #0: {{node placeholder_a}} = Placeholder[dtype=DT_FLOAT, shape=<unknown>](),
+element #1: {{node placeholder_b}} = Placeholder[dtype=DT_FLOAT, shape=<unknown>](), does not match expected: is empty)error");
+  EXPECT_EQ(
+      Explain(placeholder_d.node(), NodeWith(CtrlDeps(NodeWith()))),
+      R"error(ctrl_deps, where the following matchers don't match any elements:
+matcher #0: is any node, does not match expected: has 1 element and that element is any node)error");
 }
 
 TEST(NodeMatchers, ConstValue) {
