@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/error_payloads.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
+
 namespace tsl {
 
 using ::tensorflow::core::platform::ErrorSourceProto;
