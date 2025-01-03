@@ -2761,7 +2761,9 @@ void HloParameterInstruction::PrintExtraAttributesImpl(
 void HloParameterInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  printer->Append(parameter_number_);
+  if (options.print_parameter_number()) {
+    printer->Append(parameter_number_);
+  }
 }
 
 bool HloParameterInstruction::IdenticalSlowPath(
