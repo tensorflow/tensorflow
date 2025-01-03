@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_common.h"
 
+#include <cassert>
+#include <cstdint>
 #include <utility>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
