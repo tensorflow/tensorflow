@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_
 #define TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_
 
+#include <cstdint>
 #include <iostream>
+#include <map>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
