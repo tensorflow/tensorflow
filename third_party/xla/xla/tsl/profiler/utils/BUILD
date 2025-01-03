@@ -362,6 +362,7 @@ cc_library(
     name = "tpu_xplane_utils",
     srcs = ["tpu_xplane_utils.cc"],
     hdrs = ["tpu_xplane_utils.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":xplane_schema",
         ":xplane_utils",
