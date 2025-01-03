@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "tsl/platform/logging.h"
 
