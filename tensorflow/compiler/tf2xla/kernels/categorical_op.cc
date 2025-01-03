@@ -16,7 +16,9 @@ limitations under the License.
 // XLA implementations of Categorical op.
 
 #include <array>
+#include <cstdint>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
