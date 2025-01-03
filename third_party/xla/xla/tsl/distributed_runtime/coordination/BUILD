@@ -70,6 +70,7 @@ cc_library(
 tsl_gpu_library(
     name = "coordination_service_impl",
     srcs = ["coordination_service.cc"],
+    add_gpu_deps_for_oss = False,
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -141,6 +142,7 @@ tsl_gpu_library(
     name = "coordination_service_agent",
     srcs = ["coordination_service_agent.cc"],
     hdrs = ["coordination_service_agent.h"],
+    add_gpu_deps_for_oss = False,
     deps = [
         ":coordination_client",
         ":coordination_service_error_util",
