@@ -402,8 +402,8 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator) {
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator) {
   return MakeIteratorFromInputElement(ctx, parent, input_element, thread_index,
                                       inst_captured_func, prefix, out_iterator,
                                       /*node=*/nullptr);
@@ -412,8 +412,8 @@ absl::Status MakeIteratorFromInputElement(
 absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator,
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
 
