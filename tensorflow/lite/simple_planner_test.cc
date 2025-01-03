@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdarg>
+#include <cstddef>
+#include <cstdio>
 #include <initializer_list>
 #include <memory>
 #include <utility>
