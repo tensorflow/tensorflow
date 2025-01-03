@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
