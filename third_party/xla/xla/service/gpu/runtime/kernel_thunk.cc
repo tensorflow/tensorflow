@@ -28,17 +28,22 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/tma_metadata.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,12 +58,13 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
                          absl::Span<const KernelArgument> kernel_arguments,
                          LaunchDimensions launch_dimensions,
                          std::optional<se::ClusterDim> cluster_dim,
-                         int64_t shmem_bytes)
+                         int64_t shmem_bytes, TmaMetadata tma_metadata)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
-      shmem_bytes_(shmem_bytes) {
+      shmem_bytes_(shmem_bytes),
+      tma_metadata_(std::move(tma_metadata)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
@@ -135,13 +141,22 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     kernel = it->second.get();
   }
 
-  VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  for (const BufferAllocation::Slice& arg : args_) {
+  for (const auto& [idx, arg] : llvm::enumerate(args_)) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
-    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
-            << ": " << buf.opaque() << " (" << buf.size() << "B)";
-    buffer_args.push_back(buf);
+    if (!tma_metadata_.arg_index_to_tma_info.contains(idx)) {
+      buffer_args.push_back(buf);
+      continue;
+    }
+
+    TmaInfo tma_info = tma_metadata_.arg_index_to_tma_info.at(idx);
+    CUtensorMap tensor_map;
+    CHECK(tma_info.CreateTensorMap(&tensor_map, buf.opaque()) == CUDA_SUCCESS);
+    se::DeviceMemoryBase device_tensor_map =
+        stream->parent()->Allocate(sizeof(tensor_map), 0);
+    TF_RETURN_IF_ERROR(stream->parent()->SynchronousMemcpy(
+        &device_tensor_map, &tensor_map, sizeof(tensor_map)));
+    buffer_args.push_back(device_tensor_map);
   }
 
   if (VLOG_IS_ON(100)) {
