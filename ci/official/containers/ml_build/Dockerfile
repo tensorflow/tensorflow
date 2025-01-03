@@ -5,6 +5,8 @@ FROM $BASE_IMAGE AS devel
 # on why we cannot reference BASE_IMAGE again unless we declare it again.
 ################################################################################
 
+RUN echo "test"
+
 # Install devtoolset build dependencies
 COPY setup.sources.sh /setup.sources.sh
 COPY setup.packages.sh /setup.packages.sh
@@ -75,3 +77,6 @@ RUN wget https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.1
 # Don't use the bazel cache when a new docker image is created.
 RUN echo build --action_env=DOCKER_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc
 RUN echo build --host_action_env=DOCKER_HOST_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc
+
+RUN unzip -q -c usr/lib/jvm/java-21-openjdk-amd64/jmods/java.base.jmod/lib/jrt-fs.jar META-INF/MANIFEST.MF
+
