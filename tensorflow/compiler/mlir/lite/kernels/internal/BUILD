@@ -101,7 +101,7 @@ config_setting(
 )
 
 config_setting(
-    name = "x86_64",
+    name = "x86_64_old",
     values = {
         "cpu": "x86_64",
     },
@@ -135,19 +135,31 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "x86_32",
+    constraint_values = ["//third_party/bazel_platforms/cpu:x86_32"],
+)
+
+config_setting(
+    name = "x86_64",
+    constraint_values = ["//third_party/bazel_platforms/cpu:x86_64"],
+)
+
 selects.config_setting_group(
     name = "x86_any",
     match_any = [
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":x86",
+        ":x86_32",
         ":x86_64",
-        ":darwin",
-        ":darwin_x86_64",
-        ":freebsd",
-        ":windows",
-        ":tvos_x86_64",
+        # ":haswell",
+        # ":ios_x86_64",
+        # ":k8",
+        # ":x86",
+        # ":x86_64_old",
+        # ":darwin",
+        # ":darwin_x86_64",
+        # ":freebsd",
+        # ":windows",
+        # ":tvos_x86_64",
     ],
 )
 
