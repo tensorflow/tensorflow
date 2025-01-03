@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cassert>
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project

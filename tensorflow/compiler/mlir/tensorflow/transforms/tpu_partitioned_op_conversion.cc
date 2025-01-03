@@ -10,11 +10,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <stdexcept>
-#include <string>
 #include <type_traits>
 
 #include "llvm/ADT/STLExtras.h"

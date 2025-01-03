@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 
-#include <climits>
 #include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
