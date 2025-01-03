@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_TENSOR_ID_H_
 #define TENSORFLOW_CORE_GRAPH_TENSOR_ID_H_
 
+#include <cstddef>
 #include <string>
+#include <utility>
 
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
