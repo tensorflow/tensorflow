@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveBatchToSpaceNDAttributes::Run(Model* model,
-                                                          std::size_t op_index,
-                                                          bool* modified) {
+absl::Status ResolveBatchToSpaceNDAttributes::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   if (op_it->get()->type != OperatorType::kBatchToSpaceND)
