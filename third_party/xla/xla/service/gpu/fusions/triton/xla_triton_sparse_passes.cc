@@ -360,7 +360,7 @@ struct SparseBlockedToMMAPass
     auto pattern =
         std::make_unique<SparseBlockedToMMA>(context, compute_capability);
     RewritePatternSet patterns(context, std::move(pattern));
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -975,8 +975,7 @@ struct SparseWGMMAOpToLLVMPass
     MLIRContext *context = &getContext();
     auto pattern = std::make_unique<SparseWGMMAOpPattern>(context);
     RewritePatternSet patterns(context, std::move(pattern));
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

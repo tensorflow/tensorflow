@@ -792,7 +792,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // during pattern rewrite.
   GreedyRewriteConfig config;
   config.useTopDownTraversal = true;
-  if (failed(applyPatternsAndFoldGreedily(func, patterns, config))) {
+  if (failed(applyPatternsGreedily(func, patterns, config))) {
     return failure();
   }
 

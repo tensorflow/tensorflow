@@ -126,7 +126,7 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
   patterns.add<RemoveTpuOp>(ctx);
   patterns.add<RemoveIdentity>(ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-convert-tpu-model-to-cpu pattern "
                              "conversion did not converge.";
     signalPassFailure();

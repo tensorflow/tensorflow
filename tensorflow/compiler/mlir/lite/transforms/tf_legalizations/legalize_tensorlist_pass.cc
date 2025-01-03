@@ -258,7 +258,7 @@ void LegalizeTensorListPass::runOnOperation() {
   patterns.add<ConvertTensorListPopBack>(&getContext());
   patterns.add<ConvertTensorListPushBack>(&getContext());
   patterns.add<ConvertVariantAddNOp>(&getContext());
-  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
+  (void)applyPatternsGreedily(module, std::move(patterns));
 }
 
 }  // namespace TFL

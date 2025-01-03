@@ -384,7 +384,7 @@ void PostQuantizePass::runOnOperation() {
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
                                                             custom_op_map_);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getOperation());
@@ -395,7 +395,7 @@ void PostQuantizePass::runOnOperation() {
   phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
                        RemoveVolatileOps<kPreserveInputsAndOutputs>,
                        FoldTransposeOp, FoldReshapeOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 
 void PostQuantizeRemoveQDQPass::runOnOperation() {
@@ -404,7 +404,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
   patterns.add<RemoveVolatileOps<kPreserveNone>>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace
