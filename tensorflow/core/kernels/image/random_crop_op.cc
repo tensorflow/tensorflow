@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
