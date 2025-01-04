@@ -41,7 +41,7 @@ class StringWritableFile : public WritableFile {
  public:
   explicit StringWritableFile(string* str) : str_(*str) {}
 
-  absl::Status Append(StringPiece data) override {
+  absl::Status Append(absl::string_view data) override {
     absl::StrAppend(&str_, data);
     return absl::OkStatus();
   }
@@ -50,7 +50,7 @@ class StringWritableFile : public WritableFile {
 
   absl::Status Flush() override { return absl::OkStatus(); }
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = "(string)";
     return absl::OkStatus();
   }

@@ -49,7 +49,7 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   void write_impl(const char* ptr, size_t size) override {
     // If an error is encountered, null out the file.
     if (file) {
-      absl::Status s = file->Append(StringPiece(ptr, size));
+      absl::Status s = file->Append(absl::string_view(ptr, size));
       if (!s.ok()) {
         LOG(WARNING) << "Write failed: " << s;
         file = nullptr;
