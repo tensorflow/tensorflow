@@ -67,7 +67,7 @@ enum FileFormat {
 };
 
 // Classify the contents of a file based on starting bytes (the magic number).
-FileFormat ClassifyFileFormat(StringPiece data) {
+FileFormat ClassifyFileFormat(absl::string_view data) {
   if (absl::StartsWith(data, kJpegMagicBytes)) return kJpgFormat;
   if (absl::StartsWith(data, kPngMagicBytes)) return kPngFormat;
   if (absl::StartsWith(data, kGifMagicBytes)) return kGifFormat;
@@ -197,7 +197,7 @@ class DecodeImageV2Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(contents.shape()),
         errors::InvalidArgument("`contents` must be scalar but got shape",
                                 contents.shape().DebugString()));
-    const StringPiece input = contents.scalar<tstring>()();
+    const absl::string_view input = contents.scalar<tstring>()();
     OP_REQUIRES(context, !input.empty(),
                 errors::InvalidArgument("Input is empty."));
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
@@ -226,7 +226,7 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodeJpegV2(OpKernelContext* context, StringPiece input) {
+  void DecodeJpegV2(OpKernelContext* context, absl::string_view input) {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3,
                 errors::InvalidArgument("JPEG does not support 4 channels"));
 
@@ -327,7 +327,7 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodePngV2(OpKernelContext* context, StringPiece input) {
+  void DecodePngV2(OpKernelContext* context, absl::string_view input) {
     int channel_bits = (data_type_ == DataType::DT_UINT8) ? 8 : 16;
     png::DecodeContext decode;
     OP_REQUIRES(
@@ -430,7 +430,7 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodeGifV2(OpKernelContext* context, StringPiece input) {
+  void DecodeGifV2(OpKernelContext* context, absl::string_view input) {
     // GIF has 3 channels.
     OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
                 errors::InvalidArgument("channels must be 0 or 3 for GIF, got ",
@@ -532,7 +532,7 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodeBmpV2(OpKernelContext* context, StringPiece input) {
+  void DecodeBmpV2(OpKernelContext* context, absl::string_view input) {
     OP_REQUIRES(
         context, channels_ != 1,
         errors::InvalidArgument(
