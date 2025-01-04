@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_COMMON_VIEW_UTIL_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_COMMON_VIEW_UTIL_H_
 
+#include <vector>
+
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
