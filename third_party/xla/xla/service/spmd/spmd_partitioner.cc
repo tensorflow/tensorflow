@@ -2572,94 +2572,31 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
 
-  const Shape shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
-  const int64_t dimension = hlo->concatenate_dimension();
-  if (sharding.tile_assignment().dim(dimension) == 1) {
-    std::vector<HloInstruction*> new_operands;
-    for (HloInstruction* operand : hlo->operands()) {
-      new_operands.push_back(
-          GetPartitionedHlo(operand).Reshard(sharding).hlo());
-    }
-    SetPartitionedHlo(hlo, [&] {
-      return b_.AddInstruction(
-          hlo->CloneWithNewOperands(shard_shape, new_operands));
-    });
-    return absl::OkStatus();
-  }
+  // 1. Replicate the final sharding along the concatenate dimension to get
+  // temp_sharding. If the final sharding is already replicated along the
+  // concatenate dimension, then temp_sharding will be the same as final
+  // sharding.
+  const HloSharding temp_sharding =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          sharding, {hlo->concatenate_dimension()});
 
-  // If the concatenate dimension is along one of the partitioned dimensions,
-  // allocate the full output shape, each partition updates its owned region,
-  // all-reduce across partitions, and then slice its output region.
-
-  // temp_output_shape is the output shape where the concatenate dimension
-  // is changed to the full (and padded to shard count) dimension size.
-  auto temp_output_shape = MakePartitionedShape(hlo->shape(), sharding);
-  auto last_operand_padded_shape =
-      MakePartitionedShape(hlo->operands().back()->shape(), sharding);
-  // If the last operand has more padding than the temp_output padding, needs to
-  // add extra padding to avoid dynamic update slice out of bound.
-  int last_operand_padding =
-      last_operand_padded_shape.dimensions(dimension) *
-          sharding.tile_assignment().dim(dimension) -
-      hlo->operands().back()->shape().dimensions(dimension);
-  int temp_output_padding = temp_output_shape.dimensions(dimension) *
-                                sharding.tile_assignment().dim(dimension) -
-                            hlo->shape().dimensions(dimension);
-  int padding_for_last_operand =
-      last_operand_padding < temp_output_padding
-          ? 0
-          : last_operand_padding - temp_output_padding;
-  temp_output_shape.set_dimensions(
-      dimension, temp_output_shape.dimensions(dimension) *
-                         sharding.tile_assignment().dim(dimension) +
-                     padding_for_last_operand);
-  auto temp_output = CreateZero(temp_output_shape, &b_);
-
-  // Offset of each operand along the concatenate dimension.
-  int64_t offset = 0;
-  auto state = MakePartitioningState();
+  // 2. Reshard the operands to temp_sharding.
+  std::vector<HloInstruction*> new_operands;
+  new_operands.reserve(hlo->operands().size());
   for (HloInstruction* operand : hlo->operands()) {
-    auto spmd_operand =
-        GetPartitionedHlo(operand).Reshard(sharding).PadWithZero().hlo();
-    std::vector<HloInstruction*> start_indices(
-        hlo->shape().rank(), b_.AddInstruction(HloInstruction::CreateConstant(
-                                 LiteralUtil::Zero(S32))));
-    start_indices[dimension] =
-        MultiplyAddDivideOffsetCalculation(
-            spmd_operand->shape().dimensions(dimension), offset, 1)
-            .Calculate(MakeTiledPartitionOrdinals(sharding, state.partition_id,
-                                                  &b_)[dimension],
-                       &b_);
-    temp_output = b_.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-        temp_output_shape, temp_output, spmd_operand, start_indices));
-    offset += operand->shape().dimensions(dimension);
+    new_operands.push_back(
+        GetPartitionedHlo(operand).Reshard(temp_sharding).hlo());
   }
-  std::vector<int64_t> non_concat_dims;
-  non_concat_dims.reserve(hlo->shape().rank() - 1);
-  for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-    if (i != dimension) {
-      non_concat_dims.push_back(i);
-    }
-  }
-  auto grouped =
-      hlo_sharding_util::GroupShardingOnDims(sharding, non_concat_dims);
-  auto per_group_partitioner_state =
-      CreatePerGroupPartitioningState(state, grouped.device_groups, &b_);
-  auto all_reduce = per_group_partitioner_state.collective_ops_creator
-                        .create_cross_partition_all_reduce(
-                            &b_, temp_output,
-                            MakeBinaryAdd(hlo->shape().element_type(), module_),
-                            {}, NewChannel());
-  SetPartitionedHlo(hlo, [&] {
-    auto start_indices = MakeTiledPartitionOrdinals(
-        grouped.sharding, per_group_partitioner_state.partition_id, &b_);
-    start_indices[dimension] = MultiplyAddDivideOffsetCalculation(
-                                   shard_shape.dimensions(dimension), 0, 1)
-                                   .Calculate(start_indices[dimension], &b_);
-    return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
-        shard_shape, all_reduce, start_indices, shard_shape.dimensions()));
-  });
 
+  // 3. Concatenate the operands to get result in temp_sharding.
+  auto concatenate = b_.AddInstruction(hlo->CloneWithNewOperands(
+      MakePartitionedShape(hlo->shape(), temp_sharding), new_operands));
+  concatenate->set_sharding(temp_sharding);
+
+  // 4. Reshard the result from temp_sharding to the final sharding.
+  SetPartitionedHlo(
+      hlo, PartitionedHlo(concatenate, hlo->shape(), MakePartitioningState())
+               .Reshard(sharding));
   return absl::OkStatus();
 }
 
