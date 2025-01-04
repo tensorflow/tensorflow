@@ -1828,6 +1828,14 @@ class ApplyProximalAdagradOp : public OpKernel {
         errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
+    const DataType lr_dtype = lr.dtype();
+    OP_REQUIRES(ctx,
+        (l1.dtype() == lr_dtype && 
+        l2.dtype() == lr_dtype && 
+        grad.dtype() == lr_dtype),
+        absl::InvalidArgumentError("The arguments `l1`, `l2` and `grad`"
+                                   " should have same dtype as `lr`. ";)
+    )
 
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyProximalAdagrad<Device, T>()(
