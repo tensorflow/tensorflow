@@ -22,7 +22,6 @@ exports_files(["tflite_convert.py"])
 flatbuffer_py_library(
     name = "schema_py",
     srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
-    visibility = ["//visibility:public"],
 )
 
 flatbuffer_py_library(
