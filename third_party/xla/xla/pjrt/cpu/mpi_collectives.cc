@@ -225,15 +225,16 @@ absl::Status MpiCollectivesCommunicator::AllGather(const RendezvousKey& key,
 }
 
 absl::Status MpiCollectivesCommunicator::ReduceScatter(
-    const RendezvousKey& key, ReductionKind reduction_kind,
-    PrimitiveType element_type, size_t chunk_elems, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
+    const Executor& executor) {
   const int size = mpi_size_;
-  std::vector<int> recvcounts(size, chunk_elems);
-  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(element_type));
+  std::vector<int> recvcounts(size, count);
+  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
   TF_ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
-  return MpiErrorToAbslStatus(MPI_Reduce_scatter(
-      input_buffer, output_buffer, recvcounts.data(), type, op, comm_));
+  return MpiErrorToAbslStatus(
+      MPI_Reduce_scatter(send_buffer.opaque(), recv_buffer.opaque(),
+                         recvcounts.data(), type, op, comm_));
 }
 
 void MpiCollectives::Init() {
