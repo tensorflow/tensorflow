@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <iostream>
+#include <iterator>
+#include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
