@@ -128,6 +128,12 @@ bool Allocation::is_in_default_mem() const {
   return memory_space_ == MemorySpace::kDefault;
 }
 
+void Allocation::RemoveUse(HloUse use) {
+  uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
+                             [=](const auto& u) { return u == use; }),
+              uses_.end());
+}
+
 void Allocation::AddUse(HloUse use) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);

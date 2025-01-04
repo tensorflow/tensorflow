@@ -127,6 +127,7 @@ class Allocation {
   bool has_no_uses() const { return uses_.empty(); }
   // Adds a use to this allocation.
   void AddUse(HloUse use);
+  void RemoveUse(HloUse use);
   // Replaces all uses of the allocation with the copy_complete instruction.
   absl::Status UpdateUses(HloComputation* computation,
                           HloInstruction* producing_instruction);
@@ -238,8 +239,6 @@ class PinnedAllocation final : public Allocation {
 // before `copy_done_schedule_before_time`.
 class CopyAllocation final : public Allocation {
  public:
-  // TODO(b/307342076): Reorder scheduling times to be
-  // copy_start_schedule_after_time, copy_done_schedule_before_time, end_time
   CopyAllocation(
       Allocation& prev_allocation, MemorySpace memory_space,
       std::optional<HeapSimulator::Chunk> chunk,

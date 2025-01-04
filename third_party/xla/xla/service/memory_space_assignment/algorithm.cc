@@ -77,7 +77,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -1634,6 +1633,46 @@ bool MsaAlgorithm::RepackAllocationsIncludeConvertedSyncMemOp() {
   return false;
 }
 
+namespace {
+
+// Fixes the AllocationSequence after post-allocation transformation:
+//  1. Remove the allocations with to_be_removed instructions as the defining
+//     positions.
+//  2. Update the vector of uses for all allocations according to the
+//     update_use_map.
+// Note that to_be_removed instructions will later be removed from the module
+// during SimplifyGraph() call in memory_space_assignment.cc
+void FixAllocationSequenceAfterPostAllocationTransformation(
+    AllocationSequence* allocations,
+    const PostAllocationTransformationUpdate& transformation_info) {
+  VLOG(3) << "Fixing AllocationSequence after post-allocation transformation";
+
+  // (1)
+  allocations->erase(
+      std::remove_if(
+          allocations->begin(), allocations->end(),
+          [transformation_info](const std::unique_ptr<Allocation>& allocation) {
+            return std::find(transformation_info.to_be_removed.begin(),
+                             transformation_info.to_be_removed.end(),
+                             allocation->defining_position().instruction) !=
+                   transformation_info.to_be_removed.end();
+          }),
+      allocations->end());
+
+  // (2)
+  for (auto& allocation : *allocations) {
+    for (const HloUse& use : allocation->uses()) {
+      auto new_use_it = transformation_info.update_use_map.find(use);
+      if (new_use_it != transformation_info.update_use_map.end()) {
+        allocation->RemoveUse(use);
+        allocation->AddUse(new_use_it->second);
+      }
+    }
+  }
+}
+
+}  // namespace
+
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
   // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
@@ -1907,6 +1946,10 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Sync copy replacement summary: ";
+    VLOG(3) << "\tnumber of successful async conversion: "
+            << successful_async_conversion_set_.size();
+    VLOG(3) << "\tnumber of failed async conversion: "
+            << failed_async_conversions_.size();
     for (const HloInstruction* inst : successful_async_conversion_set_) {
       VLOG(3) << "Successful copy replacement: " << inst->ToString();
     }
@@ -1914,6 +1957,53 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       VLOG(3) << "Failed copy replacement: " << failure.first->ToString()
               << ", reason: " << int(failure.second);
     }
+  }
+
+  // Run post allocation transformation and fix the allocation sequence if
+  // needed.
+  if (options_.post_allocation_transformation_fn) {
+    PostAllocationTransformationUpdate all_changes;
+    VLOG(3) << "Running post allocation transformation on module";
+    for (HloComputation* comp : alias_analysis_.dataflow_analysis()
+                                    .module()
+                                    .MakeNonfusionComputations()) {
+      for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+        // If the operand is in alternate memory, we don't run the
+        // post-allocation transformation.
+        auto operand_it = operands_in_alternate_memory_map_.find(instr);
+        if (operand_it != operands_in_alternate_memory_map_.end()) {
+          continue;
+        }
+
+        // If the instruction is a successful async conversion, we don't run the
+        // post-allocation transformation.
+        if (successful_async_conversion_set_.contains(instr)) {
+          continue;
+        }
+
+        // If any of the operands of the instruction has an in-place user, we
+        // don't run the post-allocation transformation.
+        for (HloInstruction* operand : instr->operands()) {
+          for (HloInstruction* user : operand->users()) {
+            if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
+              continue;
+            }
+          }
+        }
+
+        TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
+                            options_.post_allocation_transformation_fn(instr));
+        all_changes.to_be_removed.insert(all_changes.to_be_removed.end(),
+                                         changes.to_be_removed.begin(),
+                                         changes.to_be_removed.end());
+        all_changes.update_use_map.insert(changes.update_use_map.begin(),
+                                          changes.update_use_map.end());
+      }
+    }
+    VLOG(3) << "Post allocation transformation info: \n"
+            << all_changes.ToString();
+    FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                           all_changes);
   }
 
   HeapSimulator::Result<HloValue> result;
