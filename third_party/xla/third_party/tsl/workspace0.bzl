@@ -110,11 +110,11 @@ def workspace():
     # Bazel refuses to continue. So, we add our own mirror.
     http_archive(
         name = "rules_proto",
-        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
-        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        sha256 = "8c850822dbd47121ca697279aa1129fcc7f2c4a8633921f06f81bc2df4f792c4",
+        strip_prefix = "rules_proto-d205d37866925569d99b4d6cdcba172326ecf812",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
-            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/d205d37866925569d99b4d6cdcba172326ecf812.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/d205d37866925569d99b4d6cdcba172326ecf812.tar.gz",
         ],
     )
 
