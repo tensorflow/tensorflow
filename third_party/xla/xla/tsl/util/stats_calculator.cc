@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/util/stats_calculator.h"
 
+#include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <map>
 #include <queue>
