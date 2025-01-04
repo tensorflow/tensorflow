@@ -27,9 +27,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveTensorFlowSwitch::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
@@ -99,7 +98,7 @@ namespace toco {
         // Let us guard our assumption that only Merge nodes consume the outputs
         // of Switch nodes:
         if (other_op->type != OperatorType::kMerge) {
-          return ::tensorflow::Status(
+          return absl::Status(
               absl::StatusCode::kFailedPrecondition,
               ::absl::StrCat(
                   "Found ", HelpfulOperatorTypeName(*other_op),
