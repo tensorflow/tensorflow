@@ -2920,3 +2920,18 @@ func.func @test_broadcast_to_i48(%arg0: tensor<1x1x13x1xi48>) -> (tensor<7x7x13x
   %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x1x13x1xi48>, tensor<4xi64>) -> tensor<7x7x13x7xi48>
   return %1 : tensor<7x7x13x7xi48>
 }
+
+// -----
+
+// CHECK-LABEL: test_transpose_conv2d_bias_f32
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1.000000e+00> : tensor<128xf32>}>
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<-1.000000e+00> : tensor<128x2x2x256xf32>}>
+// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose_conv2d %arg0, %[[VAR1]], %[[VAR0]] {out_pad = array<i64: 0, 0, 0, 0>, out_shape = array<i64: 1, 128, 128, 128>, stride = array<i64: 2, 2>}
+// CHECK: return %[[VAR2]]
+func.func @test_transpose_conv2d_bias_f32(%arg0: tensor<1x64x64x256xf32>) -> tensor<1x128x128x128xf32> {
+  %cst = arith.constant dense<[1, 128, 128, 128]> : tensor<4xi32>
+  %0 = arith.constant dense<-1.000000e+00> : tensor<128x2x2x256xf32>
+  %1 = arith.constant dense<1.000000e+00> : tensor<128xf32>
+  %2 = "tfl.transpose_conv"(%cst, %0, %arg0, %1)  {padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"}  : (tensor<4xi32>, tensor<128x2x2x256xf32>, tensor<1x64x64x256xf32>, tensor<128xf32>) -> tensor<1x128x128x128xf32>
+  return %2 : tensor<1x128x128x128xf32>
+}
