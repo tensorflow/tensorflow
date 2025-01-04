@@ -2233,14 +2233,13 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
 
-  const auto root = module->entry_computation()->root_instruction();
   auto param0 = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
                                                 op::Constant())),
                       op::Shape("f32[7,257]"));
   auto param1 = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
                                                 op::Constant())),
                       op::Shape("f32[7,116]"));
-  EXPECT_THAT(root,
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Concatenate(param0, param1), op::Shape("f32[7,373]")));
 }
 
@@ -2249,11 +2248,9 @@ TEST_P(SpmdPartitioningTest, ConcatenateAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[14,257] parameter(0)
-  %param0.copy = f32[14,257] copy(%param0), sharding={devices=[1,2]0,1}
-  %param1 = f32[14,116] parameter(1)
-  %param1.copy = f32[14,116] copy(%param1), sharding={devices=[1,2]0,1}
-  ROOT %concatenate = f32[14,373] concatenate(%param0.copy, %param1.copy),
+  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]0,1}
+  %param1 = f32[14,116] parameter(1), sharding={devices=[1,2]0,1}
+  ROOT %concatenate = f32[14,373] concatenate(%param0, %param1),
     dimensions={1}, sharding={devices=[1,2]0,1}
 })";
 
@@ -2261,27 +2258,24 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
 
-  const auto root = module->entry_computation()->root_instruction();
-  auto param0 =
-      AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(), op::Constant()),
-                                      op::Constant(), op::Reshape())),
-            op::Shape("f32[14,129]"));
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[14,129]"));
   auto param0_adjusted =
       AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
                        param0, op::Broadcast(op::Constant())),
             op::Shape("f32[14,129]"));
-  auto param1 = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(),
-                                                op::Reshape())),
-                      op::Shape("f32[14,58]"));
-  EXPECT_THAT(root, AllOf(op::DynamicSlice(
-                              AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                                        op::DynamicUpdateSlice(
-                                            op::Broadcast(), param0_adjusted,
-                                            op::Constant(), op::Multiply()),
-                                        param1, op::Constant(), op::Add())),
-                                    op::Shape("f32[14,374]")),
-                              op::Constant(), op::Multiply()),
-                          op::Shape("f32[14,187]")));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[14,58]"));
+
+  auto dus0 = AllOf(op::DynamicUpdateSlice(op::Broadcast(op::Constant()),
+                                           param0_adjusted, _, _),
+                    op::Shape("f32[14,373]"));
+  auto dus1 = AllOf(op::DynamicUpdateSlice(dus0, param1, _, _),
+                    op::Shape("f32[14,373]"));
+  auto concatenate_replicated =
+      AllOf(op::AllReduce(dus1), op::Shape("f32[14,373]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::DynamicSlice(
+                        op::Pad(concatenate_replicated, op::Constant()), _, _),
+                    op::Shape("f32[14,187]")));
 }
 
 TEST_P(SpmdPartitioningTest, ConcatenateAlongBothDimensions) {
@@ -2299,22 +2293,57 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
 
-  const auto root = module->entry_computation()->root_instruction();
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[7,129]"));
   auto param0_adjusted =
       AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
                        param0, op::Broadcast(op::Constant())),
             op::Shape("f32[7,129]"));
   auto param1 = AllOf(op::Parameter(1), op::Shape("f32[7,58]"));
-  EXPECT_THAT(root, AllOf(op::DynamicSlice(
-                              AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                                        op::DynamicUpdateSlice(
-                                            op::Broadcast(), param0_adjusted,
-                                            op::Constant(), op::Multiply()),
-                                        param1, op::Constant(), op::Add())),
-                                    op::Shape("f32[7,374]")),
-                              op::Constant(), op::Multiply()),
-                          op::Shape("f32[7,187]")));
+
+  auto dus0 = AllOf(op::DynamicUpdateSlice(op::Broadcast(op::Constant()),
+                                           param0_adjusted, _, _),
+                    op::Shape("f32[7,373]"));
+  auto dus1 = AllOf(op::DynamicUpdateSlice(dus0, param1, _, _),
+                    op::Shape("f32[7,373]"));
+  auto concatenate = AllOf(op::AllReduce(dus1), op::Shape("f32[7,373]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::DynamicSlice(op::Pad(concatenate, op::Constant()), _, _),
+                  op::Shape("f32[7,187]")));
+}
+
+TEST_P(SpmdPartitioningTest, DoNotPartitionConcatenate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[256] parameter(0), sharding={devices=[4]<=[4]}
+  %param1 = s32[] parameter(1), sharding={replicated}
+  %concatenate = f32[512] concatenate(%param0, %param0), dimensions={0}, sharding={devices=[4]<=[4]}
+  ROOT %dynamic-slice = f32[256] dynamic-slice(%concatenate, %param1), dynamic_slice_sizes={256}, sharding={devices=[4]<=[4]}
+})";
+
+  // In this test target, we do not need to partition the concatenate to satisfy
+  // the sharding={devices=[4]<=[4]} since the root instruction, the only user
+  // of the concatenate, requires the concatenate to be replicated.
+  //
+  // This pattern is generated by jax.numpy.roll with dynamic shift.
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto dus0 = AllOf(op::DynamicUpdateSlice(op::Broadcast(op::Constant()),
+                                           op::Parameter(0), _),
+                    op::Shape("f32[512]"));
+  auto dus1 = AllOf(op::DynamicUpdateSlice(dus0, op::Parameter(0), _),
+                    op::Shape("f32[512]"));
+  auto concatenate_replicated =
+      AllOf(op::AllReduce(dus1), op::Shape("f32[512]"));
+  auto root_replicated =
+      AllOf(op::DynamicSlice(concatenate_replicated, op::Parameter(1)),
+            op::Shape("f32[256]"));
+  auto reshard_root =
+      AllOf(op::DynamicSlice(root_replicated, _), op::Shape("f32[64]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), reshard_root);
 }
 
 TEST_P(SpmdPartitioningTest, PadAlongNonPartitionedDimension) {
