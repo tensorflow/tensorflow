@@ -56,6 +56,20 @@ absl::Status SelectGather(const GatherAttributes& attr,
                           const OperationDef& op_def, const GpuInfo& gpu_info,
                           std::unique_ptr<GPUOperation>* ptr);
 
+absl::Status SelectGroupNormalization(const GroupNormalizationAttributes& attr,
+                          const OperationDef& op_def,
+                          const GpuInfo& gpu_info,
+                          std::unique_ptr<GPUOperation>* ptr);
+
+std::unique_ptr<GPUOperation> SelectGroupNormMean(const BHWC& shape,
+                                 const OperationDef& op_def,
+                                 const GpuInfo& gpu_info);
+
+std::unique_ptr<GPUOperation> SelectGroupNormVar(const GroupNormVarAttributes& attr,
+                                 const BHWC& shape,
+                                 const OperationDef& op_def,
+                                 const GpuInfo& gpu_info);
+
 absl::Status SelectResize(const Resize2DAttributes& attr,
                           const OperationDef& op_def,
                           std::unique_ptr<GPUOperation>* ptr);
