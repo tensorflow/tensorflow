@@ -204,6 +204,7 @@ class OpDefBuilder {
   OpDefBuilder& SetIsStateful();
   OpDefBuilder& SetAllowsUninitializedInput();
   OpDefBuilder& SetIsDistributedCommunication();
+  OpDefBuilder& SetAllowsSharedKernel();
 
   // Deprecate the op at a certain GraphDef version.
   OpDefBuilder& Deprecated(int version, std::string explanation);
