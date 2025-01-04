@@ -50,6 +50,11 @@ absl::Status CreateTritonPipeline(
 
   pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
 
+  // TODO(loislo): Remove the canonicalizer pass and the following pass once the
+  // pass is deterministic.
+  pm->addPass(mlir::createCanonicalizerPass());
+  pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
+
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm->addPass(mlir::createInlinerPass());
