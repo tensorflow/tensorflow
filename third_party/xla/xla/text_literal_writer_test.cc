@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/literal_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
