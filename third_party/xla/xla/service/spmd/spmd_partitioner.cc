@@ -2572,47 +2572,38 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
 
-  const Shape shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
-  const int64_t dimension = hlo->concatenate_dimension();
-  if (sharding.tile_assignment().dim(dimension) == 1) {
+  const Shape output_shape =
+      MakePartitionedShape(hlo->shape(), hlo->sharding());
+  const int64_t concat_dim = hlo->concatenate_dimension();
+  if (sharding.tile_assignment().dim(concat_dim) == 1) {
     std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(hlo->operands().size());
     for (HloInstruction* operand : hlo->operands()) {
       new_operands.push_back(
           GetPartitionedHlo(operand).Reshard(sharding).hlo());
     }
     SetPartitionedHlo(hlo, [&] {
       return b_.AddInstruction(
-          hlo->CloneWithNewOperands(shard_shape, new_operands));
+          hlo->CloneWithNewOperands(output_shape, new_operands));
     });
     return absl::OkStatus();
   }
 
-  // If the concatenate dimension is along one of the partitioned dimensions,
-  // allocate the full output shape, each partition updates its owned region,
-  // all-reduce across partitions, and then slice its output region.
+  // If the concatenate dimension is sharded, we
+  // 1. allocate the full size along the concatenate dimension
+  // 2. for each operand, each partition updates its owned region
+  // 3. all-reduce to get the result with full size along the concat dimension
+  // 4. reshard to the final sharding.
+  //
+  // An alternative is to directly reshard each operand such that they are
+  // replicated along the concatenate dimension. However, this may introduce a
+  // lot of resharding compared to the method above.
 
   // temp_output_shape is the output shape where the concatenate dimension
-  // is changed to the full (and padded to shard count) dimension size.
-  auto temp_output_shape = MakePartitionedShape(hlo->shape(), sharding);
-  auto last_operand_padded_shape =
-      MakePartitionedShape(hlo->operands().back()->shape(), sharding);
-  // If the last operand has more padding than the temp_output padding, needs to
-  // add extra padding to avoid dynamic update slice out of bound.
-  int last_operand_padding =
-      last_operand_padded_shape.dimensions(dimension) *
-          sharding.tile_assignment().dim(dimension) -
-      hlo->operands().back()->shape().dimensions(dimension);
-  int temp_output_padding = temp_output_shape.dimensions(dimension) *
-                                sharding.tile_assignment().dim(dimension) -
-                            hlo->shape().dimensions(dimension);
-  int padding_for_last_operand =
-      last_operand_padding < temp_output_padding
-          ? 0
-          : last_operand_padding - temp_output_padding;
-  temp_output_shape.set_dimensions(
-      dimension, temp_output_shape.dimensions(dimension) *
-                         sharding.tile_assignment().dim(dimension) +
-                     padding_for_last_operand);
+  // is changed to the size in base shape.
+  Shape temp_output_shape = output_shape;
+  temp_output_shape.set_dimensions(concat_dim,
+                                   hlo->shape().dimensions(concat_dim));
   auto temp_output = CreateZero(temp_output_shape, &b_);
 
   // Offset of each operand along the concatenate dimension.
@@ -2624,23 +2615,25 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
     std::vector<HloInstruction*> start_indices(
         hlo->shape().rank(), b_.AddInstruction(HloInstruction::CreateConstant(
                                  LiteralUtil::Zero(S32))));
-    start_indices[dimension] =
+    start_indices[concat_dim] =
         MultiplyAddDivideOffsetCalculation(
-            spmd_operand->shape().dimensions(dimension), offset, 1)
+            spmd_operand->shape().dimensions(concat_dim), offset, 1)
             .Calculate(MakeTiledPartitionOrdinals(sharding, state.partition_id,
-                                                  &b_)[dimension],
+                                                  &b_)[concat_dim],
                        &b_);
     temp_output = b_.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
         temp_output_shape, temp_output, spmd_operand, start_indices));
-    offset += operand->shape().dimensions(dimension);
+    offset += operand->shape().dimensions(concat_dim);
   }
+
   std::vector<int64_t> non_concat_dims;
   non_concat_dims.reserve(hlo->shape().rank() - 1);
   for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-    if (i != dimension) {
+    if (i != concat_dim) {
       non_concat_dims.push_back(i);
     }
   }
+
   auto grouped =
       hlo_sharding_util::GroupShardingOnDims(sharding, non_concat_dims);
   auto per_group_partitioner_state =
@@ -2650,16 +2643,11 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
                             &b_, temp_output,
                             MakeBinaryAdd(hlo->shape().element_type(), module_),
                             {}, NewChannel());
-  SetPartitionedHlo(hlo, [&] {
-    auto start_indices = MakeTiledPartitionOrdinals(
-        grouped.sharding, per_group_partitioner_state.partition_id, &b_);
-    start_indices[dimension] = MultiplyAddDivideOffsetCalculation(
-                                   shard_shape.dimensions(dimension), 0, 1)
-                                   .Calculate(start_indices[dimension], &b_);
-    return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
-        shard_shape, all_reduce, start_indices, shard_shape.dimensions()));
-  });
-
+  all_reduce->set_sharding(
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding,
+                                                               {concat_dim}));
+  SetPartitionedHlo(
+      hlo, PartitionedHlo(all_reduce, hlo->shape(), state).Reshard(sharding));
   return absl::OkStatus();
 }
 
