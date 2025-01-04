@@ -496,7 +496,7 @@ xla_test(
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/transforms:despecializer",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
     ],
 )
 
@@ -516,7 +516,7 @@ xla_test(
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/transforms:despecializer",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
     ],
 )
 
@@ -541,7 +541,7 @@ xla_test(
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/transforms:despecializer",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -891,7 +891,7 @@ cc_library(
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/transforms:despecializer",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
     ],
 )
 
@@ -2556,7 +2556,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:collective_pipeliner",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

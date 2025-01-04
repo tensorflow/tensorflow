@@ -762,7 +762,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/utils:hlo_query",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
