@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/optional.h"

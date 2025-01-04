@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "tsl/platform/errors.h"
