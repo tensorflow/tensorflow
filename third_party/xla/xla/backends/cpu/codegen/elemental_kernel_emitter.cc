@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -63,6 +65,18 @@ limitations under the License.
 namespace xla::cpu {
 
 namespace {
+
+KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
+    const HloModule* hlo_module) {
+  if (hlo_module == nullptr) {
+    return {true, 256};
+  }
+
+  const HloModuleConfig& config = hlo_module->config();
+  return KernelApiIrBuilder::Options{
+      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
+      config.debug_options().xla_cpu_prefer_vector_width()};
+}
 
 struct ParallelConfig {
   std::vector<int64_t> outer_dimension_partitions;
@@ -207,8 +221,9 @@ ElementalKernelEmitter::ElementalKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine),
       context_(std::make_unique<llvm::LLVMContext>()),
-      kernel_api_ir_builder_(*context_.getContext(),
-                             KernelApiIrBuilder::Options{true, 256}) {}
+      kernel_api_ir_builder_(
+          *context_.getContext(),
+          KernelApiIrBuilderOptionsFromHloModuleConfig(instr_->GetModule())) {}
 
 absl::StatusOr<std::unique_ptr<KernelSpec>>
 ElementalKernelEmitter::EmitKernelSpec() {
@@ -239,8 +254,14 @@ ElementalKernelEmitter::EmitKernelSpec() {
     };
   }
 
-  CpuElementalIrEmitter elemental_ir_emitter(
-      module.get(), &ir_builder, std::move(thread_local_call_fn), true, true);
+  const HloModule* hlo_module = instr_->GetModule();
+  bool enable_fast_min_max =
+      hlo_module
+          ? hlo_module->config().debug_options().xla_cpu_enable_fast_min_max()
+          : true;
+  CpuElementalIrEmitter elemental_ir_emitter(module.get(), &ir_builder,
+                                             std::move(thread_local_call_fn),
+                                             true, enable_fast_min_max);
 
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(instr_, operand_to_generator);

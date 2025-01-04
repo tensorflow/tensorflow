@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -95,7 +96,7 @@ class KernelThunk : public Thunk {
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
-              absl::flat_hash_set<int64_t> invariant_arguments,
+              std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
 
@@ -105,7 +106,7 @@ class KernelThunk : public Thunk {
   ResultsBuffers results_buffers_;
 
   // A set of invariant arguments (their indices).
-  absl::flat_hash_set<int64_t> invariant_arguments_;
+  std::optional<absl::flat_hash_set<int64_t>> invariant_arguments_;
 
   size_t num_kernel_args_;
 
@@ -155,8 +156,12 @@ class KernelThunk final : public internal::KernelThunk<> {
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim,
-      absl::flat_hash_set<int64_t> invariant_arguments,
+      std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);
+
+  static absl::StatusOr<std::unique_ptr<Thunk>> Create(
+      Thunk::Info info, std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+      std::optional<uint64_t> min_alignment);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
       const Thunk::ExecuteParams& params) final;
