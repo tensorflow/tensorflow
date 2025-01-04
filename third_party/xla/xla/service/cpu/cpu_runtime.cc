@@ -421,9 +421,13 @@ void AllGatherImpl(const ExecutableRunOptions* run_options,
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
-  TF_CHECK_OK(communicator->AllGather(rendezvous_key, buffer_size,
-                                      source_buffer, destination_buffer,
-                                      DefaultCollectiveTimeout()));
+
+  se::DeviceMemoryBase input_buffer_data(source_buffer, buffer_size);
+  se::DeviceMemoryBase output_buffer_data(destination_buffer, buffer_size);
+
+  CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
+  TF_CHECK_OK(communicator->AllGather(input_buffer_data, output_buffer_data, U8,
+                                      buffer_size, executor));
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY

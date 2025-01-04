@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -77,11 +78,13 @@ tsl::AsyncValueRef<AllGatherThunk::ExecuteEvent> AllGatherThunk::Execute(
   return ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+        CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
+
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = source_shape(i);
           TF_RETURN_IF_ERROR(comm.AllGather(
-              key, ShapeUtil::ByteSizeOf(shape), data.source[i].opaque(),
-              data.destination[i].opaque(), DefaultCollectiveTimeout()));
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), executor));
         }
         return absl::OkStatus();
       });

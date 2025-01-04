@@ -290,19 +290,19 @@ absl::Status GlooCollectivesCommunicator::AllToAll(
   return absl::OkStatus();
 }
 
-absl::Status GlooCollectivesCommunicator::AllGather(const RendezvousKey& key,
-                                                    size_t chunk_bytes,
-                                                    const void* input_buffer,
-                                                    void* output_buffer,
-                                                    absl::Duration timeout) {
+absl::Status GlooCollectivesCommunicator::AllGather(
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
   uint32_t tag = 0;  // TODO(phawkins): use better tags.
+
+  TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
 
   gloo::AllgatherOptions options(context_);
   options.setTag(tag);
-  options.setTimeout(absl::ToChronoMilliseconds(timeout));
-  options.setInput(reinterpret_cast<char*>(const_cast<void*>(input_buffer)),
-                   chunk_bytes);
-  options.setOutput(reinterpret_cast<char*>(output_buffer),
+  options.setTimeout(absl::ToChronoMilliseconds(cpu_executor->timeout()));
+  options.setInput(reinterpret_cast<char*>(send_buffer.opaque()), chunk_bytes);
+  options.setOutput(reinterpret_cast<char*>(recv_buffer.opaque()),
                     chunk_bytes * context_->size);
 
   try {

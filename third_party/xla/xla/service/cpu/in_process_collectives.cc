@@ -514,12 +514,15 @@ absl::Status InProcessCollectivesCommunicator::AllToAll(
 }
 
 absl::Status InProcessCollectivesCommunicator::AllGather(
-    const RendezvousKey& key, size_t chunk_bytes, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  const RendezvousKey& key = cpu_executor->rendezvous_key();
+
   AllGatherParticipantData participant(key, rank_);
-  participant.chunk_size = chunk_bytes;
-  participant.source_buffer = input_buffer;
-  participant.destination_buffer = output_buffer;
+  participant.chunk_size = count * primitive_util::ByteWidth(dtype);
+  participant.source_buffer = send_buffer.opaque();
+  participant.destination_buffer = recv_buffer.opaque();
   auto make_cpu_rendezvous = [](const RendezvousKey& k) {
     return std::make_unique<CpuAllGatherRendezvous>(k);
   };

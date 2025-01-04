@@ -69,9 +69,10 @@ class CollectivesCommunicator {
                                 absl::Duration timeout) = 0;
 
   // Performs an all-gather.
-  virtual absl::Status AllGather(const RendezvousKey& key, size_t chunk_bytes,
-                                 const void* input_buffer, void* output_buffer,
-                                 absl::Duration timeout) = 0;
+  virtual absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 const Executor& executor) = 0;
 
   // Performs a reduce-scatter
   virtual absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,

@@ -214,14 +214,13 @@ absl::Status MpiCollectivesCommunicator::AllToAll(
   return absl::OkStatus();
 }
 
-absl::Status MpiCollectivesCommunicator::AllGather(const RendezvousKey& key,
-                                                   size_t chunk_bytes,
-                                                   const void* input_buffer,
-                                                   void* output_buffer,
-                                                   absl::Duration timeout) {
-  return MpiErrorToAbslStatus(MPI_Allgather(input_buffer, chunk_bytes, MPI_BYTE,
-                                            output_buffer, chunk_bytes,
-                                            MPI_BYTE, comm_));
+absl::Status MpiCollectivesCommunicator::AllGather(
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
+  return MpiErrorToAbslStatus(MPI_Allgather(send_buffer.opaque(), count, type,
+                                            recv_buffer.opaque(), count, type,
+                                            comm_));
 }
 
 absl::Status MpiCollectivesCommunicator::ReduceScatter(
