@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
