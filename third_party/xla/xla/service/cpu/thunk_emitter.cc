@@ -24,11 +24,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/elemental_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -56,6 +59,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
+#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -78,9 +83,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
@@ -613,12 +620,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      ir_emitter_.EmitElementalHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+  ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
+                                 &target_machine_features_);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelSpec> kernel_spec,
+                      emitter.EmitKernelSpec());
+  auto llvm_ir_kernel_spec = absl::WrapUnique<LlvmIrKernelSpec>(
+      tsl::down_cast<LlvmIrKernelSpec*>(kernel_spec.release()));
+
+  LlvmIrKernelSource& kernel_source = llvm_ir_kernel_spec->kernel_source();
+  std::string kernel_name = kernel_source.kernel_name();
+  kernels_.push_back(
+      {std::move(kernel_name), std::move(kernel_source).thread_safe_module()});
 
   return MakeKernelThunkSequence(
-      instruction, buffers, kernel,
+      instruction, std::move(llvm_ir_kernel_spec),
       /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
@@ -1218,6 +1233,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
       kernel.thread_dims, kernel.invariant_arguments, min_alignment);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
+    const HloInstruction* instruction,
+    std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+    std::optional<uint64_t> min_alignment) {
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        std::move(kernel_spec), min_alignment);
 }
 
 }  // namespace xla::cpu
