@@ -108,12 +108,20 @@ TEST(PjRtCApiHelperTest, Callback) {
   auto kv_callback_data = ConvertToCKeyValueCallbacks(kv_store);
   auto converted_kv_store = ToCppKeyValueStore(
       kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func,
+      kv_callback_data->c_kv_try_get, &kv_callback_data->kv_try_get_c_func,
       kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
+
+  auto v_not_found = converted_kv_store->Get("key", absl::Seconds(1));
+  EXPECT_TRUE(absl::IsNotFound(v_not_found.status())) << v_not_found.status();
 
   auto s = converted_kv_store->Set("key", "value");
   TF_EXPECT_OK(s);
 
   auto v = converted_kv_store->Get("key", absl::Seconds(1));
+  TF_EXPECT_OK(v.status());
+  EXPECT_EQ(*v, "value");
+
+  auto v_2 = converted_kv_store->TryGet("key");
   TF_EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
 }
