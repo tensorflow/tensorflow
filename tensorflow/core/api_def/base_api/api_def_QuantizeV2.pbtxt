@@ -42,7 +42,13 @@ If the `axis` attribute is specified, this will be a 1-D tensor whose size
 matches the `axis` dimension of the input and output tensors.
 END
   }
-  summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
+  attr {
+    name: "dtype"
+    description: <<END
+Type of the input tensor. Currently QuantizeV2 supports float and bfloat16.
+END
+  }
+  summary: "Quantize the \'input\' tensor of types float and bfloat16 to \'output\' tensor of type \'T\'."
   description: <<END
 [min_range, max_range] are scalar floats that specify the range for
 the 'input' data. The 'mode' attribute controls exactly which calculations are

@@ -17,8 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <type_traits>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
@@ -55,7 +58,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 // max_range.
 // TODO(xbing): Add a new QuantizeOp just taking scale,
 //              rather than min_range and max_range.
-template <typename Device, typename T>
+template <typename Device, typename S, typename T>
 class QuantizeV2Op : public OpKernel {
  public:
   explicit QuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -106,8 +109,26 @@ class QuantizeV2Op : public OpKernel {
         ctx, ctx->GetAttr("ensure_minimum_range", &ensure_minimum_range_));
   }
 
+  void MaybeConvertToFloat(OpKernelContext* ctx, const int idx,
+                           Tensor* converted_tensor) {
+    if (std::is_same<S, float>::value) return;
+    // Convert input tensor of type S to float tensor.
+    const Tensor& input_tensor = ctx->input(idx);
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input_tensor.shape(),
+                                           converted_tensor));
+    auto flat_input = input_tensor.flat<S>();
+    auto d = ctx->eigen_device<Device>();
+    auto flat_output = converted_tensor->flat<float>();
+    flat_output.device(d) = flat_input.template cast<float>();
+  }
+
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& input = ctx->input(0);
+    // To process bfloat16 input tensor the tensor is converted to float.
+    Tensor converted_tensor;
+    MaybeConvertToFloat(ctx, 0,
+                        &converted_tensor);  // Does nothing for float input.
+    const Tensor& input =
+        (std::is_same<S, float>::value) ? ctx->input(0) : converted_tensor;
     const Tensor& input_min_range = ctx->input(1);
     const Tensor& input_max_range = ctx->input(2);
 
@@ -345,19 +366,33 @@ class QuantizeV2Op : public OpKernel {
   bool narrow_range_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<quint8>("T"),
-    QuantizeV2Op<CPUDevice, quint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint8>("T"),
-    QuantizeV2Op<CPUDevice, qint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<quint16>("T"),
-    QuantizeV2Op<CPUDevice, quint16>);
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint16>("T"),
-    QuantizeV2Op<CPUDevice, qint16>);
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
-    QuantizeV2Op<CPUDevice, qint32>);
+#define REGISTER_CPU(S)                                         \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeV2")                    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<S>("dtype")       \
+                              .TypeConstraint<quint8>("T"),     \
+                          QuantizeV2Op<CPUDevice, S, quint8>);  \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeV2")                    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<S>("dtype")       \
+                              .TypeConstraint<qint8>("T"),      \
+                          QuantizeV2Op<CPUDevice, S, qint8>);   \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeV2")                    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<S>("dtype")       \
+                              .TypeConstraint<quint16>("T"),    \
+                          QuantizeV2Op<CPUDevice, S, quint16>); \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeV2")                    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<S>("dtype")       \
+                              .TypeConstraint<qint16>("T"),     \
+                          QuantizeV2Op<CPUDevice, S, qint16>);  \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeV2")                    \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<S>("dtype")       \
+                              .TypeConstraint<qint32>("T"),     \
+                          QuantizeV2Op<CPUDevice, S, qint32>);
+
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 }  // namespace tensorflow
