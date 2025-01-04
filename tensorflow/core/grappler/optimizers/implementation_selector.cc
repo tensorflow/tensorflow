@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -226,6 +228,8 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
     UpdateForwardIdentityNodeDtype(node_view, apiInfo.output_arg_dtypes());
   }
 
+  (*node_def->mutable_attr())[kNoImplSelectionAttr].set_b(true);
+
   VLOG(3) << "Node def after swap is: " << node_def->DebugString();
   return absl::OkStatus();
 }
@@ -237,7 +241,7 @@ absl::Status ImplementationSelector::LoadFunctions(const GraphDef& graph) {
 }
 
 absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
-    utils::MutableNodeView* node_view) const {
+    const Cluster* cluster, utils::MutableNodeView* node_view) const {
   // There are two ways of calling functions:
   //  1. By specifying an op name as a function name, or
   //  2. Via the @defun functional interface, where the real function call
@@ -246,6 +250,15 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
   //     attributes need to be taken care, like Tin and Tout which take care of
   //     the DTYPE of input/output.
   NodeDef* node_def = node_view->node();
+
+  bool noimpl_selection = false;
+  noimpl_selection &= TryGetNodeAttr(AttrSlice(&node_def->attr()),
+                                     kNoImplSelectionAttr, &noimpl_selection);
+  if (noimpl_selection) {
+    VLOG(2) << "Don't optimize node " << node_def->name() << " because of "
+            << kNoImplSelectionAttr << " attribute";
+    return absl::OkStatus();
+  }
 
   std::vector<string> function_attribute_names;
   for (const auto& attr : node_def->attr()) {
@@ -262,23 +275,60 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
   }
 
   DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name) ||
-      !parsed_name.has_type) {
-    return errors::Internal("Could not parse device name:", node_def->device());
+  if (!node_def->device().empty()) {
+    if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name) ||
+        !parsed_name.has_type) {
+      return absl::InternalError(absl::StrCat(
+          "Could not parse device name: ", node_def->device()));
+    }
+    VLOG(2) << "Op " << node_def->name() << " runs on " << node_def->device()
+            << " = (" << parsed_name.type << ")";
   }
-  VLOG(2) << "Op " << node_def->name() << " runs on " << node_def->device()
-          << " = (" << parsed_name.type << ")";
+
+  auto select_device = [&](const string& function_name,
+                           const std::vector<string>& equiv_func_names) {
+    StringPiece device_type;
+    if (parsed_name.has_type) {
+      return StringPiece(parsed_name.type);
+    }
+    else if (!cluster) {
+      return StringPiece();
+    }
+    else if (const DeviceSet* device_set = cluster->GetDeviceSet()) {
+      absl::flat_hash_set<StringPiece> specified_devices;
+      specified_devices.emplace(
+          lib_info_->GetApiInfo(function_name)->preferred_device());
+      for (const string& func_name : equiv_func_names) {
+        specified_devices.emplace(
+            lib_info_->GetApiInfo(func_name)->preferred_device());
+      }
+      for (const std::pair<DeviceType, int32>& dt :
+           device_set->prioritized_device_types()) {
+        if (specified_devices.contains(dt.first.type_string())) {
+          return StringPiece(dt.first.type_string());
+        }
+      }
+    }
+    return StringPiece();
+  };
 
   for (const auto& attr_name : function_attribute_names) {
     string function_name = node_def->attr().at(attr_name).func().name();
     // Skip the function if its already optimized by function optimizer.
-    if (::absl::StrContains(function_name, "_specialized_for_")) continue;
+    if (::absl::StrContains(function_name, "_specialized_for_")) {
+      continue;
+    }
     std::vector<string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         function_name, &equiv_func_names));
+    StringPiece device_type = select_device(function_name, equiv_func_names);
+    if (device_type.empty()) {
+      continue;
+    }
+
     for (const auto& func_name : equiv_func_names) {
       const auto& func_api_info = lib_info_->GetApiInfo(func_name);
-      if (func_api_info->preferred_device() == parsed_name.type) {
+      if (func_api_info->preferred_device() == device_type) {
         VLOG(2) << "Swapping: " << function_name << " TO: " << func_name;
         TF_RETURN_IF_ERROR(UpdateNodeDef(node_view, func_name, *func_api_info));
         break;
@@ -291,10 +341,16 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
     std::vector<string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         node_def->op(), &equiv_func_names));
+    StringPiece device_type = select_device(node_def->op(), equiv_func_names);
+    if (device_type.empty()) {
+      return absl::OkStatus();
+    }
+
     for (const string& func_name : equiv_func_names) {
       const auto func_api_info = lib_info_->GetApiInfo(func_name);
-      if (func_api_info->preferred_device() == parsed_name.type) {
+      if (func_api_info->preferred_device() == device_type) {
         node_def->set_op(func_name);
+        (*node_def->mutable_attr())[kNoImplSelectionAttr].set_b(true);
         break;
       }
     }
@@ -373,7 +429,7 @@ absl::Status ImplementationSelector::SelectDeviceIndex(GraphDef* graph) const {
 }
 
 absl::Status ImplementationSelector::SelectImplementation(
-    GraphDef* graph) const {
+    const Cluster* cluster, GraphDef* graph) const {
   if (!graph->has_library()) {
     VLOG(2) << "Skipping graph since it does not have function def";
     return absl::OkStatus();
@@ -389,7 +445,8 @@ absl::Status ImplementationSelector::SelectImplementation(
 
   const int num_nodes = graph_view.NumNodes();
   for (int k = 0; k < num_nodes; ++k) {
-    TF_RETURN_IF_ERROR(MaybeOptimizeFunctionCall(graph_view.GetNode(k)));
+    TF_RETURN_IF_ERROR(
+        MaybeOptimizeFunctionCall(cluster, graph_view.GetNode(k)));
   }
 
   return absl::OkStatus();
@@ -415,7 +472,7 @@ absl::Status ImplementationSelector::Optimize(Cluster* cluster,
     *optimized_graph = item.graph;
     VLOG(2) << "Could not rewrite device index due to error:" << status;
   }
-  return SelectImplementation(optimized_graph);
+  return SelectImplementation(cluster, optimized_graph);
 }
 
 }  // end namespace grappler

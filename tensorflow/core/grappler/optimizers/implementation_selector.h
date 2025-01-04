@@ -34,6 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+static constexpr const char* const kNoImplSelectionAttr = "_noimpl_selection";
+
 // Motivation: To achieve the same high level functionality, the underlying
 // implementations sometimes are different for various devices where the
 // function runs. In order to achieve the correct result and best performance,
@@ -111,7 +113,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
  private:
   absl::Status LoadFunctions(const GraphDef& graph);
   absl::Status MaybeOptimizeFunctionCall(
-      utils::MutableNodeView* node_view) const;
+      const Cluster* cluster, utils::MutableNodeView* node_view) const;
 
   // Finds all call sites for functions, then replace with the appropriate
   // implementation.
@@ -124,7 +126,8 @@ class ImplementationSelector : public CustomGraphOptimizer {
   // may call into another function, so a function might have to be duplicated.
   // For simplicity, we do not change function bodies. Also, we do not change
   // gradients.
-  absl::Status SelectImplementation(GraphDef* graph) const;
+  absl::Status SelectImplementation(
+      const Cluster* cluster, GraphDef* graph) const;
 
   // Rewrites the DeviceIndex op with a Const op with value of the index of the
   // device the associcated Case op runs.
