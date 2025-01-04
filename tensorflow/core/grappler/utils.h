@@ -69,8 +69,8 @@ inline int NodePositionIfSameNode(absl::string_view input_name,
 }
 
 // Returns the node name and position in a single call.
-inline StringPiece ParseNodeNameAsStringPiece(absl::string_view name,
-                                              int* position) {
+inline absl::string_view ParseNodeNameAsStringPiece(absl::string_view name,
+                                                    int* position) {
   const bool is_control = absl::StartsWith(name, "^");
   TensorId id = ParseTensorName(name);
   if (position) {
@@ -89,7 +89,7 @@ inline string ParseNodeName(const string& name, int* position) {
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-inline StringPiece NodeNameAsStringPiece(const string& name) {
+inline absl::string_view NodeNameAsStringPiece(const string& name) {
   return ParseNodeNameAsStringPiece(name, nullptr);
 }
 

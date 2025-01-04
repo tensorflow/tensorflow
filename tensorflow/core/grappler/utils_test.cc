@@ -497,7 +497,7 @@ void BM_NodeNameAsStringPiece(::testing::benchmark::State& state) {
   string input(size + 3, 'x');
   input[size] = ':';
   for (auto s : state) {
-    StringPiece node_name = NodeNameAsStringPiece(input);
+    absl::string_view node_name = NodeNameAsStringPiece(input);
     CHECK_GT(node_name.size(), 0);
   }
 }
