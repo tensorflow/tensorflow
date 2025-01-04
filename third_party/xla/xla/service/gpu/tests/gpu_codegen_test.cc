@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace gpu {

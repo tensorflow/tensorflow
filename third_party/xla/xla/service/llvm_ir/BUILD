@@ -340,7 +340,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
-        "//xla/tests:filecheck",
+        "//xla/hlo/testlib:filecheck",
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",

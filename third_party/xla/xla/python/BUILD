@@ -1393,8 +1393,8 @@ xla_cc_test(
     srcs = ["xplane_to_profile_instructions_test.cc"],
     deps = [
         ":xplane_to_profile_instructions",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_proto_cc",
-        "//xla/tests:verified_hlo_module",
         "//xla/tsl/profiler/convert:xla_op_utils",
         "//xla/tsl/profiler/rpc/client:save_profile",
         "//xla/tsl/profiler/utils:file_system_utils",
