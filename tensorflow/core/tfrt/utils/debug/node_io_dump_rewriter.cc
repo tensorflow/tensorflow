@@ -49,8 +49,8 @@ absl::StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
   return errors::InvalidArgument("TF_DUMP_GRAPH_PREFIX not specified");
 }
 
-Status InsertDumpOpsForNode(Graph& graph, Node& node,
-                            absl::string_view dump_dir) {
+absl::Status InsertDumpOpsForNode(Graph& graph, Node& node,
+                                  absl::string_view dump_dir) {
   auto insert = [&](bool is_input, const std::vector<const Edge*> edges) {
     for (const Edge* edge : edges) {
       if (edge->IsControlEdge()) continue;
@@ -85,9 +85,9 @@ Status InsertDumpOpsForNode(Graph& graph, Node& node,
 
 }  // namespace
 
-Status InsertDumpOps(Graph& graph,
-                     const absl::flat_hash_set<std::string>& nodes_to_dump,
-                     absl::string_view dump_dir) {
+absl::Status InsertDumpOps(
+    Graph& graph, const absl::flat_hash_set<std::string>& nodes_to_dump,
+    absl::string_view dump_dir) {
   TF_ASSIGN_OR_RETURN(auto dir, GetDumpDir(dump_dir));
   auto insert = [&](Graph& graph) {
     for (Node* node : graph.op_nodes()) {
@@ -115,9 +115,10 @@ Status InsertDumpOps(Graph& graph,
   return absl::OkStatus();
 }
 
-Status InsertDumpOps(MetaGraphDef& meta_graph_def,
-                     const absl::flat_hash_set<std::string>& nodes_to_dump,
-                     absl::string_view dump_dir) {
+absl::Status InsertDumpOps(
+    MetaGraphDef& meta_graph_def,
+    const absl::flat_hash_set<std::string>& nodes_to_dump,
+    absl::string_view dump_dir) {
   Graph graph(OpRegistry::Global());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph({}, meta_graph_def.graph_def(), &graph));
