@@ -30,8 +30,8 @@ struct SafeTensorId;
 // Identifier for a tensor within a step.
 // first == operation_name, second == output_index
 // Note: does not own backing storage for name.
-struct TensorId : public std::pair<StringPiece, int> {
-  typedef std::pair<StringPiece, int> Base;
+struct TensorId : public std::pair<absl::string_view, int> {
+  typedef std::pair<absl::string_view, int> Base;
 
   // Inherit the set of constructors.
   using Base::pair;
@@ -41,7 +41,7 @@ struct TensorId : public std::pair<StringPiece, int> {
   TensorId() : Base() {}
   TensorId(const SafeTensorId& id);
 
-  const StringPiece node() const { return first; }
+  const absl::string_view node() const { return first; }
   int index() const { return second; }
 
   string ToString() const {
@@ -58,7 +58,7 @@ struct TensorId : public std::pair<StringPiece, int> {
 };
 
 TensorId ParseTensorName(const string& name);
-TensorId ParseTensorName(StringPiece name);
+TensorId ParseTensorName(absl::string_view name);
 
 bool IsTensorIdControl(const TensorId& tensor_id);
 

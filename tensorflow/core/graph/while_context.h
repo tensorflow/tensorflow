@@ -34,7 +34,7 @@ namespace tensorflow {
 // differentiable. Figure out backwards compatibility story.
 class WhileContext {
  public:
-  WhileContext(StringPiece frame_name, std::vector<Node*> enter_nodes,
+  WhileContext(absl::string_view frame_name, std::vector<Node*> enter_nodes,
                std::vector<Node*> exit_nodes, OutputTensor cond_output,
                std::vector<OutputTensor> body_inputs,
                std::vector<OutputTensor> body_outputs);

@@ -79,19 +79,19 @@ class GraphDefBuilder {
 
     // Methods for setting options.  These are const methods: they
     // return a copy of *this with the option set.
-    Options WithName(StringPiece name) const;
-    Options WithDevice(StringPiece device) const;
+    Options WithName(absl::string_view name) const;
+    Options WithDevice(absl::string_view device) const;
     Options WithControlInput(Node* control_input) const;
     Options WithControlInputs(absl::Span<Node* const> control_inputs) const;
 
     // Override the default value for an optional attr.
     template <class T>
-    Options WithAttr(StringPiece attr_name, T&& value) const {
+    Options WithAttr(absl::string_view attr_name, T&& value) const {
       return Options(*this).WithAttrImpl(attr_name, std::forward<T>(value));
     }
     // Note: overload needed to allow {...} expressions for value.
     template <class T>
-    Options WithAttr(StringPiece attr_name,
+    Options WithAttr(absl::string_view attr_name,
                      std::initializer_list<T> value) const {
       return WithAttr<std::initializer_list<T>>(attr_name, std::move(value));
     }
@@ -111,7 +111,7 @@ class GraphDefBuilder {
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,
     // returns a name built out of the Op type name.
-    string GetNameForOp(StringPiece op) const;
+    string GetNameForOp(absl::string_view op) const;
 
     // Sets the device, adds control inputs, adds attrs, and calls Finalize().
     // If Finalize returns an error, it is saved and this function returns
@@ -127,12 +127,12 @@ class GraphDefBuilder {
     }
 
    private:
-    Options WithNameImpl(StringPiece name);
-    Options WithDeviceImpl(StringPiece device);
+    Options WithNameImpl(absl::string_view name);
+    Options WithDeviceImpl(absl::string_view device);
     Options WithControlInputImpl(Node* control_input);
     Options WithControlInputsImpl(absl::Span<Node* const> control_inputs);
     template <class T>
-    Options WithAttrImpl(StringPiece name, T&& value) {
+    Options WithAttrImpl(absl::string_view name, T&& value) {
       attrs_.emplace_back(string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
