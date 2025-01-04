@@ -211,7 +211,7 @@ void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context) {
   patterns
       .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(
           context);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace tac

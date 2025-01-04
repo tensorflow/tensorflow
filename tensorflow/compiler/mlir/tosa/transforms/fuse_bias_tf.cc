@@ -148,7 +148,7 @@ void FuseBiasTF::runOnOperation() {
 
   // Add the generated patterns to the list.
   patterns.add<ConvertTFBiasAddOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace
