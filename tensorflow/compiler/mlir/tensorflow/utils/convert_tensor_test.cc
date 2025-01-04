@@ -148,6 +148,12 @@ TEST_F(ConvertTensorTest, Simple) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
       mlir::FloatType::getFloat8E4M3FN(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2fnuz>(
+      {tsl::float8_e5m2fnuz{1.0}, tsl::float8_e5m2fnuz{-1.0}},
+      DT_FLOAT8_E5M2FNUZ, mlir::FloatType::getFloat8E5M2FNUZ(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fnuz>(
+      {tsl::float8_e4m3fnuz{1.0}, tsl::float8_e4m3fnuz{-1.0}},
+      DT_FLOAT8_E4M3FNUZ, mlir::FloatType::getFloat8E4M3FNUZ(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
       {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,

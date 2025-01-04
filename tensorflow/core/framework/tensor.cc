@@ -563,6 +563,14 @@ struct ProtoHelper<float8_e5m2> : public Float8ProtoHelper<float8_e5m2> {};
 template <>
 struct ProtoHelper<float8_e4m3fn> : public Float8ProtoHelper<float8_e4m3fn> {};
 
+template <>
+struct ProtoHelper<float8_e5m2fnuz>
+    : public Float8ProtoHelper<float8_e5m2fnuz> {};
+
+template <>
+struct ProtoHelper<float8_e4m3fnuz>
+    : public Float8ProtoHelper<float8_e4m3fnuz> {};
+
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
@@ -950,6 +958,8 @@ int Tensor::RefCount() const {
     CASE(Variant, SINGLE_ARG(STMTS))                           \
     CASE(float8_e5m2, SINGLE_ARG(STMTS))                       \
     CASE(float8_e4m3fn, SINGLE_ARG(STMTS))                     \
+    CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
+    CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
     case DT_INVALID:                                           \
@@ -1243,6 +1253,14 @@ inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline float PrintOneElement(float8_e5m2fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+inline float PrintOneElement(float8_e4m3fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 inline int16_t PrintOneElement(int4 a, bool print_v2) {
   return static_cast<int16_t>(a);
 }
@@ -1429,6 +1447,12 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E5M2FNUZ:
+      return SummarizeArray<float8_e5m2fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
+    case DT_FLOAT8_E4M3FNUZ:
+      return SummarizeArray<float8_e4m3fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;

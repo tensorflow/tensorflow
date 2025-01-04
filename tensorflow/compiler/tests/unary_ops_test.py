@@ -891,7 +891,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # TODO(b/271327511): Fix issue where casts to FP8 very rarely result in
       # NaN on Mac
       self.skipTest("Casts to FP8 sometimes result in NaN on Mac")
-    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
+    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn,
+                 dtypes.float8_e5m2fnuz, dtypes.float8_e4m3fnuz}
     other_types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64

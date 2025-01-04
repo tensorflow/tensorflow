@@ -466,6 +466,24 @@ tf_export("dtypes.experimental.float8_e4m3fn",
           "experimental.float8_e4m3fn").export_constant(__name__,
                                                         "float8_e4m3fn")
 
+float8_e5m2fnuz = DType(types_pb2.DT_FLOAT8_E5M2FNUZ)
+doc_typealias.document(
+    obj=float8_e5m2fnuz,
+    doc="8-bit float with 5 exponent bits and 2 mantissa bits."
+    "This type is finite-only, with one NaN and one Zero.")
+tf_export("dtypes.experimental.float8_e5m2fnuz",
+          "experimental.float8_e5m2fnuz").export_constant(__name__,
+                                                          "float8_e5m2fnuz")
+
+float8_e4m3fnuz = DType(types_pb2.DT_FLOAT8_E4M3FNUZ)
+doc_typealias.document(
+    obj=float8_e4m3fnuz,
+    doc="8-bit float with 4 exponent bits and 3 mantissa bits, with extended "
+    "This type is finite-only, with one NaN and one Zero.")
+tf_export("dtypes.experimental.float8_e4m3fnuz",
+          "experimental.float8_e4m3fnuz").export_constant(__name__,
+                                                          "float8_e4m3fnuz")
+
 int4 = DType(types_pb2.DT_INT4)
 doc_typealias.document(obj=int4, doc="Signed 4-bit integer.")
 tf_export("dtypes.experimental.int4", "experimental.int4").export_constant(
@@ -505,6 +523,8 @@ qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
 float8_e5m2_ref = DType(types_pb2.DT_FLOAT8_E5M2_REF)
 float8_e4m3fn_ref = DType(types_pb2.DT_FLOAT8_E4M3FN_REF)
+float8_e5m2fnuz_ref = DType(types_pb2.DT_FLOAT8_E5M2FNUZ_REF)
+float8_e4m3fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3FNUZ_REF)
 int4_ref = DType(types_pb2.DT_INT4_REF)
 uint4_ref = DType(types_pb2.DT_UINT4_REF)
 
@@ -534,6 +554,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_FLOAT8_E5M2: float8_e5m2,
     types_pb2.DT_FLOAT8_E4M3FN: float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E5M2FNUZ: float8_e5m2fnuz,
+    types_pb2.DT_FLOAT8_E4M3FNUZ: float8_e4m3fnuz,
     types_pb2.DT_INT4: int4,
     types_pb2.DT_UINT4: uint4,
     types_pb2.DT_RESOURCE: resource,
@@ -561,6 +583,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
     types_pb2.DT_FLOAT8_E5M2_REF: float8_e5m2_ref,
     types_pb2.DT_FLOAT8_E4M3FN_REF: float8_e4m3fn_ref,
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: float8_e5m2fnuz_ref,
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: float8_e4m3fnuz_ref,
     types_pb2.DT_INT4_REF: int4_ref,
     types_pb2.DT_UINT4_REF: uint4_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
@@ -592,6 +616,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_FLOAT8_E5M2: "float8_e5m2",
     types_pb2.DT_FLOAT8_E4M3FN: "float8_e4m3fn",
+    types_pb2.DT_FLOAT8_E5M2FNUZ: "float8_e5m2fnuz",
+    types_pb2.DT_FLOAT8_E4M3FNUZ: "float8_e4m3fnuz",
     types_pb2.DT_INT4: "int4",
     types_pb2.DT_UINT4: "uint4",
     types_pb2.DT_RESOURCE: "resource",
@@ -619,6 +645,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
     types_pb2.DT_FLOAT8_E5M2_REF: "float8_e5m2_ref",
     types_pb2.DT_FLOAT8_E4M3FN_REF: "float8_e4m3fn_ref",
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: "float8_e5m2fnuz_ref",
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: "float8_e4m3fnuz_ref",
     types_pb2.DT_INT4_REF: "int4_ref",
     types_pb2.DT_UINT4_REF: "uint4_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
@@ -687,6 +715,8 @@ _NP_TO_TF = {
     _np_bfloat16: bfloat16,
     _np_float8_e5m2: float8_e5m2,
     _np_float8_e4m3fn: float8_e4m3fn,
+    _np_float8_e5m2fnuz: float8_e5m2fnuz,
+    _np_float8_e4m3fnuz: float8_e4m3fnuz,
     _np_int4: int4,
     _np_uint4: uint4,
 }
@@ -734,6 +764,8 @@ _TF_TO_NP = {
     types_pb2.DT_BFLOAT16: _np_bfloat16,
     types_pb2.DT_FLOAT8_E5M2: _np_float8_e5m2,
     types_pb2.DT_FLOAT8_E4M3FN: _np_float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E5M2FNUZ: _np_float8_e5m2fnuz,
+    types_pb2.DT_FLOAT8_E4M3FNUZ: _np_float8_e4m3fnuz,
     types_pb2.DT_INT4: _np_int4,
     types_pb2.DT_UINT4: _np_uint4,
     # Ref types
@@ -760,6 +792,8 @@ _TF_TO_NP = {
     types_pb2.DT_BFLOAT16_REF: _np_bfloat16,
     types_pb2.DT_FLOAT8_E5M2_REF: _np_float8_e5m2,
     types_pb2.DT_FLOAT8_E4M3FN_REF: _np_float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: _np_float8_e5m2fnuz,
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: _np_float8_e4m3fnuz,
     types_pb2.DT_INT4_REF: _np_int4,
     types_pb2.DT_UINT4_REF: _np_uint4,
 }

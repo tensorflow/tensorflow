@@ -110,6 +110,36 @@ def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
               np.uint8))
 
 
+def SlowAppendFloat8e5m2fnuzArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.float8_val += (
+      np.asarray(proto_values, dtype=dtypes.float8_e5m2fnuz.as_numpy_dtype)
+      .view(np.uint8)
+      .tobytes()
+  )
+
+
+def FastAppendFloat8e5m2fnuzArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendFloat8ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values,
+                 dtype=dtypes.float8_e5m2fnuz.as_numpy_dtype).view(np.uint8))
+
+
+def SlowAppendFloat8e4m3fnuzArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.float8_val += (
+      np.asarray(proto_values, dtype=dtypes.float8_e4m3fnuz.as_numpy_dtype)
+      .view(np.uint8)
+      .tobytes()
+  )
+
+
+def FastAppendFloat8e4m3fnuzArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendFloat8ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values,
+                 dtype=dtypes.float8_e4m3fnuz.as_numpy_dtype).view(np.uint8))
+
+
 def SlowAppendInt4ArrayToTensorProto(tensor_proto, proto_values):
   # The actual bit representation of int4 as a bit-field is
   # implementation-defined, so we need to explicitly cast each
@@ -165,6 +195,12 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.float8_e4m3fn.as_numpy_dtype: (
           FastAppendFloat8e4m3fnArrayToTensorProto
       ),
+      dtypes.float8_e5m2fnuz.as_numpy_dtype: (
+          FastAppendFloat8e5m2fnuzArrayToTensorProto
+      ),
+      dtypes.float8_e4m3fnuz.as_numpy_dtype: (
+          FastAppendFloat8e4m3fnuzArrayToTensorProto
+      ),
       dtypes.int4.as_numpy_dtype: SlowAppendInt4ArrayToTensorProto,
       dtypes.uint4.as_numpy_dtype: SlowAppendUInt4ArrayToTensorProto,
   }
@@ -210,6 +246,12 @@ else:
       dtypes.float8_e5m2.as_numpy_dtype: SlowAppendFloat8e5m2ArrayToTensorProto,
       dtypes.float8_e4m3fn.as_numpy_dtype: (
           SlowAppendFloat8e4m3fnArrayToTensorProto
+      ),
+      dtypes.float8_e5m2fnuz.as_numpy_dtype: (
+          SlowAppendFloat8e5m2fnuzArrayToTensorProto
+      ),
+      dtypes.float8_e4m3fnuz.as_numpy_dtype: (
+          SlowAppendFloat8e4m3fnuzArrayToTensorProto
       ),
       np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: SlowAppendFloat32ArrayToTensorProto,
@@ -307,6 +349,8 @@ _TENSOR_CONTENT_TYPES = frozenset(
         dtypes.uint64,
         dtypes.float8_e5m2,
         dtypes.float8_e4m3fn,
+        dtypes.float8_e5m2fnuz,
+        dtypes.float8_e4m3fnuz,
         dtypes.bfloat16
         # int4/uint4 intentionally not listed, since their binary representation
         # is implementation-dependent.
@@ -690,6 +734,8 @@ def MakeNdarray(tensor):
   elif tensor_dtype in [
       dtypes.float8_e5m2,
       dtypes.float8_e4m3fn,
+      dtypes.float8_e5m2fnuz,
+      dtypes.float8_e4m3fnuz,
   ]:
     values = np.fromiter(tensor.float8_val, dtype=np.uint8)
     values.dtype = dtype
