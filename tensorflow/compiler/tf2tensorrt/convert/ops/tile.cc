@@ -169,6 +169,13 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
 
       nvinfer1::ITensor *shape =
           network->addShape(input_trt_tensor)->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+      // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+      // behavior, but it would be better to instead cast all the other int32
+      // tensors to int64.
+      shape =
+          network->addCast(*shape, nvinfer1::DataType::kINT32)->getOutput(0);
+#endif
       target_shape = network
                          ->addElementWise(*shape, *mult,
                                           nvinfer1::ElementWiseOperation::kPROD)
@@ -179,7 +186,11 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     DimsAdapter stride(std::vector<int>(nb_dims, 1));
     auto layer = network->addSlice(input_trt_tensor, start, output_size,
                                    stride.AsTrtDims());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     layer->setMode(nvinfer1::SliceMode::kWRAP);
+#else
+    layer->setMode(nvinfer1::SampleMode::kWRAP);
+#endif
     if (target_shape) layer->setInput(2, *target_shape);
 
     converter->SetLayerName(layer, params.node_def.name(), "to_tile");

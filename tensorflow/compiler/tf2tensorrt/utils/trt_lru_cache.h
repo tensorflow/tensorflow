@@ -120,22 +120,27 @@ class LRUCache {
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+  EngineContext(TrtUniquePtrType<nvinfer1::IRuntime> runtime,
+                TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
                 ExecutionContext&& execution_context)
-      : cuda_engine_(std::move(cuda_engine)) {
+      : runtime_(std::move(runtime)), cuda_engine_(std::move(cuda_engine)) {
     execution_contexts.push_back(std::move(execution_context));
     device_memory_size_ =
         cuda_engine_ ? cuda_engine_->getDeviceMemorySize() : 0;
   }
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+  EngineContext(TrtUniquePtrType<nvinfer1::IRuntime> runtime,
+                TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
                 std::vector<ExecutionContext>&& execution_contexts)
-      : cuda_engine_(std::move(cuda_engine)),
+      : runtime_(std::move(runtime)),
+        cuda_engine_(std::move(cuda_engine)),
         execution_contexts(std::move(execution_contexts)) {
     device_memory_size_ =
         cuda_engine_ ? cuda_engine_->getDeviceMemorySize() : 0;
   }
 
   mutex mu;
+
+  nvinfer1::IRuntime* GetRuntime() { return runtime_.get(); }
 
   nvinfer1::ICudaEngine* GetCudaEngine() { return cuda_engine_.get(); }
 
@@ -160,6 +165,8 @@ struct EngineContext {
   size_t GetDeviceMemorySize() { return device_memory_size_; }
 
  private:
+  // Note: Must out-live the engine object.
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   // Note: declaration has to come before execution_contexts, to ensure proper
   // order of destruction.
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine_;

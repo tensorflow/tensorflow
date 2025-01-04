@@ -38,9 +38,16 @@ using absl::StrCat;
 
 ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
   bool has_int32_output = false;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
     if (!cuda_engine->bindingIsInput(i) &&
         cuda_engine->getBindingDataType(i) == nvinfer1::DataType::kINT32) {
+#else
+  for (int i = 0; i < cuda_engine->getNbIOTensors(); i++) {
+    const char* tensor_name = cuda_engine->getIOTensorName(i);
+    if (cuda_engine->getTensorIOMode(tensor_name) == nvinfer1::TensorIOMode::kOUTPUT &&
+        cuda_engine->getTensorDataType(tensor_name) == nvinfer1::DataType::kINT32) {
+#endif
       has_int32_output = true;
       break;
     }
@@ -59,14 +66,24 @@ ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,
-                          int binding_index, bool use_implicit_batch,
-                          int batch_size, TensorShape& shape) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                          int binding_index,
+#else
+                          const char* tensor_name,
+#endif
+                          bool use_implicit_batch, int batch_size,
+                          TensorShape& shape) {
   tensorflow::profiler::TraceMe activity(
       "getBindingDimensions", tensorflow::profiler::TraceMeLevel::kInfo);
   nvinfer1::Dims dims =
       use_implicit_batch
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
           ? cuda_engine->getBindingDimensions(binding_index)
           : execution_context->getBindingDimensions(binding_index);
+#else
+          ? cuda_engine->getTensorShape(tensor_name)
+          : execution_context->getTensorShape(tensor_name);
+#endif
   if (!use_implicit_batch) {
     if (dims.nbDims == -1) {
       return errors::Internal(
@@ -80,39 +97,83 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   return OkStatus();
 }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
                      std::vector<void*>& buffers, int binding_index) {
+#else
+Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine,
+                     nvinfer1::IExecutionContext* execution_context,
+                     const Tensor& tensor, const char* tensor_name) {
+#endif
   tensorflow::profiler::TraceMe activity(
       "SetBindingPointers", tensorflow::profiler::TraceMeLevel::kInfo);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   const auto dtype = cuda_engine->getBindingDataType(binding_index);
+#else
+  const auto dtype = cuda_engine->getTensorDataType(tensor_name);
+#endif
   VLOG(2) << "<<<<<<<<< SetupBindings with dtype = " << (int)dtype;
   switch (dtype) {
     case nvinfer1::DataType::kFLOAT:
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       buffers[binding_index] = const_cast<float*>(tensor.flat<float>().data());
+#else
+      execution_context->setTensorAddress(
+          tensor_name, const_cast<float*>(tensor.flat<float>().data()));
+#endif
       break;
     case nvinfer1::DataType::kHALF:
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       buffers[binding_index] =
           const_cast<Eigen::half*>(tensor.flat<Eigen::half>().data());
+#else
+      execution_context->setTensorAddress(
+          tensor_name,
+          const_cast<Eigen::half*>(tensor.flat<Eigen::half>().data()));
+#endif
       break;
     case nvinfer1::DataType::kINT8:
       return errors::Internal("INT8 inputs are not supported yet!");
     case nvinfer1::DataType::kINT32:
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       buffers[binding_index] = const_cast<int32*>(tensor.flat<int32>().data());
+#else
+      execution_context->setTensorAddress(
+          tensor_name, const_cast<int32*>(tensor.flat<int32>().data()));
+#endif
       break;
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
     case nvinfer1::DataType::kBOOL:
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       buffers[binding_index] = const_cast<bool*>(tensor.flat<bool>().data());
+#else
+      execution_context->setTensorAddress(
+          tensor_name, const_cast<bool*>(tensor.flat<bool>().data()));
+#endif
       break;
 #endif
 #if IS_TRT_VERSION_GE(8, 5, 0, 0)
     case nvinfer1::DataType::kUINT8:
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       buffers[binding_index] = const_cast<uint8*>(tensor.flat<uint8>().data());
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+      execution_context->setTensorAddress(
+          tensor_name, const_cast<uint8*>(tensor.flat<uint8>().data()));
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
       break;
 #endif
 #if IS_TRT_VERSION_GE(8, 6, 0, 0)
     case nvinfer1::DataType::kFP8:
       return errors::Internal("FP8 inputs are not supported yet!");
 #endif
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    case nvinfer1::DataType::kBF16:
+      return errors::Internal("BF16 inputs are not supported yet!");
+    case nvinfer1::DataType::kINT64:
+      return errors::Internal("INT64 inputs are not supported yet!");
+    case nvinfer1::DataType::kINT4:
+      return errors::Internal("INT4 inputs are not supported yet!");
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
     default:
       return errors::Internal("Unknown TRT data type: ",
                               static_cast<int>(dtype));
@@ -124,8 +185,10 @@ Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
-                          std::vector<void*>& buffers, bool use_implicit_batch,
-                          int num_batch,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                          std::vector<void*>& buffers,
+#endif
+                          bool use_implicit_batch, int num_batch,
                           const TrtShapeOptimizationProfile& profiles,
                           OpKernelContext* ctx, const DataVec* input_vec) {
   tensorflow::profiler::TraceMe activity(
@@ -143,6 +206,7 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
 
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     int binding_index;
     Status status = GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
                                        cuda_engine, &binding_index);
@@ -155,6 +219,7 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       VLOG(2) << "Skipping pruned input " << input_name;
       continue;
     }
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
 
     if (use_implicit_batch && ctx) {
       // Ensure all inputs have the same batch size
@@ -168,16 +233,28 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     // Set known input dimensions. This is necessary because TRT network
     // could be made with dynamic dimensions.
     if (!use_implicit_batch) {
-      TF_RETURN_IF_ERROR(profiles.SetInputShapeBinding(
-          i, binding_index, cuda_engine, execution_context));
+      TF_RETURN_IF_ERROR(profiles.SetInputShapeBinding(i,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                                       binding_index,
+#else
+                                                       input_name.c_str(),
+#endif
+                                                       cuda_engine,
+                                                       execution_context));
 
-      if (cuda_engine->isExecutionBinding(binding_index)) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+      if (cuda_engine->isExecutionBinding(binding_index))
+#else
+      if (true)
+#endif
+      {
         tensorflow::profiler::TraceMe activity(
             "SetTrtEngineInputs::setBindingDimensions",
             tensorflow::profiler::TraceMeLevel::kInfo);
         auto adap = DimsAdapter::Create(input_shape);
         TRT_ENSURE_OK(adap);
         nvinfer1::Dims trt_dims = adap->AsTrtDims();
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
         if (execution_context->getBindingDimensions(binding_index) !=
             trt_dims) {
           VLOG(2) << "Setting binding dimensions for idx " << binding_index;
@@ -190,11 +267,30 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                 "Binding dimension does not fit selected profile.");
           }
         }
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+        if (execution_context->getTensorShape(input_name.c_str()) != trt_dims) {
+          VLOG(2) << "Setting binding dimensions for input " << input_name;
+          bool ret =
+              execution_context->setInputShape(input_name.c_str(), trt_dims);
+          if (!ret) {
+            VLOG(2) << "Error setting engine input " << input_name << " "
+                    << DebugString(trt_dims);
+            return errors::Internal(
+                "Binding dimension does not fit selected profile.");
+          }
+        }
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
       }
     }
     // Setup input bindings.
     TF_RETURN_IF_ERROR(
-        SetupBindings(cuda_engine, input_tensor, buffers, binding_index));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+        SetupBindings(cuda_engine, input_tensor, buffers, binding_index)
+#else
+        SetupBindings(cuda_engine, execution_context, input_tensor,
+                      input_name.c_str())
+#endif
+    );
   }
 
   // Ensure all network dynamic dimensions (if any) are set in execution
@@ -212,7 +308,10 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
 
 Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
                            nvinfer1::IExecutionContext* execution_context,
-                           int trt_profile_idx, std::vector<void*>& buffers,
+                           int trt_profile_idx,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                           std::vector<void*>& buffers,
+#endif
                            bool use_implicit_batch, int batch_size,
                            OpKernelContext* ctx, DataVec* outputs) {
   tensorflow::profiler::TraceMe activity(
@@ -222,15 +321,22 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
   for (int i = 0; i < n_outputs; i++) {
     const string output_name =
         ctx ? StrCat(IONamePrefixes::kOutputPHName, i) : outputs->at(i).name;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     int binding_index;
     TF_RETURN_IF_ERROR(GetTrtBindingIndex(output_name.c_str(), trt_profile_idx,
                                           cuda_engine, &binding_index));
+#endif
 
     // Get TRT output shapes for allocating output memory.
     TensorShape output_shape;
     TF_RETURN_IF_ERROR(GetTrtBindingShape(cuda_engine, execution_context,
-                                          binding_index, use_implicit_batch,
-                                          batch_size, output_shape));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                          binding_index,
+#else
+                                          output_name.c_str(),
+#endif
+                                          use_implicit_batch, batch_size,
+                                          output_shape));
 
     // Allocate output tensor of TRTEngineOp.
     Tensor* output_tensor = nullptr;
@@ -255,23 +361,40 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
 
     // Set up output bindings.
     TF_RETURN_IF_ERROR(
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
         SetupBindings(cuda_engine, *output_tensor, buffers, binding_index));
+#else
+        SetupBindings(cuda_engine, execution_context, *output_tensor,
+                      output_name.c_str()));
+#endif
   }
   return OkStatus();
 }
 
 Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
-                  std::vector<void*>& buffers, cudaStream_t stream,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                  std::vector<void*>& buffers,
+#endif
+                  cudaStream_t stream,
                   bool use_implicit_batch, int batch_size) {
   tensorflow::profiler::TraceMe activity(
       "TrtEnqueue", tensorflow::profiler::TraceMeLevel::kInfo);
   bool ret = false;
   if (use_implicit_batch) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     ret = execution_context->enqueue(batch_size, &buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueue";
+#else
+    return errors::Internal("Implicit batch is not supported with TensorRT >=10");
+#endif
   } else {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     ret = execution_context->enqueueV2(&buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueueV2";
+#else
+    ret = execution_context->enqueueV3(stream);
+    VLOG(1) << "Called IExecutionContext::enqueueV3";
+#endif
   }
   if (!ret) {
     return errors::Internal("Failed to enqueue batch for TRT engine");

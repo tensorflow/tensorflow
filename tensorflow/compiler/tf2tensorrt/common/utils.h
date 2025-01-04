@@ -102,6 +102,7 @@ class IONamePrefixes {
   static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
 };
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 // Gets the binding index of a tensor in an engine.
 //
 // The binding index is looked up using the tensor's name and the profile index.
@@ -116,6 +117,9 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
 Status GetTrtBindingIndex(int network_input_idx, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index);
+#else  // IS_TRT_VERSION_GE(10, 0, 0, 0)
+string GetTrtInputName(int network_input_index);
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
 }  // namespace tensorrt
 }  // namespace tensorflow
 
