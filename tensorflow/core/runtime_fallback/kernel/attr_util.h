@@ -36,12 +36,12 @@ namespace tensorflow {
 typedef llvm::StringMap<std::string> AttrMap;
 
 // Parse value from the given string input.
-absl::Status ParseValue(StringPiece input, bool* value);
-absl::Status ParseValue(StringPiece input, int32* value);
-absl::Status ParseValue(StringPiece input, DataType* value);
-absl::Status ParseValue(StringPiece input, std::string* value);
-absl::Status ParseValue(StringPiece input, std::vector<int32>* value);
-absl::Status ParseValue(StringPiece input, Padding* value);
+absl::Status ParseValue(absl::string_view input, bool* value);
+absl::Status ParseValue(absl::string_view input, int32* value);
+absl::Status ParseValue(absl::string_view input, DataType* value);
+absl::Status ParseValue(absl::string_view input, std::string* value);
+absl::Status ParseValue(absl::string_view input, std::vector<int32>* value);
+absl::Status ParseValue(absl::string_view input, Padding* value);
 
 absl::Status AddOpAttr(const std::string& name, const std::string& attr_value,
                        tfrt::OpAttrs* opattrs);
