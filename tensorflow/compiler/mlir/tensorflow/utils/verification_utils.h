@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_VERIFICATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_VERIFICATION_UTILS_H_
 
+#include <cstdint>
+
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
