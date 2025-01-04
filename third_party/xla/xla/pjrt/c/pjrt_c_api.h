@@ -80,7 +80,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 60
+#define PJRT_API_MINOR 61
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -351,6 +351,35 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_KeyValueGetCallback_Args,
 typedef PJRT_Error* (*PJRT_KeyValueGetCallback)(
     PJRT_KeyValueGetCallback_Args* args);
 
+// Same as KeyValueGet, but returns `NotFoundError` immediately if the key is
+// not found.
+typedef void (*PJRT_KeyValueTryGetCallback_ValueDeleter)(char* value);
+
+struct PJRT_KeyValueTryGetCallback_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const char* key;
+  size_t key_size;
+  PJRT_CallbackError* callback_error;
+  void* user_arg;
+  char* value;        // out
+  size_t value_size;  // out
+  // The caller needs to set a PJRT_KeyValueTryGetCallback_ValueDeleter to
+  // delete the value returned by PJRT_KeyValueTryGetCallback. The
+  // implementation is responsible for copying `value` and then calling
+  // value_deleter_callback.
+  PJRT_KeyValueTryGetCallback_ValueDeleter value_deleter_callback;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_KeyValueTryGetCallback_Args,
+                          value_deleter_callback);
+
+// Requirements for PJRT_KeyValueTryGetCallback implementation: (1) Thread-safe.
+// (2) The caller that provides the two callbacks is responsible for avoiding
+// key collisions between different users of key-value store (i.e. between
+// different plugins, but not between different nodes in one plugin).
+typedef PJRT_Error* (*PJRT_KeyValueTryGetCallback)(
+    PJRT_KeyValueTryGetCallback_Args* args);
+
 struct PJRT_KeyValuePutCallback_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -389,8 +418,15 @@ struct PJRT_Client_Create_Args {
   void* kv_put_user_arg;
 
   PJRT_Client* client;  // out
+
+  // Key-value try-get callback provided by the caller of PJRT_Client_Create.
+  // Same as key-value get callback, but returns `NotFoundError` immediately if
+  // the key is not found.
+  PJRT_KeyValueTryGetCallback kv_try_get_callback;
+  // Will be passed to `kv_try_get_callback` as `user_arg` argument.
+  void* kv_try_get_user_arg;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, client);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, kv_try_get_user_arg);
 
 // Creates and initializes a new PJRT_Client and returns in `client`.
 typedef PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args);
