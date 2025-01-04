@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/conditional_thunk.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
@@ -62,13 +63,14 @@ static absl::Status AppendCommands(
 //===----------------------------------------------------------------------===//
 
 using Command = std::unique_ptr<CommandBufferCmd>;
+using xla::BufferUse;
 
 static auto ArgsAccess(const std::vector<bool>& written) {
-  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
+  absl::InlinedVector<BufferUse::MemoryAccess, 4> args_access;
   args_access.reserve(written.size());
   for (bool w : written) {
-    args_access.push_back(w ? CommandBufferCmd::MemoryAccess::kWrite
-                            : CommandBufferCmd::MemoryAccess::kRead);
+    args_access.push_back(w ? BufferUse::MemoryAccess::kWrite
+                            : BufferUse::MemoryAccess::kRead);
   }
   return args_access;
 }
