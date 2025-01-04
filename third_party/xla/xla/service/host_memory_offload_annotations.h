@@ -27,10 +27,12 @@ inline const absl::string_view kMemoryTargetPinnedHost = "pinned_host";
 inline const absl::string_view kMemoryTargetUnpinnedHost = "unpinned_host";
 inline const absl::string_view kMemoryTargetDevice = "device";
 inline const absl::string_view kMemoryTargetDeviceSram = "device_sram";
+inline const absl::string_view kMemoryTargetPinnedDevice = "pinned_device";
 
 // Internal annotations:
 inline const absl::string_view kMoveToHostCustomCallTarget = "MoveToHost";
 inline const absl::string_view kMoveToDeviceCustomCallTarget = "MoveToDevice";
+inline const absl::string_view kPinToDeviceCustomCallTarget = "PinToDevice";
 inline const absl::string_view kPinToDeviceSramCustomCallTarget =
     "PinToDeviceSram";
 
