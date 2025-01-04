@@ -1366,8 +1366,10 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
 }
 
 // BMM1 - Scale - PaddingMask - Softmax - BMM2
+// TODO(https://github.com/openxla/xla/issues/12175): Re-enable once fixed.
 XLA_TEST_F(FlashAttentionBMMScalePaddingMaskSoftmaxBMM,
-           Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2_BF16) {
+           DISABLED_ON_GPU(
+               Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2_BF16)) {
   TestImpl_Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2<bfloat16>();
 }
 
