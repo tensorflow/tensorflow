@@ -973,6 +973,7 @@ xla_cc_test(
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
