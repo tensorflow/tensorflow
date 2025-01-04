@@ -803,6 +803,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:device_memory",

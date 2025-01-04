@@ -231,7 +231,7 @@ absl::Status NcclCommunicator::AllReduce(
 absl::Status NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
                                          se::DeviceMemoryBase recv_buffer,
                                          PrimitiveType dtype, size_t count,
-                                         size_t root,
+                                         RankId root,
                                          const Executor& executor) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
@@ -241,13 +241,13 @@ absl::Status NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, root, comm_, stream);
+      count, root.value(), comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
   return XLA_NCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
-      nccl_dtype, root, comm_, se::gpu::AsGpuStreamValue(stream)));
+      nccl_dtype, root.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::Status NcclCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
