@@ -17,7 +17,6 @@
 #include <alloca.h>
 #include <stdio.h>
 
-#include <algorithm>
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
