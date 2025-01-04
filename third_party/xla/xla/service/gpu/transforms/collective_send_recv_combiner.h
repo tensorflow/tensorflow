@@ -26,11 +26,14 @@ limitations under the License.
 namespace xla {
 
 // CollectiveSendRecvCombiner is a pass that scans for all send/recv pairs
-// which are part of the same computation, and transforms them into wrapped
-// single-op computations that are executed asynchronously. This pass also
+// which are part of the same computation, and transforms them into a wrapped
+// multi-op computation that can be executed asynchronously. This pass also
 // replaces the corresponding send-done and recv-done instructions with
-// async-done functions. This pass is primarily used for pipelining send/recv
-// and send-done/recv-done instructions across while loop iteration boundaries.
+// async-done functions. Partial grouping of send/recv instructions in the same
+// NCCL group will lead to deadlocks and is therefore discouraged. This pass
+// shouldn't be applied to send/recv instructions that are called in a
+// while loop, since it will force all send/recv instructions in the same group
+// to finish executing before computation can continue.
 class CollectiveSendRecvCombiner : public HloModulePass {
  public:
   absl::string_view name() const override {
