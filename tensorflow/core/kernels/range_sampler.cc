@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 namespace tensorflow {
 
@@ -177,8 +179,11 @@ float LogUniformSampler::Probability(int64_t value) const {
 
 ThreadUnsafeUnigramSampler::ThreadUnsafeUnigramSampler(int64_t range)
     : RangeSampler(range), picker_(range) {
-  CHECK_LT(range, kint32max);
-}
+  if (range > kint32max ) {
+      absl::InvalidArgumentError(absl::StrCat(
+          "Expected range <= kint32max. Got range: ", range));
+  }
+
 
 int64_t ThreadUnsafeUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return picker_.Pick(rnd);
