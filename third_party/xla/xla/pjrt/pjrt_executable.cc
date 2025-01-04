@@ -422,7 +422,7 @@ PjRtExecutable::GetOutputDimensions() const {
   return output_dimensions;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -439,7 +439,7 @@ PjRtExecutable::GetParameterLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedParameterLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
     result.push_back(std::make_unique<PjRtXlaLayout>(layout));
@@ -447,7 +447,7 @@ PjRtExecutable::GetParameterLayouts() const {
   return result;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -464,7 +464,7 @@ PjRtExecutable::GetOutputLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedResultLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
     result.push_back(std::make_unique<PjRtXlaLayout>(layout));

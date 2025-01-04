@@ -1116,7 +1116,7 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
                                                           topology));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLayout>>
+absl::StatusOr<std::shared_ptr<const PjRtLayout>>
 PjRtClient::GetDefaultLayoutForDevice(DType dtype,
                                       absl::Span<const int64_t> dims,
                                       Device* device) const {

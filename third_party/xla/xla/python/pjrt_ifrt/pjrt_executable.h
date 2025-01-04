@@ -116,13 +116,13 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
@@ -242,13 +242,13 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputLayouts();
