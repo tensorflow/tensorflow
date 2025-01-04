@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/test.h"
 #include "xla/xla_data.pb.h"
