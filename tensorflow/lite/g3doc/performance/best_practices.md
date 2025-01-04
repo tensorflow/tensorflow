@@ -38,7 +38,7 @@ help in understanding performance bottlenecks and which operators dominate the
 computation time.
 
 You can also use
-[TensorFlow Lite tracing](measurement#trace_tensorflow_lite_internals_in_android)
+[TensorFlow Lite tracing](measurement.md#trace-tensorflow-lite-internals-in-android)
 to profile the model in your Android application, using standard Android system
 tracing, and to visualize the operator invocations by time with GUI based
 profiling tools.
@@ -51,7 +51,7 @@ look into optimizing that operator. This scenario should be rare as TensorFlow
 Lite has optimized versions for most operators. However, you may be able to
 write a faster version of a custom op if you know the constraints in which the
 operator is executed. Check out the
-[custom operators guide](../guide/ops_custom).
+[custom operators guide](../guide/ops_custom.md).
 
 ## Optimize your model
 
@@ -59,7 +59,7 @@ Model optimization aims to create smaller models that are generally faster and
 more energy efficient, so that they can be deployed on mobile devices.
 TensorFlow Lite supports multiple optimization techniques, such as quantization.
 
-Check out the [model optimization docs](model_optimization) for details.
+Check out the [model optimization docs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/model_optimization.md) for details.
 
 ## Tweak the number of threads
 
@@ -100,7 +100,7 @@ specific profiling tools and best practices for your platform.
 
 TensorFlow Lite has added new ways to accelerate models with faster hardware
 like GPUs, DSPs, and neural accelerators. Typically, these accelerators are
-exposed through [delegate](delegates) submodules that take over parts of the
+exposed through [delegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/delegates.md) submodules that take over parts of the
 interpreter execution. TensorFlow Lite can use delegates by:
 
 *   Using Android's
@@ -110,19 +110,19 @@ interpreter execution. TensorFlow Lite can use delegates by:
     [NNAPI delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
     guide.
 *   GPU delegate is available on Android and iOS, using OpenGL/OpenCL and Metal,
-    respectively. To try them out, see the [GPU delegate tutorial](gpu) and
-    [documentation](gpu_advanced).
+    respectively. To try them out, see the [GPU delegate tutorial](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/gpu.md) and
+    [documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/gpu.md#advanced-gpu-support).
 *   Hexagon delegate is available on Android. It leverages the Qualcomm Hexagon
     DSP if it is available on the device. See the
     [Hexagon delegate tutorial](https://www.tensorflow.org/lite/android/delegates/hexagon)
     for more information.
 *   It is possible to create your own delegate if you have access to
-    non-standard hardware. See [TensorFlow Lite delegates](delegates) for more
+    non-standard hardware. See [TensorFlow Lite delegates](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/delegates.md) for more
     information.
 
 Be aware that some accelerators work better for different types of models. Some
 delegates only support float models or models optimized in a specific way. It is
-important to [benchmark](measurement) each delegate to see if it is a good
+important to [benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/measurement.md) each delegate to see if it is a good
 choice for your application. For example, if you have a very small model, it may
 not be worth delegating the model to either the NN API or the GPU. Conversely,
 accelerators are a great choice for large models that have high arithmetic
