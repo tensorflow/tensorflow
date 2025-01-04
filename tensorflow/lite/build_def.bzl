@@ -391,6 +391,7 @@ def _gen_selected_ops_impl(ctx):
         executable = ctx.executable._generate_op_registrations,
         mnemonic = "OpRegistration",
         progress_message = "gen_selected_ops",
+        use_default_shell_env = True,
     )
 
 gen_selected_ops_rule = rule(
