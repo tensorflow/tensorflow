@@ -1711,6 +1711,156 @@ TEST_F(FusedConvBiasAddAndHardSwishTest,
   RunTest<DT_BFLOAT16, true>("Add", true);
 }
 
+class FuseToDilatedConvTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void TestFusable(const string& op_type) {
+    CHECK(op_type == "Conv2D" || op_type == "DepthwiseConv2dNative");
+
+    using ::tensorflow::ops::Placeholder;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = Placeholder::Shape({2, 65, 65, 5});
+    auto filter_shape = Placeholder::Shape({3, 3, 5, 1});
+
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE, filter_shape);
+    auto block_shape = ops::Const(s.WithOpName("block_shape"), {2, 2}, {2});
+    auto paddings = ops::Const(s.WithOpName("paddings"), {2, 3, 2, 3}, {2, 2});
+    auto crops = ops::Const(s.WithOpName("crops"), {0, 1, 0, 1}, {2, 2});
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto space_to_batch_nd = ops::SpaceToBatchND(
+        s.WithOpName("space_to_batch_nd"), input, block_shape, paddings);
+    Output contraction;
+    if (op_type == "Conv2D") {
+      contraction = ops::Conv2D(s.WithOpName("contraction"), space_to_batch_nd,
+                                filter, strides, "VALID");
+    } else {
+      contraction = ops::DepthwiseConv2dNative(s.WithOpName("contraction"),
+                                               space_to_batch_nd, filter,
+                                               strides, "VALID");
+    }
+    auto batch_to_space_nd = ops::BatchToSpaceND(
+        s.WithOpName("batch_to_space_nd"), contraction, block_shape, crops);
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({2, 65, 65, 5});
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>({3, 3, 5, 1});
+
+    GrapplerItem item;
+    item.fetch = {"batch_to_space_nd"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}};
+
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    for (int i = 0; i < item.graph.node_size(); i++) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() != "batch_to_space_nd") continue;
+
+      EXPECT_EQ(node.op(), op_type);
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+
+      found++;
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+
+    if (DTYPE == DT_BFLOAT16) {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    } else {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-6);
+    }
+  }
+
+  void TestNotFuseCandidate() {
+    using ::tensorflow::ops::Placeholder;
+
+    for (const string& op_type : {"Conv2D", "DepthwiseConv2dNative"}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+      auto input_shape = Placeholder::Shape({2, 65, 65, 5});
+      auto filter_shape = Placeholder::Shape({3, 3, 5, 1});
+
+      auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+      auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+      auto block_shape = ops::Const(s.WithOpName("block_shape"), {2, 2}, {2});
+      auto paddings =
+          ops::Const(s.WithOpName("paddings"), {2, 3, 2, 3}, {2, 2});
+      auto crops = ops::Const(s.WithOpName("crops"), {0, 1, 0, 1}, {2, 2});
+
+      std::vector<int> strides = {1, 1, 1, 1};
+      auto space_to_batch_nd = ops::SpaceToBatchND(
+          s.WithOpName("space_to_batch_nd"), input, block_shape, paddings);
+      Output contraction;
+      if (op_type == "Conv2D") {
+        contraction = ops::Conv2D(s.WithOpName("contraction"),
+                                  space_to_batch_nd, filter, strides, "VALID");
+      } else {
+        contraction = ops::DepthwiseConv2dNative(s.WithOpName("contraction"),
+                                                 space_to_batch_nd, filter,
+                                                 strides, "VALID");
+      }
+      auto batch_to_space_nd = ops::BatchToSpaceND(
+          s.WithOpName("batch_to_space_nd"), contraction, block_shape, crops);
+      auto sqrt = ops::Sqrt(s.WithOpName("sqrt"), contraction);
+
+      auto input_t = GenerateRandomTensor<DT_FLOAT>({2, 65, 65, 5});
+      auto filter_t = GenerateRandomTensor<DT_FLOAT>({3, 3, 5, 1});
+
+      GrapplerItem item;
+      item.fetch = {"batch_to_space_nd", "sqrt"};
+      item.feed = {{"input", input_t}, {"filter", filter_t}};
+
+      TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+      for (int i = 0; i < item.graph.node_size(); i++) {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+
+      Remapper optimizer(RewriterConfig::ON);
+      GraphDef output;
+      TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+      EXPECT_EQ(item.graph.node_size(), output.node_size());
+      int found = 0;
+      for (const NodeDef& node : output.node()) {
+        if (node.op() == op_type || node.op() == "SpaceToBatchND" ||
+            node.op() == "BatchToSpaceND") {
+          found++;
+        };
+      }
+      EXPECT_EQ(found, 3);
+    }
+  }
+};
+
+TEST_F(FuseToDilatedConvTest, FuseToDilatedConv2D_FP32) {
+  TestFusable<DT_FLOAT>("Conv2D");
+}
+TEST_F(FuseToDilatedConvTest, FuseToDilatedConv2D_BF16) {
+  TestFusable<DT_BFLOAT16>("Conv2D");
+}
+TEST_F(FuseToDilatedConvTest, FuseToDilatedDepthwiseConv2dNative_FP32) {
+  TestFusable<DT_FLOAT>("DepthwiseConv2dNative");
+}
+TEST_F(FuseToDilatedConvTest, FuseToDilatedDepthwiseConv2dNative_BF16) {
+  TestFusable<DT_BFLOAT16>("DepthwiseConv2dNative");
+}
+TEST_F(FuseToDilatedConvTest, NotToFuse) { TestNotFuseCandidate(); }
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL
