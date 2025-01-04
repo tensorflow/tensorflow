@@ -18,15 +18,17 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
