@@ -1735,6 +1735,10 @@ absl::Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
       EagerOpRewriteRegistry::POST_PLACEMENT, op, &out_op));
   if (out_op) {
+    // After rewrite, we have two versions of the EagerOperation. The original
+    // op is tracked by callers of the API and expect it to be cleared before
+    // the next iteration. We clear the rewritten op after executing.
+    op->Clear();
     op = out_op.get();
     // If the out op doesn't have device, either because it is a new op or
     // the op wasn't placed successfully, then we do the placement again.
@@ -2159,6 +2163,10 @@ absl::Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
 
   if (op->IsLocal()) {
     if (out_op) {
+      // After rewrite, we have two versions of the EagerOperation. The original
+      // op is tracked by callers of the API and expect it to be cleared before
+      // the next iteration. We clear the rewritten op after executing.
+      op->Clear();
       op = out_op.get();
     }
     TF_RETURN_IF_ERROR(MaybePackInputTensor(op));
@@ -2170,6 +2178,10 @@ absl::Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
       "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
   if (out_op) {
+    // After rewrite, we have two versions of the EagerOperation. The original
+    // op is tracked by callers of the API and expect it to be cleared before
+    // the next iteration. We clear the rewritten op after executing.
+    op->Clear();
     op = out_op.get();
   }
   return EagerRemoteExecute(op, retvals, num_retvals);
