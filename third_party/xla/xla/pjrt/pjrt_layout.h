@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_LAYOUT_H_
 #define XLA_PJRT_PJRT_LAYOUT_H_
 
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -99,10 +98,9 @@ class PjRtXlaLayout : public PjRtLayout {
 
 // TODO(b/327524065): make callers use PjRtLayout directly instead of assuming
 // an xla::Layout and get rid of this function.
-inline Layout GetXlaLayoutUnsafe(
-    const std::unique_ptr<PjRtLayout>& pjrt_layout) {
-  PjRtXlaLayout* xla_layout =
-      tensorflow::down_cast<PjRtXlaLayout*>(pjrt_layout.get());
+inline Layout GetXlaLayoutUnsafe(const PjRtLayout& pjrt_layout) {
+  const PjRtXlaLayout* xla_layout =
+      tensorflow::down_cast<const PjRtXlaLayout*>(&pjrt_layout);
   CHECK(xla_layout != nullptr) << "Got unexpected layout type";
   return xla_layout->xla_layout();
 }

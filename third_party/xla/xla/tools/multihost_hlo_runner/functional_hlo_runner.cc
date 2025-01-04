@@ -1316,7 +1316,7 @@ FunctionalHloRunner::CopyArgumentsToDevice(
   for (const std::unique_ptr<PjRtLayout>& pjrt_layout :
        executable_parameter_pjrt_layouts) {
     executable_parameter_layouts.push_back(
-        xla::GetXlaLayoutUnsafe(pjrt_layout));
+        xla::GetXlaLayoutUnsafe(*pjrt_layout));
   }
   auto buffer_from_host_literal =
       [&client, &argument_memory_space, &executable_parameter_layouts](
