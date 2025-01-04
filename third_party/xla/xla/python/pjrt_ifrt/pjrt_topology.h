@@ -39,14 +39,14 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
   explicit PjRtTopology(
       std::shared_ptr<const xla::PjRtTopologyDescription> description);
 
-  const std::shared_ptr<const xla::PjRtTopologyDescription>& description()
-      const {
-    return description_;
-  }
-
   absl::string_view platform_name() const override;
   absl::string_view platform_version() const override;
   PjRtPlatformId platform_id() const override;
+
+  const std::shared_ptr<const xla::PjRtTopologyDescription>& description()
+      const override {
+    return description_;
+  }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
