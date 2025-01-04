@@ -34,7 +34,8 @@ load(
     "WHEEL_COLLAB",
     "WHEEL_NAME",
 )
-load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
+load("@tf_wheel_version//:wheel_version.bzl", "WHEEL_VERSION")
+load("//tensorflow:tensorflow.bzl", "VERSION")
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -49,13 +50,19 @@ def _get_wheel_platform_name(platform_name, platform_tag):
         platform_version = macos_platform_version,
     )
 
-def _get_full_wheel_name(platform_name, platform_tag):
+def _get_full_wheel_name(
+        platform_name,
+        platform_tag,
+        wheel_version):
     python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
     return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
-        wheel_version = WHEEL_VERSION.replace("-", "."),
+        wheel_version = wheel_version,
         python_version = python_version,
-        wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
+        wheel_platform_tag = _get_wheel_platform_name(
+            platform_name,
+            platform_tag,
+        ),
     )
 
 def _is_dest_file(basename, dest_files_suffixes):
@@ -67,6 +74,11 @@ def _is_dest_file(basename, dest_files_suffixes):
 def _tf_wheel_impl(ctx):
     include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
     override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
+    wheel_type = ctx.attr.wheel_type[BuildSettingInfo].value
+    build_date = ctx.attr.build_date[BuildSettingInfo].value
+    git_hash = ctx.attr.git_hash[BuildSettingInfo].value
+    custom_version_suffix = ctx.attr.custom_version_suffix[BuildSettingInfo].value
+
     if include_cuda_libs and not override_include_cuda_libs:
         fail("TF wheel shouldn't be built with CUDA dependencies." +
              " Please provide `--config=cuda_wheel` for bazel build command." +
@@ -74,9 +86,46 @@ def _tf_wheel_impl(ctx):
              " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
+    full_wheel_version = ctx.attr.wheel_version
+    env = {}
+    args = []
+    if wheel_type == "nightly":
+        if not build_date:
+            fail("--//third_party/tensorflow/tools/pip_package:build_date is required for nightly builds!")
+        formatted_date = build_date.replace("-", "")
+        env["WHEEL_VERSION_SUFFIX"] = ".dev{}".format(formatted_date)
+        full_wheel_version += env["WHEEL_VERSION_SUFFIX"]
+    elif wheel_type == "release":
+        if custom_version_suffix:
+            env["WHEEL_VERSION_SUFFIX"] = "-{}".format(custom_version_suffix)
+            full_wheel_version += env["WHEEL_VERSION_SUFFIX"]
+    elif build_date:
+        formatted_date = build_date.replace("-", "")
+        formatted_hash = git_hash[:9]
+        if git_hash:
+            if custom_version_suffix:
+                env["WHEEL_VERSION_SUFFIX"] = ".dev{date}+{hash}.{custom_version_suffix}".format(
+                    date = formatted_date,
+                    hash = formatted_hash,
+                    custom_version_suffix = custom_version_suffix,
+                )
+            else:
+                env["WHEEL_VERSION_SUFFIX"] = ".dev{date}+{hash}".format(
+                    date = formatted_date,
+                    hash = formatted_hash,
+                )
+        else:
+            env["WHEEL_VERSION_SUFFIX"] = ".dev{}".format(formatted_date)
+        full_wheel_version += env["WHEEL_VERSION_SUFFIX"]
+    else:
+        env["WHEEL_VERSION_SUFFIX"] = "-0"
+        full_wheel_version += env["WHEEL_VERSION_SUFFIX"]
+        args.append("--build_tag 0")
+
     full_wheel_name = _get_full_wheel_name(
         platform_name = ctx.attr.platform_name,
         platform_tag = ctx.attr.platform_tag,
+        wheel_version = full_wheel_version,
     )
     wheel_dir_name = "wheel_house"
     output_file = ctx.actions.declare_file("{wheel_dir}/{wheel_name}".format(
@@ -84,40 +133,44 @@ def _tf_wheel_impl(ctx):
         wheel_name = full_wheel_name,
     ))
     wheel_dir = output_file.path[:output_file.path.rfind("/")]
-    args = ctx.actions.args()
-    args.add("--project-name", WHEEL_NAME)
-    args.add("--platform", _get_wheel_platform_name(
-        ctx.attr.platform_name,
-        ctx.attr.platform_tag,
-    ))
-    args.add("--collab", str(WHEEL_COLLAB))
-    args.add("--output-name", wheel_dir)
-    args.add("--version", VERSION)
+    args += [
+        "--project-name {}".format(WHEEL_NAME),
+        "--platform {}".format(_get_wheel_platform_name(
+            ctx.attr.platform_name,
+            ctx.attr.platform_tag,
+        )),
+        "--collab {}".format(str(WHEEL_COLLAB)),
+        "--output-name {}".format(wheel_dir),
+        "--version {}".format(VERSION),
+    ]
 
     headers = ctx.files.headers[:]
     for f in headers:
-        args.add("--headers=%s" % (f.path))
+        args.append("--headers {}".format(f.path))
 
     xla_aot = ctx.files.xla_aot_compiled[:]
     for f in xla_aot:
-        args.add("--xla_aot=%s" % (f.path))
+        args.append("--xla_aot {}".format(f.path))
 
     srcs = []
     for src in ctx.attr.source_files:
         for f in src.files.to_list():
             srcs.append(f)
             if _is_dest_file(f.basename, ctx.attr.dest_files_suffixes):
-                args.add("--dests=%s" % (f.path))
+                args.append("--dests {}".format(f.path))
             else:
-                args.add("--srcs=%s" % (f.path))
+                args.append("--srcs {}".format(f.path))
 
-    args.set_param_file_format("flag_per_line")
-    args.use_param_file("@%s", use_always = False)
-    ctx.actions.run(
-        arguments = [args],
+    args_as_string = ""
+    for arg in args:
+        args_as_string += arg + " "
+    command = executable.path + " " + args_as_string
+    ctx.actions.run_shell(
         inputs = srcs + headers + xla_aot,
+        command = command,
         outputs = [output_file],
-        executable = executable,
+        tools = [executable],
+        env = env,
     )
     return [DefaultInfo(files = depset(direct = [output_file]))]
 
@@ -136,6 +189,11 @@ tf_wheel = rule(
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
+        "wheel_type": attr.label(default = Label("//tensorflow/tools/pip_package:wheel_type")),
+        "build_date": attr.label(default = Label("//tensorflow/tools/pip_package:build_date")),
+        "git_hash": attr.label(default = Label("//tensorflow/tools/pip_package:git_hash")),
+        "wheel_version": attr.string(default = WHEEL_VERSION),
+        "custom_version_suffix": attr.label(default = Label("//tensorflow/tools/pip_package:custom_version_suffix")),
     },
     implementation = _tf_wheel_impl,
 )
