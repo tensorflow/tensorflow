@@ -357,11 +357,25 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     }
   }
 
-  // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
   if (!is_tpu) {
     CoreDetails& details =
         (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
     details.set_hostname(Hostname(space));
+  } else {
+    std::string hostname = Hostname(space);
+    auto& core_id_to_details = *op_stats.mutable_core_id_to_details();
+    for (const XPlane* device_plane : device_planes) {
+      XPlaneVisitor visitor =
+          tsl::profiler::CreateTfXPlaneVisitor(device_plane);
+      auto stat = visitor.GetStat(StatType::kCoreDetails);
+      if (stat.has_value()) {
+        CoreDetails core_details;
+        // TODO: Switch to StrOrRefValue once protobuf version is updated.
+        core_details.ParseFromString(stat->ToString());
+        core_details.set_hostname(hostname);
+        core_id_to_details[device_plane->id()] = core_details;
+      }
+    }
   }
 
   // Set program_id_to_name map in OpStats from Xspace

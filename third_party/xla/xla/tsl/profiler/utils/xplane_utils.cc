@@ -556,6 +556,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   const XPlaneVisitor& plane = CreateTfXPlaneVisitor(&full_trace);
   XPlaneBuilder aggregated_plane(&aggregated_trace);
   aggregated_plane.SetName(plane.Name());
+  aggregated_plane.SetId(plane.Id());
 
   uint64_t first_op_start_ps = kint64max;
   uint64_t last_op_end_ps = 0;

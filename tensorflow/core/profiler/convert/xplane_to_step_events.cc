@@ -301,11 +301,11 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
         // one more step than the "Step" line. We need to intersect them to get
         // the common step numbers.
         stream_step_events =
-            ConvertTpuDeviceTraceXLineToStepEvents(*tpu_core_id, line);
+            ConvertTpuDeviceTraceXLineToStepEvents(plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else if (sc_core_id.has_value()) {
-        stream_step_events = ConvertTpuDeviceTraceXLineToStepEvents(
-            kSparseCoreIndexStart + *sc_core_id, line);
+        stream_step_events =
+            ConvertTpuDeviceTraceXLineToStepEvents(plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else {
         stream_step_events =

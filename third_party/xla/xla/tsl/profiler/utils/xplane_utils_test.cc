@@ -397,6 +397,7 @@ TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
 TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane xplane;
   XPlaneBuilder builder(&xplane);
+  builder.SetId(123);
   auto& event_metadata1 = *builder.GetOrCreateEventMetadata("EventMetadata1");
   auto& event_metadata2 = *builder.GetOrCreateEventMetadata("EventMetadata2");
   auto& event_metadata3 = *builder.GetOrCreateEventMetadata("EventMetadata3");
@@ -442,6 +443,7 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane aggregated_xplane;
   AggregateXPlane(xplane, aggregated_xplane);
 
+  EXPECT_EQ(aggregated_xplane.id(), 123);
 // Protobuf matchers are unavailable in OSS (b/169705709)
 #if defined(PLATFORM_GOOGLE)
   // TODO(b/238349654): Proto matcher are ineffective for XPlanes.
@@ -449,7 +451,8 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
       aggregated_xplane,
       IgnoringFields(
           {"tensorflow.profiler.XEvent.metadata_id",
-           "tensorflow.profiler.XPlane.event_metadata"},
+           "tensorflow.profiler.XPlane.event_metadata",
+           "tensorflow.profiler.XPlane.id"},
           IgnoringRepeatedFieldOrdering(EqualsProto(
               R"pb(lines {
                      id: 1
