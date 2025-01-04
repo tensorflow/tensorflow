@@ -6,9 +6,9 @@ def repo():
     tf_http_archive(
         name = "opencl_headers",
         # LINT.IfChange
-        strip_prefix = "OpenCL-Headers-dcd5bede6859d26833cd85f0d6bbcee7382dc9b3",
-        sha256 = "ca8090359654e94f2c41e946b7e9d826253d795ae809ce7c83a7d3c859624693",
-        urls = tf_mirror_urls("https://github.com/KhronosGroup/OpenCL-Headers/archive/dcd5bede6859d26833cd85f0d6bbcee7382dc9b3.tar.gz"),
+        strip_prefix = "OpenCL-Headers-1e958b2371f8677215cea877f0abf552efda3723",
+        sha256 = "f8102fdb3272f2c2835de62461db96a9f1e91bdb87bfcd22b4b3a1ed0befc961",
+        urls = tf_mirror_urls("https://github.com/KhronosGroup/OpenCL-Headers/archive/1e958b2371f8677215cea877f0abf552efda3723.tar.gz"),
         # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/opencl_headers.cmake)
         build_file = "//third_party/opencl_headers:opencl_headers.BUILD",
     )
