@@ -36,6 +36,13 @@ bool IsByteSwappable(DataType dtype);
 // TODO(frreiss): Should this be a member of the Tensor class?
 absl::Status ByteSwapTensor(Tensor* t);
 
+// Byte-swap a tensor proto's backing buffer in place.
+//
+// Args:
+//  t: TensorProto to be modified IN PLACE.
+// Returns: OkStatus() on success, -1 otherwise
+absl::Status ByteSwapTensorProto(TensorProto *tp);
+
 // Swap tensor_content field of Const Op Tensors in the named functions
 // in NodeDef
 absl::Status ByteSwapTensorContentInNode(NodeDef& node);
