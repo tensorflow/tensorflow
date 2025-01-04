@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -113,46 +114,6 @@ IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
       block_dims(block_dims),
       thread_dims(thread_dims),
       invariant_arguments(std::move(prototype.invariant_arguments)) {}
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit elemental host kernel: " << instr->name();
-
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
-
-  CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (int64_t i = 0; i < instr->operand_count(); ++i) {
-    const HloInstruction* operand = instr->operand(i);
-    operand_to_generator[operand] = [&, i](const llvm_ir::IrArray::Index& idx) {
-      return kernel_prototype.arguments[i].EmitReadArrayElement(idx, &b);
-    };
-  }
-
-  if (instr->has_to_apply()) {
-    HloComputation* nested_computation = instr->to_apply();
-    bool is_reducer = instr->opcode() == HloOpcode::kReduce ||
-                      instr->opcode() == HloOpcode::kReduceWindow;
-    TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitNestedComputation(
-        *nested_computation, llvm_ir::IrName(instr), is_reducer));
-  }
-
-  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
-  llvm_ir::ElementGenerator element_generator =
-      elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
-
-  TF_ASSIGN_OR_RETURN(
-      se::ThreadDim thread_dims,
-      EmitElementalLoops(b, instr, kernel_prototype, element_generator));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
-}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
     const HloInstruction* pad) {
@@ -247,14 +208,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit reduction host kernel: " << instr->name();
-
-  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
-  return EmitElementalHostKernel(instr);
-}
-
 // Dot (fusion) host kernel only supports strategies that emit LLVM IR.
 static bool IsDotCodegenStrategy(DotImplementationStrategy strategy) {
   static std::array<DotImplementationStrategy, 3> kDotCodegenStrategies = {
@@ -303,25 +256,20 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit concatenate host kernel: " << instr->name();
 
-  auto fast_impl_reason = CanDoFastConcatenate(instr);
-  if (fast_impl_reason.ok()) {
-    VLOG(1) << "Emitting fast concatenate for " << instr->ToString() << ": "
-            << fast_impl_reason.message();
-    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                        EmitKernelPrototype(instr));
-    llvm::IRBuilder<> ir_builder(module_->getContext());
-    ir_builder.SetInsertPoint(
-        kernel_prototype.function->getEntryBlock().getTerminator());
+  DCHECK_OK(CanDoFastConcatenate(instr));
 
-    llvm_ir::IrArray output_array = kernel_prototype.results[0];
-    TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
-        instr, kernel_prototype.arguments, output_array, module_, ir_builder));
-    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
-                                            se::BlockDim(), se::ThreadDim()));
-  }
-  VLOG(1) << "Could not emit fast concatenate for " << instr->ToString() << ": "
-          << fast_impl_reason.message();
-  return EmitElementalHostKernel(instr);
+  VLOG(1) << "Emitting fast concatenate for " << instr->ToString();
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
+  llvm::IRBuilder<> ir_builder(module_->getContext());
+  ir_builder.SetInsertPoint(
+      kernel_prototype.function->getEntryBlock().getTerminator());
+
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+  TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
+      instr, kernel_prototype.arguments, output_array, module_, ir_builder));
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
@@ -401,26 +349,22 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
 
 absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
-  if (llvm_ir::CanUpdateDynamicSliceInPlace(const_cast<HloInstruction*>(instr),
-                                            nested_ir_emitter_->assignment())) {
-    VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
+  DCHECK(CanUpdateDynamicSliceInPlace(instr));
 
-    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                        EmitKernelPrototype(instr));
+  VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
 
-    llvm::IRBuilder<> b(module_->getContext());
-    b.SetInsertPoint(
-        kernel_prototype.function->getEntryBlock().getTerminator());
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
 
-    TF_RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
-        kernel_prototype.arguments, kernel_prototype.results.front(),
-        llvm_ir::IrName(instr, "in_place"), &b));
+  llvm::IRBuilder<> b(module_->getContext());
+  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
-                                            se::BlockDim(), se::ThreadDim()));
-  }
+  TF_RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
+      kernel_prototype.arguments, kernel_prototype.results.front(),
+      llvm_ir::IrName(instr, "in_place"), &b));
 
-  return EmitElementalHostKernel(instr);
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
@@ -498,6 +442,12 @@ absl::Status IrEmitter2::CanDoFastConcatenate(
   }
   return absl::OkStatus();
 };
+
+bool IrEmitter2::CanUpdateDynamicSliceInPlace(
+    const HloInstruction* update) const {
+  return llvm_ir::CanUpdateDynamicSliceInPlace(
+      const_cast<HloInstruction*>(update), nested_ir_emitter_->assignment());
+}
 
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
     llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
