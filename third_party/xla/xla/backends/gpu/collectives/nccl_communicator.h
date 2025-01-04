@@ -62,7 +62,7 @@ class NcclCommunicator : public Communicator {
 
   absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, size_t root,
+                         size_t count, RankId root,
                          const Executor& executor) final;
 
   absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
