@@ -127,6 +127,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
 
@@ -342,7 +343,10 @@ cc_library(
         "//tensorflow/lite/toco/tensorflow_graph_matching:resolve_cluster",
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:import",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
     ],
@@ -388,6 +392,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -402,6 +407,7 @@ tf_cc_test(
         ":tooling_util",
         "//tensorflow/core:lib",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -423,6 +429,7 @@ cc_library(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
@@ -445,6 +452,7 @@ tf_cc_binary(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
@@ -509,8 +517,10 @@ tf_cc_test(
         "toco_cmdline_flags_test.cc",
     ],
     deps = [
+        ":model_cmdline_flags",
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
+        ":toco_port",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
