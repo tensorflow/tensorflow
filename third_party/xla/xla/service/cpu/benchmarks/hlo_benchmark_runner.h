@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
 
