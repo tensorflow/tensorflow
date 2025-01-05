@@ -56,13 +56,20 @@ cc_library(
         "//tensorflow/compiler/jit:tf_graph_to_hlo_compiler",
         "//tensorflow/compiler/jit:tf_to_hlo_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
     alwayslink = 1,
 )
@@ -73,6 +80,7 @@ cc_library(
     deps = XLA_OPS_DEPS + [
         ":xla_ops_no_jit_rewrite_registration",
         "//tensorflow/compiler/jit:jit_compilation_passes",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )
