@@ -20,7 +20,6 @@ from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.util import tf_decorator
 
-
 # pylint: disable=g-import-not-at-top
 def _add_dispatch_factory(x, y, name=None):
   from tensorflow.python.ops import math_ops
@@ -63,8 +62,8 @@ def _mul_dispatch_factory(x, y, name=None):
   from tensorflow.python.framework import dtypes
   import tensorflow as tf
 
-  if (tf.is_tensor(x) and x.dtype == dtypes.bool) or (
-    tf.is_tensor(y) and y.dtype == dtypes.bool
+  if (isinstance(x, tensor_lib.Tensor) and x.dtype == dtypes.bool) or (
+    isinstance(y, tensor_lib.Tensor) and y.dtype == dtypes.bool
   ):
     return gen_math_ops.cast(
       math_ops._mul_dispatch(

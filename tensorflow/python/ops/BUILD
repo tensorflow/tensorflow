@@ -4830,3 +4830,14 @@ py_strict_library(
         "//third_party/py/numpy",
     ],
 )
+
+py_strict_test(
+    name = "tensor_math_operator_overrides_test",
+    srcs = ["tensor_math_operator_overrides_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":math_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
