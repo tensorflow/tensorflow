@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 #define XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 
+#include <initializer_list>
+#include <utility>
+
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
