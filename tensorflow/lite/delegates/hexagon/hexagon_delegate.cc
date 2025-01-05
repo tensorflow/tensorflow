@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate_kernel.h"

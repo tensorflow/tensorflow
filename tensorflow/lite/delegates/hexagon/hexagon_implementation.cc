@@ -18,8 +18,6 @@ limitations under the License.
 #include <dlfcn.h>
 #include <fcntl.h>
 
-#include <cstdio>
-
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
