@@ -787,6 +787,54 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt8) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
 }
 
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTestPerChannelQuantizedOutputShape3DInt8) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  PerChannelQuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT8, {2, 2, 5}, -63.5, 64},
+      /*per_channel_quantization_scales=*/{0.2, 0.25, 0.5},
+      /*output=*/{TensorType_INT8, {}, -127, 128},
+      /*bias_type=*/TensorType_INT32,
+      /*keep_num_dims=*/true, /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/5);
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5,  // u = 0
+      1, 2, 3, 4, 5,  // u = 1
+      1, 2, 3, 4, 5,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int8_t>({
+      1, 2,  3,  4,  -5,  // b = 0, i = 0
+      1, 2,  3,  -4, 5,   // b = 0, i = 1
+      1, 2,  -3, 4,  5,   // b = 1, i = 0
+      1, -2, 3,  4,  5,   // b = 1, i = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  6, 7, 8,     // b = 0, i = 0
+                  24, 25, 26,  // b = 0, i = 1
+                  38, 39, 40,  // b = 1, i = 0
+                  48, 49, 50   // b = 1, i = 1
+              })));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(5, 6, 7,     // b = 0, i = 0
+                                                 23, 24, 25,  // b = 0, i = 1
+                                                 37, 38, 39,  // b = 1, i = 0
+                                                 47, 48, 49   // b = 1, i = 1
+                                                 ));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt4) {
   PerChannelQuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
