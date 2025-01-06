@@ -31,12 +31,15 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
@@ -232,6 +235,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
 
 
   std::vector<TensorShape> arg_shapes;
+  arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
   for (const auto& input : arg.input_dtypes_and_shapes) {
     arg_shapes.push_back(input.shape);
   }
@@ -269,8 +273,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   return result;
 }
 
-absl::StatusOr<Tf2HloResult> TfToHloCompiler::CompileTfToHlo(
-    const Tf2HloArg& arg) {
+absl::StatusOr<Tf2HloResult> TfToHloCompiler::CompileTfToHlo(Tf2HloArg& arg) {
   return tensorflow::ifrt_serving::CompileTfToHlo(arg);
 }
 

@@ -228,12 +228,14 @@ class IfrtServingExecutable {
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes);
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      absl::Span<const int> variable_arg_indices);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes);
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      absl::Span<const int> variable_arg_indices);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,
