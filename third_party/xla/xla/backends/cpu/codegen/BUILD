@@ -281,3 +281,20 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "compiled_function_library",
+    srcs = ["compiled_function_library.cc"],
+    hdrs = ["compiled_function_library.h"],
+    deps = [
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:OrcJIT",
+    ],
+)
