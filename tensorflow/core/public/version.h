@@ -18,15 +18,29 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
-// Also update tensorflow/tensorflow.bzl and
-// tensorflow/tools/pip_package/setup.py
-#define TF_MAJOR_VERSION 2
-#define TF_MINOR_VERSION 19
+// A cc_library //third_party/tensorflow/core/public:version provides defines
+// with the version data from //third_party/tensorflow/tf_version.bzl.
+// The version suffix can be set by passing the build parameters
+// --repo_env=ML_WHEEL_BUILD_DATE=<date> and
+// --repo_env=ML_WHEEL_VERSION_SUFFIX=<suffix>.
+// To update the project version, update tf_version.bzl.
+#ifndef TF_MAJOR_VERSION
+#define TF_MAJOR_VERSION 0
+#endif  // TF_MAJOR_VERSION
+
+#ifndef TF_MINOR_VERSION
+#define TF_MINOR_VERSION 0
+#endif  // TF_MINOR_VERSION
+
+#ifndef TF_PATCH_VERSION
 #define TF_PATCH_VERSION 0
+#endif  // TF_PATCH_VERSION
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
+#ifndef TF_VERSION_SUFFIX
 #define TF_VERSION_SUFFIX ""
+#endif  // TF_VERSION_SUFFIX
 
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)

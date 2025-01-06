@@ -1,0 +1,14 @@
+"""Provides project and wheel version data for TensorFlow."""
+
+load(
+    "//tensorflow:tf_version.default.bzl",
+    "SEMANTIC_VERSION_SUFFIX",
+    "VERSION_SUFFIX",
+    "WHEEL_BUILD_TAG",
+)
+
+TF_VERSION = "2.19.0"
+(MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION) = TF_VERSION.split(".")
+TF_WHEEL_VERSION_SUFFIX = VERSION_SUFFIX
+TF_SEMANTIC_VERSION_SUFFIX = SEMANTIC_VERSION_SUFFIX
+TF_WHEEL_BUILD_TAG = WHEEL_BUILD_TAG

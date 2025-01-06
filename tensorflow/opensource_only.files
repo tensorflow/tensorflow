@@ -169,7 +169,7 @@ tf_staging/tensorflow/tools/pip_package/MANIFEST.in:
 tf_staging/tensorflow/tools/pip_package/README:
 tf_staging/tensorflow/tools/pip_package/check_load_py_test:.py
 tf_staging/tensorflow/tools/pip_package/pip_smoke_test:.py
-tf_staging/tensorflow/tools/pip_package/setup:.py
+tf_staging/tensorflow/tools/pip_package/setup:.py.tpl
 tf_staging/tensorflow/tools/pip_package/simple_console:.py
 tf_staging/tensorflow/tools/pip_package/simple_console_for_windows:.py
 tf_staging/tensorflow/tools/pip_package/utils/BUILD:

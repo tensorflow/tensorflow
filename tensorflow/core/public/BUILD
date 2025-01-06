@@ -1,4 +1,11 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load(
+    "//tensorflow:tf_version.bzl",
+    "MAJOR_VERSION",
+    "MINOR_VERSION",
+    "PATCH_VERSION",
+    "TF_SEMANTIC_VERSION_SUFFIX",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -13,7 +20,6 @@ exports_files(
     srcs = [
         "session.h",
         "session_options.h",
-        "version.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -22,7 +28,7 @@ exports_files(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "version.h",
+        ":version",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -39,4 +45,11 @@ filegroup(
 cc_library(
     name = "version",
     hdrs = ["version.h"],
+    defines = [
+        "TF_MAJOR_VERSION={}".format(MAJOR_VERSION),
+        "TF_MINOR_VERSION={}".format(MINOR_VERSION),
+        "TF_PATCH_VERSION={}".format(PATCH_VERSION),
+        "TF_VERSION_SUFFIX={}".format(TF_SEMANTIC_VERSION_SUFFIX),
+    ],
+    visibility = ["//visibility:public"],
 )

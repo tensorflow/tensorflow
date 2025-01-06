@@ -213,7 +213,6 @@ tf_cuda_library(
     name = "core_cpu_base_no_ops",
     srcs = [
         "//tensorflow/core/public:session_options.h",
-        "//tensorflow/core/public:version.h",
     ],
     hdrs = [
         ":core_cpu_base_headers",
@@ -230,6 +229,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/public:version",
         "@com_google_absl//absl/container:flat_hash_set",
         "@eigen_archive//:eigen3",
     ] + if_static([

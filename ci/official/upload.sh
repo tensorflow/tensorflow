@@ -17,13 +17,13 @@
 # job chain to GCS and PyPI.
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
-# Update the version numbers for Nightly only, then fetch the version numbers
-# for choosing the final directory name. This adds "-devYYYYMMDD" to the end of
-# the version string (.devYYYYMMDD for Python; see pypi.org/project/tf-nightly)
+# Calculate the version number for choosing the final directory name. This adds
+# "-devYYYYMMDD" to the end of the version string for nightly builds.
 if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
-  tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  export TF_VER_FULL="$(tfrun bazel run //tensorflow/tools/ci_build:calculate_full_version -- --wheel-type nightly)"
+else
+  export TF_VER_FULL="$(tfrun bazel run //tensorflow/tools/ci_build:calculate_full_version -- --wheel-type release)"
 fi
-source ci/official/utilities/get_versions.sh
 
 # Note on gsutil commands:
 # "gsutil cp" always "copies into". It cannot act on the contents of a directory

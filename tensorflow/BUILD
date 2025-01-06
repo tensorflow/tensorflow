@@ -1114,10 +1114,21 @@ filegroup(
 )
 
 bzl_library(
+    name = "tf_version_bzl",
+    srcs = [
+        "tf_version.bzl",
+        # copybara:uncomment "tf_version.google.bzl",
+    ],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
     name = "tensorflow_bzl",
     srcs = ["tensorflow.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_version_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
