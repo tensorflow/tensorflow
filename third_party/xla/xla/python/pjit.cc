@@ -399,7 +399,10 @@ void PjitFunction::InitExecutables() {
   }
 }
 
-PjitFunction::~PjitFunction() = default;
+PjitFunction::~PjitFunction() {
+  nb::ft_object_guard lock(cache_);
+  executables_ = nullptr;
+}
 
 void CallShardArgFallback(
     nb::handle arg, nb::handle sharding, nb::handle layout,

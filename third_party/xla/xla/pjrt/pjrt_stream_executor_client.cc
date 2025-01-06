@@ -2970,6 +2970,9 @@ static absl::Status GetFirstInputError(
     auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(handle);
     PjRtStreamExecutorBuffer::ScopedHold hold =
         buffer->GetBufferWithUsageHold();
+    if (!hold.ok()) {
+      return hold.status();
+    }
     for (const auto& event : hold->definition_events()) {
       if (event->IsPredeterminedError()) {
         return event->GetDefinedStatus();
