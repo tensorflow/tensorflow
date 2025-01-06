@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/communicator.h"
@@ -291,6 +293,61 @@ absl::Status NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   return XLA_NCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status NcclCommunicator::AllToAll(
+    absl::Span<const se::DeviceMemoryBase> send_buffers,
+    absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
+    size_t count, const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+
+  auto buffer_formatter = [](std::string* out, se::DeviceMemoryBase buffer) {
+    absl::StrAppendFormat(out, "%p", buffer.opaque());
+  };
+
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL AllToAll operation on device #%d; send_buffers=[%s]; "
+      "recv_buffers=[%s]; dtype=%s; count=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(),
+      absl::StrJoin(send_buffers, ", ", buffer_formatter),
+      absl::StrJoin(recv_buffers, ", ", buffer_formatter),
+      primitive_util::LowercasePrimitiveTypeName(dtype), count, comm_, stream);
+
+  if (send_buffers.size() != recv_buffers.size()) {
+    return InvalidArgument(
+        "Number of send buffers must match number of recv buffers: %d != %d",
+        send_buffers.size(), recv_buffers.size());
+  }
+
+  int32_t num_ranks;
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &num_ranks));
+
+  if (send_buffers.size() != num_ranks) {
+    return InvalidArgument(
+        "Number of send buffers must match number of ranks: %d != %d",
+        send_buffers.size(), num_ranks);
+  }
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+
+  for (size_t i = 0; i < send_buffers.size(); ++i) {
+    se::DeviceMemoryBase send_buffer = send_buffers[i];
+    se::DeviceMemoryBase recv_buffer = recv_buffers[i];
+
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
+                 comm_, se::gpu::AsGpuStreamValue(stream)));
+
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
+                 comm_, se::gpu::AsGpuStreamValue(stream)));
+  }
+
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+  return absl::OkStatus();
 }
 
 absl::Status NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,

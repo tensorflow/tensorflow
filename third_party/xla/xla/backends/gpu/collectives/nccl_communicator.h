@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
@@ -74,6 +75,11 @@ class NcclCommunicator : public Communicator {
   absl::Status AllGather(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, const Executor& executor) final;
+
+  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
+                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
+                        PrimitiveType dtype, size_t count,
+                        const Executor& executor) final;
 
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
                     size_t count, RankId peer, const Executor& executor) final;
