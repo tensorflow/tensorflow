@@ -1797,10 +1797,10 @@ PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     absl::MutexLock lock(&args->buffer->mu);
     if (!layout_data.has_value()) {
       // TODO(skyewm): change PJRT C API to also use opaque layout type
-      std::unique_ptr<xla::PjRtLayout> pjrt_layout =
+      std::shared_ptr<const xla::PjRtLayout> pjrt_layout =
           args->buffer->buffer->layout();
-      xla::PjRtXlaLayout* pjrt_xla_layout =
-          tensorflow::down_cast<xla::PjRtXlaLayout*>(pjrt_layout.get());
+      const xla::PjRtXlaLayout* pjrt_xla_layout =
+          tensorflow::down_cast<const xla::PjRtXlaLayout*>(pjrt_layout.get());
       CHECK(pjrt_xla_layout != nullptr) << "Got unexpected layout type";
       const xla::Layout& xla_layout = pjrt_xla_layout->xla_layout();
 
@@ -2283,7 +2283,7 @@ PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
                         args->client->client->GetDefaultLayout(
                             pjrt::ConvertFromPjRtBufferType(args->type),
                             {args->dims, args->num_dims}));
-  auto pjrt_xla_layout = std::make_unique<xla::PjRtXlaLayout>(xla_layout);
+  auto pjrt_xla_layout = std::make_shared<xla::PjRtXlaLayout>(xla_layout);
   args->layout = new PJRT_Layouts_MemoryLayout{std::move(pjrt_xla_layout)};
   return nullptr;
 }

@@ -197,7 +197,7 @@ std::string CallSignature::DebugString() const {
     out->append(s.DebugString());
   };
   auto layout_formatter = [](std::string* out,
-                             const std::shared_ptr<xla::PjRtLayout>& l) {
+                             const std::shared_ptr<const xla::PjRtLayout>& l) {
     if (l != nullptr) {
       out->append(l->ToString());
     } else {
@@ -252,8 +252,8 @@ bool CallSignature::operator==(const CallSignature& other) const {
       absl::c_equal(dynamic_arg_shardings, other.dynamic_arg_shardings,
                     ShardingEqual) &&
       absl::c_equal(dynamic_arg_layouts, other.dynamic_arg_layouts,
-                    [](const std::shared_ptr<xla::PjRtLayout>& a,
-                       const std::shared_ptr<xla::PjRtLayout>& b) {
+                    [](const std::shared_ptr<const xla::PjRtLayout>& a,
+                       const std::shared_ptr<const xla::PjRtLayout>& b) {
                       return (a && b) ? *a == *b : a == b;
                     }) &&
       (global_extra_jit_context.has_value() ==

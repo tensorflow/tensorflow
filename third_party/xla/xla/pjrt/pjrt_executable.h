@@ -335,11 +335,11 @@ class PjRtExecutable {
   GetOutputDimensions() const;
 
   // Returns the layout of each input parameter.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const;
 
   // Returns the layout of each output.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
 
   // Returns a list of lists of memory kind strings for output. The returned

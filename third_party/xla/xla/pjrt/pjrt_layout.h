@@ -100,9 +100,9 @@ class PjRtXlaLayout : public PjRtLayout {
 // TODO(b/327524065): make callers use PjRtLayout directly instead of assuming
 // an xla::Layout and get rid of this function.
 inline Layout GetXlaLayoutUnsafe(
-    const std::unique_ptr<PjRtLayout>& pjrt_layout) {
-  PjRtXlaLayout* xla_layout =
-      tensorflow::down_cast<PjRtXlaLayout*>(pjrt_layout.get());
+    const std::shared_ptr<const PjRtLayout>& pjrt_layout) {
+  const PjRtXlaLayout* xla_layout =
+      tensorflow::down_cast<const PjRtXlaLayout*>(pjrt_layout.get());
   CHECK(xla_layout != nullptr) << "Got unexpected layout type";
   return xla_layout->xla_layout();
 }

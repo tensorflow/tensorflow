@@ -2020,16 +2020,17 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
   return absl::Span<const int64_t>(args.dims, args.num_dims);
 }
 
-std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
+std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
   {
     absl::MutexLock lock(&mu_);
-    if (!layout_.has_value()) {
+    if (layout_ == nullptr) {
       const PJRT_Api* c_api = pjrt_c_api();
       PJRT_Layouts_Extension* extension =
           pjrt::FindExtension<PJRT_Layouts_Extension>(
               c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
       if (extension == nullptr) {
-        layout_.emplace(LayoutUtil::MakeDescendingLayout(dimensions().size()));
+        layout_ = std::make_shared<PjRtXlaLayout>(
+            LayoutUtil::MakeDescendingLayout(dimensions().size()));
       } else {
         std::unique_ptr<PJRT_Layouts_MemoryLayout,
                         pjrt::PJRT_Layouts_MemoryLayoutDeleter>
@@ -2057,11 +2058,11 @@ std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
         absl::StatusOr<PjRtXlaLayout> pjrt_xla_layout =
             PjRtXlaLayout::Deserialize(serialized_layout);
         TF_CHECK_OK(pjrt_xla_layout.status());
-        layout_.emplace(*pjrt_xla_layout);
+        layout_ = std::make_shared<PjRtXlaLayout>(*std::move(pjrt_xla_layout));
       }
     }
   }
-  return std::make_unique<PjRtXlaLayout>(*layout_);
+  return layout_;
 }
 
 bool PjRtCApiBuffer::has_dynamic_dimensions() const {

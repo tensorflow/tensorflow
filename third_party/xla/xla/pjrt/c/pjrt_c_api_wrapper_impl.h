@@ -218,7 +218,7 @@ struct PJRT_CopyToDeviceStream {
 };
 
 struct PJRT_Layouts_MemoryLayout {
-  std::unique_ptr<xla::PjRtLayout> layout;
+  std::shared_ptr<const xla::PjRtLayout> layout;
 };
 
 struct PJRT_Layouts_SerializedLayout {

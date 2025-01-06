@@ -1307,13 +1307,13 @@ FunctionalHloRunner::CopyArgumentsToDevice(
     TF_RET_CHECK(!shape.IsTuple()) << "Param tuple without flattened_arguments";
     return non_tuple_memory_space(shape);
   };
-  TF_ASSIGN_OR_RETURN(const std::vector<std::unique_ptr<PjRtLayout>>&
+  TF_ASSIGN_OR_RETURN(const std::vector<std::shared_ptr<const PjRtLayout>>&
                           executable_parameter_pjrt_layouts,
                       executable->GetParameterLayouts());
   std::vector<Layout> executable_parameter_layouts;
   executable_parameter_layouts.reserve(
       executable_parameter_pjrt_layouts.size());
-  for (const std::unique_ptr<PjRtLayout>& pjrt_layout :
+  for (const std::shared_ptr<const PjRtLayout>& pjrt_layout :
        executable_parameter_pjrt_layouts) {
     executable_parameter_layouts.push_back(
         xla::GetXlaLayoutUnsafe(pjrt_layout));

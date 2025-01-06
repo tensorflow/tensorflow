@@ -1121,12 +1121,12 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
-  // The on-device memory layout of this buffer. Returned via unique_ptr to make
+  // The on-device memory layout of this buffer. Returned via shared_ptr to make
   // memory management easier -- PjRtLayout is an abstract base class, so cannot
   // be easily copied.
-  virtual std::unique_ptr<PjRtLayout> layout() const {
+  virtual std::shared_ptr<const PjRtLayout> layout() const {
     CHECK(on_device_shape().has_layout());
-    return std::make_unique<PjRtXlaLayout>(on_device_shape().layout());
+    return std::make_shared<PjRtXlaLayout>(on_device_shape().layout());
   }
 
   // PjRtBuffers can either represent a single array buffer or a tuple of array

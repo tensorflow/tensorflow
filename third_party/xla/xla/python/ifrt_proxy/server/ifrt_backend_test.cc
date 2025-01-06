@@ -1243,16 +1243,16 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_CALL(*executable, GetOutputShardings())
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> parameter_layouts;
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
+    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> output_layouts;
-    output_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
+    output_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));

@@ -171,7 +171,7 @@ class PyArray : public nanobind::object {
 
   const nanobind::object& sharding() const { return GetStorage().sharding; }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() {
     return ifrt_array()->layout();
   }
 

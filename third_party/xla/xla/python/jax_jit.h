@@ -196,7 +196,7 @@ struct CallSignature {
   std::vector<nanobind::object> dynamic_arg_shardings;
 
   // The layout of the jax.Array arguments.
-  std::vector<std::shared_ptr<xla::PjRtLayout>> dynamic_arg_layouts;
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> dynamic_arg_layouts;
 
   absl::InlinedVector<bool, 2> committed_args;
 

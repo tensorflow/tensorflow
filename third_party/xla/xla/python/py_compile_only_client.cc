@@ -336,7 +336,7 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayoutForDevice(
       ifrt::DType dtype, absl::Span<const int64_t> dims,
       ifrt::Device* device) const override {
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));

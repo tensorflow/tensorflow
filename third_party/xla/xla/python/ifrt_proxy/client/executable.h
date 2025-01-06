@@ -35,6 +35,7 @@
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
@@ -77,9 +78,9 @@ class LoadedExecutable final
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override;
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override;
-  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override;
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
@@ -105,8 +106,10 @@ class LoadedExecutable final
     std::optional<std::vector<xla::OpSharding>> parameter_shardings;
     std::optional<std::vector<xla::OpSharding>> output_shardings;
 
-    absl::StatusOr<std::vector<xla::Layout>> parameter_layouts;
-    absl::StatusOr<std::vector<xla::Layout>> output_layouts;
+    absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        parameter_layouts;
+    absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        output_layouts;
 
     // Elements in `output_memory_kinds` point to elements in `memory_kinds`.
     // Required since `GetOutputMemoryKinds()` returns `absl::string_view`.

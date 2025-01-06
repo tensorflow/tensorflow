@@ -310,10 +310,11 @@ LoadedExecutable::LoadedExecutable(
 
         auto parse_layouts =
             [](const LoadedExecutableMetadataResponse::LayoutList& list) {
-              std::vector<xla::Layout> layouts;
+              std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
               layouts.reserve(list.layouts_size());
               for (const auto& layout : list.layouts()) {
-                layouts.push_back(xla::Layout::CreateFromProto(layout));
+                layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+                    xla::Layout::CreateFromProto(layout)));
               }
               return layouts;
             };
@@ -433,34 +434,20 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
   return (*info)->output_shardings;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 LoadedExecutable::GetParameterLayouts() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableGetParameterLayouts");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
-  TF_RETURN_IF_ERROR(info->parameter_layouts.status());
-
-  std::vector<std::unique_ptr<xla::PjRtLayout>> result;
-  result.reserve(info->parameter_layouts->size());
-  for (const xla::Layout& layout : *info->parameter_layouts) {
-    result.push_back(std::make_unique<xla::PjRtXlaLayout>(layout));
-  }
-  return result;
+  return info->parameter_layouts;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 LoadedExecutable::GetOutputLayouts() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableGetOutputLayouts");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
-  TF_RETURN_IF_ERROR(info->output_layouts.status());
-
-  std::vector<std::unique_ptr<xla::PjRtLayout>> result;
-  result.reserve(info->output_layouts->size());
-  for (const xla::Layout& layout : *info->output_layouts) {
-    result.push_back(std::make_unique<xla::PjRtXlaLayout>(layout));
-  }
-  return result;
+  return info->output_layouts;
 }
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>

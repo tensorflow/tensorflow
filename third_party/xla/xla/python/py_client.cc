@@ -777,7 +777,8 @@ PyType_Slot PyClient::slots_[] = {
       .def(
           "get_default_layout",
           [](PyClient& self, nb_dtype dtype, nb::sequence shard_shape,
-             nb_class_ptr<PyDevice> device) -> std::unique_ptr<PjRtLayout> {
+             nb_class_ptr<PyDevice> device)
+              -> std::shared_ptr<const PjRtLayout> {
             ifrt::DType ifrt_type = xla::ValueOrThrow(DtypeToIfRtDType(dtype));
             std::vector<int64_t> dims = SequenceToVector<int64_t>(shard_shape);
             return xla::ValueOrThrow(

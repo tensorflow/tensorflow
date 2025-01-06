@@ -147,6 +147,7 @@ BasicStringArray::BasicStringArray(Client* client, Shape shape,
     : client_(client),
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
+      layout_(std::make_shared<BasicStringArrayLayout>()),
       buffers_(std::move(buffers)),
       ready_future_(std::move(ready_future)),
       on_done_with_buffer_(std::move(on_done_with_buffer)) {}
@@ -446,12 +447,13 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLayout>> BasicStringArray::layout() const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> BasicStringArray::layout()
+    const {
   absl::MutexLock lock(&mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
   }
-  return std::make_unique<BasicStringArrayLayout>();
+  return layout_;
 }
 
 std::string BasicStringArray::DebugString() const {

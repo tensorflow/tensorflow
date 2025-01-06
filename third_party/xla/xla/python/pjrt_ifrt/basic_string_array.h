@@ -121,7 +121,7 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
@@ -172,6 +172,7 @@ class BasicStringArray final
   Client* client_;
   Shape shape_;
   std::shared_ptr<const Sharding> sharding_;
+  std::shared_ptr<const PjRtLayout> layout_;
   Future<Buffers> buffers_;
   Future<> ready_future_;
 

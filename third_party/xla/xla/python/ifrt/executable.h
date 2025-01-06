@@ -78,10 +78,10 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const = 0;
   // Returns a list of output/result layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -187,10 +187,10 @@ class LoadedExecutable
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const = 0;
   // Returns a list of output/result layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>

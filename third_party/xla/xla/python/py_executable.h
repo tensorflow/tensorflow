@@ -189,11 +189,11 @@ class PyLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetParameterLayouts()
-      const;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetOutputLayouts()
-      const;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
