@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
