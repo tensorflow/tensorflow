@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow::profiler {
 
