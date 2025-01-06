@@ -49,7 +49,7 @@ using tensorflow::tstring;
 constexpr char kTestData[] = "cc/saved_model/testdata";
 const char* kServeTag[] = {"serve"};
 
-std::string SavedModelPath(tensorflow::StringPiece saved_model_dir) {
+std::string SavedModelPath(absl::string_view saved_model_dir) {
   return tensorflow::io::JoinPath(tensorflow::testing::TensorFlowSrcRoot(),
                                   kTestData, saved_model_dir);
 }
