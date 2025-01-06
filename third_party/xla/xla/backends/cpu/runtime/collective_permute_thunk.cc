@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,11 +26,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -83,12 +87,12 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
                                   : logical_id.replica_id;
 
   // Find replicas that we will communicate with.
-  std::optional<int32_t> source_replica_id;
-  std::vector<int32_t> copy_to;
+  std::optional<RankId> source_replica_id;
+  std::vector<RankId> copy_to;
 
   for (auto& [from, to] : source_target_pairs_) {
     if (from == logical_device_id) {
-      copy_to.push_back(to);
+      copy_to.push_back(RankId(to));
     }
     if (to == logical_device_id) {
       TF_RET_CHECK(!source_replica_id.has_value())
@@ -98,6 +102,10 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
     }
   }
 
+  auto rank_fmt = [](std::string* out, RankId rank) {
+    absl::StrAppend(out, rank.value());
+  };
+
   VLOG(3) << absl::StreamFormat(
       "CollectivePermute: #source_buffers=%d, #destination_buffers=%d, "
       "source_target_pairs=[%s], logical_device_id=%d (%s), "
@@ -106,7 +114,8 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
       absl::StrJoin(source_target_pairs_, ", ", absl::PairFormatter("->")),
       logical_device_id,
       op_params().has_channel_id ? "computation id" : "replica id",
-      source_replica_id.value_or(-1), absl::StrJoin(copy_to, ","));
+      source_replica_id.value_or(RankId(-1)).value(),
+      absl::StrJoin(copy_to, ",", rank_fmt));
 
   for (int i = 0; i < data.source.size(); ++i) {
     VLOG(3) << absl::StreamFormat(
@@ -123,12 +132,14 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
   return ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+        CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
+
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = source_shape(i);
           TF_RETURN_IF_ERROR(comm.CollectivePermute(
-              key, ShapeUtil::ByteSizeOf(shape), source_replica_id, copy_to,
-              data.source[i].opaque(), data.destination[i].opaque(),
-              DefaultCollectiveTimeout()));
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), source_replica_id, copy_to,
+              executor));
         }
         return absl::OkStatus();
       });

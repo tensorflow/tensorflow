@@ -1035,6 +1035,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/core/collectives:rank_id",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
@@ -1985,6 +1986,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/stream_executor:device_memory",
@@ -2007,6 +2009,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/stream_executor:device_memory",

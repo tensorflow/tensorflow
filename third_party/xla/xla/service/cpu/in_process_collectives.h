@@ -45,11 +45,12 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                          size_t count, ReductionKind reduction_kind,
                          const Executor& executor) override;
 
-  absl::Status CollectivePermute(const RendezvousKey& key, size_t num_bytes,
-                                 std::optional<int> source_rank,
-                                 absl::Span<int const> target_ranks,
-                                 const void* input_buffer, void* output_buffer,
-                                 absl::Duration timeout) override;
+  absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 std::optional<RankId> source_rank,
+                                 absl::Span<const RankId> target_ranks,
+                                 const Executor& executor) override;
 
   absl::Status AllToAll(const RendezvousKey& key, size_t chunk_bytes,
                         absl::Span<const void* const> input_buffers,

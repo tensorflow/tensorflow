@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "gloo/transport/unbound_buffer.h"
 #include "gloo/types.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
@@ -193,37 +195,41 @@ absl::Status GlooCollectivesCommunicator::AllReduce(
 static constexpr uint8_t kCollectivePermuteSlotPrefix = 0x40;
 
 absl::Status GlooCollectivesCommunicator::CollectivePermute(
-    const RendezvousKey& key, size_t num_bytes, std::optional<int> source_rank,
-    absl::Span<int const> target_ranks, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
+    absl::Span<const RankId> target_ranks, const Executor& executor) {
   uint32_t tag = 0;  // TODO(phawkins): come up with better tags.
   const auto slot = gloo::Slot::build(kCollectivePermuteSlotPrefix, tag);
+
+  TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  size_t num_bytes = count * primitive_util::ByteWidth(dtype);
+
   try {
     std::unique_ptr<gloo::transport::UnboundBuffer> in;
     std::unique_ptr<gloo::transport::UnboundBuffer> out;
-    for (int target : target_ranks) {
+    for (RankId target : target_ranks) {
       if (target != context_->rank) {
-        VLOG(1) << "send from " << context_->rank << " to " << target;
+        VLOG(1) << "send from " << context_->rank << " to " << target.value();
         if (!in) {
-          in = context_->createUnboundBuffer(const_cast<void*>(input_buffer),
-                                             num_bytes);
+          in = context_->createUnboundBuffer(send_buffer.opaque(), num_bytes);
         }
-        in->send(target, slot);
+        in->send(target.value(), slot);
       }
     }
     if (source_rank) {
       if (*source_rank == context_->rank) {
-        std::memcpy(output_buffer, input_buffer, num_bytes);
+        std::memcpy(recv_buffer.opaque(), send_buffer.opaque(), num_bytes);
       } else {
-        VLOG(1) << "recv at " << context_->rank << " from " << *source_rank;
-        out = context_->createUnboundBuffer(output_buffer, num_bytes);
-        out->recv(*source_rank, slot);
+        VLOG(1) << "recv at " << context_->rank << " from "
+                << source_rank->value();
+        out = context_->createUnboundBuffer(recv_buffer.opaque(), num_bytes);
+        out->recv(source_rank->value(), slot);
       }
     } else {
-      std::memset(output_buffer, 0, num_bytes);
+      std::memset(recv_buffer.opaque(), 0, num_bytes);
     }
     VLOG(1) << "wait for send at " << context_->rank;
-    auto deadline = absl::ToChronoTime(absl::Now() + timeout);
+    auto deadline = absl::ToChronoTime(absl::Now() + cpu_executor->timeout());
     if (in) {
       in->waitSend(deadline);
     }

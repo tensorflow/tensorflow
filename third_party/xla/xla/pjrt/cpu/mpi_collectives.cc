@@ -146,36 +146,38 @@ absl::Status MpiCollectivesCommunicator::AllReduce(
 }
 
 absl::Status MpiCollectivesCommunicator::CollectivePermute(
-    const RendezvousKey& key, size_t num_bytes, std::optional<int> source_rank,
-    absl::Span<int const> target_ranks, const void* input_buffer,
-    void* output_buffer, absl::Duration timeout) {
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
+    absl::Span<const RankId> target_ranks, const Executor& executor) {
   int tag = 0;  // TODO come up with better tags.
 
   const int rank = mpi_rank_;
 
   std::vector<MPI_Request> requests;
 
+  size_t num_bytes = count * primitive_util::ByteWidth(dtype);
+
   if (source_rank) {
-    if (*source_rank == rank) {
-      std::memcpy(output_buffer, input_buffer, num_bytes);
+    if (source_rank->value() == rank) {
+      std::memcpy(recv_buffer.opaque(), send_buffer.opaque(), num_bytes);
     } else {
-      VLOG(1) << "recv at " << rank << " from " << *source_rank;
+      VLOG(1) << "recv at " << rank << " from " << source_rank->value();
       requests.emplace_back();
       TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
-          MPI_Irecv(output_buffer, num_bytes, MPI_BYTE, *source_rank, tag,
-                    comm_, &requests.back())));
+          MPI_Irecv(recv_buffer.opaque(), num_bytes, MPI_BYTE,
+                    source_rank->value(), tag, comm_, &requests.back())));
     }
   } else {
-    std::memset(output_buffer, 0, num_bytes);
+    std::memset(recv_buffer.opaque(), 0, num_bytes);
   }
 
-  for (int target : target_ranks) {
+  for (RankId target : target_ranks) {
     if (target != rank) {
-      VLOG(1) << "send from " << rank << " to " << target;
+      VLOG(1) << "send from " << rank << " to " << target.value();
       requests.emplace_back();
       TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
-          MPI_Isend(input_buffer, num_bytes, MPI_BYTE, target, tag, comm_,
-                    &requests.back())));
+          MPI_Isend(send_buffer.opaque(), num_bytes, MPI_BYTE, target.value(),
+                    tag, comm_, &requests.back())));
     }
   }
 

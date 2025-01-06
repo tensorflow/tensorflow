@@ -557,6 +557,8 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/core/collectives:rank_id",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
