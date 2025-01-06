@@ -111,11 +111,6 @@ bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
 
 bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     const HloInstruction* instruction) const {
-  if (instruction->opcode() == HloOpcode::kReduce) {
-    // TODO(b/333902007): Remove this once trivial reduces no longer appear.
-    return ShapeUtil::TrueRank(instruction->operand(0)->shape()) ==
-           ShapeUtil::TrueRank(instruction->shape());
-  }
   if (instruction->opcode() == HloOpcode::kReshape) {
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
                                        instruction->shape());
