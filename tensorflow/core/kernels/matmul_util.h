@@ -51,9 +51,19 @@ struct BlasLtMatmulPlanParams {
 };
 
 struct PlanAndAlgorithms {
+  static StatusOr<const PlanAndAlgorithms*> GetOrCreate(
+      se::Stream* stream, const BlasLtMatmulPlanParams& params,
+      absl::Mutex** pmu, std::optional<int> max_algorithm_count = std::nullopt);
+
+  Status ExecuteOnStream(
+      se::Stream* stream, const se::DeviceMemoryBase& a,
+      const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+      size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+      const se::DeviceMemoryBase& bias = se::DeviceMemoryBase{},
+      se::blas::ProfileResult* profile_result = nullptr) const;
+
   se::gpu::BlasLt::MatmulPlanPtr plan;
   std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
-  se::blas::DataType scale_type;  // this is needed for half / bf16 treatment
 };
 
 namespace internal {
@@ -71,37 +81,8 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
 
-StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
-    se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
-    std::optional<int> max_algorithm_count = std::nullopt);
-
-template <typename T>
-Status DoBlasLtMatmul(se::Stream* stream, const PlanAndAlgorithms& paa,
-                      const se::DeviceMemory<T>& a,
-                      const se::DeviceMemory<T>& b, se::DeviceMemory<T>& c,
-                      size_t alg_idx, se::ScratchAllocator& scratch_allocator,
-                      const se::DeviceMemory<T>& bias = {},
-                      se::blas::ProfileResult* profile_result = nullptr) {
-  se::DeviceMemory<T> aux{};  // We don't use the auxilary buffers.
-  const auto& algorithm = paa.algorithms[alg_idx];
-
-  // The scale type may be f32 if the data type is f16 and bf16.
-  if constexpr (std::is_same_v<T, Eigen::half> ||
-                std::is_same_v<T, Eigen::bfloat16>) {
-    if (paa.scale_type == se::blas::DataType::kFloat) {
-      return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<float>(1.0), b,
-                                a, se::HostOrDeviceScalar<float>(0.0), c, c,
-                                algorithm, scratch_allocator, bias, aux,
-                                profile_result);
-    }
-  }
-  return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<T>(T(1.0)), b, a,
-                            se::HostOrDeviceScalar<T>(T(0.0)), c, c, algorithm,
-                            scratch_allocator, bias, aux, profile_result);
-}
-
 }  // namespace tensorflow
 
-#endif
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_
