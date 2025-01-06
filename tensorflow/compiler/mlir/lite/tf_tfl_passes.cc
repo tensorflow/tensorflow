@@ -63,13 +63,24 @@ constexpr mlir::StringRef kTFLiteDataLayout = "NHWC";
 
 void AddStrictQDQQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
                                     mlir::OpPassManager& pass_manager) {
-  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  mlir::quant::QuantizationSpecs updated_quant_specs;
+  updated_quant_specs = pass_config.quant_specs;
+  // TODO(majiddadashi): setting QDQCOnversionMode to static to enable per-axis
+  // propagation of parameters for transpose in the prepare quantize pass. The
+  // flag likely should become an enum value of QDQConversionMode.
+  updated_quant_specs.qdq_conversion_mode =
+      mlir::quant::QDQConversionMode::kQDQStatic;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreatePrepareQuantizePass(quant_specs));
+      mlir::TFL::CreatePrepareQuantizePass(updated_quant_specs));
+
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateQuantizePass(quant_specs));
+      mlir::TFL::CreateQuantizePass(pass_config.quant_specs));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(true));
+
+  // So that quantized clipping activations get fused into preceding ops.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateOptimizePass());
 }
 
 void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -568,6 +579,13 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
+
+    if (pass_config.quant_specs.strict_qdq_mode) {
+      pass_manager->addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
+
+      // To remove the quant annotation decompositions.
+      pass_manager->addPass(mlir::createSymbolDCEPass());
+    }
 
     // Run TFL optimization passes set multiple times as op fusion and
     // reordering in later passes may enable further optimizations with earlier

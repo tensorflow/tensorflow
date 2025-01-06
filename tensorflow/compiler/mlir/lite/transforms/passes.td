@@ -340,6 +340,17 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
   ];
 }
 
+def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::ModuleOp"> {
+  let summary = "Lowers the quantization annotations marked by composites to the TFLite dialect.";
+  let constructor = "CreateLowerQuantAnnotationsPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantDialect",
+    "TF::TensorFlowDialect",
+    "stablehlo::StablehloDialect"
+  ];
+}
+
 def QuantizeVariablesPass : Pass<"tfl-quantize-variables", "mlir::ModuleOp"> {
   let summary = "Quantize variables";
   let constructor = "CreatePrepareQuantizeVariablesPass()";
