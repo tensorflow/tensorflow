@@ -17,6 +17,16 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <algorithm>
+#include <map>
+#include <set>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/path.h"
