@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
