@@ -83,17 +83,18 @@ absl::Status FlattenSignature(
 // Find the node id in `object_graph` at location `path`. `path` must be
 // a dot-delimited string of object names relative to the root object. If no
 // object is found, returns absl::nullopt.
-absl::optional<int> FindNodeAtPath(StringPiece path,
+absl::optional<int> FindNodeAtPath(absl::string_view path,
                                    const SavedObjectGraph& object_graph);
 
 // Maps each node in `graphdef` to its corresponding Attribute Map.
 // Callers must ensure that `graphdef` outlives the returned map.
-gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher> NodeToAttrMap(
-    const tensorflow::GraphDef& graphdef);
+gtl::FlatMap<absl::string_view, const AttrValueMap*, StringPieceHasher>
+NodeToAttrMap(const tensorflow::GraphDef& graphdef);
 
 // Maps the name of each FunctionDef in `library` to its corresponding
 // FunctionDef. Callers must ensure `library` outlives the returned map.
-gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*, StringPieceHasher>
+gtl::FlatMap<absl::string_view, const tensorflow::FunctionDef*,
+             StringPieceHasher>
 FunctionNameToFunctionDefMap(const FunctionDefLibrary& library);
 
 // Finds the "signatures" object in the object graph, and fills a mapping of

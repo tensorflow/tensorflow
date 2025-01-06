@@ -65,8 +65,9 @@ limitations under the License.
 namespace tensorflow {
 
 // Maps from a FunctionDef's name to FunctionDef, for a given FunctionDefLibrary
-using FunctionDefMap = gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*,
-                                    StringPieceHasher>;
+using FunctionDefMap =
+    gtl::FlatMap<absl::string_view, const tensorflow::FunctionDef*,
+                 StringPieceHasher>;
 
 // Maps from a functiondef's name to the corresponding "TFConcreteFunction"
 using FlatTensorFunctionMap =

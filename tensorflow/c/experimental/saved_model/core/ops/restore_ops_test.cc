@@ -35,7 +35,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-std::string CheckpointPrefix(StringPiece saved_model_dir) {
+std::string CheckpointPrefix(absl::string_view saved_model_dir) {
   return io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
                       saved_model_dir, kSavedModelVariablesDirectory,
                       kSavedModelVariablesFilename);
