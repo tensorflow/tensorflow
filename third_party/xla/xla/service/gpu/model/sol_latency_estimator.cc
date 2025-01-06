@@ -69,7 +69,9 @@ int GetNumGpus(const HloInstruction& instr) {
   return size;
 }
 
-/*static*/ absl::Duration ComputeCollectiveTime(
+}  // namespace
+
+/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     const SolGPUCostModel::Config& sol_flags) {
@@ -124,8 +126,6 @@ int GetNumGpus(const HloInstruction& instr) {
   }
   return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
 }
-
-}  // namespace
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
