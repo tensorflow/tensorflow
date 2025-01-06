@@ -54,7 +54,7 @@ using StructuredValueDictEntry =
     protobuf::MapPair<std::string, StructuredValue>;
 
 using NamedParamMap =
-    gtl::FlatMap<StringPiece, const TensorSpecProto*, StringPieceHasher>;
+    gtl::FlatMap<absl::string_view, const TensorSpecProto*, StringPieceHasher>;
 
 absl::Status AssertAllCreateResourceFunctionsHaveNoCaptures(
     const PartiallyRevivedObjects& objects) {
