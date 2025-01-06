@@ -16,16 +16,27 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/io/coded_stream.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"

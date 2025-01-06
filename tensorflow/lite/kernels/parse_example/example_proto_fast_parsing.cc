@@ -15,7 +15,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace example {
