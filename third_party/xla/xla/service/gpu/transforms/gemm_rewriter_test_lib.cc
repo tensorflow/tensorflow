@@ -31,6 +31,11 @@ const auto& GemmRewriteTestBase::device_desc() const {
   return backend().default_stream_executor()->GetDeviceDescription();
 }
 
+stream_executor::SemanticVersion GemmRewriteTestBase::GetRuntimeVersion()
+    const {
+  return device_desc().runtime_version();
+}
+
 const stream_executor::GpuComputeCapability& GemmRewriteTestBase::Capability()
     const {
   return device_desc().gpu_compute_capability();
