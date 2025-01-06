@@ -1803,7 +1803,7 @@ cc_library(
         "//xla/service/gpu/autotuning:conv_algorithm_picker",
         "//xla/service/gpu/autotuning:gemm_algorithm_picker",
         "//xla/service/gpu/autotuning:gemm_fusion_autotuner",
-        "//xla/service/gpu/llvm_gpu_backend",
+        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_utils",
         "//xla/service/gpu/transforms:algebraic_simplifier",
         "//xla/service/gpu/transforms:conv_padding_legalization",

@@ -31,9 +31,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/transforms/passes.h"
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+
+#ifdef GOOGLE_CUDA
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -252,6 +255,7 @@ std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass() {
 
 std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
     const se::DeviceDescription& device_description) {
+#ifdef GOOGLE_CUDA
   se::SemanticVersion ptx_version =
       nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
           device_description.runtime_version());
@@ -263,6 +267,7 @@ std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
       (ptx_version >= se::SemanticVersion(7, 8, 0) && cc.IsAtLeast(9, 0))) {
     return CreateConvertFloatNvidiaPass();
   }
+#endif
   return std::nullopt;
 }
 
