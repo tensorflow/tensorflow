@@ -743,15 +743,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       OpSignatureTensorSpec operand = op_sig.inputs[0];
       OpSignatureTensorSpec update_slice = op_sig.inputs[1];
       OpSignatureTensorSpec start_indices = op_sig.inputs[2];
-      if (operand.dims.size() == 4 && operand.dims[0] != 1) {
-        return absl::UnimplementedError(
-            "DynamicUpdateSlice only support 4D operand with batch size 1.");
-      }
-
-      if (start_indices.dims.size() > 1) {
-        return absl::UnimplementedError(
-            "DynamicUpdateSlice only support 1D start_indices.");
-      }
 
       if (operand.type != update_slice.type) {
         return absl::InternalError(
@@ -761,9 +752,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
 
       if (start_indices.dims.size() != 1) {
-        return absl::InternalError(
-            absl::StrCat("Start indices must have be 1D, but got: ",
-                         start_indices.dims.size()));
+        return absl::InternalError(absl::StrCat(
+            "Start indices must be 1D, but got: ", start_indices.dims.size()));
       }
 
       if (start_indices.type != kTfLiteInt32) {
