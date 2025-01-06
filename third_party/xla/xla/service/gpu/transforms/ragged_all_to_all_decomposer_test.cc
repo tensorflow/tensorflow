@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"

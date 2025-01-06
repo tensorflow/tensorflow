@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/errors.h"
