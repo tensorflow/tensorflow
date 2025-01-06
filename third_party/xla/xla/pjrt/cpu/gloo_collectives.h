@@ -54,10 +54,10 @@ class GlooCollectivesCommunicator : public CollectivesCommunicator {
                                  std::optional<RankId> source_rank,
                                  absl::Span<const RankId> target_ranks,
                                  const Executor& executor) override;
-  absl::Status AllToAll(const RendezvousKey& key, size_t chunk_bytes,
-                        absl::Span<const void* const> input_buffers,
-                        absl::Span<void* const> output_buffers,
-                        absl::Duration timeout) override;
+  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
+                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
+                        PrimitiveType dtype, size_t count,
+                        const Executor& executor) override;
   absl::Status AllGather(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, const Executor& executor) override;

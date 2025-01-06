@@ -246,9 +246,9 @@ absl::Status GlooCollectivesCommunicator::CollectivePermute(
 }
 
 absl::Status GlooCollectivesCommunicator::AllToAll(
-    const RendezvousKey& key, size_t chunk_bytes,
-    absl::Span<const void* const> input_buffers,
-    absl::Span<void* const> output_buffers, absl::Duration timeout) {
+    absl::Span<const se::DeviceMemoryBase> send_buffers,
+    absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
+    size_t count, const Executor& executor) {
   // We can't use Gloo's all-to-all implementation directly because it assumes
   // that the inputs and outputs are contiguous. No big deal; it's just built
   // on top of send/recv and we can do the same as it.
@@ -256,8 +256,11 @@ absl::Status GlooCollectivesCommunicator::AllToAll(
   int my_rank = context_->rank;
   int world_size = context_->size;
 
-  TF_RET_CHECK(world_size == input_buffers.size());
-  TF_RET_CHECK(world_size == output_buffers.size());
+  TF_RET_CHECK(world_size == send_buffers.size());
+  TF_RET_CHECK(world_size == recv_buffers.size());
+
+  TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
 
   try {
     const auto slot = gloo::Slot::build(gloo::kAlltoallSlotPrefix, tag);
@@ -268,8 +271,9 @@ absl::Status GlooCollectivesCommunicator::AllToAll(
     for (size_t i = 0; i < world_size; ++i) {
       if (i != my_rank) {
         ins[i] = context_->createUnboundBuffer(
-            const_cast<void*>(input_buffers[i]), chunk_bytes);
-        outs[i] = context_->createUnboundBuffer(output_buffers[i], chunk_bytes);
+            const_cast<void*>(send_buffers[i].opaque()), chunk_bytes);
+        outs[i] = context_->createUnboundBuffer(
+            const_cast<void*>(recv_buffers[i].opaque()), chunk_bytes);
       }
     }
 
@@ -280,9 +284,10 @@ absl::Status GlooCollectivesCommunicator::AllToAll(
       outs[recv_rank]->recv(recv_rank, slot);
     }
 
-    std::memcpy(output_buffers[my_rank], input_buffers[my_rank], chunk_bytes);
+    std::memcpy(const_cast<void*>(recv_buffers[my_rank].opaque()),
+                send_buffers[my_rank].opaque(), chunk_bytes);
 
-    auto deadline = absl::ToChronoTime(absl::Now() + timeout);
+    auto deadline = absl::ToChronoTime(absl::Now() + cpu_executor->timeout());
     for (int i = 0; i < world_size; i++) {
       if (i != my_rank) {
         ins[i]->waitSend(deadline);

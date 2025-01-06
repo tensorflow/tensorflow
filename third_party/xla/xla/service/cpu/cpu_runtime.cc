@@ -394,11 +394,21 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
                                       sizeof(void*) * num_buffers);
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
-  TF_CHECK_OK(communicator->AllToAll(
-      rendezvous_key, buffer_size,
-      absl::Span<const void* const>(source_buffers, num_buffers),
-      absl::Span<void* const>(destination_buffers, num_buffers),
-      DefaultCollectiveTimeout()));
+
+  CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
+
+  std::vector<se::DeviceMemoryBase> source_buffers_data;
+  std::vector<se::DeviceMemoryBase> destination_buffers_data;
+  for (int i = 0; i < num_buffers; i++) {
+    source_buffers_data.push_back(
+        se::DeviceMemoryBase(source_buffers[i], buffer_size));
+    destination_buffers_data.push_back(
+        se::DeviceMemoryBase(destination_buffers[i], buffer_size));
+  }
+
+  TF_CHECK_OK(communicator->AllToAll(source_buffers_data,
+                                     destination_buffers_data, U8, buffer_size,
+                                     executor));
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY

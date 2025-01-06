@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
@@ -52,10 +52,10 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                                  absl::Span<const RankId> target_ranks,
                                  const Executor& executor) override;
 
-  absl::Status AllToAll(const RendezvousKey& key, size_t chunk_bytes,
-                        absl::Span<const void* const> input_buffers,
-                        absl::Span<void* const> output_buffers,
-                        absl::Duration timeout) override;
+  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
+                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
+                        PrimitiveType dtype, size_t count,
+                        const Executor& executor) override;
 
   absl::Status AllGather(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,

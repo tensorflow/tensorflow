@@ -190,17 +190,27 @@ absl::Status MpiCollectivesCommunicator::CollectivePermute(
 }
 
 absl::Status MpiCollectivesCommunicator::AllToAll(
-    const RendezvousKey& key, size_t chunk_bytes,
-    absl::Span<const void* const> input_buffers,
-    absl::Span<void* const> output_buffers, absl::Duration timeout) {
+    absl::Span<const se::DeviceMemoryBase> send_buffers,
+    absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
+    size_t count, const Executor& executor) {
   // We can't use MPI_Alltoall directly because it assumes that the inputs and
   // outputs are contiguous. Therefore here we implement it using MPI_Sendrecv.
 
   int tag = 0;  // TODO use better tags.
   const int rank = mpi_rank_;
   const int size = mpi_size_;
-  TF_RET_CHECK(size == input_buffers.size());
-  TF_RET_CHECK(size == output_buffers.size());
+  TF_RET_CHECK(size == send_buffers.size());
+  TF_RET_CHECK(size == recv_buffers.size());
+
+  size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
+
+  std::vector<void*> input_buffers;
+  std::vector<void*> output_buffers;
+
+  for (int i = 0; i < size; i++) {
+    input_buffers.push_back(const_cast<void*>(send_buffers[i].opaque()));
+    output_buffers.push_back(const_cast<void*>(recv_buffers[i].opaque()));
+  }
 
   std::memcpy(output_buffers[rank], input_buffers[rank], chunk_bytes);
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -76,23 +77,12 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
   return ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+        CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         const Shape& shape = destination_shape(0);
 
-        absl::InlinedVector<const void*, 4> input_buffers;
-        input_buffers.reserve(data.source.size());
-        for (int i = 0; i < data.source.size(); ++i) {
-          input_buffers.push_back(data.source[i].opaque());
-        }
-
-        absl::InlinedVector<void*, 4> output_buffers;
-        output_buffers.reserve(data.destination.size());
-        for (int i = 0; i < data.destination.size(); ++i) {
-          output_buffers.push_back(data.destination[i].opaque());
-        }
-
-        TF_RETURN_IF_ERROR(comm.AllToAll(key, ShapeUtil::ByteSizeOf(shape),
-                                         input_buffers, output_buffers,
-                                         DefaultCollectiveTimeout()));
+        TF_RETURN_IF_ERROR(
+            comm.AllToAll(data.source, data.destination, shape.element_type(),
+                          ShapeUtil::ElementsIn(shape), executor));
 
         return absl::OkStatus();
       });
