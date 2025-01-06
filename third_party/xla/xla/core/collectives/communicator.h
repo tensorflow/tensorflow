@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -100,6 +101,16 @@ class Communicator {
                                  se::DeviceMemoryBase recv_buffer,
                                  PrimitiveType dtype, size_t count,
                                  const Executor& executor) = 0;
+
+  // Sends data from `send_buffer` to `target_ranks` and receives data from
+  // `source_rank` into `recv_buffer`. If `source_rank` is not specified, the
+  // output is filled with zeros.
+  virtual absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
+                                         se::DeviceMemoryBase recv_buffer,
+                                         PrimitiveType dtype, size_t count,
+                                         std::optional<RankId> source_rank,
+                                         absl::Span<const RankId> target_ranks,
+                                         const Executor& executor) = 0;
 
   // Sends `count` values from `send_buffers` to other ranks and receives data
   // from other ranks into `recv_buffers`.

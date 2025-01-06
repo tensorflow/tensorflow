@@ -286,8 +286,8 @@ absl::Status RunCollectivePermute(
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), {buffer}, comm));
 
-  const std::optional<int64_t> source_id = source_target.source;
-  const std::optional<int64_t> target_id = source_target.target;
+  std::optional<int64_t> source_id = source_target.source;
+  std::optional<int64_t> target_id = source_target.target;
 
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
@@ -297,28 +297,14 @@ absl::Status RunCollectivePermute(
                                 source_id.value_or(-1), target_id.value_or(-1));
 
   if (!use_memcpy) {
-    // GroupStart/End API is needed only if we will issue both send & recv
-    // calls.
-    const bool is_nccl_group_needed = (target_id && source_id);
-    if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupStart());
-    }
-    // Send source buffer to target peer if needed.
-    if (target_id) {
-      TF_RETURN_IF_ERROR(comm->Send(src_addr, buffer.element_type,
-                                    buffer.element_count, RankId(*target_id),
-                                    GpuCollectives::On(stream)));
-    }
+    std::optional<RankId> source_rank;
+    std::vector<RankId> target_ranks;
+    if (source_id) source_rank = RankId(*source_id);
+    if (target_id) target_ranks.push_back(RankId(*target_id));
 
-    // Receive data from the source peer to the destination buffer.
-    if (source_id) {
-      TF_RETURN_IF_ERROR(comm->Recv(dest_addr, buffer.element_type,
-                                    buffer.element_count, RankId(*source_id),
-                                    GpuCollectives::On(stream)));
-    }
-    if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupEnd());
-    }
+    TF_RETURN_IF_ERROR(comm->CollectivePermute(
+        src_addr, dest_addr, buffer.element_type, buffer.element_count,
+        source_rank, target_ranks, GpuCollectives::On(stream)));
   }
 
   if (!source_id) {
@@ -328,6 +314,7 @@ absl::Status RunCollectivePermute(
                                   device_string);
     TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
+
   if (use_memcpy && target_id) {
     TF_ASSIGN_OR_RETURN(auto recv_ptr, recv_ptr_map.GetRecvPtr(*target_id));
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
@@ -80,6 +81,13 @@ class NcclCommunicator : public Communicator {
                         absl::Span<const se::DeviceMemoryBase> recv_buffers,
                         PrimitiveType dtype, size_t count,
                         const Executor& executor) final;
+
+  absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 std::optional<RankId> source_rank,
+                                 absl::Span<const RankId> target_ranks,
+                                 const Executor& executor) final;
 
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
                     size_t count, RankId peer, const Executor& executor) final;

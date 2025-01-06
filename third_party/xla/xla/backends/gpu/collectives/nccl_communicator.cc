@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -343,6 +345,51 @@ absl::Status NcclCommunicator::AllToAll(
     XLA_NCCL_RETURN_IF_ERROR(
         ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
                  comm_, se::gpu::AsGpuStreamValue(stream)));
+  }
+
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+  return absl::OkStatus();
+}
+
+absl::Status NcclCommunicator::CollectivePermute(
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
+    absl::Span<const RankId> target_ranks, const Executor& executor) {
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+
+  auto rank_formatter = [](std::string* out, RankId rank) {
+    absl::StrAppendFormat(out, "%d", rank.value());
+  };
+
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL CollectivePermute operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; source_rank=%s; target_ranks=[%s]; count=%d; "
+      "comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
+      absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  // Short-circuit if there is no source or target rank.
+  if (!source_rank && target_ranks.empty()) {
+    return absl::OkStatus();
+  }
+
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+
+  if (source_rank) {
+    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(
+        recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+        source_rank->value(), comm_, se::gpu::AsGpuStreamValue(stream)));
+  }
+
+  for (auto target_rank : target_ranks) {
+    XLA_NCCL_RETURN_IF_ERROR(ncclSend(
+        send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+        target_rank.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
   }
 
   XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
