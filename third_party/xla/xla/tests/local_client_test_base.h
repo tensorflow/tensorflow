@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

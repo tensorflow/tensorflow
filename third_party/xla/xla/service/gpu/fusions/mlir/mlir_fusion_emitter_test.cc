@@ -47,12 +47,12 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 

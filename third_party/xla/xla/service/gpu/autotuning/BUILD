@@ -229,10 +229,8 @@ xla_test(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/lib/core:status_test_util",

@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"

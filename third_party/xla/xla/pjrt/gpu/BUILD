@@ -422,7 +422,6 @@ xla_test(
         ":se_gpu_pjrt_compiler_impl",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/client:xla_computation",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",

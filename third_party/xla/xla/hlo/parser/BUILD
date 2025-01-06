@@ -1,5 +1,5 @@
 # Description:
-#   XLA parser implementation.
+#   HLO parser implementation.
 
 load(
     "//xla:xla.bzl",

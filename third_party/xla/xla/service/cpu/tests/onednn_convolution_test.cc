@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_replace.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"

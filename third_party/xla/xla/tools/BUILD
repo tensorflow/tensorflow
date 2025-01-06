@@ -815,7 +815,7 @@ xla_test(
     deps = [
         ":hlo_decomposer_lib",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:filecheck",
+        "//xla/hlo/testlib:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",

@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
@@ -50,9 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

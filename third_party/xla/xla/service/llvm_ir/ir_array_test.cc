@@ -25,11 +25,11 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/filecheck.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

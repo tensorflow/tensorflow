@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 
+#include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_replication_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
