@@ -145,8 +145,8 @@ cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
