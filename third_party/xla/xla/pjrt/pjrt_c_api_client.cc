@@ -1024,7 +1024,8 @@ PjRtCApiDeviceDescription::memory_spaces() const {
     memory_space_descriptions_ =
         pjrt::GetMemorySpaceDescriptions(device_description_, c_api_);
     for (int i = 0; i < memory_space_descriptions_.size(); i++) {
-      memory_space_description_pointers_[i] = &memory_space_descriptions_[i];
+      memory_space_description_pointers_.push_back(
+          &memory_space_descriptions_[i]);
     }
   }
   return memory_space_description_pointers_;
