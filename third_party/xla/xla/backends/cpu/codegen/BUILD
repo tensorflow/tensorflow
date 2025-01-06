@@ -82,6 +82,7 @@ cc_library(
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
     deps = [
+        ":compiled_function_library",
         ":contiguous_section_memory_manager",
         ":cpu_features",
         ":ir_compiler",

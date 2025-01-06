@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -347,34 +348,6 @@ void JitCompiler::TaskDispatcher::shutdown() {
     return num_dispatched_tasks_ == 0;
   };
   absl::MutexLock lock(&mu_, absl::Condition(&all_tasks_finished));
-}
-
-JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
-    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer,
-    absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map)
-    : execution_session_(std::move(execution_session)),
-      object_layer_(std::move(object_layer)),
-      symbols_map_(std::move(symbols_map)) {
-  DCHECK(execution_session_) << "Execution session must not be null";
-}
-
-JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
-  if (auto err = execution_session_->endSession()) {
-    execution_session_->reportError(std::move(err));
-  }
-}
-
-absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(
-    TypeId type_id, absl::string_view name) {
-  if (auto it = symbols_map_.find(name); it != symbols_map_.end()) {
-    if (it->second.type_id != type_id) {
-      return Internal("Symbol %s has type id %d, expected %d", name,
-                      it->second.type_id.value(), type_id.value());
-    }
-    return it->second.ptr;
-  }
-  return NotFound("Function %s not found (type id: %d)", name, type_id.value());
 }
 
 }  // namespace xla::cpu
