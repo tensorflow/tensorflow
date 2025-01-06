@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  bool include_internal = tensorflow::StringPiece("1") == argv[3];
+  bool include_internal = absl::string_view("1") == argv[3];
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[4], ",", tensorflow::str_util::SkipEmpty());
   tensorflow::cc_op::PrintAllCCOps(argv[1], argv[2], include_internal,

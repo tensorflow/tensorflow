@@ -61,12 +61,12 @@ op {
 }
 )";
 
-void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectDoesNotHaveSubstr(StringPiece s, StringPiece expected) {
+void ExpectDoesNotHaveSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_FALSE(absl::StrContains(s, expected))
       << "'" << s << "' contains '" << expected << "'";
 }

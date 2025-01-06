@@ -45,8 +45,8 @@ namespace {
 
 const int kRightMargin = 79;
 
-string GetConstructorDecl(const OpInfo& op_info, StringPiece op_name_prefix,
-                          bool include_attr) {
+string GetConstructorDecl(const OpInfo& op_info,
+                          absl::string_view op_name_prefix, bool include_attr) {
   const string prefix = strings::StrCat(op_name_prefix, op_info.op_name, "(");
   string c_decl;
   for (int i = 0; i < op_info.arg_types.size(); ++i) {
