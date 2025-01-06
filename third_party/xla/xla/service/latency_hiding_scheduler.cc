@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -57,8 +58,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -315,10 +314,11 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
                                ResourceUsageType::kResourceRelease)
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kRecvDone:
+    case HloOpcode::kRecvDone: {
+      const HloSendRecvInstruction* recv =
+          DynCast<HloSendRecvInstruction>(hlo.operand(0));
       return ResourcesVector{
-          static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
-                  ->is_host_transfer()
+          (recv != nullptr && recv->is_host_transfer())
               ? std::make_pair(
                     config_.force_send_recv_to_use_same_resource
                         ? ResourceTypeToIndex(ResourceType::kSendHost)
@@ -326,14 +326,17 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
                     ResourceUsageType::kResourceOccupy)
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
-    case HloOpcode::kSendDone:
+    }
+    case HloOpcode::kSendDone: {
+      const HloSendRecvInstruction* send =
+          DynCast<HloSendRecvInstruction>(hlo.operand(0));
       return ResourcesVector{
-          static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
-                  ->is_host_transfer()
+          (send != nullptr && send->is_host_transfer())
               ? std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
                                ResourceUsageType::kResourceOccupy)
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
+    }
     default:
       return ResourcesVector{};
   }
