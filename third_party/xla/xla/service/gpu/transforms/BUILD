@@ -514,13 +514,13 @@ xla_cc_test(
     deps = [
         ":collective_permute_cycle_decomposer",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:filecheck",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
