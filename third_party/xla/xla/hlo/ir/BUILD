@@ -1,9 +1,9 @@
 # Description:
 #   XLA’s HLO Intermediate Representation implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,11 +30,9 @@ cc_library(
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
-        "hlo_op_metadata.cc",
         "hlo_opcode.cc",
         "hlo_original_value.cc",
         "hlo_schedule.cc",
-        "hlo_sharding.cc",
         "hlo_sharding_metadata.cc",
     ],
     hdrs = [
@@ -60,6 +58,8 @@ cc_library(
     ],
     deps = [
         ":backend_config",
+        ":hlo_op_metadata",
+        ":hlo_sharding",
         ":ptrvec",
         ":tile_assignment",
         "//xla:array",
@@ -114,6 +114,44 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_sharding",
+    srcs = ["hlo_sharding.cc"],
+    hdrs = ["hlo_sharding.h"],
+    deps = [
+        ":hlo_op_metadata",
+        ":tile_assignment",
+        "//xla:array",
+        "//xla:printer",
+        "//xla:shape_tree",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_op_metadata",
+    srcs = ["hlo_op_metadata.cc"],
+    hdrs = ["hlo_op_metadata.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

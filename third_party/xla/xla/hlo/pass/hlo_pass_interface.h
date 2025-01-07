@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -159,7 +161,10 @@ class HloModulePass : public HloPassInterface {
   //
   // TODO(b/129084868): Make this Backend dependent instead of requiring
   // deriving from the pass and overriding this function.
-  virtual void UpdateLayout(Shape* shape) {}
+  virtual void UpdateLayout(Shape* shape) {
+    // CPU/GPU backends require shapes of subbyte types to be packed.
+    ShapeUtil::UpdateElementSizeInBits(shape, /*pack_subbyte_types=*/true);
+  }
 };
 
 // Base class for passes which are module-group scoped. These passes cannot run

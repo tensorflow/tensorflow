@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 294
+_version = 300
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -533,6 +533,7 @@ PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 PjRtLayout = _xla.PjRtLayout
 AutotuneCacheMode = _xla.AutotuneCacheMode
+ResultAccuracyMode = _xla.ResultAccuracy_Mode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -855,6 +856,18 @@ class PrecisionConfig:
     self.operand_precision = []
 
 
+class ResultAccuracy:
+  """Python representation of a xla.ResultAccuracy protobuf."""
+
+  __slots__ = ('mode', 'atol', 'rtol', 'ulps')
+
+  def __init__(self):
+    self.mode = _xla.ResultAccuracy_Mode.DEFAULT
+    self.atol = 0.0
+    self.rtol = 0.0
+    self.ulps = 0
+
+
 class GatherDimensionNumbers:
   """Python representation of a xla.GatherDimensionNumbers protobuf."""
 
@@ -951,3 +964,4 @@ batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
 Layout = _xla.Layout
 custom_call_targets = _xla.custom_call_targets
+ArrayCopySemantics = _xla.ArrayCopySemantics

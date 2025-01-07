@@ -8061,6 +8061,60 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }
 
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there are multiple formatting ops between the custom-call and
+// the dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128]{4,3,2,1,0} broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128]{1,2,3,0} parameter(0)
+  custom_call = bf16[2,2048,2,128]{1,2,3,0} custom-call(param_0), custom_call_target="%s"
+  copy = bf16[2,2048,2,128]{3,2,1,0} copy(custom_call)
+  bitcast = bf16[1,2,2048,2,128]{4,3,2,1,0} bitcast(copy)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128]{4,3,2,1,0} dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  //      |         copy
+  //      |           |
+  // broadcast    bitcast   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Bitcast(m::Copy(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0)))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
 // Test of dynamic-update-slice with dims where update and result have the same
 // size so we can replace indices to 0.
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
@@ -8507,6 +8561,107 @@ ENTRY %entry {
               ElementsAre(0));
   EXPECT_THAT(gather->gather_dimension_numbers().start_indices_batching_dims(),
               ElementsAre(0));
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfPadStartIndicesPaddedMoreDims) {
+  const char* hlo_string = R"(
+  HloModule module
+
+  ENTRY %entry {
+    par0 = f32[98,3,38,150,197] parameter(0)
+    f0 = f32[] constant(0)
+    operand = f32[100,3,40,150,200] pad(par0, f0), padding=2_0x0_0x0_2x0_0x2_1
+    par1 = s32[197,98,16,150] parameter(1)
+    s0 = s32[] constant(0)
+    indices = s32[200,100,20,150] pad(par1, s0), padding=2_1x2_0x4_0x0_0
+    ROOT gather = f32[200,40,100,20,150] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=4,
+      slice_sizes={1,1,40,1,1},
+      operand_batching_dims={0,3,4},
+      start_indices_batching_dims={1,3,0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfPadStartIndicesPaddedDifferently) {
+  const char* hlo_string = R"(
+  HloModule module
+
+  ENTRY %entry {
+    par0 = f32[98,3,38,150,197] parameter(0)
+    f0 = f32[] constant(0)
+    operand = f32[100,3,40,150,200] pad(par0, f0), padding=2_0x0_0x0_2x0_0x2_1
+    par1 = s32[197,98,20,150] parameter(1)
+    s0 = s32[] constant(0)
+    indices = s32[200,100,20,150] pad(par1, s0), padding=1_2x2_0x0_0x0_0
+    ROOT gather = f32[200,40,100,20,150] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=4,
+      slice_sizes={1,1,40,1,1},
+      operand_batching_dims={0,3,4},
+      start_indices_batching_dims={1,3,0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfPadWithPaddedBatchDims) {
+  const char* hlo_string = R"(
+  HloModule module
+
+  ENTRY %entry {
+    par0 = f32[98,3,38,150,197] parameter(0)
+    f0 = f32[] constant(0)
+    operand = f32[100,3,40,150,200] pad(par0, f0), padding=2_0x0_0x0_2x0_0x2_1
+    par1 = s32[197,98,20,150] parameter(1)
+    s0 = s32[] constant(0)
+    indices = s32[200,100,20,150] pad(par1, s0), padding=2_1x2_0x0_0x0_0
+    ROOT gather = f32[200,40,100,20,150] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=4,
+      slice_sizes={1,1,40,1,1},
+      operand_batching_dims={0,3,4},
+      start_indices_batching_dims={1,3,0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  const HloInstruction* pad_instr;
+  const HloInstruction* gather_instr;
+  EXPECT_THAT(root, GmockMatch(m::Pad(&pad_instr,
+                                      m::Gather(&gather_instr, m::Parameter(0),
+                                                m::Parameter(1)),
+                                      m::ConstantScalar(0))));
+  auto gather = Cast<HloGatherInstruction>(gather_instr);
+  EXPECT_THAT(gather->gather_slice_sizes(), ElementsAre(1, 1, 38, 1, 1));
+  EXPECT_THAT(gather->gather_dimension_numbers().operand_batching_dims(),
+              ElementsAre(0, 3, 4));
+  EXPECT_THAT(gather->gather_dimension_numbers().start_indices_batching_dims(),
+              ElementsAre(1, 3, 0));
+  EXPECT_EQ(PaddingConfigToString(pad_instr->padding_config()),
+            "2_1x0_2x2_0x0_0x0_0");
 }
 
 TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad) {
@@ -12423,6 +12578,20 @@ TEST_F(AlgebraicSimplifierTest, BitcastBroadcastDifferentLayout) {
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, AllGatherOfBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      z = f32[] constant(0)
+      b = f32[4,4] broadcast(z), dimensions={}
+      ROOT ag = f32[16,4] all-gather(b), dimensions={0}, replica_groups={{0, 1, 2, 3}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Constant())));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialMin) {
   const char* kModuleStr = R"(
     HloModule m
@@ -12499,6 +12668,24 @@ TEST_F(AlgebraicSimplifierTest, PathologicalComplexity) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, TestNew123) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      param0 = f32[16384,126]{1,0:T(8,128)S(5)} parameter(0), sharding={replicated}
+      copy0 = f32[16384,126]{1,0:T(8,128)} copy(param0)
+      bitcast0 = f32[126,16384]{0,1:T(8,128)} bitcast(copy0)
+      ROOT copy1 = f32[16384,126]{1,0:T(8,128)} copy(bitcast0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
 }  // namespace

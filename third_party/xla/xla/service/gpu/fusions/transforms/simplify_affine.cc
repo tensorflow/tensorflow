@@ -41,9 +41,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/codegen/ir/xla_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -358,7 +359,7 @@ std::optional<Interval> GetIVRange(mlir::Value iv) {
       return {{lb.getSExtValue(), ub.getSExtValue() - 1}};
     }
   }
-  if (auto loop_op = mlir::dyn_cast<xla::gpu::LoopOp>(parent)) {
+  if (auto loop_op = mlir::dyn_cast<xla::LoopOp>(parent)) {
     const auto& indexing_map = loop_op.getIndexingMap();
     if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
         bbarg.getArgNumber() <

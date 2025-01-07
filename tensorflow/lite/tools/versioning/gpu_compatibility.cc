@@ -1079,6 +1079,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinLeakyRelu:
       return absl::OkStatus();
 
+    case kTfLiteBuiltinReduceAll:
+    case kTfLiteBuiltinReduceAny:
     case kTfLiteBuiltinReduceMax:
     case kTfLiteBuiltinReduceMin:
     case kTfLiteBuiltinReduceProd:
@@ -1141,6 +1143,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinLogicalNot:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
+    case kTfLiteBuiltinRound:
     case kTfLiteBuiltinRsqrt:
     case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:

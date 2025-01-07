@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 
@@ -32,7 +33,26 @@ namespace {
 
 namespace m = ::xla::match;
 
-class ReductionSplitterTest : public HloTestBase {};
+auto MakeDeviceDescription() {
+  stream_executor::DeviceDescription device_description{
+      stream_executor::GpuDeviceInfoProto{}};
+  device_description.set_threads_per_warp(32);
+  return device_description;
+}
+
+class ReductionSplitterTest : public HloTestBase {
+ public:
+  using HloTestBase::HloTestBase;
+
+  auto MakeReductionSplitter(bool ignore_small_dims) const {
+    return ReductionSplitter{device_description_,
+                             /*ignore_small_dims=*/ignore_small_dims};
+  }
+
+ private:
+  const stream_executor::DeviceDescription device_description_{
+      MakeDeviceDescription()};
+};
 
 TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -54,8 +74,9 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
   }
   )")
                     .value();
-  ASSERT_TRUE(
-      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
+  ASSERT_TRUE(MakeReductionSplitter(/*ignore_small_dims=*/true)
+                  .Run(module.get())
+                  .value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -86,8 +107,9 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
   }
   )")
                     .value();
-  ASSERT_TRUE(
-      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
+  ASSERT_TRUE(MakeReductionSplitter(/*ignore_small_dims=*/false)
+                  .Run(module.get())
+                  .value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -119,10 +141,12 @@ TEST_F(ReductionSplitterTest, DontSplitReductionWithSmallDimensions) {
   }
   )")
                     .value();
-  EXPECT_FALSE(
-      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
-  EXPECT_TRUE(
-      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
+  EXPECT_FALSE(MakeReductionSplitter(/*ignore_small_dims=*/true)
+                   .Run(module.get())
+                   .value());
+  EXPECT_TRUE(MakeReductionSplitter(/*ignore_small_dims=*/false)
+                  .Run(module.get())
+                  .value());
 }
 
 TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
@@ -143,8 +167,9 @@ TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
   }
   )")
                     .value();
-  EXPECT_FALSE(
-      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
+  EXPECT_FALSE(MakeReductionSplitter(/*ignore_small_dims=*/false)
+                   .Run(module.get())
+                   .value());
 }
 
 }  // namespace

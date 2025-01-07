@@ -232,6 +232,8 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
     if int(rocm_config.rocm_version_number) >= 60200:
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
+        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/19/include")
+        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/20/include")
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
@@ -790,6 +792,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
+            "%{compiler}": "clang" if is_rocm_clang else "unknown",
             "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",

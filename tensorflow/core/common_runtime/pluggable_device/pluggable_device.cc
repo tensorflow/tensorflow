@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device.h"
 
 #include <stdlib.h>
-#include <string.h>
 
-#include <algorithm>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <unordered_map>

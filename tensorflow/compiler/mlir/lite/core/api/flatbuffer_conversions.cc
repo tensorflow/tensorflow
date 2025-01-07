@@ -20,7 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "absl/log/log.h"
+#include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "flatbuffers/vector.h"  // from @flatbuffers
@@ -37,7 +37,7 @@ limitations under the License.
     if (!(a)) {                                                              \
       auto error_message =                                                   \
           absl::StrFormat("%s:%d %s was not true.", __FILE__, __LINE__, #a); \
-      LOG(ERROR) << error_message;                                           \
+      ABSL_LOG(ERROR) << error_message;                                      \
       return absl::InvalidArgumentError(error_message);                      \
     }                                                                        \
   } while (0)
@@ -412,7 +412,7 @@ static absl::Status FlatBufferIntVectorToArray(
   if (!flat_vector) {
     auto error_message = absl::StrFormat(
         "Input array not provided for operation '%s'.\n", op_name);
-    LOG(ERROR) << error_message;
+    ABSL_LOG(ERROR) << error_message;
     return absl::InvalidArgumentError(error_message);
   } else {
     size_t num_dimensions = flat_vector->size();
@@ -420,7 +420,7 @@ static absl::Status FlatBufferIntVectorToArray(
       auto error_message = absl::StrFormat(
           "Found too many dimensions in the input array of operation '%s'.\n",
           op_name);
-      LOG(ERROR) << error_message;
+      ABSL_LOG(ERROR) << error_message;
       return absl::InvalidArgumentError(error_message);
     } else {
       for (size_t i = 0; i < num_dimensions; ++i) {
@@ -1025,7 +1025,7 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_DELEGATE: {
       auto error_msg = "DELEGATE op shouldn't exist in model.";
-      LOG(ERROR) << error_msg;
+      ABSL_LOG(ERROR) << error_msg;
       return absl::InvalidArgumentError(error_msg);
     }
     case BuiltinOperator_FAKE_QUANT: {
@@ -1158,7 +1158,7 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
         if (boundaries == nullptr) {
           auto error_message =
               "boundaries array not provided for operation 'bucketize'.\n";
-          LOG(ERROR) << error_message;
+          ABSL_LOG(ERROR) << error_message;
           return absl::InvalidArgumentError(error_message);
         }
         params->num_boundaries = boundaries->size();
@@ -1166,7 +1166,7 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
           auto error_message =
               "boundaries.data() returned nullptr for "
               "operation 'bucketize'.\n";
-          LOG(ERROR) << error_message;
+          ABSL_LOG(ERROR) << error_message;
           return absl::InvalidArgumentError(error_message);
         }
         params->boundaries = boundaries->data();
@@ -1404,7 +1404,7 @@ absl::Status ConvertTensorType(TensorType tensor_type, TfLiteType* type) {
       *type = kTfLiteNoType;
       auto error_message =
           absl::StrFormat("Unsupported data type %d in tensor", tensor_type);
-      LOG(ERROR) << error_message;
+      ABSL_LOG(ERROR) << error_message;
       return absl::InvalidArgumentError(error_message);
   }
 }
@@ -1865,7 +1865,7 @@ absl::Status ParseFullyConnected(const Operator* op,
         break;
       default:
         auto error_message = "Unhandled fully-connected weights format.";
-        LOG(ERROR) << error_message;
+        ABSL_LOG(ERROR) << error_message;
         return absl::InvalidArgumentError(error_message);
     }
   } else {
@@ -2070,14 +2070,14 @@ absl::Status ParseLSTM(const Operator* op, BuiltinDataAllocator* allocator,
       default:
         auto error_message = absl::StrFormat("Unhandled LSTM kernel type: %d",
                                              lstm_params->kernel_type());
-        LOG(ERROR) << error_message;
+        ABSL_LOG(ERROR) << error_message;
         return absl::InvalidArgumentError(error_message);
     }
     params->asymmetric_quantize_inputs =
         lstm_params->asymmetric_quantize_inputs();
   } else {
     auto error_message = "No valid LSTM builtin options exist";
-    LOG(ERROR) << error_message;
+    ABSL_LOG(ERROR) << error_message;
     return absl::InvalidArgumentError(error_message);
   }
   *builtin_data = params.release();
@@ -2400,7 +2400,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
       auto error_message =
           "'window_dimensions' attribute is not optional for "
           "'stablehlo.reduce_window' and cannot be empty.";
-      LOG(ERROR) << error_message;
+      ABSL_LOG(ERROR) << error_message;
       return absl::InvalidArgumentError(error_message);
     }
 
@@ -2416,7 +2416,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
               "'%s' attribute of 'stablehlo.reduce_window' does not have the "
               "expected size (%llu != %llu).",
               attr_name, flatbuffer_vector->size(), expected_size);
-          LOG(ERROR) << error_message;
+          ABSL_LOG(ERROR) << error_message;
           return absl::InvalidArgumentError(error_message);
         }
         absl::Status status = FlatBufferIntVectorToArray(
@@ -2425,7 +2425,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
         if (!status.ok()) {
           auto error_message = absl::StrFormat("%s Check the '%s' attribute.",
                                                status.message(), attr_name);
-          LOG(ERROR) << error_message;
+          ABSL_LOG(ERROR) << error_message;
           return absl::InvalidArgumentError(error_message);
         }
       } else {
@@ -2462,7 +2462,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
   }
   auto error_message =
       "Could not get 'stablehlo.reduce_window' operation parameters.";
-  LOG(ERROR) << error_message;
+  ABSL_LOG(ERROR) << error_message;
   return absl::InvalidArgumentError(error_message);
 }
 
@@ -2623,7 +2623,7 @@ absl::Status ParseStablehloPad(const Operator* op,
       if (!status.ok()) {
         auto error_message = absl::StrFormat("%s Check the '%s' attribute.",
                                              status.message(), attr_name);
-        LOG(ERROR) << error_message;
+        ABSL_LOG(ERROR) << error_message;
         return absl::InvalidArgumentError(error_message);
       }
       return status;
@@ -2644,14 +2644,14 @@ absl::Status ParseStablehloPad(const Operator* op,
             schema_params->interior_padding()->size()) {
       auto error_message =
           "'stablehlo.pad' operation parameter array sizes are not consistent.";
-      LOG(ERROR) << error_message;
+      ABSL_LOG(ERROR) << error_message;
       return absl::InvalidArgumentError(error_message);
     }
     *builtin_data = params.release();
     return OkStatus();
   }
   auto error_message = "Could not get 'stablehlo.pad' operation parameters.";
-  LOG(ERROR) << error_message;
+  ABSL_LOG(ERROR) << error_message;
   return absl::InvalidArgumentError(error_message);
 }
 
@@ -2675,7 +2675,7 @@ absl::Status ParseStablehloComposite(const Operator* op,
   }
   auto error_message =
       "Could not get 'stablehlo.composite' operation parameters.";
-  LOG(ERROR) << error_message;
+  ABSL_LOG(ERROR) << error_message;
   return absl::InvalidArgumentError(error_message);
 }
 
@@ -3204,7 +3204,7 @@ absl::Status ParseOpData(const Operator* op, BuiltinOperator op_type,
   auto error_message =
       "ParseOpData is unsupported on TfLiteMicro, please use the operator "
       "specific parse functions (e.g. ParseAdd etc.).\n";
-  LOG(ERROR) << error_message;
+  ABSL_LOG(ERROR) << error_message;
   return absl::UnimplementedError(error_message);
 #else
   return ParseOpDataTfLite(op, op_type, allocator, builtin_data);

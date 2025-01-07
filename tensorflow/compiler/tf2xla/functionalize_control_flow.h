@@ -24,6 +24,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char kFunctionalizeControlFlowFailureMessage[] =
+    "Failed to functionalize Control Flow V1 ops. Consider using Control "
+    "Flow V2 ops instead. See "
+    "https://www.tensorflow.org/api_docs/python/tf/"
+    "compat/v1/enable_control_flow_v2.";
+
 // Transformation that converts tf.while_loop() loops into functional While
 // operators and tf.cond() conditionals into function If operators, suitable for
 // XLA compilation.

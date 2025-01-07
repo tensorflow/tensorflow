@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMMON_H_
 
+#include <stdbool.h>  // NOLINT: To use bool type in C
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -76,7 +77,7 @@ typedef enum {
   kLiteRtStatusErrorInvalidFlatbuffer = 501,
   kLiteRtStatusErrorDynamicLoading = 502,
   kLiteRtStatusErrorSerialization = 503,
-  kLiteRtStatusErrorCompilationr = 504,
+  kLiteRtStatusErrorCompilation = 504,
 
   // IR related errors.
   kLiteRtStatusErrorIndexOOB = 1000,

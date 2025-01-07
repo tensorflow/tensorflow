@@ -28,7 +28,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -52,6 +55,11 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
+// TODO(b/342448688): Expose via config and API instead of flag.
+ABSL_FLAG(
+    bool, coordination_agent_recoverable, false,
+    "If true, allow it to silently reconnect to the service after a restart.");
+
 namespace tsl {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
@@ -61,6 +69,7 @@ using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
 namespace {
+
 auto* enabled_usage_metric =
     monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
                                     "Tracks usage of coordination service.");
@@ -77,6 +86,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     absl::Status s = ShutdownInternal();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
+  absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
+                          const CoordinationServiceConfig& configs,
+                          std::unique_ptr<CoordinationClient> leader_client,
+                          StatusCallback error_fn, bool recoverable) override;
   absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
                           const CoordinationServiceConfig& configs,
                           std::unique_ptr<CoordinationClient> leader_client,
@@ -162,13 +175,13 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  CoordinatedTaskState state_ TF_GUARDED_BY(state_mu_) =
+  CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
       CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
-  absl::Status status_ TF_GUARDED_BY(state_mu_) = absl::OkStatus();
-  // Note: this set grows without bounds. For now, this is okay as most users
-  // require < 100 barriers. If there is a use case that requires many barriers,
-  // consider using a monotonic sequence number to track instead.
-  absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
+  absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
+  // Tracks the number of times a barrier has been used, keyed by id.
+  absl::flat_hash_map<std::string, int64_t> barrier_counter_
+      ABSL_GUARDED_BY(state_mu_);
+  absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
   DeviceInfo cluster_devices_;
@@ -193,9 +206,27 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
+  return Initialize(env, job_name, task_id, configs, std::move(leader_client),
+                    error_fn,
+                    /*recoverable=*/false);
+}
+
+absl::Status CoordinationServiceAgentImpl::Initialize(
+    Env* env, std::string_view job_name, int task_id,
+    const CoordinationServiceConfig& configs,
+    std::unique_ptr<CoordinationClient> leader_client, StatusCallback error_fn,
+    bool recoverable) {
   CoordinatedTask task;
   task.set_job_name(std::string(job_name));
   task.set_task_id(task_id);
+  if (recoverable || absl::GetFlag(FLAGS_coordination_agent_recoverable)) {
+    LOG(WARNING)
+        << "Using experimental recoverable task feature. The default shutdown "
+           "barrier will only block non-recoverable tasks. If a synchronized "
+           "shutdown is desired, the user / library should invoke "
+           "`WaitAtBarrier` explicitly at the end of the program.";
+    task.set_recoverable(true);
+  }
   return Initialize(env, task, configs, std::move(leader_client), error_fn);
 }
 
@@ -281,8 +312,9 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
       configs_.cluster_register_timeout_in_ms() > 0
           ? configs_.cluster_register_timeout_in_ms()
           : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
+  // Give 5 seconds for any service-related timeouts to propagate.
   const absl::Time deadline =
-      absl::Now() + absl::Milliseconds(register_timeout);
+      absl::Now() + absl::Milliseconds(register_timeout) + absl::Seconds(5);
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -588,9 +620,11 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     ShutdownTaskResponse response;
     CallOptions call_opts;
     const int64_t shutdown_timeout =
-        configs_.shutdown_barrier_timeout_in_ms() > 0
-            ? configs_.shutdown_barrier_timeout_in_ms()
-            : absl::ToInt64Milliseconds(kDefaultShutdownTimeout);
+        (configs_.shutdown_barrier_timeout_in_ms() > 0
+             ? configs_.shutdown_barrier_timeout_in_ms()
+             : absl::ToInt64Milliseconds(kDefaultShutdownTimeout)) +
+        // Add 5s for service-related errors to propagate.
+        5 * 1000;
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;
@@ -603,14 +637,20 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     if (status.ok()) {
       LOG(INFO) << "Coordination agent has successfully shut down.";
     } else {
-      LOG(ERROR)
-          << "Failed to disconnect from coordination service with status: "
-          << TrimCoordinationErrorMessage(status)
-          << "\nProceeding with agent shutdown anyway. This is usually caused "
-             "by an earlier error during execution. Check the logs of (a) this "
-             "task, (b) the leader (usually slice 0 task 0) and (c) the "
-             "scheduler (e.g. preemption, eviction) for an earlier error to "
-             "debug further.";
+      status = MakeCoordinationError(absl::Status(
+          status.code(),
+          absl::StrCat(
+              "Failed to disconnect from coordination service with "
+              "status: ",
+              TrimCoordinationErrorMessage(status).ToString(),
+              "Proceeding with agent shutdown anyway. This is usually caused "
+              "by an "
+              "earlier error during execution. Check the logs of (a) this "
+              "task, "
+              "(b) the leader (usually slice 0 task 0) and (c) the scheduler "
+              "(e.g. "
+              "preemption, eviction) for an earlier error to debug further.")));
+      SetError(status);
     }
   }
 
@@ -619,7 +659,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
   StopErrorPolling();
   {
     absl::MutexLock l(&state_mu_);
-    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+    if (status.ok() && state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       const std::string status_message = absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
           "implying that distributed execution failed. Note: agent will "
@@ -636,7 +676,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }
 
-  // Cancel all pending GetKeyValue() RPC calls.
+  // Cancel all pending GetKeyValue() and WaitAtBarrier() RPC calls.
   cancellation_manager_.StartCancel();
   return status;
 }
@@ -910,27 +950,68 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     done(agent_running_status);
     return;
   }
-  {
-    absl::MutexLock l(&state_mu_);
-    auto [it, inserted] = used_barrier_ids_.insert(std::string(barrier_id));
-    if (!inserted) {
-      done(absl::FailedPreconditionError(absl::StrCat(
-          "WaitAtBarrier() should not be called with the same id more than "
-          "once. Barrier id: ",
-          barrier_id)));
-      return;
-    }
-  }
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
-  request->set_barrier_id(std::string(barrier_id));
-  request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
-  *request->mutable_source_task() = task_;
-  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
-  VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  {
+    absl::MutexLock l(&state_mu_);
+
+    // Prevent multiple concurrent invocations with the same id.
+    // This usually indicates a bug in the user code. They should wait till the
+    // previous call completes before starting a new one.
+    if (ongoing_barriers_.contains(barrier_id)) {
+      done(MakeCoordinationError(absl::FailedPreconditionError(
+          absl::StrCat("Barrier ", barrier_id, " is already ongoing."))));
+      return;
+    }
+    ongoing_barriers_.insert(std::string(barrier_id));
+
+    request->set_barrier_id(std::string(barrier_id));
+    request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
+    *request->mutable_source_task() = task_;
+    *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+
+    // Counter is incremented for each unique id's WaitAtBarrier() call.
+    // Design note: we need agent-side state to fail attempts by restarted tasks
+    // using the same barrier id (but not the same barrier).
+    // Consider adding the counter to the barrier response.
+    if (!barrier_counter_.contains(barrier_id)) {
+      barrier_counter_[barrier_id] = -1;
+    }
+    request->set_counter(barrier_counter_[barrier_id] + 1);
+    VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  }
+
+  auto call_opts = std::make_shared<CallOptions>();
+
+  const CancellationToken token =
+      cancellation_manager_.get_cancellation_token();
+  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
+      token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(absl::CancelledError("WaitAtBarrierAsync() was cancelled."));
+    return;
+  }
+
   leader_client_->BarrierAsync(
-      request.get(), response.get(),
-      [request, response, done = std::move(done)](const absl::Status& s) {
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done), barrier_id, this,
+       &cm = cancellation_manager_, token](const absl::Status& s) mutable {
+        absl::MutexLock l(&state_mu_);
+        // Allow the same barrier id to be invoked after this counter's
+        // completion.
+        ongoing_barriers_.erase(barrier_id);
+        // Track completed/errored barrier counters.
+        if (s.ok()) {
+          // This would correspond to the request counter.
+          barrier_counter_[barrier_id] = response->counter();
+        } else if (s.GetPayload(BarrierErrorPayloadKey()) != std::nullopt) {
+          // Note that response is discarded if an error is returned, so we need
+          // to parse from the error message.
+          barrier_counter_[barrier_id] = GetBarrierCounterFromError(s);
+        }
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm.TryDeregisterCallback(token);
         auto status = TrimCoordinationErrorMessage(s);
         done(status);
         VLOG(3) << "WaitAtBarrierResponse: " << status;
@@ -957,6 +1038,18 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
     done(agent_running_status);
     return;
   }
+  absl::MutexLock l(&state_mu_);
+  if (!barrier_counter_.contains(barrier_id)) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
+        "Tried to cancel non-existent barrier ", barrier_id, "."))));
+    return;
+  }
+  if (!ongoing_barriers_.contains(barrier_id)) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
+        "Tried to cancel barrier ", barrier_id, " that is not ongoing."))));
+    return;
+  }
+
   auto request = std::make_shared<CancelBarrierRequest>();
   auto response = std::make_shared<CancelBarrierResponse>();
   request->set_barrier_id(std::string(barrier_id));
@@ -965,6 +1058,7 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
   leader_client_->CancelBarrierAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const absl::Status& s) {
+        // Note: barrier state will be cleaned up the original barrier RPC.
         done(s);
         VLOG(3) << "CancelBarrierResponse: " << s;
       });

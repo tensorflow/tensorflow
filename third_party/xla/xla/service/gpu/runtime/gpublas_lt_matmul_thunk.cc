@@ -51,7 +51,7 @@ struct MatmulPlanCache {
   }
 
   template < class Func >
-  StatusOr<se::gpu::BlasLt::MatmulPlan *> 
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan *> 
           GetOrCreate(const std::string& key, Func&& create) {
     // each GPU has a different mutex => hence different GPU instances can
     // create matmul plans in parallel
@@ -155,7 +155,7 @@ auto CublasLtMatmulThunk::GetCachedMatmulPlan(
 
   auto& cache = MatmulPlanCache::i(params.stream);
 
-  auto create = [&]() -> StatusOr<se::gpu::BlasLt::MatmulPlanPtr>  {
+  auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr>  {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream << 
                        " instr: " << canonical_hlo_;
     

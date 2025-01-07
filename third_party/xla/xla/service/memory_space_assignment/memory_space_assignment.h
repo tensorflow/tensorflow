@@ -161,6 +161,17 @@ Useful logging and error messages
   - "Finding allocation for": Magical logging phrase indicating the point in
     time where we are are trying to determine how to update an AllocationValue's
     AllocationSequenece, for a particular use segment.
+
+  - To log the alternate memory allocations that MSA made at a given schedule
+    time:
+    * Find the time point of interest. For example, to find the time for an
+      instruction fusion.1:
+      - Set vlogging to 2 for algorithm.cc.
+      - Find logging lines that look like:
+        Initial resource[100] = 1.0 (fusion.1)
+      - That tells us that the fusion.1 has schedule time 100.
+    * Uncomment the line in memory_space_assignment.cc labeled
+      DEBUG_ALLOCATIONS_AT, and use time 100.
 */
 
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
@@ -295,6 +306,11 @@ class MemorySpaceAssignment {
 
   // Calculates asynchronous copy statistics.
   absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
+
+  // Verify that allocations_ are free of overlapping Allocations in time and
+  // space. This is a post-processing step called after all allocations have
+  // been finalized, before the async copies get scheduled.
+  absl::Status VerifyAllocations() const;
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.

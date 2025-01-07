@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 
 #include <gtest/gtest.h>

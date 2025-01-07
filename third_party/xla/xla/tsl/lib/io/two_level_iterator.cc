@@ -137,7 +137,7 @@ void TwoLevelIterator::InitDataBlock() {
     SetDataIterator(nullptr);
   } else {
     absl::string_view handle = index_iter_->value();
-    if (data_iter_ != nullptr && handle.compare(data_block_handle_) == 0) {
+    if (data_iter_ != nullptr && handle == data_block_handle_) {
       // data_iter_ is already constructed with this iterator, so
       // no need to change anything
     } else {

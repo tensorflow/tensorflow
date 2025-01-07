@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -62,10 +61,8 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
-using gpu::AsGpuStreamValue;
 using gpu::GpuMemory;
 using gpu::GpuMemoryMutable;
-using gpu::GpuStreamHandle;
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
@@ -232,7 +229,7 @@ bool CUDABlas::SetStream(Stream *stream) {
   CHECK(blas_ != nullptr);
   std::unique_ptr<ActivateContext> activation = parent_->Activate();
 
-  auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : nullptr;
+  auto handle = (stream != nullptr) ? gpu::AsGpuStreamValue(stream) : nullptr;
   if (auto ret = cublasSetStream(blas_, handle); ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cuBLAS calls: " << ToString(ret);
     return false;
@@ -243,7 +240,7 @@ bool CUDABlas::SetStream(Stream *stream) {
 absl::StatusOr<bool> CUDABlas::IsMainStreamSet() const {
   absl::MutexLock lock{&mu_};
   CHECK(blas_ != nullptr);
-  GpuStreamHandle handle{};
+  CUstream handle{};
   if (auto ret = cublasGetStream(blas_, &handle);
       ret != CUBLAS_STATUS_SUCCESS) {
     return absl::InternalError("failed to get the current stream value");

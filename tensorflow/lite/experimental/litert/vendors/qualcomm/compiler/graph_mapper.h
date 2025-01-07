@@ -18,12 +18,13 @@
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -34,7 +35,9 @@ class GraphMapper {
  public:
   GraphMapper(LiteRtSubgraph subgraph, QnnManager& qnn,
               Qnn_ContextHandle_t context_handle)
-      : subgraph_(subgraph), qnn_(qnn), context_handle_(context_handle) {}
+      : subgraph_(Subgraph(subgraph)),
+        qnn_(qnn),
+        context_handle_(context_handle) {}
 
   // Legalize given LiteRtTensors attributes into QNN Tensor registered with
   // QNN context. Result QNN Tensor is empty except for the canonical id
@@ -61,10 +64,8 @@ class GraphMapper {
   QnnManager& Qnn();
   Qnn_GraphHandle_t& QnnGraph();
 
-  // CC Convienence Accessors
-  absl::Span<LiteRtOp> LiteRtSubgraphOps();
-  absl::Span<LiteRtTensor> LiteRtSubgraphInputs();
-  absl::Span<LiteRtTensor> LiteRtSubgraphOutputs();
+  // CC Convenience Accessors
+  const Subgraph& Graph() const { return subgraph_; }
 
   // Accessor for current scope.
   // Since each QNN Tensor needs to have a unique name globally within each QNN
@@ -76,10 +77,6 @@ class GraphMapper {
   // bottom of file).
   LiteRtStatus IsLiteRtSubgraphSupported();
 
-  // Parse LiteRtSubgraph entities into usable types. Call this before
-  // doing anything else.
-  LiteRtStatus ParseLiteRtSubgraph();
-
   // Initialize QNN Graph with given name. Call this after parsing
   // LiteRtSubgraph.
   LiteRtStatus InitQnnGraph(absl::string_view qnn_graph_name);
@@ -87,15 +84,15 @@ class GraphMapper {
   // Finalize QNN Graph. Call this after all ops have been mapped.
   LiteRtStatus Finalize();
 
+  inline void RegisterOutput(LiteRtTensor litert_tensor) {
+    graph_outpus_.insert(litert_tensor);
+  }
+
  private:
-  absl::Span<LiteRtTensor> litert_subgraph_inputs_;
+  const Subgraph subgraph_;
 
-  absl::Span<LiteRtTensor> litert_subgraph_outputs_;
-
-  absl::Span<LiteRtOp> litert_subgraph_ops_;
-
-  LiteRtSubgraph Subgraph();
-  LiteRtSubgraph subgraph_;
+  // Set of all outputs of the graph.
+  absl::flat_hash_set<LiteRtTensor> graph_outpus_;
 
   // Maps evaluated tensors to their resolved QNN Tensor ID.
   absl::flat_hash_map<LiteRtTensor, uint32_t> current_scope_;

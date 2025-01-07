@@ -999,9 +999,9 @@ TEST_F(MatmulTest, TestF32ConstantWeights) {
   HloModule matmul.test.f32
 
   ENTRY matmul.test.f32 {
-    arg.0 = f32[64,256,16] parameter(0), parameter_replication={false}
-    constant = f32[] constant(1)
-    arg.1 = f32[16,32] broadcast(constant), dimensions={}
+    arg.0 = f32[64,256,16] parameter(0)
+    constant = f32[32] constant({...})
+    arg.1 = f32[16,32] broadcast(constant), dimensions={1}
     ROOT onednn.matmul.0 = f32[64,256,32] dot(arg.0, arg.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
   })";
 

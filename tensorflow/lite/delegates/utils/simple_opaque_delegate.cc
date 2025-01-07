@@ -39,9 +39,10 @@ TfLiteOperator* CreateDelegateKernelRegistration(
   TfLiteOperatorSetFreeWithData(
       kernel_registration,
       [](void* user_data, TfLiteOpaqueContext* context, void* buffer) -> void {
-        delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
+        // The type used here must match the type returned from the init method
+        // that we set below.
+        delete reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(buffer);
       });
-
   TfLiteOperatorSetInitWithData(
       kernel_registration,
       [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,

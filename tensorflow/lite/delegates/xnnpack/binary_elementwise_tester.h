@@ -32,12 +32,11 @@ class BinaryElementwiseTester {
   BinaryElementwiseTester(const BinaryElementwiseTester&) = delete;
   BinaryElementwiseTester& operator=(const BinaryElementwiseTester&) = delete;
 
-  inline BinaryElementwiseTester& Input1Shape(
-      std::initializer_list<int32_t> shape) {
+  inline BinaryElementwiseTester& Input1Shape(std::vector<int32_t> shape) {
     for (auto it = shape.begin(); it != shape.end(); ++it) {
       EXPECT_GT(*it, 0);
     }
-    input1_shape_ = std::vector<int32_t>(shape.begin(), shape.end());
+    input1_shape_ = std::move(shape);
     return *this;
   }
 
@@ -45,12 +44,11 @@ class BinaryElementwiseTester {
     return input1_shape_;
   }
 
-  inline BinaryElementwiseTester& Input2Shape(
-      std::initializer_list<int32_t> shape) {
+  inline BinaryElementwiseTester& Input2Shape(std::vector<int32_t> shape) {
     for (auto it = shape.begin(); it != shape.end(); ++it) {
       EXPECT_GT(*it, 0);
     }
-    input2_shape_ = std::vector<int32_t>(shape.begin(), shape.end());
+    input2_shape_ = std::move(shape);
     return *this;
   }
 
@@ -104,28 +102,9 @@ class BinaryElementwiseTester {
 
   inline bool SparseWeights() const { return sparse_weights_; }
 
-  inline BinaryElementwiseTester& ReluActivation() {
-    activation_ = ::tflite::ActivationFunctionType_RELU;
-    return *this;
-  }
-
-  inline BinaryElementwiseTester& Relu6Activation() {
-    activation_ = ::tflite::ActivationFunctionType_RELU6;
-    return *this;
-  }
-
-  inline BinaryElementwiseTester& ReluMinus1To1Activation() {
-    activation_ = ::tflite::ActivationFunctionType_RELU_N1_TO_1;
-    return *this;
-  }
-
-  inline BinaryElementwiseTester& TanhActivation() {
-    activation_ = ::tflite::ActivationFunctionType_TANH;
-    return *this;
-  }
-
-  inline BinaryElementwiseTester& SignBitActivation() {
-    activation_ = ::tflite::ActivationFunctionType_SIGN_BIT;
+  inline BinaryElementwiseTester& Activation(
+      ActivationFunctionType activation) {
+    activation_ = activation;
     return *this;
   }
 

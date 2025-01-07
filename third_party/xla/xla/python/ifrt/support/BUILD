@@ -16,6 +16,7 @@ cc_library(
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:vifrt",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

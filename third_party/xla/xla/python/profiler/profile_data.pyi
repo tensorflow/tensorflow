@@ -38,6 +38,16 @@ class ProfileData:
     """Creates a ProfileData from a raw C++ pointer enclosed in a capsule to a XSpace proto."""
     ...
 
+  @classmethod
+  def from_text_proto(text_proto: str) -> ProfileData:
+    """Creates a ProfileData from a text proto."""
+    ...
+
+  @classmethod
+  def text_proto_to_serialized_xspace(text_proto: str) -> bytes:
+    """Converts a text proto to a serialized XSpace."""
+    ...
+
   @property
   def planes(self) -> Iterator['ProfilePlane']:
     ...

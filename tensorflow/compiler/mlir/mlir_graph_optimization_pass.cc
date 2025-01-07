@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
@@ -388,6 +389,19 @@ MlirV1CompatOptimizationPassRegistry::Global() {
 
 Status MlirV1CompatGraphOptimizationPass::Run(
     const GraphOptimizationPassOptions& options) {
+  // Skip MLIR V1 optimization pass if it is not enabled in compiling
+  // SavedModel.
+  if (!options.enable_tf2xla_mlir_bridge) {
+    LOG(INFO)
+        << "MLIR V1 optimization pass is not enabled in compiling SavedModel.";
+    metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+        /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+        /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+        /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+        /*fallback_enabled*/ true,
+        /*result*/ "disabled_by_user");
+    return absl::OkStatus();
+  }
   // Skip function graphs as MlirOptimizationPassRegistry_ will be used instead.
   // Skip if no underlying pass was registered.
   if (options.is_function_graph || !registry_->pass()) return absl::OkStatus();

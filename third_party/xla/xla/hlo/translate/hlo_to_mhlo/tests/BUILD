@@ -28,6 +28,7 @@ lit_test_suite(
             "location.hlo",
             "module_attributes.hlo",
             "module_config.hlo",
+            "ragged_dot.hlo",
             "simple.hlo",
             "spmd_module_sharding.hlo",
             "stablehlo.hlo",

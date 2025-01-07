@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_GEMM_ALGORITHM_PICKER_H_
 
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <string_view>

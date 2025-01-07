@@ -53,6 +53,8 @@ namespace {
 constexpr char kXLAShardingAttr[] = "_XlaSharding";
 constexpr char kShardingAttr[] = "sharding";
 
+using mlir::dyn_cast;
+using mlir::isa;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OperationPass;

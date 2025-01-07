@@ -27,17 +27,16 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/kernel.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -90,8 +89,8 @@ class KernelThunk : public Thunk {
 
   using KernelArgs = std::conditional_t<
       IsDynamic(num_arguments) || IsDynamic(num_results),
-      absl::InlinedVector<SE_HOST_KernelArg, 8>,
-      std::array<SE_HOST_KernelArg, Size(num_arguments + num_results)>>;
+      absl::InlinedVector<XLA_CPU_KernelArg, 8>,
+      std::array<XLA_CPU_KernelArg, Size(num_arguments + num_results)>>;
 
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
@@ -120,9 +119,8 @@ class KernelThunk : public Thunk {
   bool call_once_;
 
   // Lazily loaded host kernel corresponding to `kernel_name_`.
-  absl::Mutex mutex_;
-  std::optional<se::host::HostKernel> kernel_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<se::host::HostKernel*> kernel_ptr_;  // pointer to `kernel_`
+  absl::once_flag kernel_init_flag_;
+  absl::StatusOr<Kernel> kernel_;
 
   // Pre-initialized kernel arguments that are updated with memory addresses
   // before the kernel launch.

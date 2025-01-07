@@ -1,8 +1,8 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -92,7 +92,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:executable",
-        "//xla/service:hlo_execution_profile",
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",

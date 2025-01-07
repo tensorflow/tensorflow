@@ -23,7 +23,6 @@ def tf_dtensor_tpu_dependencies():
 
 def tf_additional_binary_deps():
     return [
-        "@nsync//:nsync_cpp",
         # TODO(allenl): Split these out into their own shared objects. They are
         # here because they are shared between contrib/ op shared objects and
         # core.

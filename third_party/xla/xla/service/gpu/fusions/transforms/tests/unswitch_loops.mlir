@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-unswitch-loops | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-gpu-unswitch-loops | FileCheck %s
 
 module {
   func.func @unswitchable(

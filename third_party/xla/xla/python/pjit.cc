@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/config.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -748,7 +749,6 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
   }
 
   auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry->executable->client();
 
   // Convert the ifrt::Array objects to PyArray.
   int num_outputs = output_arrays.size();
@@ -831,6 +831,7 @@ absl::Status PjitFunction::ComputeCallSignature(
 
   signature.thread_local_extra_jit_context = tls.extra_jit_context;
   signature.global_extra_jit_context = global_state.extra_jit_context;
+  signature.configs = JitConfigs();
 
   return absl::OkStatus();
 }

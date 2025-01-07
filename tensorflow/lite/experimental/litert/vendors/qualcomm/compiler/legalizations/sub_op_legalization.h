@@ -33,8 +33,8 @@ class SubOpLegalization : public Legalization {
  public:
   SubOpLegalization() = default;
   ~SubOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<SubOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<SubOpLegalization>(); }
+  using Ptr = std::unique_ptr<SubOpLegalization>;
+  static Ptr Create() { return std::make_unique<SubOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

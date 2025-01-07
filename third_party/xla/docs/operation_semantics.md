@@ -465,6 +465,45 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## CompositeCall
+
+See also
+[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+
+Encapsulates an operation made up (composed) of other StableHLO operations,
+taking inputs and composite_attributes and producing results. The semantics of
+the op are implemented by the decomposition attribute. The composite op can be
+replaced with its decomposition without changing program semantics. In cases
+where inlining the decomposition does not provide the same op semantics, prefer
+using custom_call.
+
+The version field (defaults to 0) is used to denote when a composite's semantics
+change.
+
+This op is implemented as a `kCall` with attribute `is_composite=true`. The
+`decomposition` field is specified by the `computation` attribute. The frontend
+attributes store the remaining attributes prefixed with `composite.`.
+
+Example CompositeCall op:
+```cpp
+f32[] call(f32[] %cst), to_apply=%computation, is_composite=true,
+frontend_attributes = {
+  composite.name="foo.bar",
+  composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+  composite.version="1"
+}
+```
+
+<b> `Call(computation, args..., name, composite_attributes, version)` </b>
+
+| Arguments                   | Type                   | Semantics                                                                             |
+| --------------------------- | ---------------------- | ------------------------------------------------------------------------------------- |
+| `inputs`                    | `XlaOp`                | variadic number of values                                                             |
+| `name`                      | `string`               | name of the composite                                                                 |
+| `composite_attributes`      | optional `string`      | optional stringified dictionary of attributes                                         |
+| `decomposition`             | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
+| `version`                   | `int64`.               | number to version updates to semantics of the composite op                            |
+
 ## Cholesky
 
 See also

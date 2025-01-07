@@ -1189,6 +1189,75 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, AsyncCallWithConditional) {
+  std::string hlo_str = R"(
+HloModule AsyncCall
+
+%cond_computation.1 (param_0: f32[4096]) -> f32[4096] {
+  ROOT %param_0_t = f32[4096]{0} parameter(0)
+}
+
+%cond_computation.2 (param_1: f32[4096]) -> f32[4096] {
+  %param_0_f = f32[4096]{0} parameter(0)
+  ROOT %negate = f32[4096]{0} negate(f32[4096]{0} %param_0_f)
+}
+
+%called_computation (param_0: pred[], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = pred[] parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  ROOT %conditional = f32[4096]{0} conditional(pred[] %param_0, f32[4096]{0} %param_1, f32[4096]{0} %param_1), true_computation=%cond_computation.1, false_computation=%cond_computation.2
+}
+
+ENTRY %main (a: f32[4096], pred: pred[]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(1)
+  %p = pred[] parameter(0)
+  %async-start = ((pred[], f32[4096]{0}), f32[4096]{0}, u32[]) call-start(pred[] %p, f32[4096]{0} %a), to_apply=%called_computation
+  ROOT %async-done = f32[4096]{0} call-done(%async-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* a = FindInstruction(module_.get(), "a");
+  const HloInstruction* p = FindInstruction(module_.get(), "p");
+  const HloInstruction* param_0_t = FindInstruction(module_.get(), "param_0_t");
+  EXPECT_THAT(HloValuesAt(param_0_t),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
+  const HloInstruction* param_0_f = FindInstruction(module_.get(), "param_0_f");
+  EXPECT_THAT(HloValuesAt(param_0_f),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
+  const HloInstruction* param_0 = FindInstruction(module_.get(), "param_0");
+  EXPECT_THAT(HloValuesAt(param_0),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p)));
+  const HloInstruction* conditional =
+      FindInstruction(module_.get(), "conditional");
+  if (ssa_form) {
+    EXPECT_EQ(HloValuesAt(conditional).size(), 1);
+    EXPECT_TRUE(HloValuesAt(conditional)[0]->is_phi());
+  } else {
+    EXPECT_EQ(HloValuesAt(conditional).size(), 2);
+  }
+
+  for (std::string async_name : {"async-start", "async-done"}) {
+    const HloInstruction* async_op = FindInstruction(module_.get(), async_name);
+    const HloComputation* called_computation =
+        async_op->async_wrapped_instruction()->called_computations()[0];
+    const HloInstruction* parameter0 =
+        called_computation->parameter_instruction(0);
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(parameter0));
+    EXPECT_THAT(HloValuesAt(parameter0),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(p)));
+    const HloInstruction* parameter1 =
+        called_computation->parameter_instruction(1);
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(parameter1));
+    EXPECT_THAT(HloValuesAt(parameter1),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
+  }
+}
+
 TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
   std::string hlo_str = R"(
   HloModule module
@@ -1224,9 +1293,10 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(param, token, /*channel_id=*/0));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      param, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
 
@@ -1273,9 +1343,10 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(scalar_shape_, token, /*channel_id=*/0));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      scalar_shape_, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
+      recv, recv->channel_id(), /*is_host_transfer=*/false));
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
 
@@ -3470,6 +3541,34 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithBitcast) {
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   // p1 should be aliased with fusion1
+  expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, RaggedAllToAll) {
+  const char* kModule = R"(
+HloModule RaggedAllToAll, is_scheduled=true
+
+ENTRY AllToAll {
+  input = f32[24,56,119] parameter(0)
+  copy-start = (f32[24,56,119], f32[24,56,119], u32[]) copy-start(input)
+  c0 = f32[] constant(0)
+  output = f32[24,56,119] broadcast(c0), dimensions={}
+  input_offsets = s32[8] parameter(1)
+  send_sizes = s32[8] parameter(2)
+  output_offsets = s32[8] parameter(3)
+  recv_sizes = s32[8] parameter(4)
+  copy-done = f32[24,56,119] copy-done(copy-start)
+  ROOT ra2a = f32[24,56,119] ragged-all-to-all(copy-done, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* ragged_all_to_all =
+      module->entry_computation()->root_instruction();
+
+  auto in_place_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(ragged_all_to_all);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }

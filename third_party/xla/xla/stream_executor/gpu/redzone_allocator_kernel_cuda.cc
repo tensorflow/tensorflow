@@ -14,55 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <tuple>
-#include <utility>
 
-#include "absl/base/call_once.h"
-#include "absl/base/const_init.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/node_hash_map.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
-// Maintains a cache of pointers to loaded kernels
-template <typename... Args>
-static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
-    StreamExecutor* executor, absl::string_view kernel_name,
-    absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
-  using KernelPtrCacheKey =
-      std::tuple<StreamExecutor*, absl::string_view, absl::string_view>;
-
-  static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
-  static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
-      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
-  KernelPtrCacheKey kernel_ptr_cache_key{executor, kernel_name, ptx};
-  absl::MutexLock lock(&kernel_ptr_cache_mutex);
-
-  auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
-  if (it == kernel_ptr_cache.end()) {
-    TF_ASSIGN_OR_RETURN(TypedKernel<Args...> loaded,
-                        (TypedKernelFactory<Args...>::Create(
-                            executor, kernel_name, ptx, cubin_data)));
-    it =
-        kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
-  }
-
-  CHECK(it != kernel_ptr_cache.end());
-  return &it->second;
-}
-
 // PTX blob for the function which checks that every byte in
 // input_buffer (length is buffer_length) is equal to redzone_pattern.
 //
@@ -79,7 +39,7 @@ static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
 // }
 //
 // Code must compile for the oldest GPU XLA may be compiled for.
-static const char* redzone_checker_ptx = R"(
+static const char* kRedzoneCheckerPtx = R"(
 .version 4.2
 .target sm_30
 .address_size 64
@@ -119,25 +79,11 @@ LBB6_3:
 }
 )";
 
-absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
-    StreamExecutor* executor, GpuAsmOpts gpu_asm_opts) {
-  absl::Span<const uint8_t> compiled_ptx = {};
-  absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
-      CompileGpuAsmOrGetCached(executor, redzone_checker_ptx, gpu_asm_opts);
-  if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.value();
-  } else {
-    static absl::once_flag ptxas_not_found_logged;
-    absl::call_once(ptxas_not_found_logged, [&]() {
-      LOG(WARNING) << compiled_ptx_or.status()
-                   << "\nRelying on driver to perform ptx compilation. "
-                   << "\nModify $PATH to customize ptxas location."
-                   << "\nThis message will be only logged once.";
-    });
-  }
+absl::StatusOr<ComparisonKernel> GetComparisonKernel(StreamExecutor* executor) {
+  MultiKernelLoaderSpec spec(/*arity=*/4);
+  spec.AddCudaPtxInMemory(kRedzoneCheckerPtx, "redzone_checker");
 
-  return LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
-                            DeviceMemory<uint64_t>>(
-      executor, "redzone_checker", redzone_checker_ptx, compiled_ptx);
+  return TypedKernelFactory<DeviceMemory<uint8_t>, uint8_t, uint64_t,
+                            DeviceMemory<uint64_t>>::Create(executor, spec);
 }
 }  // namespace stream_executor

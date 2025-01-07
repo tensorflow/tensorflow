@@ -3,6 +3,7 @@ load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
 load(
     "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     _pybind_extension = "pybind_extension",
+    _pywrap_binaries = "pywrap_binaries",
     _pywrap_common_library = "pywrap_common_library",
     _pywrap_library = "pywrap_library",
     _stripped_cc_info = "stripped_cc_info",
@@ -58,9 +59,10 @@ def pybind_extension(
 
     actual_srcs = srcs + hdrs
 
-    actual_data = data
-    if pytype_srcs:
-        data = pytype_srcs
+    actual_data = data if data else []
+    list_type = type([])
+    if pytype_srcs and type(actual_data) == list_type:
+        actual_data.extend(pytype_srcs)
 
     actual_deps = []
     actual_private_deps = []
@@ -141,6 +143,13 @@ def pywrap_aware_cc_import(name, **kwargs):
         pass
     else:
         native.cc_import(
+            name = name,
+            **kwargs
+        )
+
+def pywrap_binaries(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_binaries(
             name = name,
             **kwargs
         )

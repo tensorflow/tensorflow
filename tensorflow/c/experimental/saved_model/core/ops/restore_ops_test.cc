@@ -95,7 +95,7 @@ TEST_F(RestoreOpsTest, RestoreSuccessful) {
 
 TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
   ImmediateTensorHandlePtr x_handle;
-  Status status = internal::SingleRestore(
+  absl::Status status = internal::SingleRestore(
       context(), CheckpointPrefix("unknown_bad_checkpoint_prefix"),
       "x/.ATTRIBUTES/VARIABLE_VALUE", DT_FLOAT, &x_handle);
   EXPECT_FALSE(status.ok()) << status.message();
@@ -103,7 +103,7 @@ TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
 
 TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
   ImmediateTensorHandlePtr x_handle;
-  Status status = internal::SingleRestore(
+  absl::Status status = internal::SingleRestore(
       context(), CheckpointPrefix("VarsAndArithmeticObjectGraph"),
       "bad_checkpoint_key", DT_FLOAT, &x_handle);
   EXPECT_FALSE(status.ok()) << status.message();

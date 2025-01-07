@@ -20,17 +20,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 
-namespace mlir {
-class MLIRContext;
-class ModuleOp;
-template <typename OpTy>
-class OwningOpRef;
-}  // namespace mlir
-
 namespace xla {
+
+// Registers dialects necessary for converting MLIR to HLO.
+void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
 
 // Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(

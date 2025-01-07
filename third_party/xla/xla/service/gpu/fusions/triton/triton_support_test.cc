@@ -217,7 +217,10 @@ class TritonSupportTest : public TritonSupportTestBase {
             try { run_triton_codegen().IgnoreError(); } catch (...) {
               abort();
             },
-            "");
+            // It's not possible to find stable matching patterns for all
+            // aborting code paths that occur here, so we at least make sure
+            // that we don't interpret sanitizer errors as success.
+            ::testing::Not(::testing::HasSubstr("Sanitizer:")));
 
       } else {
         EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
@@ -1230,6 +1233,7 @@ constexpr std::array kUnsupportedOps = {HloOpcode::kAddDependency,
                                         HloOpcode::kPad,
                                         HloOpcode::kPartitionId,
                                         HloOpcode::kRaggedAllToAll,
+                                        HloOpcode::kRaggedDot,
                                         HloOpcode::kRecv,
                                         HloOpcode::kRecvDone,
                                         HloOpcode::kReduceWindow,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/reference_util.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 
 #include "xla/array2d.h"

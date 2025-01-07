@@ -144,8 +144,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     bool unconditionally_use_set_output_shapes = false);
 
 // Serialize a MLIR module to a string.
-std::string MlirModuleToString(mlir::ModuleOp module,
-                               mlir::OpPrintingFlags flags);
 std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);
 
 }  // namespace tensorflow

@@ -31,7 +31,6 @@ VALID_LIBS = [
     "jsoncpp_git",
     "libjpeg_turbo",
     "nasm",
-    "nsync",
     "org_sqlite",
     "pasta",
     "png",

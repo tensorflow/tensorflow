@@ -618,6 +618,20 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ThreadPool_Schedule_Args, data);
 typedef XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
     XLA_FFI_ThreadPool_Schedule_Args* args);
 
+struct XLA_FFI_ThreadPool_NumThreads_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int64_t* num_threads;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ThreadPool_NumThreads_Args, num_threads);
+
+// Returns the number of threads in the thread pool managed by XLA runtime.
+typedef XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
+    XLA_FFI_ThreadPool_NumThreads_Args* args);
+
 //===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
@@ -662,6 +676,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_Schedule);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_NumThreads);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Create);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);

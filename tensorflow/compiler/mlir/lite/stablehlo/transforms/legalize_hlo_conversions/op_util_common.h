@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_OP_UTIL_COMMON_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -128,7 +129,7 @@ llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
 
 // Resolves optional paddings attributes. If not present, will return
 // trivial [0, 0] paddings on each dim.
-llvm::SmallVector<DimPadding, 2> ResolvePadding(
+llvm::SmallVector<DimPadding, 4> ResolvePadding(
     int64_t rank, std::optional<mlir::DenseIntElementsAttr> opt_padding);
 
 // Does the padding correspond to "SAME" on given dimension configuration.

@@ -71,7 +71,7 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
   bool changed = false;
   for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->instructions()) {
-      if (inst->opcode() != HloOpcode::kCollectivePermute) {
+      if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute>(inst)) {
         continue;
       }
 

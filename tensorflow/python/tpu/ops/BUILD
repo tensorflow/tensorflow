@@ -14,7 +14,7 @@ pytype_strict_library(
     srcs = ["tpu_ops.py"],
     srcs_version = "PY3",
     visibility = [
-        "//smartass/brain/configure:__subpackages__",
+        "//smartass:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
     deps = [

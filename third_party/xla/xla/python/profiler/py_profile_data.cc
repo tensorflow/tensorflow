@@ -16,7 +16,12 @@ limitations under the License.
 #include <nanobind/make_iterator.h>  // For automatic conversion of std::iterator to Python iterable.
 #include <nanobind/stl/string.h>  // For automatic conversion of std::string to Python string.
 
+#include <memory>
+#include <string>
+
 #include "xla/python/profiler/profile_data.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace {
 
@@ -71,6 +76,22 @@ NB_MODULE(profile_data, m) {
                   "Creates a ProfileData from a serialized XSpace proto file.")
       .def_static("from_serialized_xspace",
                   &ProfileData::from_serialized_xspace, "serialized_xspace"_a)
+      .def_static("from_text_proto",
+                  [](const std::string& text_proto) {
+                    auto xspace =
+                        std::make_shared<tensorflow::profiler::XSpace>();
+                    tsl::protobuf::TextFormat::ParseFromString(text_proto,
+                                                               xspace.get());
+                    return tensorflow::profiler::python::ProfileData(xspace);
+                  })
+      .def_static("text_proto_to_serialized_xspace",
+                  [](const std::string& text_proto) {
+                    tensorflow::profiler::XSpace xspace;
+                    tsl::protobuf::TextFormat::ParseFromString(text_proto,
+                                                               &xspace);
+                    const auto serialized = xspace.SerializeAsString();
+                    return nb::bytes(serialized.data(), serialized.size());
+                  })
       .def(nb::init<const nb::bytes&>())
       .def("find_plane_with_name", &ProfileData::find_plane_with_name, "name"_a,
            nb::keep_alive<0, 1>())

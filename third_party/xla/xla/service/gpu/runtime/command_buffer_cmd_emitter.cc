@@ -161,29 +161,26 @@ static absl::StatusOr<Command> Convert(
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.nccl_api(), thunk.config(), thunk.reduction_kind(),
-      thunk.buffers());
+      thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(
     const NcclReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.nccl_api(), thunk.config(), thunk.reduction_kind(),
-      thunk.buffers());
+      thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllToAllStartThunk& thunk) {
   return std::make_unique<AllToAllCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.nccl_api(), thunk.config(), thunk.has_split_dimension(),
-      thunk.buffers());
+      thunk.config(), thunk.has_split_dimension(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(
-      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.nccl_api(), thunk.config(), thunk.buffers());
+  return std::make_unique<AllGatherCmd>(thunk.nccl_execution_stream_id(),
+                                        thunk.execution_stream_id(),
+                                        thunk.config(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {

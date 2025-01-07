@@ -779,14 +779,17 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
     FragmentOrders& dst_dim_fragments_order =
         dst_dim_order.DimFragmentsOrders();
-    // Remember which dimensions are present before a broadcast;
-    // skip cases when already present dimension is being expanded.
-    absl::flat_hash_set<int> dim_numbers_present_in_dst;
+    // Remember which nontrivial dimensions are present before a broadcast to
+    // skip cases expanding already present nontrivial dimensions.
+    absl::flat_hash_set<int> nontrivial_dim_numbers_present_in_dst;
     for (const int64_t dim_idx : dst->shape().layout().minor_to_major()) {
       for (const Fragment* subdim : dst_logical[dim_idx]) {
         dst_fragments_order.push_back(*subdim);
         src_to_dst[subdim] = dst_fragments_order.size() - 1;
-        dim_numbers_present_in_dst.insert(subdim->dst_dim_number());
+        if (subdim->full_count() > 1) {
+          nontrivial_dim_numbers_present_in_dst.insert(
+              subdim->dst_dim_number());
+        }
       }
     }
     for (const auto& [dim_index, dim_sequence] :
@@ -796,7 +799,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         if (it == src_to_dst.cend()) {
           if (hlo.opcode() == HloOpcode::kBroadcast &&
               src_fragments_order[fragment_number].full_count() > 1 &&
-              dim_numbers_present_in_dst.contains(dim_index)) {
+              nontrivial_dim_numbers_present_in_dst.contains(dim_index)) {
             return FusionDecision::Forbid("Unsupported broadcast");
           }
           continue;
@@ -1088,11 +1091,16 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       if (i == *src_operand_index) {
         continue;
       }
-      // Currently only broadcasts of scalars or parameters are accepted as
-      // other inputs of non-unary operations in the output fusion.
+      // Currently only
+      //  - effective parameters
+      //  - broadcasts of effective parameters
+      //  - broadcasts of scalars
+      // are accepted as other inputs of non-unary operations in
+      // the output fusion.
       if ((operand->opcode() == HloOpcode::kBroadcast &&
-           ShapeUtil::IsScalar(operand->operand(0)->shape())) ||
-          operand->opcode() == HloOpcode::kParameter) {
+           (ShapeUtil::IsScalar(operand->operand(0)->shape()) ||
+            hlo_query::IsEffectiveParameter(*operand->operand(0)))) ||
+          hlo_query::IsEffectiveParameter(*operand)) {
         continue;
       }
       return FusionDecision::Forbid(

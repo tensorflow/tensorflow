@@ -18,8 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LAYOUT_UTIL_H_
 
+#include <functional>
+#include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"

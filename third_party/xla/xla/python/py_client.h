@@ -107,6 +107,10 @@ class PyClient {
       return ifrt_client_->platform_name();
     }
   }
+  std::string_view raw_platform_name() const {
+    // TODO(parkers): Once platform_name() is the same, remove this.
+    return ifrt_client_->platform_name();
+  }
   std::string_view platform_version() const {
     return ifrt_client_->platform_version();
   }

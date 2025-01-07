@@ -23,11 +23,13 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -127,6 +129,9 @@ class LoadedExecutable final
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const Future<> ready_future_;
+
+  class OutputSpecCache;
+  const std::unique_ptr<OutputSpecCache> output_spec_cache_;
 
   // Metadata queried when the executable is created. Declared as `mutable`
   // since `Future::Await()` is not const.

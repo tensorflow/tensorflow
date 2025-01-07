@@ -76,6 +76,7 @@ class CoordinationServiceInterface {
 
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<std::string_view>&)>;
+  using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
 
   virtual ~CoordinationServiceInterface() = default;
 
@@ -220,26 +221,34 @@ class CoordinationServiceInterface {
   //       first WaitAtBarrier() + timeout duration.
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Aborted: Service is shutting down.
-  //   - Internal: Any participating task is in ERROR state, or coordination
-  //   -   service has shut down.
+  //   - Internal: (1) Any participating task is in ERROR state, (2)
+  //       coordination service has shut down, or (3) the barrier request has a
+  //       mismatched counter, indicating that somebody unexpectedly restarted.
   //   - InvalidArgument: (1) Conflicting tasks specified by different agents
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  // TODO(b/342448688): Allow re-use of ids by specifying different counters.
+  // The counter field is mostly ignored at the moment with no user-facing
+  // effect.
   virtual void BarrierAsync(
-      std::string barrier_id, absl::Duration timeout,
+      std::string barrier_id, int64_t counter, absl::Duration timeout,
       const tensorflow::CoordinatedTask& task,
       const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
-      StatusCallback done) = 0;
+      BarrierCallback done) = 0;
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
+  // TODO(b/342448688): Allow re-use of ids by specifying different counters.
+  // The counter field is mostly ignored at the moment with no user-facing
+  // effect.
   virtual absl::Status CancelBarrier(
-      std::string barrier_id, const tensorflow::CoordinatedTask& task) = 0;
+      std::string barrier_id, int64_t counter,
+      const tensorflow::CoordinatedTask& task) = 0;
 
   // Gets error from the coordination service. Block until the service
   // returns an error or the task/service is shutdown. This should never be used

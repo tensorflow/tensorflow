@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 #define TENSORFLOW_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"

@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"
@@ -512,7 +513,11 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
       callee.setArgAttr(idx, kHloShardingAttrName,
                         builder.getStringAttr(hlo_sharding.value().ToString()));
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), input_shardings[idx], array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     input_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       input.setType(new_array_type);
     }
   }
@@ -547,8 +552,11 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
     if (mlir::isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr())) {
       replace_call_op = true;
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), output_shardings[idx],
-          array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     output_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       new_call_op_result_types.push_back(new_array_type);
     } else {
       new_call_op_result_types.push_back(output.getType());

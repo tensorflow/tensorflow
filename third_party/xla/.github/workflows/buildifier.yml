@@ -38,4 +38,4 @@ jobs:
       - name: "Install buildifier"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
       - name: "Run buildifier"
-        run: buildifier --lint=warn --warnings=-out-of-order-load -r xla/
+        run: buildifier --lint=warn --warnings=-out-of-order-load $(find xla/ -type f -name "BUILD" -or -name "*bzl" | grep -v /tsl/)

@@ -692,6 +692,7 @@ PyType_Slot PyClient::slots_[] = {
   nb::class_<PyClient> py_local_client(m, "Client", nb::is_weak_referenceable(),
                                        nb::type_slots(PyClient::slots_));
   py_local_client.def_prop_ro("platform", &PyClient::platform_name)
+      .def_prop_ro("_raw_platform", &PyClient::raw_platform_name)
       .def_prop_ro("platform_version", &PyClient::platform_version)
       .def_prop_ro("runtime_type", &PyClient::runtime_type)
       .def("device_count", &PyClient::device_count)

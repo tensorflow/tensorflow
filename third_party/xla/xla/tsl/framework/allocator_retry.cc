@@ -82,7 +82,7 @@ void* AllocatorRetry::AllocateRaw(
         tracker.Enable();
         absl::MutexLock l(&mu_);
         memory_returned_.WaitWithTimeout(
-            &mu_, absl::Milliseconds((deadline_micros - now) / 1000));
+            &mu_, absl::Microseconds(deadline_micros - now));
       } else {
         return alloc_func(alignment, num_bytes, true);
       }

@@ -218,7 +218,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     VLOG(3) << "Initializing XlaCallModuleOp on " << compilation_platform_;
     {
       auto loader = XlaCallModuleLoader::Create(
-          &context_, version, std::move(module_str), std::move(disabled_checks),
+          &context_, version, module_str, std::move(disabled_checks),
           std::move(platforms),
           /*num_invocation_args=*/ctx->num_inputs(),
           main_has_token_input_output);

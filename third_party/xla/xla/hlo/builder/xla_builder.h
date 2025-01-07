@@ -609,6 +609,12 @@ class XlaBuilder {
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
+  XlaOp RaggedDot(
+      XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+      const RaggedDotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig* precision_config = nullptr,
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
   XlaOp Conv(
       XlaOp lhs, XlaOp rhs, absl::Span<const int64_t> window_strides,
       Padding padding, int64_t feature_group_count = 1,
@@ -1055,6 +1061,11 @@ class XlaBuilder {
   // Internal helper method that does the building for an arbitrary unary op.
   virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
 
+  // Internal helper method that does the building for an arbitrary unary op
+  // with a result accuracy intended for unary functions.
+  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand,
+                        const ResultAccuracy& result_accuracy);
+
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
@@ -1207,6 +1218,12 @@ class XlaBuilder {
 
   FrontendAttributes frontend_attributes_;
 
+  // If the user cannot provide a token for infeed/outfeed, assume they are
+  // being added to the computation in the correct order. Implicitly reuse
+  // the tokens from the previous op to guarantee the user intended ordering.
+  XlaOp infeed_token_;
+  XlaOp outfeed_token_;
+
   friend XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
                          const Shape& shape, const std::string& name,
                          const std::vector<bool>& replicated_at_leaf_buffers);
@@ -1295,6 +1312,10 @@ class XlaBuilder {
                          absl::Span<const XlaOp> sparse_meta,
                          absl::Span<const SparsityDescriptor> sparsity,
                          const DotDimensionNumbers& dimension_number,
+                         const PrecisionConfig* precision_config,
+                         std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+                         const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
                          std::optional<PrimitiveType> preferred_element_type);
   friend XlaOp Conv(XlaOp lhs, XlaOp rhs,
@@ -1564,6 +1585,7 @@ class XlaBuilder {
                      absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Erf(XlaOp operand);
   friend XlaOp Exp(XlaOp operand);
+  friend XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
   friend XlaOp Expm1(XlaOp operand);
   friend XlaOp Floor(XlaOp operand);
   friend XlaOp Ceil(XlaOp operand);
@@ -1713,6 +1735,11 @@ class XlaBuilder {
   // Creates an op with the given opcode and the output shape.
   virtual absl::StatusOr<XlaOp> AddOpWithShape(
       HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands);
+
+  // Creates an op with the given opcode and the output shape.
+  virtual absl::StatusOr<XlaOp> AddOpWithResultAccuracy(
+      HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands,
+      const ResultAccuracy& result_accuracy);
 
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
@@ -2160,6 +2187,13 @@ XlaOp SparseDot(
     XlaOp lhs, XlaOp rhs, absl::Span<const XlaOp> sparse_meta,
     absl::Span<const SparsityDescriptor> sparsity,
     const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config = nullptr,
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
+// Enqueues a ragged dot instruction onto the computation.
+XlaOp RaggedDot(
+    XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+    const RaggedDotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
     std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
@@ -2658,6 +2692,7 @@ XlaOp Erf(XlaOp operand);
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(XlaOp operand);
+XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
 
 // Enqueues an expm1 instruction onto the computation.
 XlaOp Expm1(XlaOp operand);

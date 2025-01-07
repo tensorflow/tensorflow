@@ -24,6 +24,7 @@ cc_library(
     deps = [
         ":device_type_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:compilation_timer",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_to_hlo",
@@ -340,6 +341,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/translate:upgrade_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:node_order",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow_util",
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

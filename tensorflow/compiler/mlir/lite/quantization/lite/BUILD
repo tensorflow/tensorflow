@@ -30,6 +30,10 @@ cc_library(
     hdrs = [
         "quantize_model.h",
     ],
+    tags = [
+        "no_mac",
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
@@ -222,6 +226,7 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "@com_google_googletest//:gtest",

@@ -3612,7 +3612,6 @@ tf_kernel_library(
         ":gpu_utils",
         ":conv_ops",
         ":matmul_util",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -4176,7 +4175,6 @@ tf_kernel_library(
         ":numeric_options_utils",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
@@ -8110,7 +8108,6 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",

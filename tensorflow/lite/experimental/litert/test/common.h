@@ -16,47 +16,70 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_COMMON_H_
 
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
-
-#define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
-  auto result = (expr);                              \
-  ASSERT_TRUE(result.HasValue());                    \
-  decl = result.Value();
-
-#define ASSERT_RESULT_OK_ASSIGN(decl, expr) \
-  _ASSERT_RESULT_OK_ASSIGN(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
-
-#define _ASSERT_RESULT_OK_MOVE(decl, expr, result) \
-  auto result = (expr);                            \
-  ASSERT_TRUE(result.HasValue());                  \
-  decl = std::move(result.Value());
-
-#define ASSERT_RESULT_OK_MOVE(decl, expr) \
-  _ASSERT_RESULT_OK_MOVE(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
-
-#define ASSERT_STATUS_HAS_CODE(expr, code) \
-  {                                        \
-    LiteRtStatus status = (expr);          \
-    ASSERT_EQ(status, code);               \
-  }
-
-#define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"  // IWYU pragma: keep
+#include "tensorflow/lite/interpreter.h"
 
 namespace litert {
 namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename);
 
-absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
+Model LoadTestFileModel(absl::string_view filename);
 
-internal::UniqueLiteRtModel LoadTestFileModel(absl::string_view filename);
+bool ValidateTopology(const std::vector<Op>& ops);
 
-void TouchTestFile(absl::string_view filename, absl::string_view dir);
+class TflRuntime {
+ public:
+  using Ptr = std::unique_ptr<TflRuntime>;
+
+  static Expected<Ptr> CreateFromFlatBuffer(
+      internal::FlatbufferWrapper::Ptr flatbuffer);
+
+  ::tflite::Interpreter& Interpreter() { return *interpreter_; }
+
+  const internal::FlatbufferWrapper& Flatbuffer() const { return *flatbuffer_; }
+
+ private:
+  TflRuntime(internal::FlatbufferWrapper::Ptr flatbuffer,
+             ::tflite::Interpreter::Ptr interpreter)
+      : flatbuffer_(std::move(flatbuffer)),
+        interpreter_(std::move(interpreter)) {}
+
+  internal::FlatbufferWrapper::Ptr flatbuffer_;
+  ::tflite::Interpreter::Ptr interpreter_;
+};
+
+inline Expected<TflRuntime::Ptr> MakeRuntimeFromTestFile(
+    absl::string_view filename) {
+  auto flatbuffer =
+      internal::FlatbufferWrapper::CreateFromTflFile(GetTestFilePath(filename));
+  if (!flatbuffer) {
+    return flatbuffer.Error();
+  }
+  return TflRuntime::CreateFromFlatBuffer(std::move(*flatbuffer));
+}
+
+inline Expected<TflRuntime::Ptr> MakeRuntimeFromTestFileWithNpuModel(
+    absl::string_view filename, absl::string_view npu_filename) {
+  auto buf = internal::GetModelBufWithByteCode(GetTestFilePath(filename),
+                                               GetTestFilePath(npu_filename));
+  if (!buf) {
+    return buf.Error();
+  }
+  auto flatbuffer =
+      internal::FlatbufferWrapper::CreateFromBuffer(std::move(*buf));
+  if (!flatbuffer) {
+    return flatbuffer.Error();
+  }
+  return TflRuntime::CreateFromFlatBuffer(std::move(*flatbuffer));
+}
 
 }  // namespace testing
 }  // namespace litert

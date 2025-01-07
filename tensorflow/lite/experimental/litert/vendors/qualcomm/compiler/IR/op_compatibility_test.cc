@@ -19,7 +19,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 
@@ -30,6 +30,7 @@ struct OpInfo {
   std::string op_name;
   std::string expected_type_name;
 };
+
 // TODOL: b/365299994 - Add "stablehlo_scatter" once muti subgraphs is
 // supported.
 // clang-format off
@@ -58,13 +59,12 @@ TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   auto test_params = GetParam();
   std::string model_path = absl::StrFormat(kOpTpl, test_params.op_name);
   auto model = litert::testing::LoadTestFileModel(model_path);
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops,
-                          ::litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+  auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, test_params.op_name));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");

@@ -252,11 +252,11 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
-                    StatusCallback done) override {
+  void BarrierAsync(CallOptions* call_opts, const BarrierRequest* request,
+                    BarrierResponse* response, StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/Barrier", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

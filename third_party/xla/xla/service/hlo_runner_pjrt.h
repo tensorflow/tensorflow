@@ -21,8 +21,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -35,13 +41,14 @@ class HloRunnerPjRt : public HloRunnerInterface {
   explicit HloRunnerPjRt(
       std::unique_ptr<PjRtClient> pjrt_client,
       DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn);
+      DeviceShapeSizeFn device_shape_size_fn,
+      bool use_parameter_layout_on_device = false);
 
   ~HloRunnerPjRt() override;
 
   // Transfers data between the host and device.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal, int64_t memory_space);
+      const Literal& literal, const Layout& parameter_layout);
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDevice(const ComputationLayout& entry_layout,
                            absl::Span<const Literal* const> literals);
@@ -98,6 +105,10 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
+  void UpdateEntryComputationLayout(HloModule* module) {
+    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
+  }
+
   DeviceShapeRepresentationFn device_shape_representation_fn() const override {
     return device_shape_representation_fn_;
   }
@@ -110,6 +121,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
+  bool use_parameter_layout_on_device_ = false;
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);

@@ -44,12 +44,12 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -104,15 +104,6 @@ std::string PartitionedComputation::ToString(int indentation) const {
   ss << "PartitionedComputation " << computation_->name() << ":";
   for (const Subgraph& subgraph : subgraphs_) {
     ss << "\n" << subgraph.ToString(indentation);
-  }
-  return ss.str();
-}
-
-std::string PartitionedComputations::ToString() const {
-  std::ostringstream ss;
-  ss << "PartitionedComputations:";
-  for (const auto& partitioned_computation : partitioned_computations_) {
-    ss << "\n" << partitioned_computation.ToString();
   }
   return ss.str();
 }

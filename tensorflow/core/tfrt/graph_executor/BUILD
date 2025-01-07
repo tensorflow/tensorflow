@@ -157,6 +157,7 @@ tf_cc_test(
     srcs = ["graph_executor_test.cc"],
     tags = ["no_oss"],
     deps = [
+        ":config",
         ":graph_execution_options",
         ":graph_executor",
         "//tensorflow/cc:array_ops",

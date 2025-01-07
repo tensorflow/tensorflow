@@ -152,6 +152,11 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
 void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                               const DebugOptions& opts);
 
+// Dumps the given HloUnoptimisedSnapshot to the module's xla_dump_dir, if this
+// is enabled.
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts);
+
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 
 // Returns true if we should dump data for an HloModule.  This is useful if you

@@ -38,11 +38,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -121,9 +121,8 @@ bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
 // be conservative by only accepting sliced shapes that have the product of all
 // non-sliced dimensions being a multiple of `kXlaAllocatedBufferAlignBytes`.
 bool IsAlignedSlice(const HloInstruction* slice) {
-  DCHECK(slice->opcode() == HloOpcode::kSlice ||
-         slice->opcode() == HloOpcode::kDynamicSlice ||
-         slice->opcode() == HloOpcode::kDynamicUpdateSlice)
+  DCHECK((HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
+                           HloOpcode::kDynamicUpdateSlice>(slice)))
       << "Unknown slice operation: " << slice->ToString();
 
   if (!IsContiguousSlice(*slice)) return false;
@@ -143,7 +142,7 @@ bool IsAlignedSlice(const HloInstruction* slice) {
       return true;
     }
     if (slice_shape.dimensions(dim) < full_shape.dimensions(dim)) {
-      return (slice->opcode() == HloOpcode::kSlice &&
+      return (HloPredicateIsOp<HloOpcode::kSlice>(slice) &&
               (((*strides)[dim] * slice->slice_starts(dim)) %
                    kXlaAllocatedBufferAlignBytes ==
                0));
@@ -190,7 +189,7 @@ bool IsLoopIterationNumber(const HloInstruction& offset) {
   // induction variable
   int64_t param_idx = offset.operand(2)->tuple_index();
   const HloInstruction* root = offset.parent()->root_instruction();
-  if (root->opcode() != HloOpcode::kTuple) {
+  if (HloPredicateIsNotOp<HloOpcode::kTuple>(root)) {
     return false;
   }
   // Check the update operation
@@ -255,7 +254,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
 
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
       aliasing_pairs;
-  if (instr->opcode() == HloOpcode::kCustomCall) {
+  if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr)) {
     aliasing_pairs =
         Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
   }
@@ -389,7 +388,7 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
     for (HloInstruction* operand : instr->operands()) {
       if (!matched_instrs.contains(operand) &&
           absl::c_find(captures, operand) == captures.end()) {
-        captures.emplace_back(operand);
+        captures.push_back(operand);
       }
     }
   }
@@ -525,7 +524,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+      if ((HloPredicateIsOp<HloOpcode::kReduceScatter>(instr) &&
            instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         UseDefDataflowPaths sliced_operand_paths = GetSlicedOperandPaths(instr);

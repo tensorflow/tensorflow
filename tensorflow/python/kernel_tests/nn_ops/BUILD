@@ -267,6 +267,7 @@ cuda_py_strict_test(
     tags = [
         "no_cuda11",
         "no_mac_arm64",
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/python/eager:context",

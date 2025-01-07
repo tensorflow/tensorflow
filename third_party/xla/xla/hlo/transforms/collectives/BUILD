@@ -1,8 +1,8 @@
 # Description:
 #   XLA collective transforms implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,6 +14,39 @@ package_group(
     name = "friends",
     includes = [
         "//xla:friends",
+    ],
+)
+
+cc_library(
+    name = "all_gather_cse",
+    srcs = ["all_gather_cse.cc"],
+    hdrs = ["all_gather_cse.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "all_gather_cse_test",
+    srcs = ["all_gather_cse_test.cc"],
+    deps = [
+        ":all_gather_cse",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )
 
@@ -394,5 +427,36 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "while_loop_all_reduce_code_motion_setup",
+    srcs = ["while_loop_all_reduce_code_motion_setup.cc"],
+    hdrs = ["while_loop_all_reduce_code_motion_setup.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_all_reduce_code_motion_setup_test",
+    srcs = ["while_loop_all_reduce_code_motion_setup_test.cc"],
+    deps = [
+        ":while_loop_all_reduce_code_motion_setup",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )

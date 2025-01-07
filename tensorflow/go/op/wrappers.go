@@ -1363,7 +1363,7 @@ func AsStringFill(value string) AsStringAttr {
 // Supports many numeric types and boolean.
 //
 // For Unicode, see the
-// [https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+// [https://www.tensorflow.org/text/guide/unicode](Working with Unicode text)
 // tutorial.
 //
 // Examples:

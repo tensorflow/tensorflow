@@ -25,8 +25,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
-                                bool derived_timeline) {
+void PreprocessSingleHostXSpace(
+    XSpace* space, bool step_grouping, bool derived_timeline,
+    tsl::profiler::GroupMetadataMap* group_metadata_map) {
   if (step_grouping && !tsl::profiler::IsXSpaceGrouped(*space)) {
     // Grouping (i.e. marking step number) events in the XSpace.
     std::vector<XPlane*> device_traces;
@@ -55,6 +56,10 @@ void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
     if (derived_timeline) {
       // Generated miscellaneous derived time lines for device planes.
       GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);
+    }
+
+    if (group_metadata_map != nullptr) {
+      *group_metadata_map = event_forest.GetGroupMetadataMap();
     }
   }
 }

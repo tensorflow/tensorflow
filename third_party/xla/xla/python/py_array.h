@@ -281,7 +281,8 @@ class PyArray : public nanobind::object {
   static absl::StatusOr<std::vector<PyArray>> BatchedCopyToDeviceWithSharding(
       absl::Span<const PyArray> py_arrays,
       absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
-      absl::Span<const nanobind::object> dst_shardings);
+      absl::Span<const nanobind::object> dst_shardings,
+      absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics);
 
   static absl::StatusOr<PyArray> BatchedDevicePut(
       nanobind::object aval, nanobind::object sharding,

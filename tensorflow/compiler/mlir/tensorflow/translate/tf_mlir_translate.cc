@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
@@ -46,6 +49,57 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
+
+// Returns true if the node with given name has a non primary output that is
+// used by some other node as an input. Returns false if no outputs are in use
+// or only the first output is in use.
+bool HasNonPrimaryOutputInUse(const GraphDef& graph_def,
+                              const std::string& node) {
+  for (const auto& node_def : graph_def.node()) {
+    for (const auto& input : node_def.input()) {
+      if (absl::StartsWith(input, node + ":") && input != node + ":0") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Updates the given LegacyFedInput node with Placeholder node if it is one of
+// the inputs. Returns an error if non primary output of the LegacyFedInput node
+// is in use and therefore can not be replaced by the Placeholder node that only
+// has a single output.
+absl::Status UpdateLegacyFedInputNode(
+    const GraphDef& graph_def, const GraphImportConfig::InputArrays& inputs,
+    NodeDef* node) {
+  const std::string& node_name = node->name();
+  auto it = inputs.find(node_name);
+
+  // Node is not an input.
+  if (it == inputs.end()) return absl::OkStatus();
+
+  if (HasNonPrimaryOutputInUse(graph_def, node_name)) {
+    return errors::InvalidArgument(
+        "LegacyFedInput node ", node->name(),
+        " has non primary output in use and can not be replaced with "
+        "Placeholder node");
+  }
+
+  DataType dtype = it->second.imported_dtype;
+  // Uses the existing output type if it isn't specified by the user.
+  if (dtype == DT_INVALID &&
+      node->attr().at("output_types").list().type_size() > 0) {
+    dtype = node->attr().at("output_types").list().type(0);
+  }
+  // Update op name, drop inputs and set attributes required by the Placeholder
+  // op.
+  *node->mutable_op() = "Placeholder";
+  node->clear_attr();
+  node->clear_input();
+  AddNodeAttr("dtype", dtype, node);
+  AddNodeAttr("shape", it->second.shape, node);
+  return absl::OkStatus();
+}
 
 static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
     llvm::StringRef input, const std::vector<std::string>& input_arrays,
@@ -82,6 +136,14 @@ static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
   TF_RETURN_IF_ERROR(
       ParseOutputArrayInfo(control_output_arrays, &specs.control_outputs));
+  // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
+  // solution could be have a tool to let users upgrade old serialized graphs.
+  for (auto& node_def : *graphdef.mutable_node()) {
+    if (specs.convert_legacy_fed_inputs && node_def.op() == "LegacyFedInput") {
+      TF_RETURN_IF_ERROR(
+          UpdateLegacyFedInputNode(graphdef, specs.inputs, &node_def));
+    }
+  }
   // TODO(b/142828368): Pruning should not be needed when TF import
   // supports importing graphs w/ unregistered ops natively.
   GraphDef pruned_graph_def;
@@ -313,5 +375,4 @@ GraphdefToSplattedMlirTranslateFunction(
       output_array_vector, control_output_array_vector, import_options,
       context);
 }
-
 }  // namespace tensorflow

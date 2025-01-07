@@ -24,8 +24,8 @@ namespace xla {
 // CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
 // operations without any cycle in their (source, target) relationship to
 // Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend
-// frontend attribute. We currently restrict the decomposition to
-// CollectivePermute with one input and without any context data.
+// attribute. We currently restrict the decomposition to CollectivePermute with
+// one input and without any context data.
 //
 // before transformation:
 //     cp = (<rt>, <rt>) collective-permute(data),

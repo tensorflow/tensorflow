@@ -59,7 +59,7 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
 
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
-                                 llvm::IRBuilder<>* b) const {
+                                 llvm::IRBuilderBase* b) const {
   int64_t divisor = 1;
   const Layout& layout = shape.layout();
   for (int64_t i = 0; i < layout.minor_to_major_size(); ++i) {
@@ -90,7 +90,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  absl::Span<llvm::Value*> dynamic_dims,
-                                 llvm::IRBuilder<>* b) const {
+                                 llvm::IRBuilderBase* b) const {
   CHECK_EQ(shape.dimensions_size(), dynamic_dims.size());
   CHECK_EQ(multidim_.size(), shape.rank());
   llvm::Value* divisor = GetConstantWithIndexType(1);
@@ -117,7 +117,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 }
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
-                      llvm::IRBuilder<>* b)
+                      llvm::IRBuilderBase* b)
     : multidim_(shape.rank()),
       linear_(linear),
       layout_(shape.layout()),
@@ -132,7 +132,7 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 
 IrArray::Index::Index(llvm::Value* linear,
                       absl::Span<llvm::Value* const> multidim,
-                      const Shape& shape, llvm::IRBuilder<>* b)
+                      const Shape& shape, llvm::IRBuilderBase* b)
     : multidim_(shape.rank()),
       linear_(linear),
       layout_(shape.layout()),
@@ -158,7 +158,7 @@ IrArray::Index::Index(llvm::Value* linear,
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       absl::Span<llvm::Value*> dynamic_dims,
-                      llvm::IRBuilder<>* b)
+                      llvm::IRBuilderBase* b)
     : multidim_(shape.rank()),
       linear_(linear),
       layout_(shape.layout()),
@@ -226,7 +226,7 @@ bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
 
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
-    llvm::IRBuilder<>* builder) const {
+    llvm::IRBuilderBase* builder) const {
   CHECK_EQ(multidim_.size(), output_shape.rank());
   std::vector<llvm::Value*> source_multidim_index(
       input_shape.rank(), llvm::UndefValue::get(index_type_));
@@ -306,7 +306,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
 
 IrArray::Index IrArray::Index::SourceIndexOfSlice(
     const Shape& operand_shape, absl::Span<const int64_t> starts,
-    absl::Span<const int64_t> strides, llvm::IRBuilder<>* builder) const {
+    absl::Span<const int64_t> strides, llvm::IRBuilderBase* builder) const {
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64_t stride = strides[i];
@@ -339,7 +339,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
 
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& shape, const Shape& operand_shape,
-    llvm::IRBuilder<>* builder) const {
+    llvm::IRBuilderBase* builder) const {
   CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
 
   const ShapeUtil::BitcastDecomposition decomposition =
@@ -383,7 +383,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
-    const Shape& operand_shape, llvm::IRBuilder<>* builder) const {
+    const Shape& operand_shape, llvm::IRBuilderBase* builder) const {
   auto shape = ShapeUtil::MakeShape(F32, dims_);
   *shape.mutable_layout() = layout_;
   return SourceIndexOfBitcast(shape, operand_shape, builder);
@@ -392,7 +392,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64_t> dimension_mapping,
-    llvm::IRBuilder<>* builder) const {
+    llvm::IRBuilderBase* builder) const {
   int64_t rank = operand_shape.rank();
   std::vector<llvm::Value*> source_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
@@ -453,7 +453,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
 }
 
 llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
-                                       llvm::IRBuilder<>* builder) const {
+                                       llvm::IRBuilderBase* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
   CHECK_EQ(size(), dimensions.size());
@@ -474,7 +474,7 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64_t> dimensions,
 
 llvm::Value* IrArray::Index::Linearize(
     const std::vector<llvm::Value*>& dynamic_dims,
-    llvm::IRBuilder<>* builder) const {
+    llvm::IRBuilderBase* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
   CHECK_EQ(size(), dynamic_dims.size());
@@ -496,7 +496,7 @@ llvm::Value* IrArray::Index::Linearize(
 }
 
 llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
-                                              llvm::IRBuilder<>* b,
+                                              llvm::IRBuilderBase* b,
                                               absl::string_view name,
                                               bool use_linear_index,
                                               llvm::Value** bit_offset) const {
@@ -564,7 +564,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
 }
 
 llvm::Value* IrArray::EmitLinearArrayElementAddress(
-    const IrArray::Index& index, llvm::IRBuilder<>* b, absl::string_view name,
+    const IrArray::Index& index, llvm::IRBuilderBase* b, absl::string_view name,
     llvm::Value** bit_offset) const {
   CHECK(index.LinearValidOnShape(shape_));
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
@@ -618,7 +618,7 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
 }
 
 llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
-                                           llvm::IRBuilder<>* b,
+                                           llvm::IRBuilderBase* b,
                                            absl::string_view name,
                                            bool use_linear_index) const {
   llvm::Value* bit_offset = nullptr;
@@ -641,7 +641,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
 }
 
 void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                                    llvm::IRBuilder<>* b,
+                                    llvm::IRBuilderBase* b,
                                     bool use_linear_index) const {
   llvm::Value* bit_offset = nullptr;
   llvm::Value* element_address =
@@ -668,7 +668,7 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
-                             llvm::IRBuilder<>* b) const {
+                             llvm::IRBuilderBase* b) const {
   if (shape_ == new_shape) return *this;
 
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();

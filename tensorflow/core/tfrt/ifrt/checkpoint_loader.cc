@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
@@ -274,12 +275,14 @@ absl::Status RunShard(RestoreVariableShard shard,
   if (!use_async_restore) {
     RunShardHelper(runner, async_state.get(), shard);
   } else {
+    tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
     // Use dedicated work queue for restore operation.
-    checkpoint_loader_work_queue->AddTask([runner = std::move(runner),
-                                           async_state = std::move(async_state),
-                                           shard = std::move(shard)]() {
-      RunShardHelper(runner, async_state.get(), shard);
-    });
+    checkpoint_loader_work_queue->AddTask(
+        [runner = std::move(runner), async_state = std::move(async_state),
+         shard = std::move(shard), bg_context = std::move(bg_context)]() {
+          tensorflow::WithContext wc(bg_context);
+          RunShardHelper(runner, async_state.get(), shard);
+        });
   }
 
   return absl::OkStatus();

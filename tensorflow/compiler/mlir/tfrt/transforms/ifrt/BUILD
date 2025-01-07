@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load(
-    "@local_tsl//tsl/platform:build_config.bzl",
+    "@local_xla//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
@@ -167,7 +167,7 @@ cc_library(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )

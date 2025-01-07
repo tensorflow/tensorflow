@@ -193,7 +193,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                 : std::nullopt));
   }
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
-          << results.buffer_assignment->GetStats().ToString();
+          << results.buffer_assignment->StatsString(
+                 /*report_total_fragmentation=*/true);
 
   results.execution_stream_assignment =
       std::make_unique<ExecutionStreamAssignment>(hlo_module);

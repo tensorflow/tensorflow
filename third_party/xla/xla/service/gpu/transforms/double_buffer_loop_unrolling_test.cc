@@ -264,7 +264,7 @@ ENTRY main {
 
   HloInstruction* while_instruction;
   for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       while_instruction = instr;
     }
   }

@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
@@ -47,7 +47,7 @@ namespace {
 using IrEmitterTest = HloTestBase;
 
 static std::pair<llvm::Function*, llvm::BasicBlock*> CreateFunction(
-    llvm::LLVMContext& context, llvm::Module* module, llvm::IRBuilder<>* b) {
+    llvm::LLVMContext& context, llvm::Module* module, llvm::IRBuilderBase* b) {
   llvm::PointerType* ptrtype = llvm::PointerType::getUnqual(context);
   llvm::FunctionType* ftype = llvm::FunctionType::get(ptrtype, ptrtype, false);
 
@@ -84,13 +84,12 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
-      [](int64_t size) { return 1; });
+  TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
   IrEmitter ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(), {}, {},
                        {}, &target_machine, false);
 
-  llvm::IRBuilder<>* b = ir_emitter.b();
+  llvm::IRBuilderBase* b = ir_emitter.b();
   ASSERT_NE(b, nullptr);
 
   const std::pair<llvm::Function*, llvm::BasicBlock*> fb =

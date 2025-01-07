@@ -1602,6 +1602,14 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       ops.Exp(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
 
+    def testExpWithResultAccuracy(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([3.3, 12.1])
+      accuracy = xla_client.ResultAccuracy()
+      accuracy.mode = xla_client.ResultAccuracyMode.DEFAULT
+      ops.Exp(ops.Constant(c, arr), accuracy)
+      self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
+
     def testExpm1(self):
       c = self._NewComputation()
       arr = NumpyArrayF32([3.3, 12.1])

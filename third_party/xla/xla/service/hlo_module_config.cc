@@ -24,11 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/sharding_config.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
@@ -69,7 +74,6 @@ std::string HloModuleConfig::compilation_cache_key() const {
               entry_computation_layout_->result_shape().SerializeAsString());
   }
   if (seed() != 0) {
-    // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};
     StrAppend(&key, "forcing recompile ", counter++);
   }
@@ -217,7 +221,7 @@ static void AssignStructFusionConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_fusion_config() = std::move(module_config);
+  config.set_fusion_config(std::move(module_config));
 }
 
 static void AssignStructDotConfig(HloModuleConfig& config,
@@ -259,7 +263,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_phase_ordering_config() = std::move(module_config);
+  config.set_phase_ordering_config(std::move(module_config));
 }
 
 HloModuleConfigProto HloModuleConfig::ToProto() const {
@@ -328,6 +332,7 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   proto.set_fdo_profile(fdo_profile_);
   proto.set_device_memory_size(device_memory_size_);
   proto.set_use_shardy_partitioner(use_shardy_partitioner_);
+  *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
   return proto;
 }
 
@@ -401,6 +406,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->fdo_profile_ = proto.fdo_profile();
   config->device_memory_size_ = proto.device_memory_size();
   config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
+  config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
   return std::move(config);
 }
 

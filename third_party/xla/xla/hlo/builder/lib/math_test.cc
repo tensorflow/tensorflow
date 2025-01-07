@@ -189,7 +189,6 @@ class MathTypedTest : public MathTest {
   }
 };
 
-// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
 using TestTypes =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
                      tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
@@ -219,15 +218,12 @@ XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
-//
-// TODO(jlebar): Expand this test to cover more ops.
 XLA_TEST_F(MathTest, RealFpOnlyOps) {
   for (int64_t i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
     Shape shape;
     if (ty == U4 || ty == S4) {
-      // TODO(b/259306620): breaking MakeShape()
       continue;
     }
     if (primitive_util::IsArrayType(ty)) {

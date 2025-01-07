@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/constant_value.h"
 
 namespace xla {
@@ -30,14 +32,28 @@ class Range {
   Range()
       : min_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
         max_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
+        step_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
         empty_(true),
         is_linear_(false) {}
   Range(const ConstantValue& min, const ConstantValue& max, bool is_linear)
-      : min_(min), max_(max), empty_(false), is_linear_(is_linear) {}
+      : min_(min),
+        max_(max),
+        step_(std::nullopt),
+        empty_(false),
+        is_linear_(is_linear) {}
+  Range(const ConstantValue& min, const ConstantValue& max,
+        std::optional<ConstantValue> step, bool is_linear)
+      : min_(min),
+        max_(max),
+        step_(step),
+        empty_(false),
+        is_linear_(is_linear) {}
   // Minimum value of the range.
   const ConstantValue& min() const { return min_; }
   // Maximum value of the range.
   const ConstantValue& max() const { return max_; }
+  // Step value of the range.
+  const ConstantValue& step() const { return step_.value(); }
   // Returns if the range is empty (no value in set).
   bool IsEmpty() const { return empty_; }
   // Only one value in set. This means the range is a constant.
@@ -48,6 +64,7 @@ class Range {
   // causing the final value represented by the range in a monotonic way during
   // loop recursion.
   bool IsLinear() const { return is_linear_; }
+  bool IsStepKnown() const { return step_.has_value(); }
   // If this range represents a single value return that signed value.
   std::optional<int64_t> GetSingleSignedValue() const;
   // If this range represents a single value return that unsigned value.
@@ -55,9 +72,17 @@ class Range {
 
   std::string ToString() const;
 
+  bool operator==(const Range& other) const {
+    return min_ == other.min_ && max_ == other.max_ &&
+           IsStepKnown() == other.IsStepKnown() &&
+           (IsStepKnown() ? step_ == other.step_ : true) &&
+           empty_ == other.empty_ && is_linear_ == other.is_linear_;
+  }
+
  private:
   ConstantValue min_;
   ConstantValue max_;
+  std::optional<ConstantValue> step_;
   bool empty_;
   bool is_linear_;
 };
@@ -69,7 +94,8 @@ class Range {
 // The input HLO needs to be of scalar type and integer.
 Range RecursivelyIdentifyRange(
     const HloInstruction* instr,
-    const absl::flat_hash_map<const HloInstruction*, Range>& predefined_ranges);
+    const absl::flat_hash_map<const HloInstruction*, Range>& predefined_ranges,
+    const HloAliasAnalysis* alias_analysis = nullptr);
 
 }  // namespace xla
 

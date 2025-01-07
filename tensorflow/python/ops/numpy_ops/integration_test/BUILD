@@ -18,6 +18,9 @@ py_strict_test(
 cuda_py_strict_test(
     name = "np_config_test",
     srcs = ["np_config_test.py"],
+    tags = [
+        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/ops/numpy_ops:np_config",

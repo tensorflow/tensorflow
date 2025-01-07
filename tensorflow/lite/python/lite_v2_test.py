@@ -2118,16 +2118,20 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.experimental_enable_resource_variables = enable_resource_variables
 
-    if not enable_resource_variables:
-      with self.assertRaises(convert.ConverterError) as error:
-        tflite_model = converter.convert()
-      self.assertIn(
-          'is not immutable, try removing mutable variables in your model since'
-          ' mutable variables are currently not supported through this'
-          ' converter',
-          str(error.exception),
-      )
-      return
+    # TODO(b/355497070): Remove this check once the
+    # CreateFreezeGlobalTensorsPass is migrated to the new TFL::Pass
+    # in the converter.
+
+    # if not enable_resource_variables:
+    #   with self.assertRaises(convert.ConverterError) as error:
+    #     tflite_model = converter.convert()
+    #   self.assertIn(
+    #       'is not immutable, try removing mutable variables in your model
+    #       ' since mutable variables are currently not supported through this'
+    #       ' converter',
+    #       str(error.exception),
+    #   )
+    #   return
 
     # Enable resource variables.
     tflite_model = converter.convert()

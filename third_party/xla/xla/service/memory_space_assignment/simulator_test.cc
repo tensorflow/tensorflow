@@ -89,12 +89,14 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     hlo_cost_analysis_costs_ =
         std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
             *hlo_cost_analysis_);
-    CostAnalysisOptions _options;
+    CostAnalysisOptions cost_analysis_options;
     // Assume 2 byte per second for testing.
-    _options.alternate_mem_bandwidth_bytes_per_second = 2;
-    TF_ASSIGN_OR_RETURN(
-        cost_analysis_,
-        CostAnalysis::Create(*hlo_cost_analysis_costs_, _options, *module_));
+    cost_analysis_options.alternate_mem_bandwidth_bytes_per_second = 2;
+    cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
+
+    TF_ASSIGN_OR_RETURN(cost_analysis_,
+                        CostAnalysis::Create(*hlo_cost_analysis_costs_,
+                                             cost_analysis_options, *module_));
 
     TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module_.get()));
     TF_ASSIGN_OR_RETURN(hlo_live_range_,

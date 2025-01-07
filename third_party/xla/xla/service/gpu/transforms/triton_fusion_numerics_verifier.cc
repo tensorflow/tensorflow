@@ -24,12 +24,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
@@ -90,8 +92,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
       .mutable_debug_options()
       .clear_xla_gpu_experimental_enable_triton_softmax_priority_fusion();
 
-  TreeReductionRewriter tree_reduction_rewriter(
-      gpu_device_info.gpu_compute_capability());
+  TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
 
   PriorityFusion fusion_pass(
@@ -100,7 +101,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
-  FusionWrapper fusion_wrapper;
+  FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
 
   return new_module;
@@ -125,11 +126,9 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       util.Compile([&](const DebugOptions& opts) {
-        return disable_triton
-                   ? NewHloModuleWithoutTritonFromFusion(
-                         fusion, opts,
-                         config.GetExecutor()->GetDeviceDescription())
-                   : NewHloModuleWithTritonFromFusion(fusion, opts);
+        return disable_triton ? NewHloModuleWithoutTritonFromFusion(
+                                    fusion, opts, config.GetDeviceDescription())
+                              : NewHloModuleWithTritonFromFusion(fusion, opts);
       }));
   if (executable == nullptr) {
     return Internal("Failed to compile Triton fusion.");
@@ -205,8 +204,16 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
 
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "
-               << status.message() << "\n The failing HLO is: \n\n"
-               << ExtractInstructionIntoNewModule(fusion)->ToString();
+               << status.message();
+
+    DumpToFileInDirOrStdout(
+        *fusion.GetModule(),
+        /*file_prefix=*/"",
+        /*file_suffix=*/
+        absl::StrCat("triton_fusion_numerics_verifier_failed_",
+                     fusion.unique_id(), ".hlo"),
+        /*contents=*/
+        ExtractInstructionIntoNewModule(fusion)->ToString());
   }
 
   return status;

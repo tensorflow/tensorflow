@@ -306,6 +306,17 @@ def MHLO_SparsityDescriptor : AttrDef<MHLO_Dialect, "SparsityDescriptor"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def MHLO_RaggedDotDimensionNumbers : AttrDef<MHLO_Dialect, "RaggedDotDimensionNumbers"> {
+  let mnemonic = "ragged_dot";
+  let summary = "Attribute that models the dimension information for ragged dot.";
+  let parameters = (ins
+      MHLO_DotDimensionNumbers:$dotDimensionNumbers,
+      MHLO_Dims:$lhsRaggedDimensions,
+      MHLO_Dims:$rhsGroupDimensions
+  );
+  let hasCustomAssemblyFormat = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//

@@ -15,19 +15,15 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_kernel.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <utility>
 
 #include "absl/base/optimization.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -70,9 +66,6 @@ class HostKernelExecuteState {
                          absl::Span<const SE_HOST_KernelArg> args);
   ~HostKernelExecuteState();
 
-  // Notify of a completion of a host kernel task.
-  void Notify(absl::Status status);
-
   // Calls a task with index `task_index` synchronously.
   void CallSync(uint64_t task_index);
 
@@ -80,18 +73,9 @@ class HostKernelExecuteState {
   // runner to schedule work. Executes a single task in the caller thread.
   void CallAsync(uint64_t start_index, uint64_t end_index);
 
-  tsl::AsyncValueRef<LaunchEvent> event() const { return event_; }
+  tsl::AsyncValueRef<LaunchEvent> event() const { return event_.AsRef(); }
 
  private:
-  // Align all atomic counters to a cache line boundary to avoid false
-  // sharing between multiple worker threads.
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
   // Converts linear task index in [0, num_tasks) to (x, y, z) coordinate. We
   // assume that `x` is the fastest iterating dimension.
   SE_HOST_KernelThread Delinearize(uint64_t task_index);
@@ -103,13 +87,7 @@ class HostKernelExecuteState {
   SE_HOST_KernelThreadDim thread_dims_;
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
 
-  alignas(kAtomicAlignment) std::atomic<int64_t> counter_;
-
-  alignas(kAtomicAlignment) std::atomic<bool> abort_;
-  absl::Mutex abort_mutex_;
-  absl::Status abort_status_ ABSL_GUARDED_BY(abort_mutex_);
-
-  tsl::AsyncValueRef<LaunchEvent> event_;
+  tsl::CountDownAsyncValueRef<LaunchEvent> event_;
 };
 }  // namespace
 
@@ -202,44 +180,20 @@ HostKernelExecuteState::HostKernelExecuteState(
       kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(args.begin(), args.end()),
-      counter_(num_tasks_),
-      abort_(false),
-      event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
+      event_(num_tasks_) {}
 
 HostKernelExecuteState::~HostKernelExecuteState() {
-  auto cnt = counter_.load(std::memory_order_acquire);
+  auto cnt = event_.count();
   DCHECK_EQ(cnt, 0) << "Host kernel execute state is destroyed before all "
                        "tasks are completed";
-}
-
-void HostKernelExecuteState::Notify(absl::Status status) {
-  if (ABSL_PREDICT_FALSE(!status.ok())) {
-    absl::MutexLock lock(&abort_mutex_);
-    abort_.store(true, std::memory_order_relaxed);
-    abort_status_.Update(std::move(status));
-  }
-
-  // Check if it was the last notification and kernel launch is done.
-  bool is_done = counter_.fetch_sub(1, std::memory_order_acq_rel) == 1;
-  if (ABSL_PREDICT_TRUE(!is_done)) return;
-
-  // In the unlikely event of a kernel error, forward it to the launch event.
-  if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
-    auto take_abort_status = [&] {
-      absl::MutexLock lock(&abort_mutex_);
-      return std::move(abort_status_);
-    };
-    event_.SetError(take_abort_status());
-  } else {
-    event_.SetStateConcrete();
-  }
 }
 
 void HostKernelExecuteState::CallSync(uint64_t task_index) {
   CHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
 
-  if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
-    Notify(absl::OkStatus());
+  // Do not execute the task if the kernel execution has already failed.
+  if (ABSL_PREDICT_FALSE(event_.is_error())) {
+    event_.CountDown(absl::OkStatus());
     return;
   }
 
@@ -250,9 +204,9 @@ void HostKernelExecuteState::CallSync(uint64_t task_index) {
   SE_HOST_KernelError* error = (*kernel_)(&call_frame);
 
   if (ABSL_PREDICT_TRUE(error == nullptr)) {
-    Notify(absl::OkStatus());
+    event_.CountDown(absl::OkStatus());
   } else {
-    Notify(absl::InternalError(
+    event_.CountDown(absl::InternalError(
         absl::StrFormat("Failed to call host kernel: x=%d, y=%d, z=%d",
                         kernel_thread.x, kernel_thread.y, kernel_thread.z)));
   }

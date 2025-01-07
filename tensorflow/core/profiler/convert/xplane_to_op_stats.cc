@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -96,34 +97,62 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
                         /*SRAM_WR=*/shm_giga_bytes_per_second});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
-    auto peak_tera_flops_per_second =
+    std::optional<XStatVisitor> peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
-    auto peak_tera_flops_per_second_val =
+    double peak_tera_flops_per_second_val =
         peak_tera_flops_per_second.has_value()
             ? peak_tera_flops_per_second->DoubleValue()
             : 0.0;
-    auto peak_hbm_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    auto peak_hbm_bw_giga_bytes_per_second_val =
+    double peak_hbm_bw_giga_bytes_per_second_val =
         peak_hbm_bw_giga_bytes_per_second.has_value()
             ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_rd_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_rd_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
-    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+    double peak_sram_rd_bw_giga_bytes_per_second_val =
         peak_sram_rd_bw_giga_bytes_per_second.has_value()
             ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_wr_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_wr_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
-    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+    double peak_sram_wr_bw_giga_bytes_per_second_val =
         peak_sram_wr_bw_giga_bytes_per_second.has_value()
             ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
+    std::optional<XStatVisitor> cmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemRdBwGigabytesPerSecond);
+    double cmem_rd_bw_giga_bytes_per_second_val =
+        cmem_rd_bw_giga_bytes_per_second.has_value()
+            ? cmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> cmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemWrBwGigabytesPerSecond);
+    double cmem_wr_bw_giga_bytes_per_second_val =
+        cmem_wr_bw_giga_bytes_per_second.has_value()
+            ? cmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemRdBwGigabytesPerSecond);
+    double vmem_rd_bw_giga_bytes_per_second_val =
+        vmem_rd_bw_giga_bytes_per_second.has_value()
+            ? vmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemWrBwGigabytesPerSecond);
+    double vmem_wr_bw_giga_bytes_per_second_val =
+        vmem_wr_bw_giga_bytes_per_second.has_value()
+            ? vmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
     return MakePerfEnv(peak_tera_flops_per_second_val,
-                       {peak_hbm_bw_giga_bytes_per_second_val,
-                        peak_sram_rd_bw_giga_bytes_per_second_val,
-                        peak_sram_wr_bw_giga_bytes_per_second_val});
+                       {/*HBM_RW=*/peak_hbm_bw_giga_bytes_per_second_val,
+                        /*SRAM_RD=*/peak_sram_rd_bw_giga_bytes_per_second_val,
+                        /*SRAM_WR=*/peak_sram_wr_bw_giga_bytes_per_second_val,
+                        /**CMEM_RD=*/cmem_rd_bw_giga_bytes_per_second_val,
+                        /**CMEM_WR=*/cmem_wr_bw_giga_bytes_per_second_val,
+                        /**VMEM_RD=*/vmem_rd_bw_giga_bytes_per_second_val,
+                        /**VMEM_WR=*/vmem_wr_bw_giga_bytes_per_second_val});
   }
 }
 
@@ -144,6 +173,7 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type("GPU");
     }
     env->set_device_core_count(gpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::GPU);
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
@@ -154,9 +184,11 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
     }
     env->set_device_core_count(tpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::TPU);
   } else {
     env->set_device_type("CPU");
     env->set_device_core_count(0);
+    env->set_hardware_type(tensorflow::profiler::HardwareType::CPU_ONLY);
   }
 }
 

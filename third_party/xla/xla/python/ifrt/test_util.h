@@ -89,6 +89,11 @@ void AssertPerShardData(
 absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
     Client* client, absl::Span<const int> device_indices);
 
+// Helper function that makes `DeviceList` containing devices at given
+// indexes (not ids) within `client.addressable_devices()`.
+absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
+    Client* client, absl::Span<const int> device_indices);
+
 }  // namespace test_util
 }  // namespace ifrt
 }  // namespace xla

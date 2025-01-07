@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/logging.h"
 
@@ -31,8 +33,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-
-using ::testing::Conditional;
 
 class AutoShardingTest : public HloTestBase {
  protected:
@@ -91,6 +91,16 @@ TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {
       compiled_module->entry_computation()->parameter_instruction(0);
   VLOG(2) << instruction->ToString();
   EXPECT_THAT(instruction, GmockMatch(m::Op().WithSharding("{replicated}")));
+}
+
+TEST_F(AutoShardingTest, AutoShardingDefaultMeshShape) {
+  HloModuleConfig config;
+  config.set_num_partitions(5);
+  auto option = DefaultAutoShardingOptionFromModuleConfig(config);
+  EXPECT_EQ(option.device_mesh_shape, std::vector<int64_t>({5, 1}));
+  config.set_auto_spmd_partitioning_mesh_shape({2, 3});
+  option = DefaultAutoShardingOptionFromModuleConfig(config);
+  EXPECT_EQ(option.device_mesh_shape, std::vector<int64_t>({2, 3}));
 }
 
 }  // namespace

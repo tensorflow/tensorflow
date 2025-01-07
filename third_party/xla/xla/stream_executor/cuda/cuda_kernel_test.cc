@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_kernel.h"
-
 #include <gtest/gtest.h>
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -37,19 +35,11 @@ TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
 
-  CudaKernel cuda_kernel(executor);
-  cuda_kernel.set_arity(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto cuda_kernel,
+                          executor->LoadKernel(GetAddI32KernelSpec()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      CUfunction function,
-      CudaRuntime::GetFuncBySymbol(internal::GetAddI32Kernel()));
-
-  cuda_kernel.set_gpu_function(function);
-
-  EXPECT_EQ(cuda_kernel.Arity(), 3);
-  EXPECT_EQ(cuda_kernel.gpu_function(), function);
-
-  EXPECT_THAT(cuda_kernel.GetMaxOccupiedBlocksPerCore(
+  EXPECT_EQ(cuda_kernel->Arity(), 3);
+  EXPECT_THAT(cuda_kernel->GetMaxOccupiedBlocksPerCore(
                   ThreadDim(1, 1, 1), /*dynamic_shared_memory_bytes=*/0),
               IsOkAndHolds(Ge(1)));
 }

@@ -747,7 +747,7 @@ void BufferAssignment::CombineTempAllocations(
   }
 }
 
-absl::Status BufferAssignment::ComputeSummaryStats() {
+void BufferAssignment::ComputeSummaryStats() {
   for (auto& allocation : Allocations()) {
     if (allocation.is_entry_computation_parameter()) {
       stats_.parameter_allocation_count++;
@@ -768,7 +768,10 @@ absl::Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_allocation_count++;
     stats_.total_allocation_bytes += allocation.size();
   }
+}
 
+absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes()
+    const {
   // Only compute total fragmentation if all computations have schedules.
   HloSchedule schedule(module_);
   bool schedule_complete = true;
@@ -788,37 +791,44 @@ absl::Status BufferAssignment::ComputeSummaryStats() {
     TF_ASSIGN_OR_RETURN(
         const int64_t min_size,
         HeapSimulator::MinimumMemoryForModule(schedule, buffer_size_));
-    stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
+    return stats_.total_allocation_bytes - min_size;
   }
-
-  return absl::OkStatus();
+  return -1;
 }
 
-std::string BufferAssignment::Stats::ToString() const {
+std::string BufferAssignment::StatsString(
+    bool report_total_fragmentation) const {
   std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
-                  HumanReadableNumBytes(parameter_allocation_bytes));
+                  HumanReadableNumBytes(stats_.parameter_allocation_bytes));
   StrAppendFormat(&s, "              constant allocation: %10s\n",
-                  HumanReadableNumBytes(constant_allocation_bytes));
-  StrAppendFormat(&s, "        maybe_live_out allocation: %10s\n",
-                  HumanReadableNumBytes(maybe_live_out_allocation_bytes));
-  StrAppendFormat(&s, "     preallocated temp allocation: %10s\n",
-                  HumanReadableNumBytes(preallocated_temp_allocation_bytes));
-  if (preallocated_temp_fragmentation_bytes >= 0) {
-    const double percent = 100. * preallocated_temp_fragmentation_bytes /
-                           preallocated_temp_allocation_bytes;
+                  HumanReadableNumBytes(stats_.constant_allocation_bytes));
+  StrAppendFormat(
+      &s, "        maybe_live_out allocation: %10s\n",
+      HumanReadableNumBytes(stats_.maybe_live_out_allocation_bytes));
+  StrAppendFormat(
+      &s, "     preallocated temp allocation: %10s\n",
+      HumanReadableNumBytes(stats_.preallocated_temp_allocation_bytes));
+  if (stats_.preallocated_temp_fragmentation_bytes >= 0) {
+    const double percent = 100. * stats_.preallocated_temp_fragmentation_bytes /
+                           stats_.preallocated_temp_allocation_bytes;
     StrAppendFormat(
         &s, "  preallocated temp fragmentation: %10s (%.2f%%)\n",
-        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes), percent);
+        HumanReadableNumBytes(stats_.preallocated_temp_fragmentation_bytes),
+        percent);
   }
   StrAppendFormat(&s, "                 total allocation: %10s\n",
-                  HumanReadableNumBytes(total_allocation_bytes));
-  if (total_fragmentation_bytes >= 0) {
-    const double percent =
-        100. * total_fragmentation_bytes / total_allocation_bytes;
-    StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
-                    HumanReadableNumBytes(total_fragmentation_bytes), percent);
+                  HumanReadableNumBytes(stats_.total_allocation_bytes));
+  if (report_total_fragmentation) {
+    auto total_fragmentation_bytes = ComputeTotalFragmentationBytes();
+    if (total_fragmentation_bytes.ok() && *total_fragmentation_bytes >= 0) {
+      const double percent =
+          100. * *total_fragmentation_bytes / stats_.total_allocation_bytes;
+      StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
+                      HumanReadableNumBytes(*total_fragmentation_bytes),
+                      percent);
+    }
   }
   return s;
 }
@@ -1020,7 +1030,8 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
 std::string BufferAssignment::ToVerboseString(
     size_t max_buffers_to_show) const {
   std::string output =
-      absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
+      absl::StrCat("BufferAssignment OOM Debugging.\n",
+                   StatsString(/*report_total_fragmentation=*/true));
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
       TopKPeakBuffers(max_buffers_to_show, allocations_);
@@ -2279,8 +2290,9 @@ BufferAssigner::CreateAssignment(
   assignment->CombineTempAllocations(private_stack_colors, temp_buffer_color);
 
   XLA_VLOG_LINES(2, assignment->ToString());
-  TF_RETURN_IF_ERROR(assignment->ComputeSummaryStats());
-  XLA_VLOG_LINES(1, assignment->GetStats().ToString());
+  assignment->ComputeSummaryStats();
+  XLA_VLOG_LINES(1,
+                 assignment->StatsString(/*report_total_fragmentation=*/true));
   VLOG(1) << "Buffer assignment done.";
   return std::move(assignment);
 }

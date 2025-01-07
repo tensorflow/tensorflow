@@ -47,7 +47,8 @@ std::string LocalityOptimizedPath(const std::string& path);
 // Returns `true` if tf.data service compression should be disabled at runtime
 // based on (1) the inputs or (2) the properties of the calling trainer.
 absl::StatusOr<bool> DisableCompressionAtRuntime(
-    const std::string& data_transfer_protocol, DeploymentMode deployment_mode);
+    const std::string& data_transfer_protocol, DeploymentMode deployment_mode,
+    DataServiceMetadata::Compression compression);
 
 // Log filenames into TfDataLogger. Uses the same  TfDataFileLoggerClient at
 // every call. Thread safe.

@@ -82,6 +82,9 @@ struct GraphOptimizationPassOptions {
   // A unique filename prefix (using hostname, process ID, thread ID and
   // timestamp) for graph dumps.
   string debug_filename_prefix;
+
+  // Whether to enable tf2xla mlir bridge in compiling SavedModel.
+  bool enable_tf2xla_mlir_bridge = true;
 };
 
 // Optimization passes are implemented by inheriting from

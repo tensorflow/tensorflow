@@ -59,10 +59,10 @@ namespace math_impl {
 //     function. It turns out that when considering the evaluation of
 //     arcus sine real and imaginary parts separately, the 11 regions can
 //     be reduced to 3 regions for the real part, and to 4 regions for
-//     the imaginary part. This reduction of the appriximation regions
+//     the imaginary part. This reduction of the approximation regions
 //     constitutes the modification of the Hull et al algorithm that is
 //     implemented below and it is advantageous for functional
-//     implmentations as there will be less branches. The modified Hull
+//     implementations as there will be less branches. The modified Hull
 //     et al algorithm is validated against the original Hull algorithm
 //     implemented in MPMath.
 //

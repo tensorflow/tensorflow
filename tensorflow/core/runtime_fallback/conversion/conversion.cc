@@ -21,6 +21,7 @@ limitations under the License.
 #include <cassert>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,7 +52,7 @@ static RuntimeFallbackTensor ConvertKernelFallbackToRuntimeFallbackTensor(
       optional_eager_resource.value()->GetTFEagerContext();
   assert(expected_eager_context);
   Device *d;
-  Status s =
+  absl::Status s =
       expected_eager_context.get()->FindDeviceFromName(src.name().data(), &d);
   assert(s.ok());
   Tensor t(*tensor.GetTensor());
@@ -71,7 +72,7 @@ ConvertRuntimeFallbackToKernelFallbackTensor(
     const RuntimeFallbackTensor &tensor, const tfrt::Device &src,
     const tfrt::Device &dst, const tfrt::ExecutionContext &exec_ctx) {
   const tensorflow::Tensor *tf_tensor;
-  Status s = tensor.GetTensorHandle()->Tensor(&tf_tensor);
+  absl::Status s = tensor.GetTensorHandle()->Tensor(&tf_tensor);
   if (!s.ok()) {
     return tfrt::MakeErrorAsyncValueRef(s.message());
   }

@@ -40,11 +40,11 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -124,109 +124,6 @@ inline bool HasOneUse(const HloInstruction* instr) {
   return instr->user_count() == 1;
 }
 
-// Supports two types of broadcast of parameters. Either to one batch
-// dim, or one reduction dim. For example the following cases are supported:
-//
-// Case #1:
-// p = f32[a] parameter(0)
-// b = f32[a,x] broadcast(p), dimensions={0}
-//
-// Case #2:
-// p = f32[a] parameter(0)
-// b = f32[x,a] broadcast(p), dimensions={1}
-//
-// Case #3:
-// p = f32[a,b] parameter(0)
-// b = f32[x,a,b] broadcast(p), dimensions={1,2}
-//
-// Other broadcast tiling patterns are currently unsupported.
-// See b/328049138 for details.
-//
-// Unsupported case #1:
-// p = f32[a] parameter(0)
-// b = f32[x,a,y] broadcast(p), dimensions={1}
-//
-// Unsupported case #2:
-// p = f32[a,b] parameter(0)
-// b = f32[x,a,y,b] broadcast(p), dimensions={1,3}
-//
-// Unsupported case #3:
-// p = f32[a] parameter(0)
-// b = f32[x,y,a] broadcast(p), dimensions={2}
-//
-// Unsupported case #4:
-// p = f32[a,b] parameter(0)
-// b = f32[a,x,b] broadcast(p), dimensions={0,2}
-//
-// Unsupported case #5:
-// p = f32[] parameter(0)
-// b = f32[x] broadcast(p), dimensions={}
-bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
-      << "Expected parameter " << hlo.operand(0)->ToShortString();
-
-  const HloBroadcastInstruction* broadcast =
-      Cast<HloBroadcastInstruction>(&hlo);
-
-  const HloParameterInstruction* parameter =
-      Cast<HloParameterInstruction>(hlo.operand(0));
-
-  // Support only one dim broadcast. Scalar parameters are handled elsewhere.
-  if (broadcast->dimensions().empty() ||
-      parameter->shape().dimensions_size() + 1 !=
-          broadcast->shape().dimensions_size()) {
-    return false;
-  }
-
-  // It is enough to ensure that the broadcast does not preserve both last, and
-  // first dimensions of the parameter at the same time. Otherwise the broadcast
-  // is the unsupported case #4.
-  //
-  // Preserve the first dim:
-  //   p = f32[a,b] parameter(0)
-  //   b1 = f32[a,b,c] broadcast(p), dimensions={0,1}
-  bool preserve_first_dim = broadcast->dimensions().front() == 0;
-  // Preserve the last dim:
-  //   p = f32[a,b] parameter(0)
-  //   b1 = f32[c,a,b] broadcast(p), dimensions={1,2}
-  bool preserve_last_dim = broadcast->dimensions().back() ==
-                           broadcast->shape().dimensions_size() - 1;
-  // We do not want to preserve both first and last dim, as it means the
-  // broadcast is not expanding on outermost dims.
-  return !(preserve_first_dim && preserve_last_dim);
-}
-
-bool IsBroadcastOfAScalar(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  return ShapeUtil::IsScalar(hlo.operand(0)->shape());
-}
-
-bool IsSingleRowParameterBroadcast(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
-      << "Expected parameter " << hlo.operand(0)->ToShortString();
-
-  const HloBroadcastInstruction* broadcast =
-      Cast<HloBroadcastInstruction>(&hlo);
-  const HloParameterInstruction* parameter =
-      Cast<HloParameterInstruction>(hlo.operand(0));
-
-  if (parameter->shape().dimensions_size() != 1) {
-    return false;
-  }
-  return broadcast->dimensions()[0] == broadcast->shape().dimensions_size() - 1;
-}
-
-bool IsSupportedBroadcastOfParameter(const HloInstruction& hlo) {
-  return IsBroadcastOfParameter(hlo) &&
-         (IsBatchOrReductionDimBroadcast(hlo) || IsBroadcastOfAScalar(hlo) ||
-          IsSingleRowParameterBroadcast(hlo));
-}
-
 // Chooses which operand to use for fusion processing. Taking in a unary or
 // binary instruction, returns the first non-splat operand. If none is
 // present, returns any operand.
@@ -234,11 +131,9 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   CHECK_GT(instr->operand_count(), 0);
   CHECK_LE(instr->operand_count(), 2);
 
-  // TODO(b/326217416): Extend the broadcast of splat constants/parameters to a
-  // broadcast of any op.
   if (instr->operand_count() > 1 &&
       (IsBroadcastOfScalarConstant(*instr->operand(0)) ||
-       IsSupportedBroadcastOfParameter(*instr->operand(0)))) {
+       IsBroadcastOfParameter(*instr->operand(0)))) {
     return instr->mutable_operand(1);
   }
   return instr->mutable_operand(0);
@@ -257,7 +152,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     return false;
   }
 
-  if (instr->opcode() == HloOpcode::kBitcast &&
+  if (HloPredicateIsOp<HloOpcode::kBitcast>(instr) &&
       BitcastIsTilingNoop(instr, gpu_version)) {
     return true;
   }
@@ -281,12 +176,10 @@ bool IsTriviallyFusible(HloInstruction* instr,
 
     // For simplicity we only fuse elementwise binary ops with splat operands
     // if they contain one non-splat operand.
-    // TODO(b/326217416): Extend the broadcast of splat constants/parameters to
-    // a broadcast of any op.
     if ((IsBroadcastOfScalarConstant(*operand_0) ||
-         IsSupportedBroadcastOfParameter(*operand_0)) ^
+         IsBroadcastOfParameter(*operand_0)) ^
         (IsBroadcastOfScalarConstant(*operand_1) ||
-         IsSupportedBroadcastOfParameter(*operand_1))) {
+         IsBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
           IsTritonSupportedInstruction(*instr, gpu_version));
     }
@@ -389,7 +282,7 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
       create_computation(operand);
       new_operands.push_back(old_to_new_mapping[operand]);
     }
-    if (instr->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instr)) {
       old_to_new_mapping[instr] =
           builder.AddInstruction(HloInstruction::CreateParameter(
               param, instr->shape(), absl::StrCat("parameter_", param)));
@@ -438,9 +331,9 @@ absl::Status RunFusionPipeline(
   // transform reductions.
   reduction_pipeline.AddPass<ReductionDimensionGrouper>();
   reduction_pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+      device_info,
       /*ignore_small_reduce_dims=*/false);
-  reduction_pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
-      device_info.gpu_compute_capability());
+  reduction_pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(device_info);
 
   TF_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
 
@@ -635,8 +528,8 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
   // convert of a constant.
   const HloInstruction* identity = reduce.operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
@@ -692,8 +585,8 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   // convert of a constant.
   const HloInstruction* identity = reduce->operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
@@ -783,7 +676,7 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
     }
   }
 
-  return std::move(matched_diamonds);
+  return matched_diamonds;
 }
 
 // Returns the size of the reduction dimension of the input diamond.
@@ -791,7 +684,7 @@ int64_t GetReductionDimensionSizeForDiamond(
     const DiamondChainDescriptor& diamond_chain) {
   HloInstruction* diamond_root = diamond_chain.root;
   HloInstruction* instr = diamond_root->mutable_operand(1);
-  while (instr->opcode() != HloOpcode::kReduce) {
+  while (HloPredicateIsNotOp<HloOpcode::kReduce>(instr)) {
     instr = ChooseOperandForFusionProcessing(instr);
   }
 

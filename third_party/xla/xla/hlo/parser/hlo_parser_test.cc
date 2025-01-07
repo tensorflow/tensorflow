@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/protobuf_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -426,6 +428,21 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
   %constant = f32[] constant(2.1), sharding={maximal device=0}
   %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={{maximal device=1}, {replicated}, {replicated}}, control-predecessors={%recv}
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+}
+
+)"
+},
+{
+"SendRecvWoChannelID",
+R"(HloModule SendRecvWoChannelID_module, entry_computation_layout={()->(f32[], token[])}
+
+ENTRY %computation () -> (f32[], token[]) {
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0)
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv)
+  %constant = f32[] constant(2.1)
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0)
+  %send-done = token[] send-done((f32[], u32[], token[]) %send)
 }
 
 )"
@@ -2193,10 +2210,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
 }
 
 )",
@@ -2211,10 +2228,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
 }
 
 )",
@@ -2229,10 +2246,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={}
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={}
 }
 
 )"
@@ -2761,6 +2778,8 @@ class HloParameterizedParserTest
   // the string, asserts that it succeeded, stringifies the parsed module, and
   // checks that it equals the original string.
   void ExpectEqual() {
+    VLOG(3) << "Running HloParameterizedParserTest with short_form = "
+            << short_form << ", proto_round_trip = " << proto_round_trip;
     std::unique_ptr<HloModule> module;
     const std::string& original = GetParam().module_string;
     HloModuleConfig config;
@@ -3353,23 +3372,6 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 )";
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
                   "unexpected attribute \"calls\"");
-}
-
-TEST_F(HloParserTest, MissingAttribute) {
-  const std::string original = R"(HloModule missing_attr_module
-
-ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %token0 = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
-  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
-  ROOT %constant = f32[] constant(-2.1)
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0)
-  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
-}
-
-)";
-  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
-                  "attribute channel_id is expected but not seen");
 }
 
 TEST_F(HloParserTest, PredecessorUndefined) {
@@ -5723,6 +5725,138 @@ ENTRY %test {
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
               tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      HasSubstr("expects instruction shape")));
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyMode) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={mode=highest}
+  }
+  )";
+  ResultAccuracy expected_result_accuracy = ResultAccuracy();
+  expected_result_accuracy.set_mode(ResultAccuracy::HIGHEST);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto* unary = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(unary->result_accuracy(),
+                                            expected_result_accuracy));
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyModeError) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={mode=high}
+  }
+  )";
+  ASSERT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              ::tsl::testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("expects ResultAccuracy type but sees: high")));
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyRtol) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
+  }
+  )";
+  ResultAccuracy expected_result_accuracy = ResultAccuracy();
+  ResultAccuracy::Tolerance tolerance = ResultAccuracy::Tolerance();
+  tolerance.set_rtol(0.5);
+  tolerance.set_atol(1.0);  // NOLINT
+  tolerance.set_ulps(2);
+  *expected_result_accuracy.mutable_tolerance() = tolerance;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto* unary = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(unary->result_accuracy(),
+                                            expected_result_accuracy));
+}
+
+TEST_F(HloParserTest, TranscendentalResultAccuracyInvalidName) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={0.5}
+  }
+  )";
+  auto result = ParseAndReturnUnverifiedModule(hlo_string);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(), "expects attribute name");
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyInvalidField) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={foo=10.0}
+  }
+  )";
+  auto result = ParseAndReturnUnverifiedModule(hlo_string);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(), "invalid attribute name");
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyNoConfig) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  ResultAccuracy default_result_accuracy;
+  default_result_accuracy.set_mode(ResultAccuracy::DEFAULT);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      module->entry_computation()->root_instruction()->result_accuracy(),
+      default_result_accuracy));
+}
+
+TEST_F(HloParserTest, TranscendentalAccuracyInvalidOp) {
+  const char* const hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = s32[10] parameter(0)
+  ROOT out = s8[10,4] bitcast-convert(p), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}
+}
+)";
+  auto result = ParseAndReturnUnverifiedModule(hlo_string);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "error: unexpected attribute \"result_accuracy\"");
+}
+
+TEST_F(HloParserTest, EmptyOriginalValueIsPrintedCorrectly) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  ROOT op = f32[] parameter(0), origin={}
+}
+
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::Fingerprint()),
+                  "origin={}");
 }
 
 }  // namespace

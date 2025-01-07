@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,29 +42,34 @@ class NcclGroupExecutionTest : public HloTestBase {
 };
 
 XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
+  // TODO (rosiezou): remove the channel_id=0 workaround once it is optional.
   const absl::string_view kModuleStr = R"(
   HloModule module_main, entry_computation_layout={()->(f32[], f32[])}
 
   wrapped_send_recv {
     param0 = f32[] parameter(0)
     param1 = token[] parameter(1)
-    send1 = (f32[], u32[], token[]) send(param0, param1), channel_id=1
+    send1 = (f32[], u32[], token[]) send(param0, param1), channel_id=0,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
     param2 = f32[] parameter(2)
     param3 = token[] parameter(3)
-    send2 = (f32[], u32[], token[]) send(param2, param3), channel_id=2
+    send2 = (f32[], u32[], token[]) send(param2, param3), channel_id=0,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
     param4 = token[] parameter(4)
-    recv1 = (f32[], u32[], token[]) recv(param4), channel_id=1
+    recv1 = (f32[], u32[], token[]) recv(param4), channel_id=0,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
     param5 = token[] parameter(5)
-    recv2 = (f32[], u32[], token[]) recv(param5), channel_id=2
+    recv2 = (f32[], u32[], token[]) recv(param5), channel_id=0,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
     ROOT out = ((f32[], u32[], token[]), (f32[], u32[], token[]),
       (f32[], u32[], token[]), (f32[], u32[], token[]))
       tuple(send1, send2, recv1, recv2)
   }
 
   ENTRY main {
-    data1 = f32[] constant(1)
+    data1 = f32[] constant(10)
     after-all1 = token[] after-all()
-    data2 = f32[] constant(2)
+    data2 = f32[] constant(20)
     after-all2 = token[] after-all()
     async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
       ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
@@ -104,6 +110,13 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
                         /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // TODO (rosiezou): remove the string comparison once a tuple comparison
+  // function is available in LiteralTestUtil.
+  EXPECT_EQ(results[0].ToStringWithoutShapeOneline(), "( 0, 0 )");
+  EXPECT_EQ(results[1].ToStringWithoutShapeOneline(), "( 10, 0 )");
+  EXPECT_EQ(results[2].ToStringWithoutShapeOneline(), "( 10, 0 )");
+  EXPECT_EQ(results[3].ToStringWithoutShapeOneline(), "( 0, 20 )");
 }
 
 }  // namespace

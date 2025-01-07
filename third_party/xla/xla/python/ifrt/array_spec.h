@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/array_spec.pb.h"
@@ -37,7 +38,7 @@ namespace ifrt {
 struct ArraySpec {
   DType dtype;
   Shape shape;
-  std::shared_ptr<const Sharding> sharding;
+  absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
   // TODO(hyeontaek): Add `layout` once expressing the default layout can be
   // done in a symbolic manner.
 

@@ -123,6 +123,7 @@ cc_library(
     hdrs = ["mlir_graph_optimization_pass.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -232,10 +233,10 @@ tf_cc_binary(
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",
+        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
+        "//tensorflow/compiler/mlir/lite/tools:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_xla_mlir_translate",
-        "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tf2xla/tests/registration:graph_to_tf_executor_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",

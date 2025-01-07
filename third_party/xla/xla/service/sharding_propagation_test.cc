@@ -6540,7 +6540,7 @@ ENTRY entry {
       op::Sharding("{devices=[2,2,2,1,2]<=[16] last_tile_dim_replicate}"));
 }
 
-TEST_F(ShardingPropagationTest, GatherBackwardWithExplicitBatchDims) {
+TEST_F(ShardingPropagationTest, GatherBackwardWithExplicitBatchDims1) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -6571,6 +6571,36 @@ ENTRY entry {
   EXPECT_THAT(
       module->entry_computation()->parameter_instruction(1),
       op::Sharding("{devices=[2,2,2,1,2]<=[16] last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherBackwardWithExplicitBatchDims2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %operand = bf16[32,32] parameter(0)
+  %iota = s32[32,1,1] iota(), iota_dimension=0
+  ROOT %gather = bf16[32,1] gather(%operand, %iota), offset_dims={},
+    collapsed_slice_dims={1}, start_index_map={1}, operand_batching_dims={0},
+    start_indices_batching_dims={0}, index_vector_dim=2, slice_sizes={1,1},
+    sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(1),
+              op::Sharding("{devices=[2,2,1]<=[4]}"));
 }
 
 TEST_F(ShardingPropagationTest, ScatterExplicitBatchDimsFromOperandToResult) {

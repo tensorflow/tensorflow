@@ -785,6 +785,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   if (to_move_in.empty()) {
     return false;
   }
+
+  if (!conditional->shape().IsTuple() && conditional->user_count() > 1) {
+    // This function cannot handle this case.
+    return false;
+  }
+
   // Mapping boundaries to be moved to their new representations.
   absl::flat_hash_map<Boundary, Boundary> hoisted_boundaries;
   int64_t to_move_in_size = to_move_in.size();

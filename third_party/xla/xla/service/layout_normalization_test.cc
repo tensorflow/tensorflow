@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"

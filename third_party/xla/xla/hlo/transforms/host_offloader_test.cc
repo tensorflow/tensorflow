@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -4188,6 +4189,93 @@ TEST_F(HostOffloaderTest, AvoidRedundantCopiesToHost) {
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
     ASSERT_NE(instr->opcode(), HloOpcode::kCopy);
   }
+}
+
+TEST_F(HostOffloaderTest, TanhOnHostMemory) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      to_host = f32[1024]{0} custom-call(param), custom_call_target="MoveToHost"
+      tanh = f32[1024]{0} tanh(to_host)
+      ROOT to_device = f32[1024]{0} custom-call(tanh), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* tanh = FindInstruction(module.get(), "tanh");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
+}
+
+TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryParamCopied) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0}, s32[]{:T(128)})->f32[256]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      index = s32[]{:T(128)} parameter(1)
+      to_host = f32[1024]{0} custom-call(param), custom_call_target="MoveToHost"
+      dynamic_slice = f32[256]{0} dynamic-slice(to_host, index), dynamic_slice_sizes={256}
+      tanh = f32[256]{0} tanh(dynamic_slice)
+      ROOT to_device = f32[256]{0} custom-call(tanh), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* tanh = FindInstruction(module.get(), "tanh");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
+  HloInstruction* dynamic_slice =
+      FindInstruction(module.get(), "dynamic_slice");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_slice));
+  // Check memory spaces
+  ASSERT_EQ(dynamic_slice->operand_count(), 2);
+  HloInstruction* copy_of_param = dynamic_slice->mutable_operand(0);
+  EXPECT_EQ(copy_of_param->opcode(), HloOpcode::kCopy);
+  TestShapeHasMemorySpace(copy_of_param->shape(), Layout::kHostMemorySpace);
+  // The below tests something which needn't always be true.
+  // The current expected behavior of HostOffloader for this test is to detect
+  // compute happening on data in host memory space, which is the ops
+  // dynamic_slice and tanh. HostOffloader will mark these two as host compute.
+  // The interesting thing here is that the index to the dynamic_slice has not
+  // explicitly been moved to host memory space. The below check expects that
+  // HostOffloader does not explicitly move the index to host memory space. If
+  // HostOffloader changes to enable this, that is fine, I just wanted to make
+  // sure that it doesn't happen by accident.
+  HloInstruction* index = dynamic_slice->mutable_operand(1);
+  EXPECT_EQ(index->opcode(), HloOpcode::kParameter);
+  TestShapeHasMemorySpace(index->shape(), Layout::kDefaultMemorySpace);
+}
+
+TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0}, s32[]{:T(128)})->f32[256]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      index = s32[]{:T(128)} parameter(1)
+      index_to_host = s32[]{:T(128)} custom-call(index), custom_call_target="MoveToHost"
+      dynamic_slice = f32[256]{0} dynamic-slice(param, index_to_host), dynamic_slice_sizes={256}
+      tanh = f32[256]{0} tanh(dynamic_slice)
+      ROOT to_device = f32[256]{0} custom-call(tanh), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* dynamic_slice =
+      FindInstruction(module.get(), "dynamic_slice");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_slice));
+  HloInstruction* tanh = FindInstruction(module.get(), "tanh");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
 }
 
 }  // namespace

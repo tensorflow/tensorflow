@@ -15,6 +15,8 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +26,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -145,6 +148,14 @@ XLineBuilder XPlaneBuilder::GetOrCreateLine(int64_t line_id) {
     line->set_id(line_id);
   }
   return XLineBuilder(line, this);
+}
+
+XLineBuilder XPlaneBuilder::GetOrCreateCounterLine() {
+  // The id is not used for counter lines. So, set it to the max int64_t value.
+  XLineBuilder line = GetOrCreateLine(std::numeric_limits<int64_t>::max());
+  line.SetName(tsl::profiler::kCounterEventsLineName);
+  line.SetTimestampNs(0);
+  return line;
 }
 
 XEventBuilder XLineBuilder::AddEvent(const Timespan& timespan,

@@ -18,16 +18,18 @@
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/southbound.h"
 
 class LiteRtDispatchDeviceContextT {
  public:
+  using Ptr = std::unique_ptr<LiteRtDispatchDeviceContextT>;
+
   ~LiteRtDispatchDeviceContextT();
 
-  static absl::StatusOr<std::unique_ptr<LiteRtDispatchDeviceContextT>> Create(
+  static litert::Expected<Ptr> Create(
       const litert::google_tensor::Southbound& southbound);
 
   ThrContext* thr_context() { return thr_context_; }

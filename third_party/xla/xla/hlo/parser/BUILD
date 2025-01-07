@@ -1,12 +1,12 @@
 # Description:
 #   XLA parser implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -70,9 +70,11 @@ xla_cc_test(
         ":hlo_lexer",
         ":hlo_parser",
         "//xla:array",
+        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_module_config",

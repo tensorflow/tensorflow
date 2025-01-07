@@ -199,7 +199,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Bool()),
     BatchGroupedConvolution2DTestDataToString);
 
-XLA_TEST_F(HloTestBase, OutpuChannelsSmallerThanBatch) {
+XLA_TEST_F(HloTestBase, OutputChannelsSmallerThanBatch) {
   const std::string& hlo_string = R"(
 HloModule main, entry_computation_layout={(bf16[4,4,4,1]{3,2,1,0},bf16[2,2,1,2]{3,2,1,0})->bf16[2,2,2,2]{3,2,1,0}}
 
@@ -209,6 +209,45 @@ ENTRY %main.4 (Arg_0.1: bf16[4,4,4,1], Arg_1.2: bf16[2,2,1,2]) -> bf16[2,2,2,2] 
   ROOT %convolution.3 = bf16[2,2,2,2] convolution(bf16[4,4,4,1] %Arg_0.1, bf16[2,2,1,2] %Arg_1.2), window={size=2x2 stride=2x2}, dim_labels=b01f_01io->b01f, batch_group_count=2
 }
   )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(HloTestBase, DepthwiseBatchDot) {
+  const std::string hlo_string = R"(
+HloModule main, entry_computation_layout={(f32[16,3,3,64]{3,0,2,1},f32[16,2,3,64]{3,0,2,1})->f32[4,3,64,1]{2,3,1,0}}
+
+ENTRY main {
+  p0 = f32[16,3,3,64] parameter(0)
+  p1 = f32[16,2,3,64] parameter(1)
+  ROOT conv.1 = convolution(p0, p1), window={size=2x3 pad=1_1x0_0 lhs_dilate=1x3 rhs_dilate=1x2}, dim_labels=f01b_i01o->01fb, batch_group_count=64
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(HloTestBase, DepthwiseOuterDot) {
+  const std::string hlo_string = R"(
+HloModule main, entry_computation_layout={(f32[16,3,1,64]{3,0,2,1},f32[16,2,3,64]{3,0,2,1})->f32[4,3,64,1]{2,3,1,0}}
+
+ENTRY main {
+  p0 = f32[16,3,1,64] parameter(0)
+  p1 = f32[16,2,3,64] parameter(1)
+  ROOT conv.1 = convolution(p0, p1), window={size=2x3 pad=1_1x2_2 lhs_dilate=1x1 rhs_dilate=1x1}, dim_labels=f01b_i01o->01fb, batch_group_count=64
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(HloTestBase, DepthwiseBatchOuterDot) {
+  const std::string hlo_string = R"(
+HloModule main, entry_computation_layout={(f32[8,30,1,64,5]{3,0,2,1,4},f32[8,30,30,64,3]{3,0,2,1,4})->f32[30,30,64,1,11]{2,3,1,0,4}}
+
+ENTRY main {
+  p0 = f32[8,30,1,64,5] parameter(0)
+  p1 = f32[8,30,30,64,3] parameter(1)
+  ROOT conv.1 = convolution(p0, p1), window={size=30x30x3 pad=0_0x29_29x0_0 lhs_dilate=30x1x3 rhs_dilate=29x1x1}, dim_labels=f01b2_i01o2->01fb2, batch_group_count=64
+}
+)";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
 }
 

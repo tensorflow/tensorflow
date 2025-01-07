@@ -104,7 +104,7 @@ static std::atomic<int64_t> alive_execs(0);
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent)
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, StreamExecutor* parent)
     : mode_(mode), parent_(parent) {
   execution_scopes_.try_emplace(kDefaulExecutionScope);
 }
@@ -118,13 +118,13 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
-    CommandBuffer& root_command_buffer) {
+    GpuCommandBuffer& root_command_buffer) {
   ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
       TF_RETURN_IF_ERROR(
-          SetNodeExecutionEnabled(barrier.handle, root_command_buffer, false));
+          root_command_buffer.SetNodeExecutionEnabled(barrier.handle, false));
     }
   }
   for (ConditionalCommandBuffers& cmd_buffers :
@@ -665,13 +665,13 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                        num_iteration);
   };
 
-  auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
+  auto body = [&](GpuCommandBuffer* body, GraphConditionalHandle conditional) {
     TF_RETURN_IF_ERROR(body_builder(body));
     TF_RETURN_IF_ERROR(body->Barrier());
 
     // Decide if we want to continue loop iteration.
-    return static_cast<GpuCommandBuffer*>(body)->LaunchSetForConditionKernel(
-        kDefaulExecutionScope, conditional, loop_counter, num_iteration);
+    return body->LaunchSetForConditionKernel(kDefaulExecutionScope, conditional,
+                                             loop_counter, num_iteration);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};
@@ -692,13 +692,13 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
     return LaunchSetWhileConditionKernel(id, handles[0], pred);
   };
 
-  auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
+  auto body = [&](GpuCommandBuffer* body, GraphConditionalHandle conditional) {
     TF_RETURN_IF_ERROR(body_builder(body));
     TF_RETURN_IF_ERROR(body->Barrier());
     TF_RETURN_IF_ERROR(cond_builder(kDefaulExecutionScope, body));
     TF_RETURN_IF_ERROR(body->Barrier());
-    return static_cast<GpuCommandBuffer*>(body)->LaunchSetWhileConditionKernel(
-        kDefaulExecutionScope, conditional, pred);
+    return body->LaunchSetWhileConditionKernel(kDefaulExecutionScope,
+                                               conditional, pred);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};

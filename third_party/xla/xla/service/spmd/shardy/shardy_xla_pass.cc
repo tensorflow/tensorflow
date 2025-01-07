@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -315,6 +316,9 @@ absl::StatusOr<bool> ShardyXLA::Run(
     if (shardyDir.empty()) {
       LOG(WARNING) << "\"sponge\" specified as dump directory but "
                       "TEST_UNDECLARED_OUTPUTS_DIR is not set!";
+    } else {
+      LOG(INFO) << "Shardy dump directory is sponge on undeclared outputs dir: "
+                << shardyDir;
     }
   }
 
@@ -384,9 +388,10 @@ absl::StatusOr<bool> ShardyXLA::Run(
     pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
     // NOTE: if we are using auto-spmd, we will use conservative propagation
     // since the TOAST cost model cannot account for split axes or padding.
-    mlir::sdy::addPropagationPipeline(
-        pm, shardyDir,
-        /*conservativePropagation=*/hloModule->use_auto_spmd_partitioning());
+    mlir::sdy::PropagationOptions options;
+    options.dumpDirectory = shardyDir;
+    options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
+    mlir::sdy::addPropagationPipeline(pm, options);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
   addMhloExportPipeline(pm);

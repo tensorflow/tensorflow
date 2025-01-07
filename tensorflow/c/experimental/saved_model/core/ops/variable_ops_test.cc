@@ -88,7 +88,7 @@ TEST_F(VariableOpsTest, AssignVariableAndReadSuccessful) {
   ImmediateTensorHandlePtr read_value_handle;
   TF_EXPECT_OK(internal::ReadVariable(context(), variable.get(), DT_FLOAT,
                                       &read_value_handle));
-  Status status;
+  absl::Status status;
   AbstractTensorPtr read_value(read_value_handle->Resolve(&status));
   TF_EXPECT_OK(status);
   EXPECT_FLOAT_EQ(42.0, *static_cast<float*>(read_value->Data()));

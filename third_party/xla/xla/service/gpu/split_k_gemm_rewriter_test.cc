@@ -44,9 +44,6 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
-// TODO(b/317016172): Inspect usages of TritonGemmConfig and potentially update
-// them to to use newly exposed parameters.
-
 namespace xla {
 namespace gpu {
 namespace {

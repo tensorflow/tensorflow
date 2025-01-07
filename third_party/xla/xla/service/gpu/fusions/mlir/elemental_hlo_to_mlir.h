@@ -29,11 +29,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -70,17 +70,6 @@ absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
     const CallTargetProvider& call_target_provider);
-
-mlir::Value UnrealizedConversionCast(mlir::Type type, mlir::Value value,
-                                     mlir::ImplicitLocOpBuilder& b);
-mlir::SmallVector<mlir::Value, 2> UnrealizedConversionCast(
-    mlir::TypeRange types, mlir::ValueRange values,
-    mlir::ImplicitLocOpBuilder& b);
-
-// Creates an affine.apply op for the given expression and values.
-mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
-                            mlir::ValueRange symbols,
-                            mlir::ImplicitLocOpBuilder& b);
 
 // Creates an `apply_indexing` op for the given map.
 llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,

@@ -95,9 +95,9 @@ cc_library(
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tools:prepare_reference_module",
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:subprocess",
     ],
 )

@@ -52,7 +52,10 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
@@ -79,7 +82,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/mpi_collectives.h"
 #endif  // !_WIN32 && !PLATFORM_GOOGLE
 
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_api.h"
@@ -88,6 +90,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/config.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/guard_lib.h"
@@ -225,6 +228,12 @@ NB_MODULE(xla_extension, m_nb) {
   PyMemorySpace::RegisterPythonType(m_nb);
   PyClient::RegisterPythonTypes(m_nb);
 
+  nb::enum_<ifrt::ArrayCopySemantics>(m_nb, "ArrayCopySemantics",
+                                      nb::is_arithmetic())
+      .value("ALWAYS_COPY", ifrt::ArrayCopySemantics::kAlwaysCopy)
+      .value("REUSE_INPUT", ifrt::ArrayCopySemantics::kReuseInput)
+      .value("DONATE_INPUT", ifrt::ArrayCopySemantics::kDonateInput);
+
   nb::class_<PjRtLayout>(m_nb, "PjRtLayout")
       .def("__str__", &PjRtLayout::ToString)
       .def("__eq__", [](const PjRtLayout& layout,
@@ -334,13 +343,13 @@ NB_MODULE(xla_extension, m_nb) {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
           nb::gil_scoped_release gil_release;
-          CpuClientOptions options;
+          xla::CpuClientOptions options;
 
           options.asynchronous = asynchronous;
           options.collectives = std::move(collectives);
           options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
-              xla::ValueOrThrow(GetTfrtCpuClient(std::move(options)));
+              xla::ValueOrThrow(xla::GetXlaPjrtCpuClient(std::move(options)));
           ifrt::PjRtClient::CreateOptions ifrt_options;
           ifrt_options.pjrt_client =
               std::shared_ptr<PjRtClient>(std::move(client));
@@ -587,6 +596,7 @@ NB_MODULE(xla_extension, m_nb) {
            nb::arg("gpu_backend").none() = nb::none(),
            nb::arg("device_id").none() = nb::none());
 
+  jax::BuildConfigSubmodule(m_nb);
   BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);

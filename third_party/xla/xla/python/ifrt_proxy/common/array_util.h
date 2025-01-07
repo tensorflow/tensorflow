@@ -17,6 +17,7 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 #define XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -79,7 +80,7 @@ class ArrayMemRegion {
 
 // Utilities for serializing and deserializing a host buffer of dtype
 // `DType::kString` (represented as arrays of absl::Cords).
-absl::StatusOr<const std::string> SerializeStringHostBuffer(
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
     absl::Span<const absl::Cord> cords);
 
 absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(

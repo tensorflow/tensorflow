@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Builders.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -34,7 +34,7 @@ namespace xla::gpu {
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config);
+    const TritonGemmConfig& config, const se::DeviceDescription& device_info);
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.

@@ -19,8 +19,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -49,7 +50,7 @@ TEST_F(PjRtStateTestFixture, SetAndGetPjRtClient) {
   options.asynchronous = true;
   options.cpu_device_count = 1;
   TF_ASSERT_OK(pjrt_state_->SetPjRtClient(
-      tensorflow::DEVICE_CPU, xla::GetTfrtCpuClient(options).value()));
+      tensorflow::DEVICE_CPU, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                           pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU));
   EXPECT_THAT(pjrt_client, testing::NotNull());
@@ -61,12 +62,12 @@ TEST_F(PjRtStateTestFixture, AddAlreadyExistsPjRtClient) {
   options.cpu_device_count = 1;
 
   TF_ASSERT_OK(pjrt_state_->SetPjRtClient(
-      tensorflow::DEVICE_CPU, xla::GetTfrtCpuClient(options).value()));
+      tensorflow::DEVICE_CPU, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_1,
                           pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU));
 
   TF_ASSERT_OK(pjrt_state_->SetPjRtClient(
-      tensorflow::DEVICE_CPU, xla::GetTfrtCpuClient(options).value()));
+      tensorflow::DEVICE_CPU, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_2,
                           pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU));
 
@@ -84,7 +85,7 @@ TEST_F(PjRtStateTestFixture, DeletePjRtClient) {
   options.asynchronous = true;
   options.cpu_device_count = 1;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
   xla::PjRtClient* pjrt_client_ptr = pjrt_client.get();
   TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
                                           std::move(pjrt_client)));
@@ -109,7 +110,7 @@ TEST_F(PjRtStateTestFixture, GetOrCreatePjRtClientExist) {
   options.asynchronous = true;
   options.cpu_device_count = 1;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
   auto pjrt_client_ptr = pjrt_client.get();
   TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
                                           std::move(pjrt_client)));

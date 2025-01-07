@@ -70,10 +70,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeChloToTflPass();
 // Rewrites MHLO in preparation for tflite legalization.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
 
-// Folds tfl.BroadcastTo nodes with subsequent ops that supports implicit
-// broadcasting.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateFoldBroadcastToPass();
-
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);

@@ -15,11 +15,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>

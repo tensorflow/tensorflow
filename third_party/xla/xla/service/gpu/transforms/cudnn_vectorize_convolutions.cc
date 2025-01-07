@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -80,7 +81,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
   for (HloInstruction* instr : comp->instructions()) {
-    if (instr->opcode() != HloOpcode::kCustomCall ||
+    if (HloPredicateIsNotOp<HloOpcode::kCustomCall>(instr) ||
         (instr->custom_call_target() != kCudnnConvForwardCallTarget &&
          instr->custom_call_target() !=
              kCudnnConvBiasActivationForwardCallTarget) ||
@@ -452,10 +453,8 @@ static absl::StatusOr<bool> TryRevectorizeConv(
   // Set the name on the new conv.  This is purely cosmetic, but we attempt to
   // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
   auto new_conv_comp_instrs = new_conv_comp->instructions();
-  auto new_conv_it =
-      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
-        return instr->opcode() == HloOpcode::kCustomCall;
-      });
+  auto new_conv_it = absl::c_find_if(new_conv_comp_instrs,
+                                     HloPredicateIsOp<HloOpcode::kCustomCall>);
   if (new_conv_it != new_conv_comp_instrs.end()) {
     new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
                                                      conv->name());

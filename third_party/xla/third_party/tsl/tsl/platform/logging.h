@@ -21,9 +21,9 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
     defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
-#include "tsl/platform/google/logging.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/logging.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_LOGGING_H_

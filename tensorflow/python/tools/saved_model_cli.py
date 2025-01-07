@@ -222,7 +222,7 @@ _SMCLI_MULTITHREADING = flags.DEFINE_string(
     name='multithreading', default='False',
     help='Enable multithreading in the compiled computation. Note that with '
     'this flag enabled, the resulting object files may have external '
-    'dependencies on multithreading libraries, such as \'nsync\'.')
+    'dependencies on multithreading libraries, such as \'Abseil\'.')
 
 command_required_flags = {
     'show': ['dir'],

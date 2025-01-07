@@ -70,13 +70,13 @@ struct FoldableSelect {
 //     false_operand)
 // ```
 std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
-  if (select->opcode() != HloOpcode::kSelect) {
+  if (HloPredicateIsNotOp<HloOpcode::kSelect>(select)) {
     return std::nullopt;
   }
 
   // Match select predicate (may be broadcasted).
   const HloInstruction* predicate_candidate = select->operand(0);
-  if (predicate_candidate->opcode() == HloOpcode::kBroadcast)
+  if (HloPredicateIsOp<HloOpcode::kBroadcast>(predicate_candidate))
     predicate_candidate = predicate_candidate->operand(0);
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(predicate_candidate);
@@ -95,9 +95,9 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
 
   // Match replica-id or partition-id.
   CollectiveOpGroupMode collective_mode;
-  if (id_op->opcode() == HloOpcode::kReplicaId) {
+  if (HloPredicateIsOp<HloOpcode::kReplicaId>(id_op)) {
     collective_mode = CollectiveOpGroupMode::kCrossReplica;
-  } else if (id_op->opcode() == HloOpcode::kPartitionId) {
+  } else if (HloPredicateIsOp<HloOpcode::kPartitionId>(id_op)) {
     collective_mode = CollectiveOpGroupMode::kCrossPartition;
   } else {
     return std::nullopt;

@@ -115,7 +115,7 @@ ENTRY test_main {
   HloComputation* ag_loop_body = ag_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : ag_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -198,7 +198,7 @@ ENTRY main.9_spmd {
   HloComputation* rs_loop_body = rs_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : rs_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -282,7 +282,7 @@ ENTRY main.12_spmd {
   HloComputation* while_body = while_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* ins : while_body->MakeInstructionPostOrder()) {
-    if (ins->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(ins)) {
       dot_count++;
       EXPECT_GT(ins->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);

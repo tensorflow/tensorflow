@@ -14,6 +14,7 @@ distribute_py_strict_test(
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base
+        "cuda-only",  #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow:tensorflow_py",

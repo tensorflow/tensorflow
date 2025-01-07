@@ -42,8 +42,9 @@ message DebugOptions {
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
-
   // go/keep-sorted end
+
+  reserved 346;  // xla_experimental_exec_time_optimization_effort
 
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
@@ -155,6 +156,9 @@ message DebugOptions {
   // Gates the experimental feature coupling the Triton Softmax pattern matcher
   // with priority fusion.
   bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+
+  // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
+  bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
@@ -306,6 +310,14 @@ message DebugOptions {
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_gpuasm_optimizations = 103;
 
+  // If true, we generate debug info when compiling PTX. This is useful for
+  // profiling and debugging.
+  bool xla_gpu_generate_debug_info = 348;
+
+  // If true, we generate line info when compiling PTX. This is useful for
+  // profiling and debugging.
+  bool xla_gpu_generate_line_info = 349;
+
   enum ShapeChecks {
     // Do not insert any shape checks for dynamically shaped operations; output
     // buffers might contain garbage data if shapes don't match.
@@ -434,6 +446,11 @@ message DebugOptions {
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
+  // If true, every time an HLO module is run, we will dump an
+  // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
+  // its inputs) to the --xla_dump_to directory.
+  bool xla_gpu_dump_hlo_unoptimized_snapshots = 352;
+
   reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
@@ -447,8 +464,7 @@ message DebugOptions {
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // Extra parameters to pass the GPU assembler.
-  string xla_gpu_asm_extra_flags = 141;
+  reserved 141;  // was xla_gpu_asm_extra_flags
 
   // Per-heap size constraint. New heaps will be created if per-heap max size is
   // reached.
@@ -596,10 +612,11 @@ message DebugOptions {
     CUBLAS = 2;
     CUDNN = 3;
     COLLECTIVES = 4;
-    CONDITIONALS = 5;
-    CUSTOM_CALL = 6;
-    CUBLASLT = 7;
-    DYNAMIC_SLICE = 8;
+    CONDITIONAL = 5;
+    WHILE = 6;
+    CUSTOM_CALL = 7;
+    CUBLASLT = 8;
+    DYNAMIC_SLICE_FUSION = 9;
   }
 
   // Determine the types of commands that are recorded into command buffers.
@@ -682,6 +699,9 @@ message DebugOptions {
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
   int64 xla_gpu_collective_permute_decomposer_threshold = 237;
+
+  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
+  bool xla_gpu_enable_experimental_pipeline_parallelism_opt = 351;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -787,6 +807,10 @@ message DebugOptions {
   // Filter out kernels that spill registers during autotuning.
   bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
+  // If true, PTX compilation will fail if a kernel spills registers.
+  // This is meant for debugging and only applies to CUDA PTX compilation.
+  bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
+
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
@@ -816,6 +840,8 @@ message DebugOptions {
   bool xla_gpu_enable_dot_strength_reduction = 270;
   // Whether to use multiple compute streams to run windowed einsum.
   bool xla_gpu_multi_streamed_windowed_einsum = 280;
+
+  bool xla_gpu_experimental_stream_annotation = 342;
 
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
   bool xla_gpu_enable_bf16_6way_gemm = 271;
@@ -924,6 +950,13 @@ message DebugOptions {
   // command buffer.
   repeated string legacy_command_buffer_custom_call_targets = 314;
 
+  // If true, XLA runtime will retain exclusive ownership of the GPU when
+  // running a module, so there are no multi-thread conflicts on the GPU. This
+  // can enable some optimizations that reduce the cost of resource management,
+  // e.g., command buffer updates to ensure correctness when running in
+  // multi-thread mode.
+  bool xla_gpu_require_exclusive_lock = 347;
+
   // This flag is used for controlling HLO dumping and NVTX marker. If turned
   // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
   // as op names, while the actual op names will be shown if turned off.
@@ -964,8 +997,20 @@ message DebugOptions {
   // but potentially higher the performance.
   int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
+  enum LibNvJitLinkMode {
+    // LibNvJitLink is used if it is available and no buggy version has been
+    // detected.
+    LIB_NV_JIT_LINK_MODE_AUTO = 0;
+    // LibNvJitLink is never used.
+    LIB_NV_JIT_LINK_MODE_DISABLED = 1;
+    // LibNvJitLink is used always. If it is not available, compilation will
+    // fail.
+    LIB_NV_JIT_LINK_MODE_ENABLED = 2;
+  }
+
   // If enabled, uses the libnvjitlink library for PTX compilation and linking
-  bool xla_gpu_enable_libnvjitlink = 319;
+  LibNvJitLinkMode xla_gpu_libnvjitlink_mode = 343;
+  reserved 319;  // was xla_gpu_enable_libnvjitlink with boolean type.
 
   // If true, XLA will wrap `dot` operations into async computations in an
   // effort to parallelize matrix operations.
@@ -983,12 +1028,6 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Enables strict PGLE checking. If an FDO profile is specified and latency
-  // hiding scheduler encounters missing instructions in the profile
-  // compilation will halt.
-  // TODO: remove this field - it is replaced by xla_gpu_pgle_accuracy_checker.
-  bool xla_gpu_enable_pgle_accuracy_checker = 326;
-
   // Timeouts for RendezvousSingle stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
@@ -999,11 +1038,6 @@ message DebugOptions {
 
   // DotMerger pass threshold size to be used in MB.
   int32 xla_gpu_dot_merger_threshold_mb = 331;
-
-  // If enabled, in the absence of user provided knobs might tune pass
-  // configurations based on the HLO. For example it decides to unroll the while
-  // loop by a factor of two if a collective op is present.
-  bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
   // This controls how many in-flight collectives latency hiding scheduler
   // can schedule. Example usage:
@@ -1034,7 +1068,16 @@ message DebugOptions {
   }
   PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
-  // Next id: 342
+  bool xla_pjrt_allow_auto_layout_in_hlo = 344;
+
+  // Enable the scatter determinism expander, an optimized pass that
+  // rewrites scatter operations to ensure deterministic behavior with high
+  // performance.
+  // Note that even when this flag is disabled, scatter operations may still
+  // be deterministic, although with additional overhead.
+  bool xla_gpu_enable_scatter_determinism_expander = 345;
+
+  // Next id: 354
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1052,7 +1095,10 @@ message DebugOptions {
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
   // xla_gpu_enable_priority_fusion
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320;
+  // xla_gpu_pgle_accuracy_checker
+  // xla_gpu_enable_heuristic_pass_configuration
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
+      326, 332;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -1086,7 +1132,7 @@ message ExecutionOptions {
   // Used to seed random-number generators used in this computation.  If this is
   // 0, we generate a seed ourselves.
   //
-  // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
+  // Changing the seed unnecessarily forces a recompilation.
   uint64 seed = 3;
 
   DebugOptions debug_options = 4;
@@ -1209,7 +1255,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 38.
+// Next id: 39.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1270,6 +1316,7 @@ message HloModuleConfigProto {
   bytes fdo_profile = 31;
   int64 device_memory_size = 32;
   bool use_shardy_partitioner = 34;
+  ShardingConfigProto sharding_config = 38;
 }
 
 message HloModuleProtoWithConfig {
@@ -1292,4 +1339,16 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
+}
+
+// Message that captures sharding configuration of an HLO op.
+message NodeShardingConfigProto {
+  xla.OpSharding sharding = 1;                 // For non-tuples.
+  repeated NodeShardingConfigProto nodes = 2;  // For tuples.
+}
+
+// Message that captures sharding configuration of an HLO module.
+message ShardingConfigProto {
+  // Configuration for each HLO instruction.
+  repeated NodeShardingConfigProto nodes = 1;
 }

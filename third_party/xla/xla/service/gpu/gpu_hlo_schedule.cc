@@ -46,7 +46,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
@@ -430,9 +432,12 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     return ScheduleMetadata{memory_limit};
   }
 
-  HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
-  prepare_pipeline.AddPass<P2PSchedulePreparation>();
-  TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
+  const DebugOptions& options = module->config().debug_options();
+  if (options.xla_gpu_enable_pipelined_p2p()) {
+    HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
+    prepare_pipeline.AddPass<P2PSchedulePreparation>();
+    TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
+  }
 
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
@@ -449,9 +454,9 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
 
-  const DebugOptions& options = module->config().debug_options();
   const bool enable_latency_hiding_scheduler =
-      options.xla_gpu_enable_latency_hiding_scheduler();
+      options.xla_gpu_enable_latency_hiding_scheduler() ||
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(*module);
 
   if (!enable_latency_hiding_scheduler) {
     return ScheduleMetadata{memory_limit};
@@ -518,8 +523,11 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     return GetSizeOfShape(shape, pointer_size);
   };
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
-      config);
+      shape_size_in_bytes, async_tracker.get(), latency_estimator.get(), config,
+      /*target_scheduling_rule=*/nullptr,
+      /*early_target_scheduling_rule=*/nullptr, /*post_processing_fn=*/nullptr,
+      /*scheduling_instruction_crosses_overlap_limit=*/
+      GpuScheduleCrossesOverlapLimit);
   pipeline.AddPass<SchedulingInstructionAnnotator>();
   pipeline.AddPass<LatencyHidingScheduler>(
       std::move(latency_estimator), std::move(async_tracker),

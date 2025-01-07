@@ -21,11 +21,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
@@ -43,8 +43,8 @@ class DispatchDelegateKernel
 
   ~DispatchDelegateKernel() override;
 
-  static absl::StatusOr<Ptr> Create(
-      std::string&& graph_name, const LiteRtDispatchDelegateOptions& options);
+  static Expected<Ptr> Create(std::string&& graph_name,
+                              const LiteRtDispatchDelegateOptions& options);
 
   TfLiteStatus Init(TfLiteOpaqueContext* context,
                     const TfLiteOpaqueDelegateParams* params) override;
@@ -63,20 +63,46 @@ class DispatchDelegateKernel
         graph_name_(std::move(graph_name)),
         device_context_(device_context) {}
 
-  absl::StatusOr<TensorBufferRequirements> GetBufferRequirements(
+  Expected<TensorBufferRequirements> GetBufferRequirements(
       const RankedTensorType& tensor_type, int io_tensor_index,
       bool is_input) const;
-  TfLiteStatus SetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
-                         int buffer_index, bool is_input);
+
+  // Creates a new tensor buffer for the given tensor. After that the created
+  // tensor buffer is registered with RegisterLiteRtTensorBuffer().
+  TfLiteStatus CreateAndSetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
+                                  int buffer_index, bool is_input);
+
+  // Registers the given LiteRtTensorBuffer (and its size) with the Dispatch
+  // API.
+  // Also update the internal state (input_tensor_buffers_, etc.) to keep track
+  // of the registered tensor buffers.
+  TfLiteStatus RegisterLiteRtTensorBuffer(TensorBuffer&& tensor_buffer,
+                                          size_t used_size, int buffer_index,
+                                          bool is_input);
+
+  // Registers LiteRtTensorBuffers for all inputs and outputs of the given
+  // node.
+  // Also update the internal state (input_tensor_buffers_, etc.) to keep track
+  // of the registered tensor buffers.
+  TfLiteStatus RegisterLiteRtTensorBuffers(TfLiteOpaqueContext* context,
+                                           TfLiteOpaqueNode* node);
 
   const LiteRtDispatchDelegateOptions& options_;
   std::string graph_name_;
   LiteRtDispatchDeviceContext device_context_;
   LiteRtDispatchInvocationContext invocation_context_ = nullptr;
 
+  // Indicates whether the input tensor buffer requires a CPU sync before
+  // invoking the Dispatch API.
+  std::vector<bool> input_tensor_buffers_require_cpu_sync_;
+
   std::vector<TensorBuffer> input_tensor_buffers_;
   std::vector<LiteRtTensorBufferHandle> input_tensor_buffer_handles_;
   std::vector<size_t> input_tensor_buffer_used_size_;
+
+  // Indicates whether the output tensor buffer requires a CPU sync after
+  // invoking the Dispatch API.
+  std::vector<bool> output_tensor_buffers_require_cpu_sync_;
 
   std::vector<TensorBuffer> output_tensor_buffers_;
   std::vector<LiteRtTensorBufferHandle> output_tensor_buffer_handles_;

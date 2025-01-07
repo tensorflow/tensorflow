@@ -23,8 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -38,7 +37,6 @@ class TriangularSolveThunk : public Thunk {
  public:
   TriangularSolveThunk(ThunkInfo thunk_info,
                        const TriangularSolveOptions& options,
-                       se::GpuAsmOpts asm_opts,
                        const BufferAllocation::Slice& a_buffer,
                        const BufferAllocation::Slice& b_buffer,
                        const BufferAllocation::Slice& temp_buffer,
@@ -52,7 +50,6 @@ class TriangularSolveThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  se::GpuAsmOpts asm_opts_;
   const se::blas::UpperLower uplo_;
   const se::blas::Side side_;
   const se::blas::Diagonal unit_diagonal_;
@@ -70,13 +67,15 @@ class TriangularSolveThunk : public Thunk {
   const int64_t b_batch_stride_;
 };
 
-absl::Status RunTriangularSolve(
-    se::DeviceMemoryBase a_data, se::DeviceMemoryBase b_data,
-    se::DeviceMemoryBase temp_data, se::GpuAsmOpts asm_opts,
-    se::blas::UpperLower uplo, se::blas::Side side,
-    se::blas::Diagonal unit_diagonal, se::blas::Transpose transpose_a,
-    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
-    int64_t a_batch_stride, int64_t b_batch_stride, se::Stream* stream);
+absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
+                                se::DeviceMemoryBase b_data,
+                                se::DeviceMemoryBase temp_data,
+                                se::blas::UpperLower uplo, se::blas::Side side,
+                                se::blas::Diagonal unit_diagonal,
+                                se::blas::Transpose transpose_a,
+                                PrimitiveType type, int64_t batch_size,
+                                int64_t m, int64_t n, int64_t a_batch_stride,
+                                int64_t b_batch_stride, se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

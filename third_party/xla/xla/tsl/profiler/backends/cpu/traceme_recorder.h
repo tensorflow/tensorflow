@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
 #define XLA_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
 
+#include <sys/types.h>
+
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -26,12 +28,14 @@ limitations under the License.
 
 namespace tsl {
 namespace profiler {
+
 namespace internal {
 
 // Current trace level.
 // Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
 // Modified by TraceMeRecorder singleton when tracing starts/stops.
 TF_EXPORT extern std::atomic<int> g_trace_level;
+TF_EXPORT extern std::atomic<uint64_t> g_trace_filter_bitmap;
 
 }  // namespace internal
 
@@ -82,6 +86,14 @@ class TraceMeRecorder {
   // Level must be >= 0. If level is 0, no traces will be recorded.
   static bool Start(int level);
 
+  // Starts recording of TraceMe() with filter.
+  // Only traces <= level will be recorded.
+  // Level must be >= 0. If level is 0, no traces will be recorded.
+  // filter_mask is a bitmap that will be used to filter out traces during
+  // recording. Filter will be applied only if record function (e.g. TraceMe,
+  // ActivityStart, InstantActivity etc.) with filter_mask is called.
+  static bool Start(int level, uint64_t filter_mask);
+
   // Stops recording and returns events recorded since Start().
   // Events passed to Record after Stop has started will be dropped.
   static Events Stop();
@@ -89,6 +101,11 @@ class TraceMeRecorder {
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
     return internal::g_trace_level.load(std::memory_order_acquire) >= level;
+  }
+
+  // Returns whether the filter is enabled.
+  static inline bool CheckFilter(uint64_t filter) {
+    return internal::g_trace_filter_bitmap & filter;
   }
 
   // Default value for trace_level_ when tracing is disabled

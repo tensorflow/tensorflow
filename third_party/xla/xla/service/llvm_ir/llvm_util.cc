@@ -96,7 +96,7 @@ std::string DumpToStringTempl(T* entity) {
 
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
-llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
+llvm::Module* ModuleFromIRBuilder(llvm::IRBuilderBase* b) {
   auto block = CHECK_NOTNULL(b->GetInsertBlock());
   auto fn = CHECK_NOTNULL(block->getParent());
   auto module = CHECK_NOTNULL(fn->getParent());
@@ -129,7 +129,7 @@ std::string DumpToString(mlir::Value value) {
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b,
     absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
@@ -138,7 +138,7 @@ llvm::CallInst* EmitCallToIntrinsic(
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
@@ -150,7 +150,7 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
@@ -162,7 +162,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilder<>* b) {
+                                   llvm::Value* index, llvm::IRBuilderBase* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
   VLOG(2) << "EmitBufferIndexingGEP with type="
@@ -178,7 +178,7 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilder<>* b) {
+                                   int64_t index, llvm::IRBuilderBase* b) {
   return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
@@ -293,7 +293,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
 }
 
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b) {
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
   std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
     return Internal("Encoded shape size exceeded int32_t size limit.");
@@ -347,7 +347,7 @@ SharedMemoryTile AllocateSharedMemoryTile(
 }
 
 static std::vector<llvm::Value*> IndexWith0(
-    absl::Span<llvm::Value* const> index, llvm::IRBuilder<>* b) {
+    absl::Span<llvm::Value* const> index, llvm::IRBuilderBase* b) {
   std::vector<llvm::Value*> index_with_0{
       llvm::ConstantInt::get(index.front()->getType(), 0)};
   absl::c_copy(index, std::back_inserter(index_with_0));
@@ -355,7 +355,7 @@ static std::vector<llvm::Value*> IndexWith0(
 }
 
 llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
-                                       llvm::IRBuilder<>* b) const {
+                                       llvm::IRBuilderBase* b) const {
   llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
                                           IndexWith0(index, b));
   // __shared__ memory uses a different address space, so we cast it
@@ -365,7 +365,7 @@ llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
 };
 
 llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
-                                    llvm::IRBuilder<>* b) const {
+                                    llvm::IRBuilderBase* b) const {
   auto* load_type = llvm::GetElementPtrInst::getIndexedType(
       base_ptr_->getValueType(), IndexWith0(index, b));
   return b->CreateLoad(load_type, Address(index, b));
@@ -373,13 +373,13 @@ llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
 
 llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
                                          absl::Span<llvm::Value* const> index,
-                                         llvm::IRBuilder<>* b) const {
+                                         llvm::IRBuilderBase* b) const {
   return b->CreateStore(value, Address(index, b));
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
-                                            llvm::IRBuilder<>* b,
+                                            llvm::IRBuilderBase* b,
                                             int alignment) {
   return EmitAllocaAtFunctionEntryWithCount(type, nullptr, name, b, alignment);
 }
@@ -387,9 +387,9 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      llvm::Value* element_count,
                                                      absl::string_view name,
-                                                     llvm::IRBuilder<>* b,
+                                                     llvm::IRBuilderBase* b,
                                                      int alignment) {
-  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::IRBuilderBase::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
@@ -407,7 +407,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
 
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
                                    absl::string_view name,
-                                   llvm::IRBuilder<>* b) {
+                                   llvm::IRBuilderBase* b) {
   return llvm::BasicBlock::Create(
       /*Context=*/b->getContext(),
       /*Name=*/AsStringRef(name),
@@ -416,7 +416,7 @@ llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
 }
 
 LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
-                          llvm::IRBuilder<>* b, bool emit_else) {
+                          llvm::IRBuilderBase* b, bool emit_else) {
   llvm_ir::LlvmIfData if_data;
   if_data.if_block = b->GetInsertBlock();
   if_data.true_block =
@@ -460,7 +460,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* b, absl::string_view name) {
+                            llvm::IRBuilderBase* b, absl::string_view name) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
     comparison_result =
@@ -481,7 +481,7 @@ static void LogS64(const char* tag, int64_t value) {
   LOG(INFO) << tag << " (int64_t): " << value;
 }
 
-void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilderBase* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
@@ -593,26 +593,17 @@ std::string SanitizeFunctionName(std::string function_name) {
   return function_name;
 }
 
-void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+void SetToFirstInsertPoint(llvm::BasicBlock* blk,
+                           llvm::IRBuilderBase* builder) {
   builder->SetInsertPoint(blk, blk->getFirstInsertionPt());
 }
 
-void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   if (llvm::Instruction* terminator = blk->getTerminator()) {
     builder->SetInsertPoint(terminator);
   } else {
     builder->SetInsertPoint(blk);
   }
-}
-
-llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilder<>* builder) {
-  auto size = rotand->getType()->getPrimitiveSizeInBits();
-  auto size_value = builder->getIntN(size, size);
-  auto mod = [=](llvm::Value* x) { return builder->CreateURem(x, size_value); };
-  return builder->CreateOr(
-      builder->CreateShl(rotand, mod(builder->CreateSub(size_value, rotor))),
-      builder->CreateLShr(rotand, mod(rotor)));
 }
 
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
@@ -733,31 +724,10 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   return function;
 }
 
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
-                                                    llvm::Value* src0,
-                                                    llvm::Value* src1) {
-  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
-  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
-  llvm::Type* int64_ty = b->getInt64Ty();
-  src0 = b->CreateZExt(src0, int64_ty);
-  src1 = b->CreateZExt(src1, int64_ty);
-  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
-}
-
-std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilder<>* b, llvm::Value* value_64bits) {
-  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
-  llvm::Type* int32_ty = b->getInt32Ty();
-  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
-  llvm::Value* high_32bits =
-      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
-  return std::make_pair(low_32bits, high_32bits);
-}
-
 unsigned GetGlobalMemoryAddressSpace() { return 1; }
 
 llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
-                                                     llvm::IRBuilder<>* b) {
+                                                     llvm::IRBuilderBase* b) {
   static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
@@ -783,7 +753,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
 }
 
 llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilder<>* builder) {
+                                  llvm::IRBuilderBase* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
   llvm::LoadInst* state_value_old =
@@ -795,10 +765,10 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
   return state_value_old;
 }
 
-llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b) {
   llvm::Function* function = b->GetInsertBlock()->getParent();
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::IRBuilderBase::InsertPointGuard guard(*b);
   llvm::BasicBlock* early_return =
       llvm::BasicBlock::Create(/*Context=*/module->getContext(),
                                /*Name=*/"early_return",
@@ -808,7 +778,7 @@ llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
   return early_return;
 }
 
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block) {
   if (!return_block) {
     return_block = EmitReturnBlock(b);

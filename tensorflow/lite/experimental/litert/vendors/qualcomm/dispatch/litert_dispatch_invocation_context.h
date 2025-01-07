@@ -17,13 +17,12 @@
 
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/registry.h"
@@ -37,24 +36,24 @@ class LiteRtDispatchInvocationContextT {
 
   ~LiteRtDispatchInvocationContextT() = default;
 
-  static absl::StatusOr<Ptr> Create(
+  static litert::Expected<Ptr> Create(
       litert::qnn::QnnManager& qnn_manager,
       LiteRtDispatchDeviceContextT& device_context,
       const void* exec_bytecode_ptr, size_t exec_bytecode_size,
       const char* function_name);
 
-  absl::StatusOr<LiteRtTensorBufferRequirements> GetInputRequirements(
+  litert::Expected<LiteRtTensorBufferRequirements> GetInputRequirements(
       int input_index, const LiteRtRankedTensorType& tensor_type);
-  absl::StatusOr<LiteRtTensorBufferRequirements> GetOutputRequirements(
+  litert::Expected<LiteRtTensorBufferRequirements> GetOutputRequirements(
       int output_index, const LiteRtRankedTensorType& tensor_type);
 
-  absl::Status AttachInput(int graph_input_index,
-                           LiteRtTensorBufferHandle tensor_buffer_handle);
+  litert::Expected<void> AttachInput(
+      int graph_input_index, LiteRtTensorBufferHandle tensor_buffer_handle);
 
-  absl::Status AttachOutput(int graph_output_index,
-                            LiteRtTensorBufferHandle tensor_buffer_handle);
+  litert::Expected<void> AttachOutput(
+      int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle);
 
-  absl::Status Execute();
+  litert::Expected<void> Execute();
 
   Qnn_ContextHandle_t ContextHandle() { return context_handle_.get(); }
 
@@ -67,8 +66,8 @@ class LiteRtDispatchInvocationContextT {
       Qnn_ProfileHandle_t profile_handle, int graph_index,
       Qnn_GraphHandle_t graph_handle);
 
-  absl::Status AttachBuffer(Qnn_Tensor_t& tensor,
-                            LiteRtTensorBufferHandle tensor_buffer_handle);
+  litert::Expected<void> AttachBuffer(
+      Qnn_Tensor_t& tensor, LiteRtTensorBufferHandle tensor_buffer_handle);
 
   litert::qnn::QnnManager& qnn_manager_;
   LiteRtDispatchDeviceContextT& device_context_;

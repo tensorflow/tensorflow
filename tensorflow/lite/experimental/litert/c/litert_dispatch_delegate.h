@@ -40,11 +40,6 @@ LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions();
 TfLiteStatus LiteRtAddDispatchDelegateOption(
     LiteRtDispatchDelegateOptions* options, LiteRtDispatchOption option);
 
-// Add NPU executable information keyed by a provided tag.
-TfLiteStatus LiteRtAddDispatchDelegateExecInfoOption(
-    LiteRtDispatchDelegateOptions* options, const char* exec_tag,
-    const void* bytecode_addr, size_t bytecode_size, const char* function_name);
-
 void LiteRtDestroyDispatchDelegateOptions(
     LiteRtDispatchDelegateOptions* options);
 
@@ -55,6 +50,15 @@ TfLiteOpaqueDelegate* LiteRtCreateDispatchDelegate(
 
 // Do any needed cleanup and delete 'delegate'.
 void LiteRtDestroyDispatchDelegate(TfLiteOpaqueDelegate* delegate);
+
+//
+// Common option helpers
+//
+
+// Alloc base is the address of the first byte of flatbuffer model in memory. It
+// is used by ops to find the start of npu byte code appended to the file.
+TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
+    LiteRtDispatchDelegateOptions* options, const void* alloc_base);
 
 #ifdef __cplusplus
 }

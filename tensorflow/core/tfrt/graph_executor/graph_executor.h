@@ -257,14 +257,16 @@ class GraphExecutor {
       Options options, std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
-      std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
+      std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+      tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Ctor. Public for `Create()`. Do not use directly.
   GraphExecutor(Options options, std::unique_ptr<FallbackState> fallback_state,
                 std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
-                std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
+                std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+                tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Runs on the graph according to given input/output.
   absl::Status Run(

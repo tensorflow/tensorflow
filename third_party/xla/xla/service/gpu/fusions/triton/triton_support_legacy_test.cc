@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(b/343158720): Simplify the tests in this file after a generic emitter
-// has landed.
 #include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 
 #include <memory>
@@ -52,7 +50,6 @@ namespace gpu {
 namespace {
 
 se::GpuComputeCapability GetComputeCapability() {
-  // TODO(b/348572380) Make this more general and test additional platforms.
   return se::CudaComputeCapability::Ampere();
 }
 
@@ -106,8 +103,6 @@ ENTRY e {
          "split_k":1,"num_stages":4,"num_warps":8,
          "num_ctas":1}}}
 })";
-    // TODO(b/345763510): Change the kind above to "__triton" once dots are
-    // supported.
     const std::string hlo_test = absl::Substitute(
         kHloTestTemplate, lhs, rhs, output, HloOpcodeString(opcode));
     TF_ASSERT_OK_AND_ASSIGN(

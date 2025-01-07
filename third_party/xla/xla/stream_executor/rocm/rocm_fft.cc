@@ -16,20 +16,29 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_fft.h"
 
 #include <complex>
+#include <cstdint>
 #include <memory>
+#include <utility>
 
+#include "absl/status/status.h"
+#include "rocm/include/hipfft/hipfft.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/logging.h"
+
+#ifndef PLATFORM_GOOGLE
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
+#endif
 
 namespace stream_executor {
 namespace gpu {
@@ -143,7 +152,9 @@ hipfftType ROCMFftType(fft::Type type) {
 
 // Associates the given stream with the given rocFFT plan.
 bool SetStream(StreamExecutor *parent, hipfftHandle plan, Stream *stream) {
-  auto ret = wrap::hipfftSetStream(parent, plan, AsGpuStreamValue(stream));
+  auto ret = wrap::hipfftSetStream(
+      parent, plan,
+      static_cast<hipStream_t>(stream->platform_specific_handle().stream));
   if (ret != HIPFFT_SUCCESS) {
     LOG(ERROR) << "failed to run rocFFT routine hipfftSetStream: " << ret;
     return false;

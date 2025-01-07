@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -46,7 +48,9 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -117,21 +121,42 @@ absl::StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
   return absl::flat_hash_set<std::string>();
 }
 
+bool GetTf2xlaMlirBridgeState(
+    const tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
+  bool enable_tf2xla_mlir_bridge = true;
+  if (runtime_config == nullptr) return enable_tf2xla_mlir_bridge;
+  if (auto mlir_bridge_config =
+          runtime_config->Get<tensorflow::tf2xla::v1::MlirBridgeConfig>();
+      mlir_bridge_config.ok()) {
+    if (mlir_bridge_config->has_enable_tf2xla_mlir_bridge()) {
+      LOG(INFO) << "enable_tf2xla_mlir_bridge in mlir_bridge_config is "
+                << mlir_bridge_config->enable_tf2xla_mlir_bridge();
+      enable_tf2xla_mlir_bridge =
+          mlir_bridge_config->enable_tf2xla_mlir_bridge();
+    }
+  }
+  return enable_tf2xla_mlir_bridge;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
-TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
-                                tensorflow::GraphDef graph_def,
-                                const FallbackState& fallback_state) {
+TfrtGraphExecutionState::Create(
+    const TfrtGraphExecutionState::Options& options,
+    tensorflow::GraphDef graph_def, const FallbackState& fallback_state,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   TF_ASSIGN_OR_RETURN(
       auto functions_to_optimize,
       PreprocessGraph(graph_def, options.run_placer_grappler_on_functions));
+
+  bool enable_tf2xla_mlir_bridge = GetTf2xlaMlirBridgeState(runtime_config);
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
   TF_ASSIGN_OR_RETURN(auto graph_execution_state,
                       fallback_state.CreateGraphExecutionState(
-                          std::move(graph_def), options.run_placer_on_graph));
+                          std::move(graph_def), options.run_placer_on_graph,
+                          enable_tf2xla_mlir_bridge));
 
   return std::make_unique<TfrtGraphExecutionState>(
       options, std::move(graph_execution_state), fallback_state,
@@ -264,11 +289,14 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   // Perform functionalization to convert v1 control flow to v2 control flow. It
   // should be applied to the unoptimized graph, because Grappler may cause
   // unfunctionalizablity.
-  TF_RETURN_IF_ERROR(tensorflow::UpgradeLegacyGraph(
-      result.graph.get(),
-      const_cast<tensorflow::FunctionLibraryDefinition*>(
-          &result.graph->flib_def()),
-      /*restrict_functionalization_to_compiled_nodes=*/false));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      FunctionalizeControlFlow(
+          result.graph.get(),
+          const_cast<tensorflow::FunctionLibraryDefinition*>(
+              &result.graph->flib_def()),
+          NodeFilter{},
+          /*include_functions=*/true),
+      tensorflow::kFunctionalizeControlFlowFailureMessage);
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_functionalization", *result.graph);

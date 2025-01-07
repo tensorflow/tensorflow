@@ -72,11 +72,11 @@ static bool IsCommand(const HloComputation* computation,
 // bearing commands.
 
 static bool IsConstant(const HloInstruction* hlo) {
-  return hlo->opcode() == HloOpcode::kConstant;
+  return HloPredicateIsOp<HloOpcode::kConstant>(hlo);
 }
 
 static bool IsParameter(const HloInstruction* hlo) {
-  return hlo->opcode() == HloOpcode::kParameter;
+  return HloPredicateIsOp<HloOpcode::kParameter>(hlo);
 }
 
 // Returns true if instruction is no-op at run time and doesn't have a
@@ -99,12 +99,12 @@ static bool IsNoOp(const HloInstruction* hlo) {
 
 static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
-      hlo->opcode() == HloOpcode::kAllGatherStart) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllGatherStart>(
+          hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
-  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+  if (HloPredicateIsOp<HloOpcode::kAsyncStart>(hlo)) {
     if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
       return config.enabled_commands.contains(DebugOptions::CUBLAS);
     }
@@ -117,8 +117,7 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
     }
   }
 
-  if (hlo->opcode() == HloOpcode::kReduceScatter ||
-      hlo->opcode() == HloOpcode::kAllToAll) {
+  if (HloPredicateIsOp<HloOpcode::kReduceScatter, HloOpcode::kAllToAll>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
@@ -127,12 +126,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
 
 static bool IsAsyncDoneCommand(const HloInstruction* hlo,
                                const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
-      hlo->opcode() == HloOpcode::kAllGatherDone) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceDone, HloOpcode::kAllGatherDone>(
+          hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
-  if (hlo->opcode() == HloOpcode::kAsyncDone) {
+  if (HloPredicateIsOp<HloOpcode::kAsyncDone>(hlo)) {
     if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
       return config.enabled_commands.contains(DebugOptions::CUBLAS);
     }
@@ -150,11 +149,11 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
 
 // Finds an async-done HLO operation corresponding on an async-start one.
 static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart ||
-      start->opcode() == HloOpcode::kAllGatherStart) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllGatherStart>(
+          start)) {
     CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
     return start->users().front();
-  } else if (start->opcode() == HloOpcode::kAsyncStart) {
+  } else if (HloPredicateIsOp<HloOpcode::kAsyncStart>(start)) {
     return start->async_chain_done();
   }
 
@@ -178,7 +177,7 @@ static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
-  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
+  return config.enabled_commands.contains(DebugOptions::WHILE) &&
          IsCommand(hlo->while_body(), config) &&
          IsCommand(hlo->while_condition(), config);
 }
@@ -188,7 +187,7 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 template <>
 bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
                                         const CommandBufferConfig& config) {
-  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
+  return config.enabled_commands.contains(DebugOptions::CONDITIONAL) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
                           return IsCommand(comp, config);
@@ -261,31 +260,51 @@ static bool IsCommand(const HloInstruction* hlo,
         // DynamicSliceFusionRewriter currently only rewrites for dynamic slice
         // fusion with constant or loop iteration offset values, which are all
         // supported by command buffer.
-        return (config.enabled_commands.contains(DebugOptions::DYNAMIC_SLICE) &&
+        return (config.enabled_commands.contains(
+                    DebugOptions::DYNAMIC_SLICE_FUSION) &&
                 (IsCommand(hero, config) || IsAsyncStartCommand(hero, config)));
       }
     }
+
+    // Cuda has a bug that when the cuda kernel's parameter size is larger than
+    // 4KB, then cudaGraphAddKernelNode will have segment fault, we disable the
+    // command buffer lowering for kernels which has over 512 parameters.
+    // TODO(shawnw): remove this when cuda driver has release a fix.
+    int64_t total_args = fusion->operands().size();
+    ShapeUtil::ForEachLeafShape(
+        fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            total_args++;
+          }
+        });
+    if (total_args > 512) {
+      // shared memory allocation needs a pointer inside kernel's packed
+      // arguments, and PackKernelArgs will round to 1024 args for the kernel
+      // has arg count between 512 and 1024.
+      VLOG(2) << "disable fusion kernel due to large argument count (>512)";
+      return false;
+    }
+
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.enabled_commands.contains(DebugOptions::FUSION);
 
-  if (hlo->opcode() == HloOpcode::kCopy)
+  if (HloPredicateIsOp<HloOpcode::kCopy>(hlo))
     return config.enabled_commands.contains(DebugOptions::FUSION);
 
-  if (hlo->opcode() == HloOpcode::kPartitionId ||
-      hlo->opcode() == HloOpcode::kReplicaId) {
+  if (HloPredicateIsOp<HloOpcode::kPartitionId, HloOpcode::kReplicaId>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
     return IsCommand(custom_call, config);
 
-  if (hlo->opcode() == HloOpcode::kWhile)
+  if (HloPredicateIsOp<HloOpcode::kWhile>(hlo))
     return IsCommand<HloOpcode::kWhile>(hlo, config);
 
-  if (hlo->opcode() == HloOpcode::kConditional)
+  if (HloPredicateIsOp<HloOpcode::kConditional>(hlo))
     return IsCommand<HloOpcode::kConditional>(hlo, config);
 
   return false;
@@ -351,7 +370,8 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   // captured in command buffer.
   auto check_dynamic_slice_operand_not_from_seq =
       [&](const HloInstructionSequence& seq, const HloInstruction* inst) {
-        if (!config.enabled_commands.contains(DebugOptions::DYNAMIC_SLICE))
+        if (!config.enabled_commands.contains(
+                DebugOptions::DYNAMIC_SLICE_FUSION))
           return true;
         const auto* fusion = DynCast<HloFusionInstruction>(inst);
         if (!fusion) return true;
@@ -793,7 +813,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
                              device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
-  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
+  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
+                                                DebugOptions::WHILE};
   static constexpr auto kRequireTracing = {
       DebugOptions::CUBLAS, DebugOptions::CUBLASLT, DebugOptions::CUDNN,
       DebugOptions::CUSTOM_CALL, DebugOptions::COLLECTIVES};

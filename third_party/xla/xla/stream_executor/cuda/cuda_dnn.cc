@@ -4170,12 +4170,13 @@ GetGenericCudnnOperationGraph(
         std::max({max_operand_uid, max_output_uid, max_virtual_uid}) + 1;
 
     if (is_operand) {
-      return operand_uids.emplace_back(next_uid);
+      operand_uids.push_back(next_uid);
+    } else if (is_virtual) {
+      virtual_uids.push_back(next_uid);
+    } else {
+      output_uids.push_back(next_uid);
     }
-    if (is_virtual) {
-      return virtual_uids.emplace_back(next_uid);
-    }
-    return output_uids.emplace_back(next_uid);
+    return next_uid;
   };
 
   //  Input tensor.
@@ -7233,9 +7234,11 @@ CudnnSupport::NormRunnerFromDesc(
   std::vector<int64_t> uids;
   auto next_uid = [&uids]() -> int64_t {
     if (uids.empty()) {
-      return uids.emplace_back(0);
+      uids.push_back(0);
+    } else {
+      uids.push_back(uids.back() + 1);
     }
-    return uids.emplace_back(uids.back() + 1);
+    return uids.back();
   };
 
   auto create_cudnn_tensor = [next_uid](dnn::TensorDescriptor tensor_descriptor)

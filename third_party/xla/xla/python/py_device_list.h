@@ -43,6 +43,11 @@ class PyDeviceList {
   PyDeviceList& operator=(const PyDeviceList&) = delete;
   PyDeviceList& operator=(PyDeviceList&&) = delete;
 
+  static nanobind::handle type() {
+    static auto type = nanobind::type<PyDeviceList>();
+    return type;
+  }
+
   // These two methods are safe to call from C++ without GIL.
   xla::nb_class_ptr<xla::PyClient> py_client() const { return py_client_; }
   absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>> ifrt_device_list()

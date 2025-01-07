@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <variant>
@@ -1436,9 +1435,8 @@ ENTRY main {
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
-TEST_F(
-    SoftmaxRewriterTritonTest,
-    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpIsBroadcastOf1DParameterAlongBothBatchAndReductionDimensions) {  // NOLINT(whitespace/line_length)
+TEST_F(SoftmaxRewriterTritonTest,
+       FusesBinaryElementwiseIfIntermediateDiamondOpIsBroadcastOfParameter) {
   const std::string hlo_string = R"(
 HloModule h1
 
@@ -1460,67 +1458,12 @@ ENTRY main {
   ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 TEST_F(
     SoftmaxRewriterTritonTest,
-    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithBroadcastAlongBatchAndReductionDimAsParameter) {  // NOLINT(whitespace/line_length)
-  const std::string hlo_string = R"(
-HloModule h1
-
-add_computation {
-  y = f32[] parameter(1)
-  x = f32[] parameter(0)
-  ROOT add = f32[] add(x, y)
-}
-
-ENTRY main {
-  p0 = f32[8]{0} parameter(0)
-  p1 = f32[32,8,16]{2,1,0} parameter(1)
-  c = f32[] constant(0)
-
-  r0 = f32[32,8]{1,0} reduce(p1, c), dimensions={2}, to_apply=add_computation
-  b0 = f32[32,8,16]{2,1,0} broadcast(r0), dimensions={0,1}
-  b1 = f32[32,8,16]{2,1,0} broadcast(p0), dimensions={1}
-  add0 = f32[32,8,16]{2,1,0} add(b1, p1)
-  ROOT add1 = f32[32,8,16]{2,1,0} add(add0, b0)
-})";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
-}
-
-TEST_F(
-    SoftmaxRewriterTritonTest,
-    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithPartialBroadcastToBatchDim) {  // NOLINT(whitespace/line_length)
-  const std::string hlo_string = R"(
-HloModule h1
-
-add_computation {
-  y = f32[] parameter(1)
-  x = f32[] parameter(0)
-  ROOT add = f32[] add(x, y)
-}
-
-ENTRY main {
-  p0 = f32[16,64]{1,0} parameter(0)
-  p1 = f32[8,16,32,64]{3,2,1,0} parameter(1)
-  c = f32[] constant(0)
-
-  r0 = f32[8,16,32]{2,1,0} reduce(p1, c), dimensions={3}, to_apply=add_computation
-  b0 = f32[8,16,32,64]{3,2,1,0} broadcast(r0), dimensions={0,1,2}
-  b1 = f32[8,16,32,64]{3,2,1,0} broadcast(p0), dimensions={1,3}
-  add0 = f32[8,16,32,64]{3,2,1,0} add(b1, p1)
-  ROOT add1 = f32[8,16,32,64]{3,2,1,0} add(add0, b0)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
-}
-
-TEST_F(
-    SoftmaxRewriterTritonTest,
-    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithMultiDimBroadcastAlongBatchDimAsParameter) {  // NOLINT(whitespace/line_length)
+    FusesBinaryElementwiseIfIntermediateDiamondOpWithMultipleDimensionsAsParameter) {  // NOLINT(whitespace/line_length)
   const std::string hlo_string = R"(
 HloModule h1
 
@@ -1542,7 +1485,7 @@ ENTRY main {
   ROOT add1 = f32[128,64,32,16]{3,2,1,0} add(add0, b0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+  EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
 }
 
 // Triton has a requirement that any tile in the program should not have more

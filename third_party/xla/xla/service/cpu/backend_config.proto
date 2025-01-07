@@ -4,6 +4,17 @@ package xla.cpu;
 
 import "xla/service/cpu/onednn_config.proto";
 
+// Backend config for a general custom call instruction, e.g. XLA FFI.
+message CustomCallBackendConfig {
+  // Generic configurations that can be parsed by XLA.
+  oneof raw_backend_config_oneof {
+    // An opaque ASCII string could be parsed by the compiler.
+    string opaque = 1;
+    // Attributes parsed by XLA FFI.
+    string attributes = 2;
+  }
+}
+
 // Backend config for XLA:CPU.
 message BackendConfig {
   // Number of partitions per outer dimension (in order, starting with
@@ -19,5 +30,7 @@ message BackendConfig {
     OneDnnSoftmaxConfig onednn_softmax_config = 4;
     // Configuration to be used by oneDNN convolution
     OneDnnConvolutionConfig onednn_conv_config = 5;
+    // Configuration to be used by general custom call, e.g., FFI.
+    CustomCallBackendConfig custom_call_config = 6;
   }
 }

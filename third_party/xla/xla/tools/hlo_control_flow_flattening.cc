@@ -419,6 +419,44 @@ absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   return absl::OkStatus();
 }
 
+absl::Status HloControlFlowFlattening::SetConditionalValue(
+    HloInstruction* conditional) const {
+  HloComputation* computation = conditional->parent();
+  // This branch op is either a PRED or an index.
+  HloInstruction* original_branch_op = conditional->mutable_operand(0);
+  std::string original_op_name(original_branch_op->name());
+
+  // If the original branch op has no other users, wrap in a custom call with
+  // side effect to ensure the operands aren't DCE'd.
+  if (original_branch_op->user_count() == 1) {
+    HloInstruction* custom_call =
+        computation->AddInstruction(HloInstruction::CreateCustomCall(
+            original_branch_op->shape(), original_branch_op->operands(),
+            kNopCustomCallTarget));
+    Cast<HloCustomCallInstruction>(custom_call)
+        ->set_custom_call_has_side_effect(true);
+    // For SPMD graphs, partitioner requires that side-effecting custom calls
+    // have a sharding that is non-replicated.
+    custom_call->set_sharding(HloSharding::Manual());
+  }
+
+  HloInstruction* new_branch_op;
+  if (original_branch_op->shape().element_type() == PRED) {
+    // Predicated (if/else) conditional.
+    new_branch_op = computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<bool>(conditional_value_)));
+  } else {
+    // Indexed (switch/case/default) conditional. Uses the N-1'th
+    // branch_computation as default index.
+    new_branch_op = computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(conditional->branch_count() - 1)));
+  }
+  new_branch_op->SetAndSanitizeName(original_op_name + "_flattened");
+  TF_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_branch_op));
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> HloControlFlowFlattening::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -504,6 +542,10 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveId(instruction));
+        changed = true;
+      } else if (flatten_conditional_ &&
+                 instruction->opcode() == HloOpcode::kConditional) {
+        TF_RETURN_IF_ERROR(SetConditionalValue(instruction));
         changed = true;
       }
     }

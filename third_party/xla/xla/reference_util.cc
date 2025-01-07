@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>

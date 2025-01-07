@@ -191,7 +191,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_6(%arg0: tensor<1x
 // CHECK: %4 = "tfl.transpose"(%3, %cst_2) : (tensor<1x1x5x1xf32>, tensor<4xi32>) -> tensor<1x1x1x5xf32>
 
 func.func @upsample_bilinear2d(%arg0: tensor<1x64x16x16xf32>) -> (tensor<1x64x32x32xf32>) {
-  %0 = mhlo.composite "odml.upsample_bilinear2d" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, output = dense<32> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.upsample_bilinear2d.impl_21_0} : (tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32>
+  %0 = mhlo.composite "odml.upsample_bilinear2d" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, size = dense<32> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.upsample_bilinear2d.impl_21_0} : (tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32>
   return %0 : tensor<1x64x32x32xf32>
 }
 func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32> {
@@ -333,6 +333,27 @@ func.func private @XlaCallModule__resize_0(%arg0: tensor<1x2x2x10xf32>) -> (tens
 // CHECK:  %cst = arith.constant dense<4> : tensor<2xi32>
 // CHECK:  %0 = "tfl.resize_nearest_neighbor"(%arg0, %cst) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x2x2x10xf32>, tensor<2xi32>) -> tensor<1x4x4x10xf32>
 // CHECK:  return %0 : tensor<1x4x4x10xf32>
+
+// CHECK-LABEL  func.func @jax_image_resize_bilinear
+func.func @jax_image_resize_bilinear(%arg0: tensor<1x44x44x128xf32>) -> (tensor<1x88x88x128xf32> {jax.result_info = ""}) {
+  %1 = mhlo.composite "odml.upsample_bilinear2d" %arg0 {composite_attributes = {is_nchw_op = false, align_corners = false, size = dense<88> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_bilinear.impl_0} : (tensor<1x44x44x128xf32>) -> tensor<1x88x88x128xf32>
+  return %1 : tensor<1x88x88x128xf32>
+}
+func.func private @XlaCallModule_tfl.resize_bilinear.impl_0(%arg0: tensor<1x44x44x128xf32>) -> tensor<1x88x88x128xf32> {
+  %0 = call @XlaCallModule__resize_bilinear_0(%arg0) : (tensor<1x44x44x128xf32>) -> tensor<1x88x88x128xf32>
+  return %0 : tensor<1x88x88x128xf32>
+}
+func.func private @XlaCallModule__resize_bilinear_0(%arg0: tensor<1x44x44x128xf32>) -> tensor<1x88x88x128xf32> {
+  %cst = arith.constant dense<88> : tensor<2xi32>
+  // Because the decomposition desn't matter here, we just use the
+  // resize_bilinear op to create a correct graph.
+  %1 = "tfl.resize_bilinear"(%arg0, %cst) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x44x44x128xf32>, tensor<2xi32>) -> tensor<1x88x88x128xf32>
+  return %1 : tensor<1x88x88x128xf32>
+}
+
+// CHECK:  %cst = arith.constant dense<88> : tensor<2xi32>
+// CHECK:  %0 = "tfl.resize_bilinear"(%arg0, %cst) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x44x44x128xf32>, tensor<2xi32>) -> tensor<1x88x88x128xf32>
+// CHECK:  return %0 : tensor<1x88x88x128xf32>
 
 // CHECK-LABEL  func.func @jax_image_resize_nearest_nchw
 func.func @jax_image_resize_nearest_nchw(%arg0: tensor<4x8x32x32xf32>) -> (tensor<4x8x64x64xf32>) {

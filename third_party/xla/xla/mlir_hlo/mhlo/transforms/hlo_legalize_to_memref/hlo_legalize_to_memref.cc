@@ -281,27 +281,7 @@ struct DynamicBroadcastInDimOpInterface
   }
 };
 
-struct HloLegalizeToMemrefPass
-    : public impl::HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-    registerBufferizableOpInterfaceExternalModels(registry);
-  }
-
- public:
-  void runOnOperation() override {
-    bufferization::BufferizationOptions options =
-        bufferization::getPartialBufferizationOptions();
-    options.opFilter.allowDialect<mhlo::MhloDialect>();
-    if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
-  }
-};
-
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
-  return std::make_unique<HloLegalizeToMemrefPass>();
-}
 
 void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, MhloDialect * /*dialect*/) {

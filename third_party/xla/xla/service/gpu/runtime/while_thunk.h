@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -81,6 +82,8 @@ class WhileThunk : public Thunk {
   // Implementation relies on thread local storage, be careful when call it from
   // code running on multiple threads.
   static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;

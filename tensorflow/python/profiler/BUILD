@@ -27,7 +27,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -36,7 +36,9 @@ cuda_py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],
+    tags = ["no_pip",
+    "cuda-only", #TODO(rocm): weekly-sync 24-12-10
+    ],
     deps = [
         ":profiler_client",
         ":profiler_v2",
@@ -88,7 +90,7 @@ py_strict_test(
     deps = [
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
     ],
 )
 

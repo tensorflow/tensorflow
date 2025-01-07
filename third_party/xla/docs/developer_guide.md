@@ -4,7 +4,7 @@ This guide shows you how to get started developing the XLA project.
 
 Before you begin, complete the following prerequisites:
 
-1.  Go to [CONTRIBUTING.md](../CONTRIBUTING.md) and review the contribution
+1.  Go to [Contributing page](contributing.md) and review the contribution
     process.
 2.  If you haven't already done so, sign the
     [Contributor License Agreement](https://cla.developers.google.com/about).
@@ -18,11 +18,13 @@ the repository, and create a pull request.
 ## Get the code
 
 1.  Create a fork of the [XLA repository](https://github.com/openxla/xla).
-2.  Clone your fork of the repo, replacing `<USER>` with your GitHub username:
+2.  Clone your fork of the repo, replacing `{USER}` with your GitHub username:
     ```sh
-    git clone https://github.com/<USER>/xla.git
+    git clone https://github.com/{USER}/xla.git
     ```
+
 3.  Change into the `xla` directory: `cd xla`
+
 4.  Configure the remote upstream repo:
     ```sh
     git remote add upstream https://github.com/openxla/xla.git

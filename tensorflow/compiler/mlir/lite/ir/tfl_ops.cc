@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "Eigen/Core"  // from @eigen_archive
@@ -3840,8 +3841,26 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
 // SumOp
 //===----------------------------------------------------------------------===//
 
-// TODO: b/351437662 - Expand for all reductions. Currently this folds
-// the case where the reduction dims are all but the last.
+static size_t GetOutputFlatIndex(size_t input_flat_ind,
+                                 const FlatIndHelper& input_flat_ind_helper,
+                                 const FlatIndHelper& output_flat_ind_helper,
+                                 const absl::flat_hash_set<int32_t>& axes_set,
+                                 bool keep_dims) {
+  auto input_shaped_ind = input_flat_ind_helper.GetShapedInd(input_flat_ind);
+
+  std::vector<int64_t> output_shaped_ind;
+  for (int dim = 0; dim < input_shaped_ind.size(); ++dim) {
+    bool is_reduced_dim = axes_set.contains(dim);
+    if (is_reduced_dim && keep_dims) {
+      output_shaped_ind.push_back(0);
+    } else if (!is_reduced_dim) {
+      output_shaped_ind.push_back(input_shaped_ind[dim]);
+    }
+  }
+
+  return output_flat_ind_helper.GetFlatInd(output_shaped_ind);
+}
+
 OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   auto input = adaptor.getInput();
   auto axes = adaptor.getAxes();
@@ -3851,45 +3870,49 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input_type = getInput().getType();
-
   if (!input_type.getElementType().isF32()) {
     return {};
   }
 
   const auto input_rank = input_type.getRank();
   auto axes_data = llvm::cast<DenseIntElementsAttr>(axes);
-  if (axes_data.getNumElements() != input_rank - 1) {
-    return {};
+  absl::flat_hash_set<int32_t> axes_set(axes_data.getValues<int32_t>().begin(),
+                                        axes_data.getValues<int32_t>().end());
+
+  llvm::SmallVector<int64_t> out_shape;
+  for (int input_dim = 0; input_dim < input_rank; ++input_dim) {
+    bool is_reduced_dim = axes_set.contains(input_dim);
+
+    if (is_reduced_dim && adaptor.getKeepDims()) {
+      out_shape.push_back(1);
+    } else if (!is_reduced_dim) {
+      out_shape.push_back(input_type.getDimSize(input_dim));
+    }
   }
 
-  if (llvm::any_of(axes_data.getValues<int32_t>(),
-                   [&](int32_t i) { return i == input_rank - 1; })) {
-    return {};
-  }
+  auto out_type = RankedTensorType::get(out_shape, input_type.getElementType());
+  int64_t output_size = std::accumulate(out_shape.begin(), out_shape.end(), 1,
+                                        std::multiplies<int64_t>());
 
-  const int64_t slice_size = input_type.getShape().back();
-
-  std::vector<float> out_data(slice_size, 0.0);
+  std::vector<float> out_data(output_size, 0.0);
+  FlatIndHelper input_flat_ind_helper(input_type);
+  FlatIndHelper output_flat_ind_helper(out_type);
 
   auto in_data = llvm::cast<DenseFPElementsAttr>(input);
 
-  size_t flat_ind = 0;
+  size_t input_flat_ind = 0;
   for (auto it = in_data.value_begin<float>(); it < in_data.value_end<float>();
        ++it) {
-    out_data[flat_ind % slice_size] += *it;
-    flat_ind++;
+    // Find the corresponding reduced output index.
+    size_t output_flat_ind = GetOutputFlatIndex(
+        input_flat_ind, input_flat_ind_helper, output_flat_ind_helper, axes_set,
+        adaptor.getKeepDims());
+
+    out_data[output_flat_ind] += *it;
+    input_flat_ind++;
   }
 
-  llvm::SmallVector<int64_t> out_shape;
-  if (adaptor.getKeepDims()) {
-    out_shape = llvm::SmallVector<int64_t>(getType().getRank(), 1);
-    out_shape.back() = slice_size;
-  } else {
-    out_shape = {slice_size};
-  }
-
-  return DenseFPElementsAttr::get(
-      RankedTensorType::get(out_shape, input_type.getElementType()), out_data);
+  return DenseFPElementsAttr::get(out_type, out_data);
 }
 
 //===----------------------------------------------------------------------===//

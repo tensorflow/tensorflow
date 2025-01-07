@@ -213,6 +213,7 @@ struct CuptiTracerEvent {
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
+  int64_t scope_range_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -266,13 +267,15 @@ class AnnotationMap {
   struct AnnotationInfo {
     absl::string_view annotation;
     absl::string_view nvtx_range;
+    int64_t scope_range_id = 0;
   };
 
   explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
 
   void Add(uint32_t device_id, uint32_t correlation_id,
-           absl::string_view annotation, absl::string_view nvtx_range);
+           absl::string_view annotation, absl::string_view nvtx_range,
+           int64_t scope_range_id = 0);
 
   AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id) const
       ABSL_ATTRIBUTE_LIFETIME_BOUND;
@@ -299,6 +302,9 @@ struct CuptiEventCollectorDelegate {
       std::function<void(CuptiTracerEvent&&)> p_receive)
       : annotation_map(p_annotation_map), receive(std::move(p_receive)) {}
 };
+
+// A tree of scope range ids which map child_id ==> parent_id
+typedef absl::flat_hash_map<int64_t, int64_t> ScopeRangeIdTree;
 
 class CuptiActivityBufferManager {
  public:
@@ -367,6 +373,8 @@ class CallbackAnnotationsAndEvents {
 
   EventQueue& event_queue() { return event_queue_; }
 
+  ScopeRangeIdTree& scope_range_id_tree() { return scope_range_id_tree_; }
+
   size_t NumDroppedEvents() const { return num_dropped_events_; }
 
   void IncNumDroppedEvents() { ++num_dropped_events_; }
@@ -378,6 +386,7 @@ class CallbackAnnotationsAndEvents {
   StringDeduper nvtx_ranges_;
   size_t num_dropped_events_ = 0;
   EventQueue event_queue_;
+  ScopeRangeIdTree scope_range_id_tree_;
 };
 
 }  // namespace profiler

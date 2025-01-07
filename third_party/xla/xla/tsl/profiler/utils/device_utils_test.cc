@@ -40,6 +40,13 @@ TEST(DeviceUtilsTest, GetDeviceType) {
   EXPECT_EQ(GetDeviceType(CreateXPlane("unknown")), DeviceType::kUnknown);
 }
 
+TEST(DeviceUtilsTest, GetDeviceTypeFromName) {
+  EXPECT_EQ(GetDeviceType(kHostThreadsPlaneName), DeviceType::kCpu);
+  EXPECT_EQ(GetDeviceType(absl::StrCat(kTpuPlanePrefix, 0)), DeviceType::kTpu);
+  EXPECT_EQ(GetDeviceType(absl::StrCat(kGpuPlanePrefix, 0)), DeviceType::kGpu);
+  EXPECT_EQ(GetDeviceType("unknown"), DeviceType::kUnknown);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

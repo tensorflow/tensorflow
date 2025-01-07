@@ -13,27 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/types.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -1158,6 +1168,191 @@ ENTRY entry {
       absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
 }
 
+// E2E tests comparing the results with and without pipelining of collectives.
+class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
+ public:
+  void CollectiveOpsComparePipelinedNonPipelined(absl::string_view hlo_string) {
+    const int64_t kNumReplicas = 1;
+    const int64_t kNumPartitions = 2;
+    SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+    HloModuleConfig config =
+        GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+    auto opts = GetDebugOptionsForTest();
+    opts.set_xla_gpu_enable_pipelined_collectives(true);
+    config.set_debug_options(opts);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string, config));
+    auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+    std::vector<Literal*> fake_ptrs(fake_arguments.size());
+    for (int i = 0; i < fake_arguments.size(); ++i) {
+      fake_ptrs[i] = &fake_arguments[i];
+    }
+
+    DeviceAssignment assn(/*replica_count=*/kNumReplicas,
+                          /*computation_count=*/kNumPartitions);
+    for (int64_t i = 0; i < kNumPartitions; ++i) {
+      assn(0, i) = i;
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> results,
+        HloTestBase::ExecuteReplicated(
+            std::move(module), fake_ptrs, kNumPartitions, &assn,
+            /*run_hlo_passes=*/true, /*use-threads=*/true));
+    ASSERT_EQ(results.size(), kNumPartitions);
+
+    HloModuleConfig ref_config =
+        GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+    auto ref_opts = GetDebugOptionsForTest();
+    ref_opts.set_xla_gpu_enable_pipelined_collectives(false);
+    ref_config.set_debug_options(ref_opts);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));
+    auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
+    std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
+    for (int i = 0; i < fake_ref_arguments.size(); ++i) {
+      ref_fake_ptrs[i] = &fake_ref_arguments[i];
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> ref_results,
+        HloTestBase::ExecuteReplicated(
+            std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
+            /*run_hlo_passes=*/true, /*use-threads=*/true));
+    ASSERT_EQ(ref_results.size(), kNumPartitions);
+    ErrorSpec error_spec{1e-5, 1e-5};
+    // Expect same results with and without pipelining of collectives.
+    for (int i = 0; i < kNumPartitions; ++i) {
+      EXPECT_TRUE(
+          LiteralTestUtil::Near(ref_results[i], results[i], error_spec));
+    }
+  }
+};
+
+TEST_F(CollectiveOpsTestE2EPipelinedNonPipelined, CollectivePipelinerForward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(bf16[5,8,16])->bf16[5,8,16]}, allow_spmd_sharding_propagation_to_parameters={false,false}, num_partitions=2
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[5,8,16], bf16[5,8,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  c5 = s32[] constant(5)
+  ROOT cmp = pred[] compare(loop_index, c5), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[5,8,16], bf16[5,8,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  partial_output = bf16[5,8,16] get-tuple-element(param), index=1
+  slice_input = bf16[5,8,16] get-tuple-element(param), index=2
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  next_loop_index = s32[] add(loop_index, c1)
+  dynamic_slice = bf16[1,8,16] dynamic-slice(slice_input, loop_index, c0, c0), dynamic_slice_sizes={1,8,16}
+  all_reduce = bf16[1,8,16] all-reduce(dynamic_slice), replica_groups={}, to_apply=add, channel_id=1
+  updated_partial_output = bf16[5,8,16] dynamic-update-slice(partial_output, all_reduce, loop_index, c0, c0)
+  ROOT tuple = (s32[], bf16[5,8,16], bf16[5,8,16]) tuple(next_loop_index, updated_partial_output, slice_input)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[5,8,16] parameter(0)
+  tuple = (s32[], bf16[5,8,16], bf16[5,8,16]) tuple(c0, p0, p0)
+  while = (s32[], bf16[5,8,16], bf16[5,8,16]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte = bf16[5,8,16] get-tuple-element(while), index=1
+}
+)";
+
+  CollectiveOpsComparePipelinedNonPipelined(hlo_string);
+}
+
+TEST_F(CollectiveOpsTestE2EPipelinedNonPipelined, CollectivePipelinerBackward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(bf16[5,4,16], bf16[5,1,2,16])->bf16[5,4,16]}, allow_spmd_sharding_propagation_to_parameters={false,false}, num_partitions=2
+
+while_cond {
+  param = (s32[], bf16[5,4,16], bf16[5,1,2,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  c5 = s32[] constant(5)
+  ROOT cmp = pred[] compare(loop_index, c5), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[5,4,16], bf16[5,1,2,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  partial_output = bf16[5,4,16] get-tuple-element(param), index=1
+  slice_input = bf16[5,1,2,16] get-tuple-element(param), index=2
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  next_loop_index = s32[] add(loop_index, c1)
+  dynamic_slice = bf16[1,1,2,16] dynamic-slice(slice_input, loop_index, c0, c0, c0), dynamic_slice_sizes={1,1,2,16}
+  dynamic_slice_reshape = bf16[1,2,16] reshape(dynamic_slice)
+  all_gather = bf16[1,4,16] all-gather(dynamic_slice_reshape), dimensions={1}, replica_groups={}
+  updated_partial_output = bf16[5,4,16] dynamic-update-slice(partial_output, all_gather, loop_index, c0, c0)
+  ROOT tuple = (s32[], bf16[5,4,16], bf16[5,1,2,16]) tuple(next_loop_index, updated_partial_output, slice_input)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[5,4,16] parameter(0)
+  p1 = bf16[5,1,2,16] parameter(1)
+  tuple = (s32[], bf16[5,4,16], bf16[5,1,2,16]) tuple(c0, p0, p1)
+  while = (s32[], bf16[5,4,16], bf16[5,1,2,16]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte = bf16[5,4,16] get-tuple-element(while), index=1
+}
+)";
+
+  CollectiveOpsComparePipelinedNonPipelined(hlo_string);
+}
+
+TEST_F(CollectiveOpsTestE2EPipelinedNonPipelined,
+       CollectivePipelinerBackwardStartFromOne) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(bf16[5,4,16], bf16[5,1,2,16])->bf16[5,4,16]}, allow_spmd_sharding_propagation_to_parameters={false,false}, num_partitions=2
+
+while_cond {
+  param = (s32[], bf16[5,4,16], bf16[5,1,2,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  c6 = s32[] constant(6)
+  ROOT cmp = pred[] compare(loop_index, c6), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[5,4,16], bf16[5,1,2,16]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  partial_output = bf16[5,4,16] get-tuple-element(param), index=1
+  slice_input = bf16[5,1,2,16] get-tuple-element(param), index=2
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  next_loop_index = s32[] add(loop_index, c1)
+  loop_index_minus_one = s32[] subtract(loop_index, c1)
+  dynamic_slice = bf16[1,1,2,16] dynamic-slice(slice_input, loop_index_minus_one, c0, c0, c0), dynamic_slice_sizes={1,1,2,16}
+  dynamic_slice_reshape = bf16[1,2,16] reshape(dynamic_slice)
+  all_gather = bf16[1,4,16] all-gather(dynamic_slice_reshape), dimensions={1}, replica_groups={}
+  updated_partial_output = bf16[5,4,16] dynamic-update-slice(partial_output, all_gather, loop_index_minus_one, c0, c0)
+  ROOT tuple = (s32[], bf16[5,4,16], bf16[5,1,2,16]) tuple(next_loop_index, updated_partial_output, slice_input)
+}
+
+ENTRY entry {
+  c1 = s32[] constant(1)
+  p0 = bf16[5,4,16] parameter(0)
+  p1 = bf16[5,1,2,16] parameter(1)
+  tuple = (s32[], bf16[5,4,16], bf16[5,1,2,16]) tuple(c1, p0, p1)
+  while = (s32[], bf16[5,4,16], bf16[5,1,2,16]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte = bf16[5,4,16] get-tuple-element(while), index=1
+}
+)";
+
+  CollectiveOpsComparePipelinedNonPipelined(hlo_string);
+}
+
 TEST_F(CollectiveOpsTestE2E, AllToAllQuantizeCollectiveQuantizer) {
   absl::string_view kModuleReplicatedStr = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={()->bf16[2]}, num_partitions=2
@@ -1339,6 +1534,265 @@ ENTRY entry {
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
   EXPECT_TRUE(executable->has_module());
+}
+
+class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
+ public:
+  // Creates random test data for a ragged-all-to-all.
+  //
+  // Ragged tensors which are ragged (have various size) along the second most
+  // changing dimension only, i.e. shape such as [8, (4), 3]. In memory those
+  // tensors are flattened out the outermost dimension.
+  //
+  // A ragged tensor is represented by three arrays: data, offsets, and sizes.
+  //   * The data array holds the elements of the ragged tensor.
+  //   * The offsets array holds the starting offset of each ragged row.
+  //   * The sizes array holds the number of elements in each ragged row.
+  //
+  // A ragged-all-to-all of N replicas performance a collective transpose of the
+  // ragged tensors. Each pair of replicas exchanges one ragged row. To generate
+  // the test data we need to know the sizes of all ragged rows for each
+  // replica.
+  //
+  // `input_sizes` is a 2D array of shape [num_replicas, num_replicas].
+  // `input_sizes[i, j]` is the number of elements in the j-th ragged row of the
+  // i-th replica input.
+  void CreateRandomTestData(HloModule* module,
+                            const Array<int32_t>& input_sizes) {
+    auto ragged_all_to_all =
+        FindInstruction(module, HloOpcode::kRaggedAllToAll);
+    EXPECT_THAT(ragged_all_to_all, NotNull());
+
+    // Shape of the ragged input tensor.
+    std::vector<int64_t> ragged_tensor_sizes{
+        ragged_all_to_all->shape().dimensions().begin(),
+        ragged_all_to_all->shape().dimensions().end()};
+
+    int64_t num_replicas = input_sizes.dim(0);
+
+    std::vector<Array<float>> input_data(num_replicas,
+                                         Array<float>(ragged_tensor_sizes));
+    std::vector<Array<float>> output_data(num_replicas,
+                                          Array<float>(ragged_tensor_sizes));
+
+    Array<int32_t> output_sizes = input_sizes;
+    output_sizes.TransposeDimensions({1, 0});
+
+    // Computes ragged tensor offsets based on the sizes of the ragged rows.
+    auto get_offsets = [&](const Array<int32_t>& sizes) {
+      Array<int32_t> offsets(sizes.dimensions());
+      for (int i = 0; i < num_replicas; ++i) {
+        for (int j = 1; j < num_replicas; ++j) {
+          offsets(i, j) = offsets(i, j - 1) + sizes(i, j - 1);
+        }
+      }
+      return offsets;
+    };
+
+    Array<int32_t> input_offsets = get_offsets(input_sizes);
+    Array<int32_t> output_offsets = get_offsets(output_sizes);
+
+    std::vector<int64_t> chunk_sizes{ragged_tensor_sizes.begin(),
+                                     ragged_tensor_sizes.end()};
+
+    // Fill the input and output tensors with random data. An all-to-all is
+    // effective a transpose. We generate a chunk of random data for each pair
+    // of replicas and write the chunk starting from the (i, j) offset of the
+    // input tensor and starting from the (j, i) offset of the output tensor.
+    std::vector<int64_t> start_indices(ragged_tensor_sizes.size());
+    for (int i = 0; i < num_replicas; ++i) {
+      for (int j = 0; j < num_replicas; ++j) {
+        chunk_sizes[0] = input_sizes(i, j);
+
+        Array<float> chunk_data(chunk_sizes);
+        chunk_data.FillRandomUniform(1, 127, /*seed=*/i * num_replicas + j);
+
+        start_indices[0] = input_offsets(i, j);
+        input_data[i].UpdateSlice(chunk_data, start_indices);
+
+        start_indices[0] = output_offsets(j, i);
+        output_data[j].UpdateSlice(chunk_data, start_indices);
+      }
+    }
+
+    auto get_row = [&](int64_t row_id, const Array<int32_t>& data) {
+      Array<int32_t> row = data.Slice({row_id, 0}, {row_id + 1, num_replicas});
+      row.Reshape({num_replicas});
+      return row;
+    };
+
+    // Create literals concert array to literals.
+    for (int replica_id = 0; replica_id < num_replicas; ++replica_id) {
+      inputs_.push_back(LiteralUtil::CreateFromArray(input_data[replica_id]));
+      input_offsets_.push_back(
+          LiteralUtil::CreateFromArray(get_row(replica_id, input_offsets)));
+      input_sizes_.push_back(
+          LiteralUtil::CreateFromArray(get_row(replica_id, input_sizes)));
+
+      expected_outputs_.push_back(
+          LiteralUtil::CreateFromArray(output_data[replica_id]));
+      output_offsets_.push_back(
+          LiteralUtil::CreateFromArray(get_row(replica_id, output_offsets)));
+      output_sizes_.push_back(
+          LiteralUtil::CreateFromArray(get_row(replica_id, output_sizes)));
+    }
+
+    // The ragged-all-to-all accepts an output tensor as a parameter to allow
+    // buffer reuse. We initialize the output tensor with zeros.
+    output_init_ = LiteralUtil::CreateFull(ragged_tensor_sizes, 0);
+  }
+
+  // Returns a vector of pointers to the literals in the format needed for
+  // ExecuteReplicated.
+  std::vector<std::vector<Literal*>> GetInputLiteralPtrs() {
+    std::vector<std::vector<Literal*>> input_literal_ptrs;
+    for (int i = 0; i < inputs_.size(); ++i) {
+      input_literal_ptrs.push_back({&inputs_[i], &output_init_,
+                                    &input_offsets_[i], &input_sizes_[i],
+                                    &output_offsets_[i], &output_sizes_[i]});
+    }
+    return input_literal_ptrs;
+  }
+
+  // Literates for the input and output data, offset, and size parameters of the
+  // ragged-all-to-all. Each vector contains one literal per replica.
+  std::vector<Literal> inputs_;
+  std::vector<Literal> input_offsets_;
+  std::vector<Literal> input_sizes_;
+
+  std::vector<Literal> expected_outputs_;
+  std::vector<Literal> output_offsets_;
+  std::vector<Literal> output_sizes_;
+
+  Literal output_init_;
+};
+
+TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  CreateRandomTestData(module.get(), /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                      /*replica_1=*/{3, 1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_2GPUs_MultiDimData) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[16, 5, 32] parameter(0)
+    output = f32[16, 5, 32] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[16, 5, 32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  auto ragged_all_to_all =
+      FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
+  EXPECT_THAT(ragged_all_to_all, NotNull());
+
+  CreateRandomTestData(module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                                      /*replica_1=*/{2, 5}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll_8GPUs) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[128, 5, 32] parameter(0)
+    output = f32[128, 5, 32] parameter(1)
+    input_offsets = s32[8] parameter(2)
+    send_sizes = s32[8] parameter(3)
+    output_offsets = s32[8] parameter(4)
+    recv_sizes = s32[8] parameter(5)
+    ROOT ra2a = f32[128, 5, 32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,1,2,3,4,5,6,7}}
+  })";
+
+  const int64_t kNumReplicas = 8;
+  const int64_t kNumPartitions = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  Array<int32_t> input_sizes({kNumReplicas, kNumReplicas});
+  input_sizes.FillRandomUniform(0, 10);
+
+  CreateRandomTestData(module.get(), input_sizes);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
+  }
 }
 
 }  // namespace

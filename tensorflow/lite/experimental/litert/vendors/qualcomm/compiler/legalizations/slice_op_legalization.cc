@@ -24,9 +24,9 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
@@ -61,35 +61,39 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
                                            kQnnSliceOpTypeName.data(), dest));
 
   // QNN strided slice op expects 1 input tensor.
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 litert::internal::GetOpIns(src.Get()));
+  const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kSliceOpInputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      graph_mapper.LookupInScope(op_ins[0], qnn_op_ins[0]));
+      graph_mapper.LookupInScope(op_ins.front().Get(), qnn_op_ins[0]));
 
   // QNN strided slice op expects 1 output tensor.
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 litert::internal::GetOpOuts(src.Get()));
+  const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kSliceOpOutputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      graph_mapper.LegalizeAndRegister(op_outs[0], qnn_op_outs[0]));
+      graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      graph_mapper.PushToScope(op_outs[0], qnn_op_outs[0]));
+      graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
-  litert::Tensor src_input_tensor(op_ins[0]);
+  const auto& src_input_tensor = op_ins.front();
   auto src_input_tensor_rank =
       src_input_tensor.RankedTensorType().Layout().Rank();
 
   // Prepare qnn strided slice parameters.
-  auto src_begin_indices =
-      litert::internal::GetWeights<int32_t>(op_ins[1]).Value();
-  auto src_size_indices =
-      litert::internal::GetWeights<int32_t>(op_ins[2]).Value();
+
+  auto src_begin_indices = op_ins.at(1).WeightsData<int32_t>();
+  if (!src_begin_indices) {
+    return src_begin_indices.Error().Status();
+  }
+
+  auto src_size_indices = op_ins.at(2).WeightsData<int32_t>();
+  if (!src_size_indices) {
+    return src_size_indices.Error().Status();
+  }
 
   // Check if src_begin_indices and src_size_indices are weights tensors.
-  if (src_begin_indices.empty() || src_size_indices.empty()) {
+  if (src_begin_indices->empty() || src_size_indices->empty()) {
     return kLiteRtStatusErrorInvalidLegalization;
   }
 
@@ -99,8 +103,8 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
   for (int i = 0; i < src_input_tensor_rank; ++i) {
     // Copy begin, end, and stride values from src_begin_indices and
     // src_size_indices to range_tensor_data. Stride is always 1.
-    range_tensor_data[i * kRangesParamArgSize] = src_begin_indices[i];
-    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices[i];
+    range_tensor_data[i * kRangesParamArgSize] = src_begin_indices->at(i);
+    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices->at(i);
     range_tensor_data[i * kRangesParamArgSize + 2] = 1;
   }
 

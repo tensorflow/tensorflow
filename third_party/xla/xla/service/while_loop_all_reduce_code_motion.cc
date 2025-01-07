@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/while_loop_all_reduce_code_motion_setup.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
@@ -961,6 +963,19 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
                         HloReplicationAnalysis::RunWithPartialReplication(
                             module, /*cross_partition_spmd=*/true));
   }
+
+  // Run setup passes that may setup the add(all-reduce/reduce-scatter,
+  // accumulation_buffer) pattern.
+  if (run_setup_passes_) {
+    HloPassPipeline pipeline("while-loop-all-reduce-code-motion-setup");
+    if (enable_reduce_scatter_) {
+      pipeline.AddPass<ReorderReduceTranspose>();
+    }
+    pipeline.AddPass<ReorderConvertReduceAdd>(
+        /*enable_reduce_scatter=*/enable_reduce_scatter_);
+    TF_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+  }
+
   // The while instruction's parent could be a while body for another while
   // loop. We recursively sink the all-reduce through nested while loops if
   // applicable by repeating this process.

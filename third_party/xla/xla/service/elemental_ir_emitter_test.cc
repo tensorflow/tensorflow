@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -47,6 +48,11 @@ namespace xla {
 namespace {
 
 using std::nullopt;
+
+struct EmitReducePrecisionIrTestCase {
+  float input;
+  std::string expected_res;
+};
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:
@@ -121,6 +127,192 @@ ENTRY main {
   Literal lhs = LiteralUtil::CreateR3<int32_t>({{{1}, {2}}});
   Literal rhs = LiteralUtil::CreateR3<int32_t>({{{3}, {4}}});
   RunTest(hlo_text, {&lhs, &rhs});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-14, "half 0xH0400"},
+      {0.250, "half 0xH3400"},
+      {1.0, "half 0xH3C00"},
+      {0x1.2p0, "half 0xH3C00"},
+      {0x1.Cp15, "half 0xH7B00"},
+      {-0x1.Cp15, "half 0xHFB00"},
+      {0x1.Dp15, "half 0xH7B00"},
+      {0x1.Ep15, "half 0xH7C00"},
+      {0x1.0p16, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7F00"},
+      {-snan, "half 0xHFF00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/primitive_util::ExponentWidth(F8E5M2),
+        /*dest_mantissa_bits=*/primitive_util::SignificandWidth(F8E5M2) - 1,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-6, "half 0xH2400"},
+      {0.125, "half 0xH3000"},
+      {1.0, "half 0xH3C00"},
+      {0x1.1p0, "half 0xH3C00"},
+      {0x1.Ep7, "half 0xH5B80"},
+      {-0x1.Ep7, "half 0xHDB80"},
+      {0x1.E8p7, "half 0xH5B80"},
+      {0x1.Fp7, "half 0xH7C00"},
+      {0x1.0p8, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7E00"},
+      {-snan, "half 0xHFE00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/4,
+        /*dest_mantissa_bits=*/3,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  float snan = std::numeric_limits<float>::signaling_NaN();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-2, "half 0xH3400"},
+      {0.5, "half 0xH3800"},
+      {1.0, "half 0xH3C00"},
+      {0x1.08p0, "half 0xH3C00"},
+      {0x1.Fp3, "half 0xH4BC0"},
+      {-0x1.Fp3, "half 0xHCBC0"},
+      {0x1.F4p3, "half 0xH4BC0"},
+      {0x1.F8p3, "half 0xH7C00"},
+      {0x1.0p4, "half 0xH7C00"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      {qnan, "half 0xH7E00"},
+      {-qnan, "half 0xHFE00"},
+      {snan, "half 0xH7E00"},
+      {-snan, "half 0xHFE00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/3,
+        /*dest_mantissa_bits=*/4,
+        /*quiet_nans=*/true, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest,
+           EmitReducePrecisionIR_F16ToF8e4m3fn) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::IRBuilderBase* b = &builder;
+  llvm::Type* f16_type = b->getHalfTy();
+
+  float inf = std::numeric_limits<float>::infinity();
+
+  EmitReducePrecisionIrTestCase test_cases[] = {
+      // clang-format off
+      {0.0, "half 0xH0000"},
+      {0x1.0p-6, "half 0xH2400"},
+      {0.125, "half 0xH3000"},
+      {1.0, "half 0xH3C00"},
+      {0x1.1p0, "half 0xH3C00"},
+      {0x1.Cp8, "half 0xH5F00"},
+      {-0x1.Cp8, "half 0xHDF00"},
+      {0x1.Dp8, "half 0xH5F00"},
+      {0x1.Ep8, "half 0xH5F80"},
+      {0x1.0p9, "half 0xH6000"},
+      {inf, "half 0xH7C00"},
+      {-inf, "half 0xHFC00"},
+      // clang-format on
+  };
+
+  for (auto tc : test_cases) {
+    llvm::Value* c0 = llvm::ConstantFP::get(f16_type, tc.input);
+
+    // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
+    // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
+    // exponent reduction.
+    absl::StatusOr<llvm::Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+        /*src_ty=*/F16, c0,
+        /*dest_exponent_bits=*/5,
+        /*dest_mantissa_bits=*/3,
+        /*quiet_nans=*/false, b);
+    CHECK(f16_reduced_statusor.ok());
+    llvm::Value* f16_reduced = f16_reduced_statusor.value();
+
+    std::string res = llvm_ir::DumpToString(f16_reduced);
+    EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
+  }
 }
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
@@ -255,8 +447,7 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
   auto tname = this->TypeName();
   if (std::is_same<TypeParam, tsl::float8_e4m3>() ||
       std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
-      std::is_same<TypeParam, tsl::float8_e3m4>()) {
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
   const auto hlo_text = absl::StrReplaceAll(R"(

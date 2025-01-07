@@ -246,20 +246,6 @@ py_strict_library(
     ],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_strict_library(
-#     name = "cpp_memory_checker",
-#     srcs = ["cpp_memory_checker.py"],
-#     deps = [
-#         ":tf_logging",
-#         "//perftools/profiles/collector/heap:pywrap_alloc_recorder",
-#         "//perftools/profiles/proto:profile_py_pb2",
-#         "//pyglib:resources",
-#         "//tensorflow/python/profiler:trace",
-#     ],
-# )
-# copybara:uncomment_end
-
 py_strict_library(
     name = "sysconfig",
     srcs = ["sysconfig.py"],
@@ -335,6 +321,7 @@ py_strict_library(
 py_strict_library(
     name = "resource_loader",
     srcs = ["resource_loader.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tf_logging",
         "//tensorflow/python/util:tf_export",

@@ -44,6 +44,16 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
 
  private:
+  // Returns true if the dot precision config is supported by simplifier.
+  bool SupportedDotPrecisionConfig(const PrecisionConfig& config) override;
+
+  // Makes algorithm specific set of instructions for multiply with precision
+  // algorithm in mind. In the trivial case it returns just multiply.
+  // For x3 or x6 algorithms it adds the parameters split instructions and the
+  // corresponding multiply instructions.
+  absl::StatusOr<HloInstruction*> MakeMultiplyForPrecisionAlgorithm(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) override;
+
   // Try to convert add(broadcast(const_0), add(broadcast(const_1), conv(...)))
   // into add(broadcast(add(const_0, const_1)), conv(...)) and return true if
   // successful. The particular sink happens only when enable_sink_broadcast is

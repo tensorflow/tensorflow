@@ -29,19 +29,22 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter_legacy_matmul.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
@@ -176,7 +179,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
       TF_ASSIGN_OR_RETURN(
           launch_dimensions,
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
+          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config,
+                                    analysis_.device_info()));
     }
 
     llvm::Function* impl_fn =
@@ -198,7 +202,15 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
       arg.replaceAllUsesWith(ir_array.GetBasePointer());
     }
-    impl_fn->eraseFromParent();
+    // Triton's kernel ABI expects an additional scratchpad global memory.
+    // For now it is only used for on-device creation of TMA descriptors, which
+    // we do not use yet, so we are just replacing this argument with a null
+    // pointer.
+    // TODO: b/381242007 - Allocate a proper buffer if we want to use
+    // device-side TMA APIs.
+    auto scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+    scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+        llvm::cast<llvm::PointerType>(scratchpad_arg->getType())));
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,
@@ -235,7 +247,8 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     LaunchConfig launch_config;
     launch_config.launch_dimensions = LaunchDimensions{
         static_cast<uint64_t>(num_blocks),
-        static_cast<uint64_t>(block_level_parameters.num_warps * WarpSize())};
+        static_cast<uint64_t>(block_level_parameters.num_warps *
+                              WarpSize(analysis_.device_info()))};
     launch_config.block_level_parameters = std::move(block_level_parameters);
     return launch_config;
   }

@@ -86,7 +86,7 @@ absl::StatusOr<bool> SplitConcatenate(HloInstruction* concat,
 std::vector<HloInstruction*> GetRelevantVariadicOps(HloComputation* comp) {
   std::vector<HloInstruction*> ops;
   for (HloInstruction* instr : comp->instructions()) {
-    if (instr->opcode() == HloOpcode::kConcatenate &&
+    if (HloPredicateIsOp<HloOpcode::kConcatenate>(instr) &&
         instr->operand_count() > kMaxParameters) {
       ops.push_back(instr);
     }

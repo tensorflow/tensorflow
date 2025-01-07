@@ -33,8 +33,8 @@ class SumOpLegalization : public Legalization {
  public:
   SumOpLegalization() = default;
   ~SumOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<SumOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<SumOpLegalization>(); }
+  using Ptr = std::unique_ptr<SumOpLegalization>;
+  static Ptr Create() { return std::make_unique<SumOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

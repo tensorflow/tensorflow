@@ -67,7 +67,7 @@ absl::StatusOr<bool> AsyncWrapper::Run(
 
       // Otherwise, follow any `calls` to discover other instructions that can
       // potentially be made async.
-      if (instruction->opcode() == HloOpcode::kCall) {
+      if (HloPredicateIsOp<HloOpcode::kCall>(instruction)) {
         std::copy(instruction->called_computations().begin(),
                   instruction->called_computations().end(),
                   std::back_inserter(computations));

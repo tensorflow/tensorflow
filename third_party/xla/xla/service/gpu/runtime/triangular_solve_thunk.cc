@@ -26,8 +26,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -38,14 +37,12 @@ namespace gpu {
 
 TriangularSolveThunk::TriangularSolveThunk(
     ThunkInfo thunk_info, const TriangularSolveOptions& options,
-    se::GpuAsmOpts asm_opts,  //
     const BufferAllocation::Slice& a_buffer,
     const BufferAllocation::Slice& b_buffer,
     const BufferAllocation::Slice& temp_buffer,  //
     PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
     int64_t a_batch_stride, int64_t b_batch_stride)
     : Thunk(Kind::kTriangularSolve, thunk_info),
-      asm_opts_(asm_opts),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
       side_(options.left_side() ? se::blas::Side::kLeft
@@ -83,18 +80,20 @@ absl::Status TriangularSolveThunk::ExecuteOnStream(
   return RunTriangularSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
                             buffer_allocations.GetDeviceAddress(b_buffer_),
                             buffer_allocations.GetDeviceAddress(temp_buffer_),
-                            asm_opts_, uplo_, side_, unit_diagonal_,
-                            transpose_a_, type_, batch_size_, m_, n_,
-                            a_batch_stride_, b_batch_stride_, params.stream);
+                            uplo_, side_, unit_diagonal_, transpose_a_, type_,
+                            batch_size_, m_, n_, a_batch_stride_,
+                            b_batch_stride_, params.stream);
 }
 
-absl::Status RunTriangularSolve(
-    se::DeviceMemoryBase a_data, se::DeviceMemoryBase b_data,
-    se::DeviceMemoryBase temp_data, se::GpuAsmOpts asm_opts,
-    se::blas::UpperLower uplo, se::blas::Side side,
-    se::blas::Diagonal unit_diagonal, se::blas::Transpose transpose_a,
-    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
-    int64_t a_batch_stride, int64_t b_batch_stride, se::Stream* stream) {
+absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
+                                se::DeviceMemoryBase b_data,
+                                se::DeviceMemoryBase temp_data,
+                                se::blas::UpperLower uplo, se::blas::Side side,
+                                se::blas::Diagonal unit_diagonal,
+                                se::blas::Transpose transpose_a,
+                                PrimitiveType type, int64_t batch_size,
+                                int64_t m, int64_t n, int64_t a_batch_stride,
+                                int64_t b_batch_stride, se::Stream* stream) {
   VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo)
           << " side=" << se::blas::SideString(side)
           << " diagonal=" << se::blas::DiagonalString(unit_diagonal)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <string>
@@ -346,6 +347,16 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
+  pipeline_options->num_batch_threads =
+      options.batch_options.num_batch_threads();
+  pipeline_options->max_batch_size = options.batch_options.max_batch_size();
+  pipeline_options->batch_timeout_micros =
+      options.batch_options.batch_timeout_micros();
+  pipeline_options->allowed_batch_sizes = llvm::ArrayRef<int64_t>(
+      std::vector<int64_t>(options.batch_options.allowed_batch_sizes().begin(),
+                           options.batch_options.allowed_batch_sizes().end()));
+  pipeline_options->max_enqueued_batches =
+      options.batch_options.max_enqueued_batches();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 

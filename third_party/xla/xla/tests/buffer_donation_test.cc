@@ -126,8 +126,7 @@ class BufferDonationTest : public HloTestBase {
     }
 
     absl::StatusOr<ExecutionOutput> output_status =
-        executable->ExecuteAsyncOnStream(&service_run_options, std::move(args),
-                                         /*hlo_execution_profile=*/nullptr);
+        executable->ExecuteAsyncOnStream(&service_run_options, std::move(args));
     if (!expected_failure.empty()) {
       ASSERT_FALSE(output_status.ok());
       ASSERT_TRUE(

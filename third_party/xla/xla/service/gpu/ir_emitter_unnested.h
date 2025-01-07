@@ -26,19 +26,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/Value.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -47,16 +45,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-
-#if TENSORFLOW_USE_ROCM
-// for TF_HIPBLASLT
-#include "rocm/rocm_config.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -126,20 +116,14 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitConditional(const HloInstruction* instr);
   absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
-#if GOOGLE_CUDA || TF_HIPBLASLT
   absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-#if GOOGLE_CUDA
   absl::Status EmitConvolutionReorderThunk(
       const HloCustomCallInstruction* instr);
   absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitCuDnnThunk(const HloCustomCallInstruction* instr);
-#endif  // GOOGLE_CUDA
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
   absl::Status EmitCholeskyThunk(const HloInstruction* instr);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
   absl::Status EmitFusion(const HloFusionInstruction* instr);
@@ -152,9 +136,7 @@ class IrEmitterUnnested : public IrEmitter {
       const HloRngGetAndUpdateStateInstruction* instr);
 
   absl::Status EmitSort(const HloSortInstruction* sort);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
   absl::Status EmitTritonCustomCall(const HloCustomCallInstruction* instr);
 
@@ -184,9 +166,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
-  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
-
-  absl::Status EmitNcclGroupDoneThunk(const HloInstruction* instr);
+  absl::Status EmitNcclGroupThunk(const HloInstruction* instr,
+                                  Thunk::Kind kind);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -194,6 +175,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    if (emit_group_thunks_) {
+      scoped_thunk_sequence_.emplace_back(std::move(thunk));
+      return;
+    }
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
@@ -320,9 +305,6 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 
-  absl::Status BuildInitializerThunk(const HloInstruction* instr,
-                                     const HloInstruction* init_value);
-
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
@@ -340,6 +322,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
+  ThunkSequence scoped_thunk_sequence_;
+  bool emit_group_thunks_ = false;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;

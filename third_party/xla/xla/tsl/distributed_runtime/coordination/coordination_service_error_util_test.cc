@@ -22,6 +22,7 @@ limitations under the License.
 #include "tsl/platform/test.h"
 namespace tsl {
 namespace {
+using ::tensorflow::BarrierError;
 using ::tensorflow::CoordinatedTask;
 using ::tensorflow::CoordinationServiceError;
 
@@ -98,6 +99,21 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   EXPECT_EQ(actual_payload.source_task().task_id(),
             payload.source_task().task_id());
   EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
+}
+
+TEST(CoordinationServiceErrorUtil, MakeBarrierErrorWithPayload) {
+  absl::Status barrier_error =
+      MakeBarrierError(absl::InternalError("Test Error"), "barrier_id", 8);
+
+  BarrierError payload;
+  payload.ParseFromString(
+      std::string(barrier_error.GetPayload(BarrierErrorPayloadKey()).value()));
+  EXPECT_EQ(payload.barrier_id(), "barrier_id");
+  EXPECT_EQ(payload.counter(), 8);
+  EXPECT_EQ(GetBarrierCounterFromError(barrier_error), 8);
+  // Payload exists but has no value.
+  EXPECT_EQ(barrier_error.GetPayload(CoordinationErrorPayloadKey()).value(),
+            "");
 }
 
 TEST(CoordinationServiceErrorUtil,

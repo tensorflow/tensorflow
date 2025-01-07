@@ -285,7 +285,7 @@ absl::Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
 // Casts the provided llvm::Value* to the default address space. This is useful
 // in particular for generating IR for AMDGPU target, as its kernel variables
 // are in address space 5 instead of the default address space.
-llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
+llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilderBase& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
@@ -300,7 +300,7 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
 
 }  // namespace
 
-absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
+absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    IrEmitterContext& ir_emitter_context,
                                    const HloComputation& computation,
                                    absl::Span<llvm::Value* const> operands,
@@ -328,7 +328,7 @@ absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
 }
 
 absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
   std::vector<llvm::Value*> parameter_buffers;
@@ -343,7 +343,7 @@ absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
 }
 
 absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();

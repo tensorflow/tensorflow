@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/configure_tpu_embedding_rewrite_pass.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"

@@ -17,8 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <memory>
-#include <vector>
 
 #include "xla/test.h"
 

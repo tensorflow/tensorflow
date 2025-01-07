@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -356,6 +357,22 @@ inline DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::ArrayRef(shape));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Returns whether the resultant type of any broadcastable operation with
+// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
+// broadcast-compatible with `b`.
+inline bool OperandsBroadcastToOutputType(Type a, Type b,
+                                          Type expected_output) {
+  Type output_element_type =
+      mlir::cast<ShapedType>(expected_output).getElementType();
+  Type broadcasted_type =
+      OpTrait::util::getBroadcastedType(a, b, output_element_type);
+  return broadcasted_type != Type() && broadcasted_type == expected_output;
 }
 
 }  // namespace TFL

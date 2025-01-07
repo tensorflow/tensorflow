@@ -25,6 +25,33 @@ TEST(XlaOpUtilsTest, HloModuleNameWithProgramId) {
   EXPECT_EQ("module(123)", HloModuleNameWithProgramId("module", 123));
 }
 
+TEST(XlaOpUtilsTest, IsHloRematerialization) {
+  EXPECT_FALSE(IsHloRematerialization("%fusion.4848 = %reshape.19311.remat"));
+  EXPECT_TRUE(IsHloRematerialization("%convolution.5.remat"));
+  EXPECT_TRUE(IsHloRematerialization("%convolution.4.remat = %abc"));
+}
+
+TEST(XlaOpUtilsTest, IsFrameworkRematerialization) {
+  EXPECT_TRUE(IsFrameworkRematerialization(
+      "test_function_name/rematted_computation/dot_general"));
+  EXPECT_FALSE(
+      IsFrameworkRematerialization("test_function_name/fusion/dot_general"));
+  EXPECT_FALSE(IsFrameworkRematerialization(
+      "test_function_name_rematted_computation/reshape/dot_general"));
+}
+
+TEST(XlaOpUtilsTest, IsRematerialization) {
+  EXPECT_TRUE(IsRematerialization(
+      "%convolution.5.remat",
+      "test_function_name/rematted_computation/dot_general"));
+  EXPECT_TRUE(IsRematerialization(
+      "%convolution.5", "test_function_name/rematted_computation/dot_general"));
+  EXPECT_TRUE(IsRematerialization("%convolution.5.remat",
+                                  "test_function_name/reshape/dot_general"));
+  EXPECT_FALSE(IsRematerialization("%convolution.5",
+                                   "test_function_name/reshape/dot_general"));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

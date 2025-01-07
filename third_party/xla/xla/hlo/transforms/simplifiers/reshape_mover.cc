@@ -15,11 +15,21 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape_util.h"
@@ -233,6 +243,7 @@ absl::StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
       // To make algsimp's life a little easier, don't insert a nop reshape.
       Shape new_shape = ShapeUtil::ChangeElementType(
           rearrange->operand(0)->shape(), operand->shape().element_type());
+      UpdateLayout(&new_shape);
       if (operand->shape() != new_shape) {
         return MakeReshapeHlo(new_shape, operand);
       } else {
@@ -265,13 +276,13 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
       FirstNontrivialRearrange(instruction->operands());
   CHECK(rearrange != nullptr);
 
-  const Shape& new_operand_shape = rearrange->operand(0)->shape();
+  Shape new_operand_shape = rearrange->operand(0)->shape();
   VLOG(3) << "** Sinking reshape or transpose: "
           << instruction->ToString(print_no_metadata)
           << "\n\tfirst rearrange operand: "
           << rearrange->ToString(print_no_metadata)  //
           << "\n\tnew operand shape: "
-          << ShapeUtil::HumanString(new_operand_shape);
+          << ShapeUtil::HumanStringWithLayout(new_operand_shape);
 
   auto operands = instruction->operands();
   for (size_t i = 0; i < operands.size(); ++i) {
@@ -283,11 +294,11 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
             << " to: " << operands[i]->ToString(print_no_metadata);
   }
 
-  HloInstruction* new_elementwise =
-      computation->AddInstruction(instruction->CloneWithNewOperands(
-          ShapeUtil::ChangeElementType(new_operand_shape,
-                                       instruction->shape().element_type()),
-          operands));
+  new_operand_shape = ShapeUtil::ChangeElementType(
+      new_operand_shape, instruction->shape().element_type());
+  UpdateLayout(&new_operand_shape);
+  HloInstruction* new_elementwise = computation->AddInstruction(
+      instruction->CloneWithNewOperands(new_operand_shape, operands));
 
   std::unique_ptr<HloInstruction> new_rearrange;
   switch (rearrange->opcode()) {

@@ -1,8 +1,8 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/pjrt/cpu:package_groups.bzl", "xla_cpu_internal_packages")
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -154,6 +154,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/runtime:buffer_allocations",
         "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
@@ -173,6 +174,7 @@ cc_library(
         "//xla/pjrt:semaphore",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
@@ -193,7 +195,6 @@ cc_library(
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_runtime",
         "//xla/service/cpu:cpu_xfeed",
-        "//xla/service/cpu:simple_orc_jit",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
@@ -247,18 +248,21 @@ xla_cc_test(
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -272,7 +276,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = [
-        "//xla/pjrt/cpu:legacy_cpu_client_users",
+        "//xla/pjrt/cpu:legacy_cpu_internal_users",
     ],
     deps = [
         "//xla/pjrt:status_casters",
@@ -292,7 +296,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = [
-        "//xla/pjrt/cpu:legacy_cpu_client_users",
+        "//xla/pjrt/cpu:legacy_cpu_internal_users",
     ],
     deps = [
         "//xla:shape_util",
@@ -361,7 +365,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = [
-        "//xla/pjrt/cpu:legacy_cpu_client_users",
+        "//xla/pjrt/cpu:legacy_cpu_internal_users",
     ],
     deps = if_oss([
         "@com_google_absl//absl/base:core_headers",

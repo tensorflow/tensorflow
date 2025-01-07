@@ -831,7 +831,7 @@ ENTRY entry {
 }
 
 // Test HloDomainRemover with ShardingPropagation::NormalizeDomain to generate
-// correct shardings after removing doman instruction after tuple instructions
+// correct shardings after removing domain instruction after tuple instructions
 // with the same sharding for every tuple element.
 TEST_F(HloDomainTest, DomainTupleSameSharding) {
   const char* const hlo_string = R"(

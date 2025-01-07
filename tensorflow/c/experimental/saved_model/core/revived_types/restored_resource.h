@@ -68,7 +68,7 @@ class RestoredResource : TensorHandleConvertible {
                    TFConcreteFunction* destroy_resource,
                    ImmediateTensorHandlePtr resource_handle);
 
-  Status Initialize() const;
+  absl::Status Initialize() const;
 
   // RestoredResource is movable, but not copyable.
   RestoredResource(RestoredResource&& other) = default;

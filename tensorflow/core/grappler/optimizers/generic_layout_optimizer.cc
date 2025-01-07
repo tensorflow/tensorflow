@@ -535,7 +535,7 @@ absl::Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   }
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
-  *output = context.graph;
+  *output = std::move(context.graph);
   return absl::OkStatus();
 }
 

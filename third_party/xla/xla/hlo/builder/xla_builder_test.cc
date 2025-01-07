@@ -1468,6 +1468,51 @@ TEST(XlaBuilderTest, SparseDot) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, RaggedDotNonContractingWithPreferredElementType) {
+  XlaBuilder b(TestName());
+  auto lhs = Parameter(&b, 0, ShapeUtil::MakeShape(S8, {11, 5}), "lhs");
+  auto rhs = Parameter(&b, 1, ShapeUtil::MakeShape(S8, {3, 5, 7}), "rhs");
+  auto group_sizes =
+      Parameter(&b, 2, ShapeUtil::MakeShape(U32, {3}), "group_sizes");
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  RaggedDot(lhs, rhs, group_sizes, ragged_dot_dnums,
+            /*precision_config=*/nullptr, /*preferred_element_type=*/S32);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("s32[11, 7]"));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, RaggedDotContractingWithPreferredElementType) {
+  XlaBuilder b(TestName());
+  auto lhs = Parameter(&b, 0, ShapeUtil::MakeShape(BF16, {11, 5}), "lhs");
+  auto rhs = Parameter(&b, 1, ShapeUtil::MakeShape(BF16, {5, 7}), "rhs");
+  auto group_sizes =
+      Parameter(&b, 2, ShapeUtil::MakeShape(U32, {3}), "group_sizes");
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+
+  RaggedDot(lhs, rhs, group_sizes, ragged_dot_dnums,
+            /*precision_config=*/nullptr, /*preferred_element_type=*/F32);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[3, 11, 7]"));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, ConvolutionWithPreferredElementType) {
   XlaBuilder b(TestName());
   const Shape p0_shape = ShapeUtil::MakeShape(S16, {1, 2, 2, 128});
@@ -1923,6 +1968,21 @@ TEST(XlaBuilderTest, TopKDimensions) {
   EXPECT_EQ(root->shape().tuple_shapes(0).dimensions(1), k);
   EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(0), 6);
   EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(1), k);
+}
+
+TEST(XlaBuilderTest, ExpWithResultAccuracy) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  ResultAccuracy result_accuracy;
+  ResultAccuracy::Tolerance tolerance;
+  tolerance.set_ulps(120.0f);
+  *result_accuracy.mutable_tolerance() = tolerance;
+  Exp(Parameter(&b, 0, shape, "p0"), result_accuracy);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+
+  EXPECT_EQ(root->result_accuracy().tolerance().ulps(), 120.0f);
+  EXPECT_EQ(root->result_accuracy().mode(), ResultAccuracy::DEFAULT);
 }
 
 //============================================================================//
@@ -3474,7 +3534,8 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
                               {"u32[?]", "u32[?]", &Clz},
                               {"f32[?]", "f32[?]", &Cos},
                               {"f32[?]", "f32[?]", &Erf},
-                              {"f32[?]", "f32[?]", &Exp},
+                              {"f32[?]", "f32[?]",
+                               [](XlaOp x) { return Exp(x); }},
                               {"f32[?]", "f32[?]", &Expm1},
                               {"f32[?]", "f32[?]", &Floor},
                               {"f32[?]", "f32[?]", &Imag},
@@ -3563,6 +3624,39 @@ INSTANTIATE_TEST_SUITE_P(
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Sub},
     }));
+
+TEST(XlaBuilderTest, UnorderedInfeed) {
+  XlaBuilder b(TestName());
+  const Shape s = ShapeUtil::MakeShape(PRED, {});
+  XlaOp infeed0 = Infeed(&b, s);
+  XlaOp infeed1 = Infeed(&b, s);
+  And(infeed0, infeed1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  // infeed0 should use an arbitrary token.
+  // infeed1 should use the token produced by infeed0.
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::And(
+                  m::GetTupleElement(m::Infeed(m::AfterAll()), 0),
+                  m::GetTupleElement(
+                      m::Infeed(m::GetTupleElement(m::Infeed(), 1)), 0))));
+}
+
+TEST(XlaBuilderTest, UnorderedOutfeed) {
+  XlaBuilder b(TestName());
+  const Shape s = ShapeUtil::MakeShape(S32, {});
+  XlaOp param0 = Parameter(&b, 0, s, "p0");
+  XlaOp param1 = Parameter(&b, 1, s, "p1");
+  Outfeed(param0, s, "");
+  Outfeed(param1, s, "");
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  // outfeed0 should use an arbitrary token.
+  // outfeed1 should use the token produced by infeed0.
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+  EXPECT_EQ(p1->user_count(), 1);
+  EXPECT_THAT(p1->users()[0], GmockMatch(m::Outfeed(
+                                  m::Parameter(1),
+                                  m::Outfeed(m::Parameter(0), m::AfterAll()))));
+}
 
 }  // namespace
 }  // namespace xla

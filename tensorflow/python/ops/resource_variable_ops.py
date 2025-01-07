@@ -17,6 +17,7 @@
 # pylint: disable=g-bad-name
 import contextlib
 import functools
+from typing import Any
 import weakref
 
 from absl import logging
@@ -2844,3 +2845,8 @@ def write_object_proto_for_resource_variable(resource_variable,
   ):
     if hasattr(resource_variable, "device"):
       proto.variable.device = resource_variable.device
+
+
+def get_xla_sharding(var: BaseResourceVariable) -> Any:
+  """Returns the XLA sharding associated with the variable."""
+  return var._get_xla_sharding()  # pylint: disable=protected-access

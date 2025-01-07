@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <nanobind/nanobind.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 

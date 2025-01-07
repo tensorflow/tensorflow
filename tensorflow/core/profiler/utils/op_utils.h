@@ -82,7 +82,8 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
 
   void EnterOpMetadata(uint64 program_id, absl::string_view program_name,
                        absl::string_view category, absl::string_view provenance,
-                       absl::string_view deduplicated_name, bool is_eager);
+                       absl::string_view deduplicated_name, bool is_eager,
+                       absl::string_view long_name = "");
 };
 
 }  // namespace profiler

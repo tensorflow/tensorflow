@@ -33,8 +33,8 @@ class AddOpLegalization : public Legalization {
  public:
   AddOpLegalization() = default;
   ~AddOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<AddOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<AddOpLegalization>(); }
+  using Ptr = std::unique_ptr<AddOpLegalization>;
+  static Ptr Create() { return std::make_unique<AddOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

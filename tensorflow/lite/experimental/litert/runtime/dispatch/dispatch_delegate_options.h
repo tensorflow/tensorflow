@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_
 
+#include <any>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -22,45 +23,60 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_any.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 class LiteRtDispatchDelegateOptions {
  public:
-  // Information about NPU binary, including the NPU binary bytecode and the
-  // name of the entry-point function.
-  struct ExecInfo {
-    absl::Span<const uint8_t> bytecode;
-    std::optional<std::string> function_name;
-  };
-
+  // Push a new dispatch option.
   void AddOption(LiteRtDispatchOption option) { options_.push_back(option); }
 
-  // Store a given ExecInfo object and associated it to a given tag.
-  void AddExecInfo(absl::string_view exec_tag, ExecInfo&& exec_info) {
-    exec_infos_[std::string{exec_tag}] = std::move(exec_info);
-  }
-
-  // Retrieve the ExecInfo object associated with a given tag.
-  absl::StatusOr<ExecInfo> GetExecInfo(const std::string& exec_tag) const {
-    if (auto iter = exec_infos_.find(exec_tag); iter != exec_infos_.end()) {
-      return iter->second;
-    }
-    return absl::NotFoundError("ExecInfo not found");
-  }
-
+  // Get all dispatch options.
   const std::vector<LiteRtDispatchOption>& GetDispatchOptions() const {
     return options_;
   }
 
+  // Find a dispatch option under the given name if it exists.
+  litert::Expected<std::any> FindDispatchOption(absl::string_view name) const {
+    for (const auto& option : options_) {
+      if (option.name != name) {
+        continue;
+      }
+      return litert::ToStdAny(option.value);
+    }
+    return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
+  }
+
  private:
   std::vector<LiteRtDispatchOption> options_;
-  // ExecInfos are stored as (tag, ExecInfo) pairs.
-  std::map<std::string, ExecInfo> exec_infos_;
 };
+
+//
+// Common options
+//
+
+static constexpr absl::string_view kAllocBase = "alloc_base";
+
+inline void AddAllocBaseOption(const void* alloc_base,
+                               LiteRtDispatchDelegateOptions& opts) {
+  LiteRtAny opt;
+  opt.type = kLiteRtAnyTypeVoidPtr;
+  opt.ptr_value = alloc_base;
+  opts.AddOption(LiteRtDispatchOption{kAllocBase.data(), opt});
+}
+
+inline litert::Expected<const void*> FindAllocBase(
+    const LiteRtDispatchDelegateOptions& opts) {
+  auto alloc_base = opts.FindDispatchOption(kAllocBase);
+  if (!alloc_base) {
+    return alloc_base.Error();
+  }
+  return std::any_cast<const void*>(*alloc_base);
+}
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_

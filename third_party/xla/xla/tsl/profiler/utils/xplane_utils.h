@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
@@ -126,12 +126,18 @@ struct XEventsComparator {
 
 // Returns a sorted vector of all XEvents in the given XPlane.
 // This template can be used with either XPlaneVisitor or XPlaneBuilder.
+// If line_ids is empty, all lines could be used to collect events. Otherwise,
+// only lines whose id exists in the line_ids will be used to collect events.
 template <typename Event, typename Plane>
-inline std::vector<Event> GetSortedEvents(Plane& plane,
-                                          bool include_derived_events = false) {
+std::vector<Event> GetSortedEvents(Plane& plane,
+                                   bool include_derived_events = false,
+                                   absl::Span<const int64_t> line_ids = {}) {
   std::vector<Event> events;
-  plane.ForEachLine([&events, include_derived_events](auto line) {
+  plane.ForEachLine([&events, include_derived_events, line_ids](auto line) {
     if (!include_derived_events && IsDerivedThreadId(line.Id())) return;
+    if (!line_ids.empty() && std::find(line_ids.begin(), line_ids.end(),
+                                       line.Id()) == line_ids.end())
+      return;
     line.ForEachEvent(
         [&events](auto event) { events.emplace_back(std::move(event)); });
   });

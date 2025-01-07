@@ -150,6 +150,14 @@ class FunctionalHloRunner {
     // If set, we will remove all infeed and outfeed operations.
     bool remove_infeed_outfeed = true;
 
+    // If set, we will flatten all conditional operations by setting default
+    // branch index to N-1 for indexed conditionals. Default PRED is false for
+    // predicated conditionals if conditional_value is not set.
+    bool flatten_conditional = false;
+
+    // If set, used as default predicate value for predicated conditional ops.
+    bool conditional_value = false;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();
@@ -203,9 +211,6 @@ class FunctionalHloRunner {
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
-    // Whether to use the layout on host when allocating buffers for arguments.
-    // Some platforms (e.g. CPU) do not support this yet.
-    bool use_argument_host_layout = false;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -270,7 +275,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
       InputFormat input_format, int task_id = 0, int num_nodes = 1,
-      std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
+      std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
+      bool use_gpu_count_workaround = true);
 
   // Compiles and runs the given HLO module with the given arguments for each
   // device. The given arguments is a map from device ID to a list of arguments.

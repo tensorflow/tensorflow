@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 

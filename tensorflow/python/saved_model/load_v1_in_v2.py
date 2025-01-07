@@ -181,8 +181,16 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           input_names.append(original_input_name)
           input_tensors.append(feed)
       fetches = {name: out for name, out in signature_def.outputs.items()}
+      input_signature = (
+          (),
+          func_graph.convert_structure_to_signature(
+              dict(zip(input_names, input_tensors))
+          ),
+      )
       try:
-        signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
+        signature_fn = wrapped.prune(
+            feeds=feeds, fetches=fetches, input_signature=input_signature
+        )
       except lift_to_graph.UnliftableError as ex:
         # Mutate the exception to add a bit more detail.
         args = ex.args
@@ -200,12 +208,6 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         raise
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
-      signature_fn._func_graph.structured_input_signature = (
-          (),
-          func_graph.convert_structure_to_signature(
-              dict(zip(input_names, input_tensors))
-          ),
-      )
 
       if len(input_names) == 1:
         # Allowing positional arguments does not create any ambiguity if there's

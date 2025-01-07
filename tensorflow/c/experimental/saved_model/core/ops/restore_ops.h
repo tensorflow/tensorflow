@@ -30,9 +30,10 @@ namespace internal {
 
 // Restores a single non-partioned tensorhandle of dtype `dtype`, using
 // checkpoint at `prefix`, with a value stored in `checkpoint_key`.
-Status SingleRestore(ImmediateExecutionContext* ctx, const std::string& prefix,
-                     const std::string& checkpoint_key, DataType dtype,
-                     ImmediateTensorHandlePtr* out);
+absl::Status SingleRestore(ImmediateExecutionContext* ctx,
+                           const std::string& prefix,
+                           const std::string& checkpoint_key, DataType dtype,
+                           ImmediateTensorHandlePtr* out);
 
 }  // namespace internal
 }  // namespace tensorflow

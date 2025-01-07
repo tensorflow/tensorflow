@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/platform/cloud/zone_provider.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/cloud/zone_provider.h"
 
 namespace tensorflow {
 using tsl::ZoneProvider;  // NOLINT(misc-unused-using-decls)

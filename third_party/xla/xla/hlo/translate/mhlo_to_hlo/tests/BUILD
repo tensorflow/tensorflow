@@ -37,6 +37,7 @@ lit_test_suite(
             "module_attributes.mlir",
             "multiple_return_tuple.mlir",
             "opaque_elements_attr.mlir",
+            "ragged_dot.mlir",
             "rng_get_and_update_state.mlir",
             "sharding.mlir",
             "simple.mlir",

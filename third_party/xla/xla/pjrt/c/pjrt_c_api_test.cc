@@ -21,14 +21,16 @@ limitations under the License.
 #include <numeric>
 #include <set>
 #include <string>
-#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -727,6 +729,518 @@ class PjrtCommonCApiHelpersTest : public PjrtCApiTest {};
 TEST_F(PjrtCommonCApiHelpersTest, PjrtErrorToStatus) {
   // Return success if nullptr
   EXPECT_TRUE(::pjrt::PjrtErrorToStatus(nullptr, api_).ok());
+}
+
+// -------------------------------- ABI --------------------------------
+
+class PjrtCAbiTestBase : public PjrtCApiTest {};
+
+// offset => {"field_name", offset, size}
+static std::vector<std::tuple<std::string, size_t, size_t>>
+FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
+  std::vector<std::tuple<std::string, size_t, size_t>>
+      version_offsets_and_sizes;
+
+  auto add_field = [&version_offsets_and_sizes](absl::string_view field_name,
+                                                size_t field_size) {
+    size_t field_start;
+    if (version_offsets_and_sizes.empty()) {
+      field_start = 0;
+    } else {
+      auto last_field = version_offsets_and_sizes.back();
+      size_t last_field_offset = std::get<1>(last_field);
+      size_t last_field_size = std::get<2>(last_field);
+      field_start = last_field_offset + last_field_size;
+    }
+    version_offsets_and_sizes.emplace_back(field_name, field_start, field_size);
+  };
+
+  constexpr size_t kFnPtrSize = sizeof(void (*)(void));
+
+  if (major_version == 0) {
+    // No ABI stability at version 0.0
+    if (minor_version <= 0) {
+      return {};
+    }
+    // No ABI stability at version 0.56
+    if (minor_version == 56) {
+      return {};
+    }
+    add_field("struct_size", sizeof(size_t));
+    add_field("extension_start", sizeof(void*));
+    add_field("pjrt_api_version.struct_size", sizeof(size_t));
+    add_field("pjrt_api_version.extension_start", sizeof(void*));
+    add_field("pjrt_api_version.major_version", sizeof(int));
+    add_field("pjrt_api_version.minor_version", sizeof(int));
+    add_field("PJRT_Error_Destroy", kFnPtrSize);
+    add_field("PJRT_Error_Message", kFnPtrSize);
+    add_field("PJRT_Error_GetCode", kFnPtrSize);
+    add_field("PJRT_Plugin_Initialize", kFnPtrSize);
+    add_field("PJRT_Plugin_Attributes", kFnPtrSize);
+    add_field("PJRT_Event_Destroy", kFnPtrSize);
+    add_field("PJRT_Event_IsReady", kFnPtrSize);
+    add_field("PJRT_Event_Error", kFnPtrSize);
+    add_field("PJRT_Event_Await", kFnPtrSize);
+    add_field("PJRT_Event_OnReady", kFnPtrSize);
+    add_field("PJRT_Client_Create", kFnPtrSize);
+    add_field("PJRT_Client_Destroy", kFnPtrSize);
+    add_field("PJRT_Client_PlatformName", kFnPtrSize);
+    add_field("PJRT_Client_ProcessIndex", kFnPtrSize);
+    add_field("PJRT_Client_PlatformVersion", kFnPtrSize);
+    add_field("PJRT_Client_Devices", kFnPtrSize);
+    add_field("PJRT_Client_AddressableDevices", kFnPtrSize);
+    add_field("PJRT_Client_LookupDevice", kFnPtrSize);
+    add_field("PJRT_Client_LookupAddressableDevice", kFnPtrSize);
+    add_field("PJRT_Client_AddressableMemories", kFnPtrSize);
+    add_field("PJRT_Client_Compile", kFnPtrSize);
+    add_field("PJRT_Client_DefaultDeviceAssignment", kFnPtrSize);
+    add_field("PJRT_Client_BufferFromHostBuffer", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_Id", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_ProcessIndex", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_Attributes", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_Kind", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_DebugString", kFnPtrSize);
+    add_field("PJRT_DeviceDescription_ToString", kFnPtrSize);
+    add_field("PJRT_Device_GetDescription", kFnPtrSize);
+    add_field("PJRT_Device_IsAddressable", kFnPtrSize);
+    add_field("PJRT_Device_LocalHardwareId", kFnPtrSize);
+    add_field("PJRT_Device_AddressableMemories", kFnPtrSize);
+    add_field("PJRT_Device_DefaultMemory", kFnPtrSize);
+    add_field("PJRT_Device_MemoryStats", kFnPtrSize);
+    add_field("PJRT_Memory_Id", kFnPtrSize);
+    add_field("PJRT_Memory_Kind", kFnPtrSize);
+    add_field("PJRT_Memory_DebugString", kFnPtrSize);
+    add_field("PJRT_Memory_ToString", kFnPtrSize);
+    add_field("PJRT_Memory_AddressableByDevices", kFnPtrSize);
+    add_field("PJRT_Executable_Destroy", kFnPtrSize);
+    add_field("PJRT_Executable_Name", kFnPtrSize);
+    add_field("PJRT_Executable_NumReplicas", kFnPtrSize);
+    add_field("PJRT_Executable_NumPartitions", kFnPtrSize);
+    add_field("PJRT_Executable_NumOutputs", kFnPtrSize);
+    add_field("PJRT_Executable_SizeOfGeneratedCodeInBytes", kFnPtrSize);
+    add_field("PJRT_Executable_GetCostAnalysis", kFnPtrSize);
+    add_field("PJRT_Executable_OutputMemoryKinds", kFnPtrSize);
+    add_field("PJRT_Executable_OptimizedProgram", kFnPtrSize);
+    add_field("PJRT_Executable_Serialize", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_Destroy", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_GetExecutable", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_AddressableDevices", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_Delete", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_IsDeleted", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_Execute", kFnPtrSize);
+    add_field("PJRT_Executable_DeserializeAndLoad", kFnPtrSize);
+    add_field("PJRT_LoadedExecutable_Fingerprint", kFnPtrSize);
+    add_field("PJRT_Buffer_Destroy", kFnPtrSize);
+    add_field("PJRT_Buffer_ElementType", kFnPtrSize);
+    add_field("PJRT_Buffer_Dimensions", kFnPtrSize);
+    add_field("PJRT_Buffer_UnpaddedDimensions", kFnPtrSize);
+    add_field("PJRT_Buffer_DynamicDimensionIndices", kFnPtrSize);
+    add_field("PJRT_Buffer_GetMemoryLayout", kFnPtrSize);
+    add_field("PJRT_Buffer_OnDeviceSizeInBytes", kFnPtrSize);
+    add_field("PJRT_Buffer_Device", kFnPtrSize);
+    add_field("PJRT_Buffer_Memory", kFnPtrSize);
+    add_field("PJRT_Buffer_Delete", kFnPtrSize);
+    add_field("PJRT_Buffer_IsDeleted", kFnPtrSize);
+    add_field("PJRT_Buffer_CopyToDevice", kFnPtrSize);
+    add_field("PJRT_Buffer_ToHostBuffer", kFnPtrSize);
+    add_field("PJRT_Buffer_IsOnCpu", kFnPtrSize);
+    add_field("PJRT_Buffer_ReadyEvent", kFnPtrSize);
+    add_field("PJRT_Buffer_UnsafePointer", kFnPtrSize);
+    add_field("PJRT_Buffer_IncreaseExternalReferenceCount", kFnPtrSize);
+    add_field("PJRT_Buffer_DecreaseExternalReferenceCount", kFnPtrSize);
+    add_field("PJRT_Buffer_OpaqueDeviceMemoryDataPointer", kFnPtrSize);
+    add_field("PJRT_CopyToDeviceStream_Destroy", kFnPtrSize);
+    add_field("PJRT_CopyToDeviceStream_AddChunk", kFnPtrSize);
+    add_field("PJRT_CopyToDeviceStream_TotalBytes", kFnPtrSize);
+    add_field("PJRT_CopyToDeviceStream_GranuleSize", kFnPtrSize);
+    add_field("PJRT_CopyToDeviceStream_CurrentBytes", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_Create", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_Destroy", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_PlatformName", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_PlatformVersion", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_GetDeviceDescriptions", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_Serialize", kFnPtrSize);
+    add_field("PJRT_TopologyDescription_Attributes", kFnPtrSize);
+    add_field("PJRT_Compile", kFnPtrSize);
+    if (minor_version >= 29) {
+      add_field("PJRT_Executable_OutputElementTypes", kFnPtrSize);
+      add_field("PJRT_Executable_OutputDimensions", kFnPtrSize);
+    }
+    if (minor_version >= 32) {
+      add_field("PJRT_Buffer_CopyToMemory", kFnPtrSize);
+    }
+    if (minor_version >= 33) {
+      add_field("PJRT_Client_CreateViewOfDeviceBuffer", kFnPtrSize);
+    }
+    if (minor_version >= 35) {
+      add_field("PJRT_Executable_Fingerprint", kFnPtrSize);
+    }
+    if (minor_version >= 36) {
+      add_field("PJRT_Client_TopologyDescription", kFnPtrSize);
+    }
+    if (minor_version >= 40) {
+      add_field("PJRT_Executable_GetCompiledMemoryStats", kFnPtrSize);
+    }
+    if (minor_version >= 48) {
+      add_field("PJRT_Memory_Kind_Id", kFnPtrSize);
+    }
+    if (minor_version >= 52) {
+      add_field("PJRT_ExecuteContext_Create", kFnPtrSize);
+      add_field("PJRT_ExecuteContext_Destroy", kFnPtrSize);
+    }
+    if (minor_version >= 57) {
+      add_field("PJRT_Buffer_CopyRawToHost", kFnPtrSize);
+    }
+    return version_offsets_and_sizes;
+  }
+  LOG(FATAL) << "Unsupported API version: " << major_version << "."
+             << minor_version;
+}
+
+TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
+  absl::flat_hash_map<std::string, std::pair<size_t, size_t>>
+      current_api_offsets_and_sizes{
+          {"struct_size",
+           {offsetof(PJRT_Api, struct_size), sizeof(PJRT_Api::struct_size)}},
+          {"extension_start",
+           {offsetof(PJRT_Api, extension_start),
+            sizeof(PJRT_Api::extension_start)}},
+          {"pjrt_api_version.struct_size",
+           {offsetof(PJRT_Api, pjrt_api_version.struct_size),
+            sizeof(PJRT_Api::pjrt_api_version.struct_size)}},
+          {"pjrt_api_version.extension_start",
+           {offsetof(PJRT_Api, pjrt_api_version.extension_start),
+            sizeof(PJRT_Api::pjrt_api_version.extension_start)}},
+          {"pjrt_api_version.major_version",
+           {offsetof(PJRT_Api, pjrt_api_version.major_version),
+            sizeof(PJRT_Api::pjrt_api_version.major_version)}},
+          {"pjrt_api_version.minor_version",
+           {offsetof(PJRT_Api, pjrt_api_version.minor_version),
+            sizeof(PJRT_Api::pjrt_api_version.minor_version)}},
+          {"PJRT_Error_Destroy",
+           {offsetof(PJRT_Api, PJRT_Error_Destroy),
+            sizeof(PJRT_Api::PJRT_Error_Destroy)}},
+          {"PJRT_Error_Message",
+           {offsetof(PJRT_Api, PJRT_Error_Message),
+            sizeof(PJRT_Api::PJRT_Error_Message)}},
+          {"PJRT_Error_GetCode",
+           {offsetof(PJRT_Api, PJRT_Error_GetCode),
+            sizeof(PJRT_Api::PJRT_Error_GetCode)}},
+          {"PJRT_Plugin_Initialize",
+           {offsetof(PJRT_Api, PJRT_Plugin_Initialize),
+            sizeof(PJRT_Api::PJRT_Plugin_Initialize)}},
+          {"PJRT_Plugin_Attributes",
+           {offsetof(PJRT_Api, PJRT_Plugin_Attributes),
+            sizeof(PJRT_Api::PJRT_Plugin_Attributes)}},
+          {"PJRT_Event_Destroy",
+           {offsetof(PJRT_Api, PJRT_Event_Destroy),
+            sizeof(PJRT_Api::PJRT_Event_Destroy)}},
+          {"PJRT_Event_IsReady",
+           {offsetof(PJRT_Api, PJRT_Event_IsReady),
+            sizeof(PJRT_Api::PJRT_Event_IsReady)}},
+          {"PJRT_Event_Error",
+           {offsetof(PJRT_Api, PJRT_Event_Error),
+            sizeof(PJRT_Api::PJRT_Event_Error)}},
+          {"PJRT_Event_Await",
+           {offsetof(PJRT_Api, PJRT_Event_Await),
+            sizeof(PJRT_Api::PJRT_Event_Await)}},
+          {"PJRT_Event_OnReady",
+           {offsetof(PJRT_Api, PJRT_Event_OnReady),
+            sizeof(PJRT_Api::PJRT_Event_OnReady)}},
+          {"PJRT_Client_Create",
+           {offsetof(PJRT_Api, PJRT_Client_Create),
+            sizeof(PJRT_Api::PJRT_Client_Create)}},
+          {"PJRT_Client_Destroy",
+           {offsetof(PJRT_Api, PJRT_Client_Destroy),
+            sizeof(PJRT_Api::PJRT_Client_Destroy)}},
+          {"PJRT_Client_PlatformName",
+           {offsetof(PJRT_Api, PJRT_Client_PlatformName),
+            sizeof(PJRT_Api::PJRT_Client_PlatformName)}},
+          {"PJRT_Client_ProcessIndex",
+           {offsetof(PJRT_Api, PJRT_Client_ProcessIndex),
+            sizeof(PJRT_Api::PJRT_Client_ProcessIndex)}},
+          {"PJRT_Client_PlatformVersion",
+           {offsetof(PJRT_Api, PJRT_Client_PlatformVersion),
+            sizeof(PJRT_Api::PJRT_Client_PlatformVersion)}},
+          {"PJRT_Client_Devices",
+           {offsetof(PJRT_Api, PJRT_Client_Devices),
+            sizeof(PJRT_Api::PJRT_Client_Devices)}},
+          {"PJRT_Client_AddressableDevices",
+           {offsetof(PJRT_Api, PJRT_Client_AddressableDevices),
+            sizeof(PJRT_Api::PJRT_Client_AddressableDevices)}},
+          {"PJRT_Client_LookupDevice",
+           {offsetof(PJRT_Api, PJRT_Client_LookupDevice),
+            sizeof(PJRT_Api::PJRT_Client_LookupDevice)}},
+          {"PJRT_Client_LookupAddressableDevice",
+           {offsetof(PJRT_Api, PJRT_Client_LookupAddressableDevice),
+            sizeof(PJRT_Api::PJRT_Client_LookupAddressableDevice)}},
+          {"PJRT_Client_AddressableMemories",
+           {offsetof(PJRT_Api, PJRT_Client_AddressableMemories),
+            sizeof(PJRT_Api::PJRT_Client_AddressableMemories)}},
+          {"PJRT_Client_Compile",
+           {offsetof(PJRT_Api, PJRT_Client_Compile),
+            sizeof(PJRT_Api::PJRT_Client_Compile)}},
+          {"PJRT_Client_DefaultDeviceAssignment",
+           {offsetof(PJRT_Api, PJRT_Client_DefaultDeviceAssignment),
+            sizeof(PJRT_Api::PJRT_Client_DefaultDeviceAssignment)}},
+          {"PJRT_Client_BufferFromHostBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_BufferFromHostBuffer),
+            sizeof(PJRT_Api::PJRT_Client_BufferFromHostBuffer)}},
+          {"PJRT_DeviceDescription_Id",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_Id),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_Id)}},
+          {"PJRT_DeviceDescription_ProcessIndex",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_ProcessIndex),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_ProcessIndex)}},
+          {"PJRT_DeviceDescription_Attributes",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_Attributes),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_Attributes)}},
+          {"PJRT_DeviceDescription_Kind",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_Kind),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_Kind)}},
+          {"PJRT_DeviceDescription_DebugString",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_DebugString),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_DebugString)}},
+          {"PJRT_DeviceDescription_ToString",
+           {offsetof(PJRT_Api, PJRT_DeviceDescription_ToString),
+            sizeof(PJRT_Api::PJRT_DeviceDescription_ToString)}},
+          {"PJRT_Device_GetDescription",
+           {offsetof(PJRT_Api, PJRT_Device_GetDescription),
+            sizeof(PJRT_Api::PJRT_Device_GetDescription)}},
+          {"PJRT_Device_IsAddressable",
+           {offsetof(PJRT_Api, PJRT_Device_IsAddressable),
+            sizeof(PJRT_Api::PJRT_Device_IsAddressable)}},
+          {"PJRT_Device_LocalHardwareId",
+           {offsetof(PJRT_Api, PJRT_Device_LocalHardwareId),
+            sizeof(PJRT_Api::PJRT_Device_LocalHardwareId)}},
+          {"PJRT_Device_AddressableMemories",
+           {offsetof(PJRT_Api, PJRT_Device_AddressableMemories),
+            sizeof(PJRT_Api::PJRT_Device_AddressableMemories)}},
+          {"PJRT_Device_DefaultMemory",
+           {offsetof(PJRT_Api, PJRT_Device_DefaultMemory),
+            sizeof(PJRT_Api::PJRT_Device_DefaultMemory)}},
+          {"PJRT_Device_MemoryStats",
+           {offsetof(PJRT_Api, PJRT_Device_MemoryStats),
+            sizeof(PJRT_Api::PJRT_Device_MemoryStats)}},
+          {"PJRT_Memory_Id",
+           {offsetof(PJRT_Api, PJRT_Memory_Id),
+            sizeof(PJRT_Api::PJRT_Memory_Id)}},
+          {"PJRT_Memory_Kind",
+           {offsetof(PJRT_Api, PJRT_Memory_Kind),
+            sizeof(PJRT_Api::PJRT_Memory_Kind)}},
+          {"PJRT_Memory_DebugString",
+           {offsetof(PJRT_Api, PJRT_Memory_DebugString),
+            sizeof(PJRT_Api::PJRT_Memory_DebugString)}},
+          {"PJRT_Memory_ToString",
+           {offsetof(PJRT_Api, PJRT_Memory_ToString),
+            sizeof(PJRT_Api::PJRT_Memory_ToString)}},
+          {"PJRT_Memory_AddressableByDevices",
+           {offsetof(PJRT_Api, PJRT_Memory_AddressableByDevices),
+            sizeof(PJRT_Api::PJRT_Memory_AddressableByDevices)}},
+          {"PJRT_Executable_Destroy",
+           {offsetof(PJRT_Api, PJRT_Executable_Destroy),
+            sizeof(PJRT_Api::PJRT_Executable_Destroy)}},
+          {"PJRT_Executable_Name",
+           {offsetof(PJRT_Api, PJRT_Executable_Name),
+            sizeof(PJRT_Api::PJRT_Executable_Name)}},
+          {"PJRT_Executable_NumReplicas",
+           {offsetof(PJRT_Api, PJRT_Executable_NumReplicas),
+            sizeof(PJRT_Api::PJRT_Executable_NumReplicas)}},
+          {"PJRT_Executable_NumPartitions",
+           {offsetof(PJRT_Api, PJRT_Executable_NumPartitions),
+            sizeof(PJRT_Api::PJRT_Executable_NumPartitions)}},
+          {"PJRT_Executable_NumOutputs",
+           {offsetof(PJRT_Api, PJRT_Executable_NumOutputs),
+            sizeof(PJRT_Api::PJRT_Executable_NumOutputs)}},
+          {"PJRT_Executable_SizeOfGeneratedCodeInBytes",
+           {offsetof(PJRT_Api, PJRT_Executable_SizeOfGeneratedCodeInBytes),
+            sizeof(PJRT_Api::PJRT_Executable_SizeOfGeneratedCodeInBytes)}},
+          {"PJRT_Executable_GetCostAnalysis",
+           {offsetof(PJRT_Api, PJRT_Executable_GetCostAnalysis),
+            sizeof(PJRT_Api::PJRT_Executable_GetCostAnalysis)}},
+          {"PJRT_Executable_OutputMemoryKinds",
+           {offsetof(PJRT_Api, PJRT_Executable_OutputMemoryKinds),
+            sizeof(PJRT_Api::PJRT_Executable_OutputMemoryKinds)}},
+          {"PJRT_Executable_OptimizedProgram",
+           {offsetof(PJRT_Api, PJRT_Executable_OptimizedProgram),
+            sizeof(PJRT_Api::PJRT_Executable_OptimizedProgram)}},
+          {"PJRT_Executable_Serialize",
+           {offsetof(PJRT_Api, PJRT_Executable_Serialize),
+            sizeof(PJRT_Api::PJRT_Executable_Serialize)}},
+          {"PJRT_LoadedExecutable_Destroy",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_Destroy),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_Destroy)}},
+          {"PJRT_LoadedExecutable_GetExecutable",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetExecutable),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_GetExecutable)}},
+          {"PJRT_LoadedExecutable_AddressableDevices",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_AddressableDevices),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_AddressableDevices)}},
+          {"PJRT_LoadedExecutable_Delete",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_Delete),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_Delete)}},
+          {"PJRT_LoadedExecutable_IsDeleted",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_IsDeleted),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_IsDeleted)}},
+          {"PJRT_LoadedExecutable_Execute",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_Execute),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_Execute)}},
+          {"PJRT_Executable_DeserializeAndLoad",
+           {offsetof(PJRT_Api, PJRT_Executable_DeserializeAndLoad),
+            sizeof(PJRT_Api::PJRT_Executable_DeserializeAndLoad)}},
+          {"PJRT_LoadedExecutable_Fingerprint",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_Fingerprint),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_Fingerprint)}},
+          {"PJRT_Buffer_Destroy",
+           {offsetof(PJRT_Api, PJRT_Buffer_Destroy),
+            sizeof(PJRT_Api::PJRT_Buffer_Destroy)}},
+          {"PJRT_Buffer_ElementType",
+           {offsetof(PJRT_Api, PJRT_Buffer_ElementType),
+            sizeof(PJRT_Api::PJRT_Buffer_ElementType)}},
+          {"PJRT_Buffer_Dimensions",
+           {offsetof(PJRT_Api, PJRT_Buffer_Dimensions),
+            sizeof(PJRT_Api::PJRT_Buffer_Dimensions)}},
+          {"PJRT_Buffer_UnpaddedDimensions",
+           {offsetof(PJRT_Api, PJRT_Buffer_UnpaddedDimensions),
+            sizeof(PJRT_Api::PJRT_Buffer_UnpaddedDimensions)}},
+          {"PJRT_Buffer_DynamicDimensionIndices",
+           {offsetof(PJRT_Api, PJRT_Buffer_DynamicDimensionIndices),
+            sizeof(PJRT_Api::PJRT_Buffer_DynamicDimensionIndices)}},
+          {"PJRT_Buffer_GetMemoryLayout",
+           {offsetof(PJRT_Api, PJRT_Buffer_GetMemoryLayout),
+            sizeof(PJRT_Api::PJRT_Buffer_GetMemoryLayout)}},
+          {"PJRT_Buffer_OnDeviceSizeInBytes",
+           {offsetof(PJRT_Api, PJRT_Buffer_OnDeviceSizeInBytes),
+            sizeof(PJRT_Api::PJRT_Buffer_OnDeviceSizeInBytes)}},
+          {"PJRT_Buffer_Device",
+           {offsetof(PJRT_Api, PJRT_Buffer_Device),
+            sizeof(PJRT_Api::PJRT_Buffer_Device)}},
+          {"PJRT_Buffer_Memory",
+           {offsetof(PJRT_Api, PJRT_Buffer_Memory),
+            sizeof(PJRT_Api::PJRT_Buffer_Memory)}},
+          {"PJRT_Buffer_Delete",
+           {offsetof(PJRT_Api, PJRT_Buffer_Delete),
+            sizeof(PJRT_Api::PJRT_Buffer_Delete)}},
+          {"PJRT_Buffer_IsDeleted",
+           {offsetof(PJRT_Api, PJRT_Buffer_IsDeleted),
+            sizeof(PJRT_Api::PJRT_Buffer_IsDeleted)}},
+          {"PJRT_Buffer_CopyToDevice",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyToDevice),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyToDevice)}},
+          {"PJRT_Buffer_ToHostBuffer",
+           {offsetof(PJRT_Api, PJRT_Buffer_ToHostBuffer),
+            sizeof(PJRT_Api::PJRT_Buffer_ToHostBuffer)}},
+          {"PJRT_Buffer_IsOnCpu",
+           {offsetof(PJRT_Api, PJRT_Buffer_IsOnCpu),
+            sizeof(PJRT_Api::PJRT_Buffer_IsOnCpu)}},
+          {"PJRT_Buffer_ReadyEvent",
+           {offsetof(PJRT_Api, PJRT_Buffer_ReadyEvent),
+            sizeof(PJRT_Api::PJRT_Buffer_ReadyEvent)}},
+          {"PJRT_Buffer_UnsafePointer",
+           {offsetof(PJRT_Api, PJRT_Buffer_UnsafePointer),
+            sizeof(PJRT_Api::PJRT_Buffer_UnsafePointer)}},
+          {"PJRT_Buffer_IncreaseExternalReferenceCount",
+           {offsetof(PJRT_Api, PJRT_Buffer_IncreaseExternalReferenceCount),
+            sizeof(PJRT_Api::PJRT_Buffer_IncreaseExternalReferenceCount)}},
+          {"PJRT_Buffer_DecreaseExternalReferenceCount",
+           {offsetof(PJRT_Api, PJRT_Buffer_DecreaseExternalReferenceCount),
+            sizeof(PJRT_Api::PJRT_Buffer_DecreaseExternalReferenceCount)}},
+          {"PJRT_Buffer_OpaqueDeviceMemoryDataPointer",
+           {offsetof(PJRT_Api, PJRT_Buffer_OpaqueDeviceMemoryDataPointer),
+            sizeof(PJRT_Api::PJRT_Buffer_OpaqueDeviceMemoryDataPointer)}},
+          {"PJRT_CopyToDeviceStream_Destroy",
+           {offsetof(PJRT_Api, PJRT_CopyToDeviceStream_Destroy),
+            sizeof(PJRT_Api::PJRT_CopyToDeviceStream_Destroy)}},
+          {"PJRT_CopyToDeviceStream_AddChunk",
+           {offsetof(PJRT_Api, PJRT_CopyToDeviceStream_AddChunk),
+            sizeof(PJRT_Api::PJRT_CopyToDeviceStream_AddChunk)}},
+          {"PJRT_CopyToDeviceStream_TotalBytes",
+           {offsetof(PJRT_Api, PJRT_CopyToDeviceStream_TotalBytes),
+            sizeof(PJRT_Api::PJRT_CopyToDeviceStream_TotalBytes)}},
+          {"PJRT_CopyToDeviceStream_GranuleSize",
+           {offsetof(PJRT_Api, PJRT_CopyToDeviceStream_GranuleSize),
+            sizeof(PJRT_Api::PJRT_CopyToDeviceStream_GranuleSize)}},
+          {"PJRT_CopyToDeviceStream_CurrentBytes",
+           {offsetof(PJRT_Api, PJRT_CopyToDeviceStream_CurrentBytes),
+            sizeof(PJRT_Api::PJRT_CopyToDeviceStream_CurrentBytes)}},
+          {"PJRT_TopologyDescription_Create",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Create),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Create)}},
+          {"PJRT_TopologyDescription_Destroy",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Destroy),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Destroy)}},
+          {"PJRT_TopologyDescription_PlatformName",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_PlatformName),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_PlatformName)}},
+          {"PJRT_TopologyDescription_PlatformVersion",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_PlatformVersion),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_PlatformVersion)}},
+          {"PJRT_TopologyDescription_GetDeviceDescriptions",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_GetDeviceDescriptions),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_GetDeviceDescriptions)}},
+          {"PJRT_TopologyDescription_Serialize",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Serialize),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Serialize)}},
+          {"PJRT_TopologyDescription_Attributes",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Attributes),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Attributes)}},
+          {"PJRT_Compile",
+           {offsetof(PJRT_Api, PJRT_Compile), sizeof(PJRT_Api::PJRT_Compile)}},
+          {"PJRT_Executable_OutputElementTypes",
+           {offsetof(PJRT_Api, PJRT_Executable_OutputElementTypes),
+            sizeof(PJRT_Api::PJRT_Executable_OutputElementTypes)}},
+          {"PJRT_Executable_OutputDimensions",
+           {offsetof(PJRT_Api, PJRT_Executable_OutputDimensions),
+            sizeof(PJRT_Api::PJRT_Executable_OutputDimensions)}},
+          {"PJRT_Buffer_CopyToMemory",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyToMemory),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyToMemory)}},
+          {"PJRT_Client_CreateViewOfDeviceBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_CreateViewOfDeviceBuffer),
+            sizeof(PJRT_Api::PJRT_Client_CreateViewOfDeviceBuffer)}},
+          {"PJRT_Executable_Fingerprint",
+           {offsetof(PJRT_Api, PJRT_Executable_Fingerprint),
+            sizeof(PJRT_Api::PJRT_Executable_Fingerprint)}},
+          {"PJRT_Client_TopologyDescription",
+           {offsetof(PJRT_Api, PJRT_Client_TopologyDescription),
+            sizeof(PJRT_Api::PJRT_Client_TopologyDescription)}},
+          {"PJRT_Executable_GetCompiledMemoryStats",
+           {offsetof(PJRT_Api, PJRT_Executable_GetCompiledMemoryStats),
+            sizeof(PJRT_Api::PJRT_Executable_GetCompiledMemoryStats)}},
+          {"PJRT_Memory_Kind_Id",
+           {offsetof(PJRT_Api, PJRT_Memory_Kind_Id),
+            sizeof(PJRT_Api::PJRT_Memory_Kind_Id)}},
+          {"PJRT_ExecuteContext_Create",
+           {offsetof(PJRT_Api, PJRT_ExecuteContext_Create),
+            sizeof(PJRT_Api::PJRT_ExecuteContext_Create)}},
+          {"PJRT_ExecuteContext_Destroy",
+           {offsetof(PJRT_Api, PJRT_ExecuteContext_Destroy),
+            sizeof(PJRT_Api::PJRT_ExecuteContext_Destroy)}},
+          {"PJRT_Buffer_CopyRawToHost",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHost),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHost)}},
+      };
+  ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
+  ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
+  const auto offsets_and_sizes =
+      FieldOffsetsAndSizesForVersion(PJRT_API_MAJOR, PJRT_API_MINOR);
+  // There should be *something* for the current API.
+  ASSERT_FALSE(offsets_and_sizes.empty());
+  const auto last_field = offsets_and_sizes.back();
+  const size_t last_field_offset = std::get<1>(last_field);
+  const size_t last_field_size = std::get<2>(last_field);
+  const size_t api_size = last_field_offset + last_field_size;
+  // The current size *must* be equal to the size of the struct.
+  EXPECT_EQ(api_size, PJRT_Api_STRUCT_SIZE);
+  for (auto [field_name, offset, size] : offsets_and_sizes) {
+    const auto it = current_api_offsets_and_sizes.find(field_name);
+    ASSERT_TRUE(it != current_api_offsets_and_sizes.end())
+        << "Field " << field_name << " not found in current API";
+    ASSERT_EQ(it->second.first, offset)
+        << "Field " << field_name << " has wrong offset in current API";
+    ASSERT_EQ(it->second.second, size)
+        << "Field " << field_name << " has wrong size in current API";
+  }
 }
 
 }  // namespace

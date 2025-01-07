@@ -19,16 +19,18 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert {
 namespace internal {
 
-absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type) {
+Expected<ElementType> ConvertElementType(TfLiteType tfl_type) {
   switch (tfl_type) {
     case kTfLiteNoType:
       return ElementType::None;
@@ -71,20 +73,21 @@ absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type) {
     case kTfLiteVariant:
       return ElementType::TfVariant;
     default:
-      return absl::InternalError("Unsupported TfLiteType");
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unsupported TfLiteType");
   }
 }
 
-absl::StatusOr<RankedTensorType> ConvertTensorType(
+Expected<RankedTensorType> ConvertTensorType(
     const TfLiteOpaqueTensor* tfl_opaque_tensor) {
   auto tfl_type = TfLiteOpaqueTensorType(tfl_opaque_tensor);
   auto element_type = ConvertElementType(tfl_type);
-  if (!element_type.ok()) {
-    return element_type.status();
+  if (!element_type) {
+    return Unexpected(element_type.Error());
   }
 
   size_t rank = TfLiteOpaqueTensorNumDims(tfl_opaque_tensor);
-  std::vector<int32_t> dimensions(rank);
+  SmallVec<int32_t> dimensions(rank);
   for (size_t i = 0; i < rank; ++i) {
     dimensions[i] = TfLiteOpaqueTensorDim(tfl_opaque_tensor, i);
   }

@@ -32,9 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -60,7 +58,6 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
-                                   const GpuAsmOpts& gpu_compilation_opts,
                                    int64_t memory_limit, int64_t redzone_size,
                                    uint8_t redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
@@ -70,8 +67,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
           redzone_size,
           static_cast<int64_t>(tsl::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
-      memory_allocator_(memory_allocator),
-      gpu_compilation_opts_(gpu_compilation_opts) {}
+      memory_allocator_(memory_allocator) {}
 
 absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
@@ -257,9 +253,7 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(
-      const ComparisonKernel* kernel,
-      GetComparisonKernel(stream_->parent(), gpu_compilation_opts_));
+  TF_ASSIGN_OR_RETURN(ComparisonKernel kernel, GetComparisonKernel(executor));
 
   stream_executor::DeviceMemoryHandle out_param(
       executor, executor->AllocateScalar<uint64_t>());
@@ -271,7 +265,7 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
                                DeviceMemory<uint64_t>(out_param.memory()),
-                               *kernel, buf_and_size.second, redzone_size_,
+                               kernel, buf_and_size.second, redzone_size_,
                                redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;

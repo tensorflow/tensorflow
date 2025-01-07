@@ -1258,6 +1258,23 @@ class ThreadPool {
     }
   }
 
+  int64_t num_threads() const {
+    int64_t num_threads = 0;
+
+    XLA_FFI_ThreadPool_NumThreads_Args args;
+    args.struct_size = XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx_;
+    args.num_threads = &num_threads;
+
+    // Silently ignore errors if we can't get the number of threads.
+    if (XLA_FFI_Error* error = api_->XLA_FFI_ThreadPool_NumThreads(&args)) {
+      internal::DestroyError(api_, error);
+    }
+
+    return num_threads;
+  }
+
  private:
   friend struct CtxDecoding<ThreadPool>;
 

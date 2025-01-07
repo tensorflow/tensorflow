@@ -1526,37 +1526,37 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       return nullptr;
 
     case HloOpcode::kAdd:
-      return [root_is_integral](llvm::IRBuilder<>* b, llvm::Value* lhs,
+      return [root_is_integral](llvm::IRBuilderBase* b, llvm::Value* lhs,
                                 llvm::Value* rhs) {
         return root_is_integral ? b->CreateAdd(lhs, rhs)
                                 : b->CreateFAdd(lhs, rhs);
       };
 
     case HloOpcode::kMultiply:
-      return [root_is_integral](llvm::IRBuilder<>* b, llvm::Value* lhs,
+      return [root_is_integral](llvm::IRBuilderBase* b, llvm::Value* lhs,
                                 llvm::Value* rhs) {
         return root_is_integral ? b->CreateMul(lhs, rhs)
                                 : b->CreateFMul(lhs, rhs);
       };
 
     case HloOpcode::kAnd:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateAnd(lhs, rhs);
       };
 
     case HloOpcode::kOr:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateOr(lhs, rhs);
       };
 
     case HloOpcode::kXor:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateXor(lhs, rhs);
       };
 
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed, this](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::IRBuilderBase* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitFloatMax(
@@ -1573,7 +1573,7 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMinimum:
       return [root_is_floating_point, root_is_signed, this](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::IRBuilderBase* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitFloatMin(
@@ -3047,7 +3047,7 @@ absl::Status EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilder<>& b) {
+    llvm::IRBuilderBase& b) {
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it
   // (inner_dims) and the dimensions that are major to it (outer_dims).
@@ -3189,7 +3189,8 @@ struct EncodedInfo {
 
 template <typename Args>
 static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
-                                     const Args& args, llvm::IRBuilder<>& ir) {
+                                     const Args& args,
+                                     llvm::IRBuilderBase& ir) {
   // Store the types of `args` into the allocated memory. These types are stored
   // as int32_t values contiguously. All tuples are flattened to bare elements.
   int64_t total_elements = 0;
@@ -3217,7 +3218,8 @@ static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
 
 template <typename Args>
 static EncodedInfo StoreEncodedShapes(std::string_view alloca_name,
-                                      const Args& args, llvm::IRBuilder<>& ir) {
+                                      const Args& args,
+                                      llvm::IRBuilderBase& ir) {
   // Prepare metadata for all buffers. A tuple shape is flattened to only encode
   // information about its elements (buffers). Shapes metadata is encoded using
   // contiguous flattened dimension values:
@@ -3334,7 +3336,7 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
                           int64_t element_count, PrimitiveType primitive_type,
                           const llvm_ir::IrArray& target_array,
                           const llvm_ir::IrArray& source_array,
-                          llvm::Module* module, llvm::IRBuilder<>& b) {
+                          llvm::Module* module, llvm::IRBuilderBase& b) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
@@ -3632,7 +3634,7 @@ llvm::Value* IrEmitter::GetProfileCounterFor(
                                                  computation_to_profile_idx_);
 }
 
-void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilderBase* b,
                                                      llvm::Value* prof_counter,
                                                      llvm::Value* cycle_end,
                                                      llvm::Value* cycle_start) {
@@ -3645,7 +3647,8 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
   b->CreateStore(new_cycle_count, prof_counter);
 }
 
-llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
+llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(
+    llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
@@ -3660,7 +3663,7 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   return b->CreateExtractValue(rdtscp_call, {0});
 }
 
-void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilderBase* b,
                                                  HloInstruction* hlo) {
   auto* cycle_start = ReadCycleCounter(b);
   cycle_start->setName(IrName(hlo, "cycle_start"));
@@ -3670,7 +3673,7 @@ void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
   }
 }
 
-void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilderBase* b,
                                                  HloInstruction* hlo,
                                                  llvm::Value* prof_counter) {
   auto* cycle_end = ReadCycleCounter(b);
@@ -3681,14 +3684,14 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
 }
 
 void IrEmitter::ProfilingState::RecordCompleteComputation(
-    llvm::IRBuilder<>* b, llvm::Value* prof_counter) {
+    llvm::IRBuilderBase* b, llvm::Value* prof_counter) {
   if (last_read_cycle_end_ && first_read_cycle_start_) {
     UpdateProfileCounter(b, prof_counter, last_read_cycle_end_,
                          first_read_cycle_start_);
   }
 }
 
-void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
+void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilderBase* b,
                                                HloInstruction* hlo,
                                                llvm::Value* run_options) {
   if (!enabled_) {
@@ -3721,7 +3724,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
   activity_ids_[hlo] = activity_id;
 }
 
-void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
+void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilderBase* b,
                                              HloInstruction* hlo,
                                              llvm::Value* run_options) {
   if (!enabled_) {

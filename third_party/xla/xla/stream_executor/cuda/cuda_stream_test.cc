@@ -51,7 +51,6 @@ namespace {
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::testing::IsEmpty;
 using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {

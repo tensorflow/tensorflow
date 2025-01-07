@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -124,7 +125,7 @@ class TestCoordinationClient : public CoordinationClient {
       StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToServiceAsync"));
   }
-  void BarrierAsync(const tsl::BarrierRequest* request,
+  void BarrierAsync(CallOptions* call_opts, const tsl::BarrierRequest* request,
                     tsl::BarrierResponse* response,
                     StatusCallback done) override {
     done(absl::UnimplementedError("BarrierAsync"));

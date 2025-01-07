@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SHAPE_H_
 #define XLA_SHAPE_H_
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <ostream>
@@ -234,11 +235,6 @@ class Shape {
     for (auto& subshape : tuple_shapes_) {
       subshape.clear_dynamic_dimensions();
     }
-  }
-
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
   }
 
   void Clear() {

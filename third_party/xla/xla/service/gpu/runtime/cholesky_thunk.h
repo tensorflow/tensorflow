@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_CHOLESKY_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu_solver_context.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -39,11 +42,15 @@ namespace gpu {
 // Thread-compatible.
 class CholeskyThunk : public Thunk {
  public:
-  CholeskyThunk(ThunkInfo thunk_info, const CholeskyOptions& options,
-                se::GpuAsmOpts asm_opts, BufferAllocation::Slice a_buffer,
-                BufferAllocation::Slice workspace_buffer,
-                BufferAllocation::Slice info_buffer, PrimitiveType type,
-                int64_t batch_size, int64_t n);
+  CholeskyThunk(
+      ThunkInfo thunk_info, const CholeskyOptions& options,
+      BufferAllocation::Slice a_buffer,
+      BufferAllocation::Slice workspace_buffer,
+      BufferAllocation::Slice info_buffer, PrimitiveType type,
+      int64_t batch_size, int64_t n,
+      absl::AnyInvocable<
+          absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+          solver_context_creator);
 
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;
@@ -51,7 +58,6 @@ class CholeskyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  se::GpuAsmOpts asm_opts_;
   se::blas::UpperLower uplo_;
 
   const BufferAllocation::Slice a_buffer_;
@@ -61,6 +67,9 @@ class CholeskyThunk : public Thunk {
   const PrimitiveType type_;
   const int64_t batch_size_;
   const int64_t n_;
+  absl::AnyInvocable<
+      absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+      solver_context_creator_;
 };
 
 struct CholeskyParams {
@@ -71,8 +80,6 @@ struct CholeskyParams {
   se::DeviceMemoryBase workspace_buffer;
   se::DeviceMemoryBase info_buffer;
 };
-absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                         CholeskyParams* params, se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

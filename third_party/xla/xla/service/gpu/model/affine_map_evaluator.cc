@@ -49,10 +49,10 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
     return mlir::cast<AffineConstantExpr>(expr).getValue();
   }
   if (kind == AffineExprKind::DimId) {
-    return dim_values[mlir::cast<AffineDimExpr>(expr).getPosition()];
+    return dim_values.at(mlir::cast<AffineDimExpr>(expr).getPosition());
   }
   if (kind == AffineExprKind::SymbolId) {
-    return symbol_values[mlir::cast<AffineSymbolExpr>(expr).getPosition()];
+    return symbol_values.at(mlir::cast<AffineSymbolExpr>(expr).getPosition());
   }
 
   auto binary_expr = mlir::cast<AffineBinaryOpExpr>(expr);

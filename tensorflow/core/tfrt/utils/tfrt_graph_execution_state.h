@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,12 +25,14 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/mlir_bridge_config_v1.pb.h"
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -58,7 +61,8 @@ class TfrtGraphExecutionState {
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
   static absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
       const Options& options, tensorflow::GraphDef graph_def,
-      const FallbackState& fallback_state);
+      const FallbackState& fallback_state,
+      tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
   TfrtGraphExecutionState(

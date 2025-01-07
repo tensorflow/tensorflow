@@ -63,7 +63,7 @@ absl::Status EmitCompareLoopBody(
     std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b, bool needs_bounds_checks = true) {
+    llvm::IRBuilderBase* b, bool needs_bounds_checks = true) {
   auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
@@ -165,7 +165,7 @@ absl::Status EmitTiledCompareLoop(
     const std::vector<llvm::GlobalVariable*>& param_shmem_buffers,
     int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilderBase* b) {
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
@@ -327,7 +327,7 @@ absl::Status EmitTiledCompareLoop(
 absl::Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, const int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback) {
   // Iterate through the keys shape in physical order, but skip the dimension to

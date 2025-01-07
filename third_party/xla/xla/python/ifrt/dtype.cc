@@ -63,6 +63,7 @@ std::optional<int> DType::byte_size() const {
     case kC128:
       return 16;
     case kToken:
+    case kOpaque:
     case kInvalid:
     case kString:
       return std::nullopt;
@@ -106,6 +107,7 @@ std::optional<int> DType::bit_size() const {
     case kC128:
       return 128;
     case kToken:
+    case kOpaque:
     case kInvalid:
     case kString:
       return std::nullopt;
@@ -118,6 +120,8 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       return DType(DType::Kind::kPred);
     case DTypeProto::KIND_TOKEN:
       return DType(DType::Kind::kToken);
+    case DTypeProto::KIND_OPAQUE:
+      return DType(DType::Kind::kOpaque);
 #define CASE(X)              \
   case DTypeProto::KIND_##X: \
     return DType(DType::Kind::k##X);
@@ -161,6 +165,9 @@ DTypeProto DType::ToProto() const {
       break;
     case DType::Kind::kToken:
       dtype_proto.set_kind(DTypeProto::KIND_TOKEN);
+      break;
+    case DType::Kind::kOpaque:
+      dtype_proto.set_kind(DTypeProto::KIND_OPAQUE);
       break;
 #define CASE(X)                                 \
   case DType::Kind::k##X:                       \
@@ -237,6 +244,8 @@ std::string DType::DebugString() const {
       return "C128";
     case kToken:
       return "TOKEN";
+    case kOpaque:
+      return "OPAQUE";
     case kString:
       return "STRING";
     default:

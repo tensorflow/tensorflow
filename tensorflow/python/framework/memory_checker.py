@@ -18,11 +18,6 @@ from tensorflow.python.framework.python_memory_checker import _PythonMemoryCheck
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import tf_inspect
 
-try:
-  from tensorflow.python.platform.cpp_memory_checker import _CppMemoryChecker as CppMemoryChecker  # pylint:disable=g-import-not-at-top
-except ImportError:
-  CppMemoryChecker = None
-
 
 def _get_test_name_best_effort():
   """If available, return the current test name. Otherwise, `None`."""
@@ -70,14 +65,11 @@ class MemoryChecker(object):
   @trace.trace_wrapper
   def __enter__(self):
     self._python_memory_checker = _PythonMemoryChecker()
-    if CppMemoryChecker:
-      self._cpp_memory_checker = CppMemoryChecker(_get_test_name_best_effort())
     return self
 
   @trace.trace_wrapper
   def __exit__(self, exc_type, exc_value, traceback):
-    if CppMemoryChecker:
-      self._cpp_memory_checker.stop()
+    pass
 
   # We do not enable trace_wrapper on this function to avoid contaminating
   # the snapshot.
@@ -92,8 +84,6 @@ class MemoryChecker(object):
     code complexity and the allcoation pattern.
     """
     self._python_memory_checker.record_snapshot()
-    if CppMemoryChecker:
-      self._cpp_memory_checker.record_snapshot()
 
   @trace.trace_wrapper
   def report(self):
@@ -104,8 +94,6 @@ class MemoryChecker(object):
     directory provided the infra instead.
     """
     self._python_memory_checker.report()
-    if CppMemoryChecker:
-      self._cpp_memory_checker.report()
 
   @trace.trace_wrapper
   def assert_no_leak_if_all_possibly_except_one(self):
@@ -117,8 +105,6 @@ class MemoryChecker(object):
     """
 
     self._python_memory_checker.assert_no_leak_if_all_possibly_except_one()
-    if CppMemoryChecker:
-      self._cpp_memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   @trace.trace_wrapper
   def assert_no_new_python_objects(self, threshold=None):

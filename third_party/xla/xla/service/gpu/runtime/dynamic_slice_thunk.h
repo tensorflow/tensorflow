@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/literal.h"
@@ -44,25 +45,10 @@ namespace gpu {
 // DynamicSliceThunk assumes that the slices are contiguous.
 class DynamicSliceThunk : public Thunk {
  public:
-  // When the offset value holds an object of type LoopIter, then that offset is
-  // equal to the loop iteration number.
-  struct LoopIter {};
-
-  // This struct is used to wrap an array of offset values, where `values[i]`
-  // denotes the value of offset at loop iteration `i`.
-  // For example, if the loop iteration goes [0,5), and a particular offset for
-  // a slicing operation is `4-i`, then values will contain `{4,3,2,1,0}`
-  struct OffsetArray {
-    std::vector<int64_t> values;
-    explicit OffsetArray(const Literal& l);
-    OffsetArray(const OffsetArray& other) { values = other.values; }
-  };
-
-  // Dynamic slice offset can be either: (1) a statically known constant value,
-  // (2) a loop iteration number, or (3) a truly dynamic offset that is
-  // computed on device and have to be transferred to host.
-  using Offset =
-      std::variant<uint64_t, LoopIter, BufferAllocation::Slice, OffsetArray>;
+  // Dynamic slice offset can be either: (1) a statically known constant value
+  // or (2) a truly dynamic offset that is computed on device and have to be
+  // transferred to host.
+  using Offset = std::variant<uint64_t, BufferAllocation::Slice>;
 
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
@@ -121,6 +107,8 @@ class DynamicSliceThunk : public Thunk {
   std::vector<std::optional<uint64_t>> get_offset_byte_sizes() const {
     return offset_byte_sizes_;
   }
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;

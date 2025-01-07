@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -1866,10 +1867,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         return nullptr;
       }
       auto resharded_rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot,
-          create_sharded_dot(lhs.hlo(), resharded_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(lhs.hlo(), resharded_rhs.hlo(), b, conv_window);
     }
     // RHS and output are batch partitioned in the same way.
     if (rhs_batch_partitions == num_partitions &&
@@ -1883,10 +1881,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         return nullptr;
       }
       auto resharded_lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot,
-          create_sharded_dot(resharded_lhs.hlo(), rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), rhs.hlo(), b, conv_window);
     }
     return nullptr;
   };
@@ -1911,8 +1906,12 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
            hlo.hlo()->opcode() == HloOpcode::kBitcast ||
            hlo.hlo()->opcode() == HloOpcode::kTranspose;
   };
-  bool should_skip_windowed_einsum = false;
-  if (options.disable_ag_rewrite_for_multiple_consumers) {
+  const auto& attrs = original_hlo->frontend_attributes().map();
+  bool should_skip_windowed_einsum =
+      attrs.contains(kXlaCollectiveMatmulAttr) &&
+      attrs.at(kXlaCollectiveMatmulAttr) == kXlaCollectiveMatmulNone;
+  if (!should_skip_windowed_einsum &&
+      options.disable_ag_rewrite_for_multiple_consumers) {
     auto lhs_operand =
         has_reshape_operand(lhs) ? lhs.hlo()->operand(0) : lhs.hlo();
     auto rhs_operand =
@@ -2018,9 +2017,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       output_lhs_non_contracting_partitions == num_partitions &&
       lhs_sharding_transposed_to_match_output == output_sharding) {
     auto rhs_replicated = rhs.Reshard(HloSharding::Replicate()).hlo();
-    TF_ASSIGN_OR_RETURN(auto dot, create_sharded_dot(lhs.hlo(), rhs_replicated,
-                                                     b, conv_window));
-    return dot;
+    return create_sharded_dot(lhs.hlo(), rhs_replicated, b, conv_window);
   }
 
   // RHS and output have the same partitioned non-contracting dimensions.
@@ -2028,9 +2025,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       output_rhs_non_contracting_partitions == num_partitions &&
       rhs_sharding_transposed_to_match_output == output_sharding) {
     auto lhs_replicated = lhs.Reshard(HloSharding::Replicate()).hlo();
-    TF_ASSIGN_OR_RETURN(auto dot, create_sharded_dot(lhs_replicated, rhs.hlo(),
-                                                     b, conv_window));
-    return dot;
+    return create_sharded_dot(lhs_replicated, rhs.hlo(), b, conv_window);
   }
 
   if (may_reshard_without_detecting_match) {
@@ -2040,30 +2035,24 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
           lhs.Reshard(*output_sharding_transposed_to_match_lhs);
       auto resharded_rhs =
           rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(resharded_lhs.hlo(), resharded_rhs.hlo(),
-                                       b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), resharded_rhs.hlo(), b,
+                                conv_window);
     }
     // Output is partitioned along LHS non-contracting dimensions.
     if (output_lhs_non_contracting_partitions == num_partitions) {
       auto resharded_lhs =
           lhs.Reshard(*output_sharding_transposed_to_match_lhs);
       auto replicated_rhs = rhs.Reshard(HloSharding::Replicate());
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(resharded_lhs.hlo(),
-                                       replicated_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), replicated_rhs.hlo(), b,
+                                conv_window);
     }
     // Output is partitioned along RHS non-contracting dimensions.
     if (output_rhs_non_contracting_partitions == num_partitions) {
       auto replicated_lhs = lhs.Reshard(HloSharding::Replicate());
       auto resharded_rhs =
           rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(replicated_lhs.hlo(),
-                                       resharded_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(replicated_lhs.hlo(), resharded_rhs.hlo(), b,
+                                conv_window);
     }
   }
 
@@ -2129,8 +2118,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    SpmdPartitioningVisitor* visitor,
-    bool reshard_lhs_rhs_to_match_output_sharding = false);
+    SpmdPartitioningVisitor* visitor);
 
 absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
@@ -4247,28 +4235,27 @@ absl::StatusOr<HloInstruction*> PartitionDot(
 // Reshard the LHS and RHS to match the output sharding.
 absl::StatusOr<HloInstruction*> ReshardLHSRHSToMatchOutputSharding(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const HloSharding& output_sharding,
     const DotConvolutionDimsInfo& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>
         create_sharded_dot,
-    const Window& conv_window, HloInstruction* original_hlo, SpmdBuilder* b) {
+    const Window& conv_window, SpmdBuilder* b) {
   const bool consider_other_operand = false;
   const bool may_combine_partial_sharding = false;
   const HloSharding infered_lhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(original_hlo, 0, dims_mapping,
-                                                 consider_other_operand,
-                                                 may_combine_partial_sharding);
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &lhs.sharding(), 0, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
   const HloSharding infered_rhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(original_hlo, 1, dims_mapping,
-                                                 consider_other_operand,
-                                                 may_combine_partial_sharding);
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &rhs.sharding(), 1, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
 
-  TF_ASSIGN_OR_RETURN(
-      auto dot, create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
-                                   rhs.Reshard(infered_rhs_sharding).hlo(), b,
-                                   conv_window));
-  return dot;
+  return create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
+                            rhs.Reshard(infered_rhs_sharding).hlo(), b,
+                            conv_window);
 }
 
 absl::StatusOr<HloInstruction*> PartitionDot(
@@ -4283,8 +4270,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    SpmdPartitioningVisitor* visitor,
-    bool reshard_lhs_rhs_to_match_output_sharding) {
+    SpmdPartitioningVisitor* visitor) {
   // First try partitioning without resharding the groups, then try allow
   // resharding the groups.
   for (bool require_matching_devices_to_group : {true, false}) {
@@ -4299,10 +4285,10 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     }
   }
 
-  if (reshard_lhs_rhs_to_match_output_sharding) {
-    return ReshardLHSRHSToMatchOutputSharding(lhs, rhs, dims_mapping,
-                                              create_sharded_dot, conv_window,
-                                              original_hlo, b);
+  if (dims_mapping.conv_spatial_dims.empty()) {
+    return ReshardLHSRHSToMatchOutputSharding(lhs, rhs, output_sharding,
+                                              dims_mapping, create_sharded_dot,
+                                              conv_window, b);
   }
 
   // Default action.
@@ -4337,9 +4323,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
       auto partitioned_dot,
       PartitionDot(lhs, rhs, hlo->shape(), hlo->sharding(), dims_mapping,
                    num_partitions_, create_sharded_dot, conv_window, module_,
-                   hlo, options_, &b_, &windowed_dot_general_loops_, this,
-                   /*reshard_lhs_rhs_to_match_output_sharding=*/
-                   dims_mapping.conv_spatial_dims.empty()));
+                   hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
   return absl::OkStatus();
 }

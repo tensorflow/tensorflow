@@ -114,6 +114,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@tf_runtime//:async_value",
         "@tf_runtime//:hostcontext",
     ],

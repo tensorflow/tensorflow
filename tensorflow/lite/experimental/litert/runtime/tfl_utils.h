@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TFL_UTILS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TFL_UTILS_H_
 
-#include "absl/status/statusor.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 struct TfLiteOpaqueTensor;
@@ -23,9 +23,9 @@ struct TfLiteOpaqueTensor;
 namespace litert {
 namespace internal {
 
-absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type);
+Expected<ElementType> ConvertElementType(TfLiteType tfl_type);
 
-absl::StatusOr<RankedTensorType> ConvertTensorType(
+Expected<RankedTensorType> ConvertTensorType(
     const TfLiteOpaqueTensor* tfl_opaque_tensor);
 
 }  // namespace internal

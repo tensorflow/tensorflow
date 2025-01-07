@@ -73,7 +73,7 @@ jobs:
       -
         name: Build containers, and push to GCR only if the 'build and push to gcr.io for staging' label is applied
         id: docker_build
-        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
         with:
           push: ${{ contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging') }}
           context: ./tensorflow/tools/tf_sig_build_dockerfiles

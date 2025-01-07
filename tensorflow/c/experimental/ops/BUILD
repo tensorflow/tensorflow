@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/c/eager:tracing_utils",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
     ],
@@ -146,6 +147,7 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -20,11 +20,11 @@ fusion {
 }
 
 // CHECK: func @main(
-// CHECK:   %[[L1:.*]], %[[L2:.*]] = xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK:     %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla_gpu.pure_call @fusion_d_1
+// CHECK:   %[[L1:.*]], %[[L2:.*]] = xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK:     %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla.pure_call @fusion_d_1
 // CHECK:     %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[RA]]]
 // CHECK:     %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[RA]]]
-// CHECK:     xla_gpu.yield %[[INSERTED_1]], %[[INSERTED_2]]
+// CHECK:     xla.yield %[[INSERTED_1]], %[[INSERTED_2]]
 // CHECK:   return %[[L1]], %[[L2]]
 
 // CHECK: func private @fusion_d_1

@@ -78,18 +78,24 @@ void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
 void DeviceOpMetricsDbBuilder::EnterOpMetadata(
     uint64 program_id, absl::string_view program_name,
     absl::string_view category, absl::string_view provenance,
-    absl::string_view deduplicated_name, bool is_eager) {
+    absl::string_view deduplicated_name, bool is_eager,
+    absl::string_view long_name) {
   // We only need to add xla metadata once to each new op, as they are the
   // same across occurrences.
   OpMetrics* op_metrics =
       LookupOrInsertNewOpMetrics(program_id, program_name, /*fingerprint=*/0);
-  if (op_metrics->occurrences() > 0) return;
+  if (op_metrics->occurrences() > 0 || !op_metrics->category().empty() ||
+      !op_metrics->provenance().empty())
+    return;
   op_metrics->set_category(category == tsl::profiler::kUnknownOp
                                ? "unknown"
                                : std::string(category));
   op_metrics->set_provenance(std::string(provenance));
   if (!deduplicated_name.empty()) {
     op_metrics->set_deduplicated_name(std::string(deduplicated_name));
+  }
+  if (!long_name.empty()) {
+    op_metrics->set_long_name(std::string(long_name));
   }
   op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
 }

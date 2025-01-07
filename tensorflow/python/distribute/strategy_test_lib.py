@@ -124,7 +124,7 @@ def _events_from_logdir(test_case, logdir):
 
 
 def create_variable_like_keras_layer(name, shape, dtype):
-  """Utitlity for create variables that works like variable in keras layer."""
+  """Utility for create variables that works like variable in keras layer."""
   initializer = functools.partial(
       init_ops_v2.GlorotUniform(), shape, dtype=dtype)
   return variables.Variable(

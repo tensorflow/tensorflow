@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -52,16 +53,17 @@ static bool LessThan(const void** data) {
   return *lhs < *rhs;
 }
 
-class LessThanComparator : public Thunk::FunctionRegistry {
+class LessThanComparator : public FunctionLibrary {
  public:
   static void LessThanWrapper(bool* result, const void*, const void** data,
                               const void*, const void*, const void*) {
     *result = LessThan(data);
   }
 
-  absl::StatusOr<Comparator> FindComparator(std::string_view name) final {
+  absl::StatusOr<void*> ResolveFunction(TypeId type_id,
+                                        std::string_view name) final {
     DCHECK_EQ(name, "less_than");
-    return LessThanWrapper;
+    return reinterpret_cast<void*>(LessThanWrapper);
   }
 };
 
@@ -133,7 +135,8 @@ TEST_P(SortThunkTest, Sort1D) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create(
                       {"sort"}, {{slice0, data_shape}, {slice1, indices_shape}},
-                      /*dimension=*/0, is_stable, LessThan));
+                      /*dimension=*/0, is_stable, LessThan,
+                      SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -207,7 +210,8 @@ TEST_P(SortThunkTest, DynamicSort1D) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create({"sort"}, inputs,
-                                    /*dimension=*/0, is_stable, LessThan));
+                                    /*dimension=*/0, is_stable, LessThan,
+                                    SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -253,13 +257,14 @@ TEST_P(SortThunkTest, Sort2D) {
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
-                        /*dimension=*/0, is_stable, "less_than"));
+                        /*dimension=*/0, is_stable, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
 
   LessThanComparator less_than_comparator;
-  params.function_registry = &less_than_comparator;
+  params.function_library = &less_than_comparator;
 
   auto execute_event0 = sort_dim0->Execute(params);
   tsl::BlockUntilReady(execute_event0);
@@ -280,7 +285,8 @@ TEST_P(SortThunkTest, Sort2D) {
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
                         /*dimension=*/1,
-                        /*is_stable=*/false, "less_than"));
+                        /*is_stable=*/false, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   auto execute_event1 = sort_dim1->Execute(params);
   tsl::BlockUntilReady(execute_event1);
@@ -323,13 +329,14 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
-                        /*dimension=*/0, is_stable, "less_than"));
+                        /*dimension=*/0, is_stable, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
 
   LessThanComparator less_than_comparator;
-  params.function_registry = &less_than_comparator;
+  params.function_library = &less_than_comparator;
 
   auto execute_event0 = sort_dim0->Execute(params);
   tsl::BlockUntilReady(execute_event0);
@@ -350,7 +357,8 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
                         /*dimension=*/1,
-                        /*is_stable=*/false, "less_than"));
+                        /*is_stable=*/false, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   auto execute_event1 = sort_dim1->Execute(params);
   tsl::BlockUntilReady(execute_event1);
@@ -428,7 +436,8 @@ void BM_DynamicSort1D(::testing::benchmark::State& state, bool is_stable) {
     state.ResumeTiming();
     TF_ASSERT_OK_AND_ASSIGN(
         auto thunk, SortThunk::Create({"sort"}, inputs,
-                                      /*dimension=*/0, is_stable, LessThan));
+                                      /*dimension=*/0, is_stable, LessThan,
+                                      SortThunk::SortDirection::kAscending));
 
     auto execute_event = thunk->Execute(params);
     tsl::BlockUntilReady(execute_event);

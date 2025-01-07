@@ -23,9 +23,9 @@
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace internal {
@@ -36,29 +36,33 @@ class FastRpcMemLibrary {
  public:
   using Ptr = std::unique_ptr<FastRpcMemLibrary>;
 
-  static absl::StatusOr<Ptr> Create() {
+  static Expected<Ptr> Create() {
     DlHandle dlhandle(::dlopen("libcdsprpc.so", RTLD_NOW | RTLD_LOCAL),
                       ::dlclose);
     if (!dlhandle) {
-      return absl::InternalError("libcdsprpc.so not found");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "libcdsprpc.so not found");
     }
 
     auto rpcmem_alloc =
         reinterpret_cast<RpcMemAlloc>(::dlsym(dlhandle.get(), "rpcmem_alloc"));
     if (!rpcmem_alloc) {
-      return absl::InternalError("rpcmem_alloc not found");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "rpcmem_alloc not found");
     }
 
     auto rpcmem_free =
         reinterpret_cast<RpcMemFree>(::dlsym(dlhandle.get(), "rpcmem_free"));
     if (!rpcmem_free) {
-      return absl::InternalError("rpcmem_free not found");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "rpcmem_free not found");
     }
 
     auto rpcmem_to_fd =
         reinterpret_cast<RpcMemToFd>(::dlsym(dlhandle.get(), "rpcmem_to_fd"));
     if (!rpcmem_to_fd) {
-      return absl::InternalError("rpcmem_to_fd not found");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "rpcmem_to_fd not found");
     }
 
     return Ptr(new FastRpcMemLibrary(std::move(dlhandle), rpcmem_alloc,
@@ -99,12 +103,12 @@ class FastRpcMemLibrary {
 FastRpcMemLibrary* TheFastRpcMemLibrary;
 ABSL_CONST_INIT absl::Mutex TheMutex(absl::kConstInit);
 
-absl::Status InitLibraryIfNeededUnlocked() {
+Expected<void> InitLibraryIfNeededUnlocked() {
   if (!TheFastRpcMemLibrary) {
-    if (auto library = FastRpcMemLibrary::Create(); library.ok()) {
+    if (auto library = FastRpcMemLibrary::Create(); library) {
       TheFastRpcMemLibrary = library->release();
     } else {
-      return library.status();
+      return Unexpected(library.Error());
     }
   }
   return {};
@@ -115,13 +119,13 @@ absl::Status InitLibraryIfNeededUnlocked() {
 bool FastRpcBuffer::IsSupported() {
   absl::MutexLock lock(&TheMutex);
   auto status = InitLibraryIfNeededUnlocked();
-  return status.ok();
+  return static_cast<bool>(status);
 }
 
-absl::StatusOr<FastRpcBuffer> FastRpcBuffer::Alloc(size_t size) {
+Expected<FastRpcBuffer> FastRpcBuffer::Alloc(size_t size) {
   absl::MutexLock lock(&TheMutex);
-  if (auto status = InitLibraryIfNeededUnlocked(); !status.ok()) {
-    return status;
+  if (auto status = InitLibraryIfNeededUnlocked(); !status) {
+    return status.Error();
   }
   void* addr = TheFastRpcMemLibrary->Alloc(size);
   int fd = TheFastRpcMemLibrary->ToFd(addr);

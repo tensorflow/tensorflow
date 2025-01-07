@@ -40,10 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_types.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
@@ -60,14 +56,9 @@ namespace gpu {
 // compiler is allowed to create.
 class CustomCallThunk : public Thunk {
  public:
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  using Stream = stream_executor::gpu::GpuStreamHandle;
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  using Stream = void*;
-#endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-  using CustomCallTarget = std::function<void(Stream, void**, const char*,
-                                              size_t, XlaCustomCallStatus*)>;
+  using CustomCallTarget =
+      std::function<void(stream_executor::Stream*, void**, const char*, size_t,
+                         XlaCustomCallStatus*)>;
 
   // We keep buffer allocation slice together with its shape to be able to fill
   // FFI arguments with required details.

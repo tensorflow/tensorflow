@@ -907,7 +907,7 @@ class Subgraph {
   TfLiteStatus EnableCancellation(std::atomic_flag* flag);
 
   // Attempts to cancel in flight invocation if any.
-  // This will not affect `Invoke`s that happends after the cancellation.
+  // This will not affect `Invoke`s that happen after the cancellation.
   // Non blocking. Thread safe.
   // Returns kTfLiteError if cancellation is not enabled, otherwise returns
   // kTfLiteOk.

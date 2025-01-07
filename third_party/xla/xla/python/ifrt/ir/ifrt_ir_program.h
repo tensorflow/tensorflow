@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
@@ -46,6 +48,8 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
         mlir_context(std::move(context)),
         owning_mlir_module(std::move(module)) {}
 
+  static absl::string_view type_name() { return "xla::ifrt::IfrtIRProgram"; }
+
   mlir::ModuleOp mlir_module;
 
   static char ID;  // NOLINT
@@ -53,6 +57,42 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
  private:
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
+};
+
+// Options for serializing IFRT IR programs.
+struct SerializeIfrtIRProgramOptions
+    : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
+  explicit SerializeIfrtIRProgramOptions(std::string ifrt_version,
+                                         std::string atom_program_version,
+                                         bool version_in_place = true)
+      : ifrt_version(std::move(ifrt_version)),
+        atom_program_version(std::move(atom_program_version)),
+        version_in_place(version_in_place) {}
+
+  static char ID;  // NOLINT
+
+  // String of the form "major.minor.patch", representing the IFRT IR version.
+  std::string ifrt_version;
+  // String of the form "major.minor.patch", representing the atom program
+  // version (currently VHLO version).
+  std::string atom_program_version;
+  // Whether to version the IFRT IR ModuleOp in-place.
+  bool version_in_place;
+};
+
+// Options for deserializing IFRT IR programs.
+// If `context` is not nullptr then deserialization will create a new MLIR
+// context, which will be owned by the deserialized program. Otherwise, the
+// deserialization will use the provided MLIR context and the returned program
+// will not own a MLIR context.
+struct DeserializeIfrtIRProgramOptions
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+  explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
+      : context(context) {}
+
+  static char ID;  // NOLINT
+
+  mlir::MLIRContext* context;
 };
 
 // CompileOptions for an IFRT IR program.

@@ -187,7 +187,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
   std::vector<int> ready;
   std::vector<int> pending_count;
   pending_count.reserve(num_nodes);
-  std::vector<gtl::InlinedVector<int, 4>> outputs(num_nodes);
+  std::vector<absl::InlinedVector<int, 4UL>> outputs(num_nodes);
 
   std::map<string, int> name_index;
   for (int i = 0; i < input_graph_def.node_size(); ++i) {

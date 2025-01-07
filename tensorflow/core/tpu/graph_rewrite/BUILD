@@ -262,6 +262,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_MEMORY_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_MEMORY_H_
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/memory.h"

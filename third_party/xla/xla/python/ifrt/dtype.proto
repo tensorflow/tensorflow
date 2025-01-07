@@ -60,6 +60,9 @@ message DTypeProto {
     // dtype will have empty dimensions.
     KIND_TOKEN = 17;
 
+    // Opaque objects.
+    KIND_OPAQUE = 14;
+
     KIND_F8E3M4 = 29;
     KIND_F8E4M3 = 28;
     KIND_F8E4M3FN = 20;
