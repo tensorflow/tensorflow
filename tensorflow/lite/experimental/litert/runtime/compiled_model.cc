@@ -275,7 +275,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
 
   if (backend_requires_cpu_buffer) {
     // When backend requires CPU buffer.
-    bool bufer_is_cpu_compatible =
+    bool buffer_is_cpu_compatible =
         buffer->buffer_type() == kLiteRtTensorBufferTypeHostMemory;
 #if defined(__ANDROID__)
     if (buffer->buffer_type() == kLiteRtTensorBufferTypeAhwb) {
@@ -286,12 +286,12 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
           // CPU compatible.
           AHardwareBuffer_Desc desc;
           AHardwareBuffer_describe(*ahwb, &desc);
-          bufer_is_cpu_compatible = true;
+          buffer_is_cpu_compatible = true;
         }
       }
     }
 #endif
-    if (bufer_is_cpu_compatible) {
+    if (buffer_is_cpu_compatible) {
       auto lock_and_addr = TensorBufferScopedLock::Create(buffer);
       if (!lock_and_addr) {
         return Unexpected(kLiteRtStatusErrorRuntimeFailure,
