@@ -384,19 +384,17 @@ AsyncTracker::RecursivelyComputeResourceMap(
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
     int64_t resource_type, const HloInstruction& instr) const {
-  // For instructions not calling a computation then return 1 if the instruction
-  // has opcode equal to 'async_done'
+  // For instructions not calling a computation, or async start/done
+  // instructions, we directly check the resources from the instruction.
   if (instr.called_computations().empty() ||
       instr.opcode() == HloOpcode::kAsyncStart ||
       instr.opcode() == HloOpcode::kAsyncDone) {
-    return absl::c_any_of(GetResourcesFromInstruction(instr),
-                          [resource_type](const ResourcePair& resource) {
-                            return resource.second ==
-                                       ResourceUsageType::kResourceOccupy &&
-                                   (resource_type == resource.first);
-                          })
-               ? 1
-               : 0;
+    return absl::c_count_if(GetResourcesFromInstruction(instr),
+                            [resource_type](const ResourcePair& resource) {
+                              return resource.second ==
+                                         ResourceUsageType::kResourceOccupy &&
+                                     (resource_type == resource.first);
+                            });
   }
   int64_t num_resources = 0;
   for (const HloComputation* computation : instr.called_computations()) {
