@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
@@ -214,6 +215,20 @@ absl::Status RemapPlan::Validate() const {
           "(output %d)",
           input_specs[mapping.in_array].dtype, mapping.in_array,
           output_specs[mapping.out_array].dtype, mapping.out_array);
+    }
+
+    const std::shared_ptr<const xla::PjRtLayout>& in_layout =
+        input_specs[mapping.in_array].layout;
+    const std::shared_ptr<const xla::PjRtLayout>& out_layout =
+        output_specs[mapping.out_array].layout;
+    if (in_layout != out_layout) {
+      return InvalidArgument(
+          "Input and output must have the same layout: %s (input %d) vs. %s "
+          "(output %d)",
+          in_layout != nullptr ? in_layout->ToString() : "<nullptr>",
+          mapping.in_array,
+          out_layout != nullptr ? out_layout->ToString() : "<nullptr>",
+          mapping.out_array);
     }
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];

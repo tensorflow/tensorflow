@@ -594,6 +594,8 @@ xla_cc_test(
         ":device_test_util",
         ":ifrt",
         ":sharding_serdes",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/functional:bind_front",
