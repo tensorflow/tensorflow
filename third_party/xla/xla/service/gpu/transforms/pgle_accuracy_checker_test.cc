@@ -28,9 +28,11 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla::gpu {
 namespace {

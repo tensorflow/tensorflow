@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/tests/hlo_test_base.h"
