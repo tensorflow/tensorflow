@@ -1368,8 +1368,11 @@ class PFor:
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
-    self.all_indices = (
-        math_ops.range(loop_len) if all_indices is None else all_indices)
+    if all_indices is None:
+      self.all_indices = math_ops.range(
+          loop_len, dtype=dtypes.int32, name="all_indices")
+    else:
+      self.all_indices = all_indices
 
     self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
