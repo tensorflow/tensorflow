@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/shape_layout.h"
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"

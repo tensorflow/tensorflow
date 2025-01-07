@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/primitive_util.h"
