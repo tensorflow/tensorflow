@@ -283,6 +283,12 @@ class LiteralUtil {
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
                                                      E* engine, T mean,
                                                      T stddev);
+  // Same as the above, but takes mean and stddev as doubles.
+  template <PrimitiveType type, typename E,
+            typename T = primitive_util::NativeTypeOf<type>>
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
+                                                     E* engine, double mean,
+                                                     double stddev);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -596,6 +602,13 @@ template <PrimitiveType type, typename T>
 template <PrimitiveType type, typename E, typename T>
 /* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
+  return CreateRandomLiteral<type>(shape, engine, static_cast<double>(mean),
+                                   static_cast<double>(stddev));
+}
+
+template <PrimitiveType type, typename E, typename T>
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+    const Shape& shape, E* engine, double mean, double stddev) {
   using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<double> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(
