@@ -409,6 +409,18 @@ XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail",
                          PLATFORM, kAlwaysFail);
 
+static absl::Status Tokens(ffi::Token, ffi::Result<AnyBuffer>,
+                           ffi::Result<ffi::Token>) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kTokens, Tokens,
+    ffi::Ffi::Bind().Arg<ffi::Token>().Ret<AnyBuffer>().Ret<ffi::Token>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens", PLATFORM,
+                         kTokens);
+
 static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
   auto in_data = in.typed_data();
   auto out_data = out->typed_data();
@@ -835,6 +847,24 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
 
   builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$always_succeed", "",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status, absl::OkStatus());
+}
+
+XLA_TEST_F(FfiCustomCallTest, Tokens) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  std::vector<Shape> ret = {ShapeUtil::MakeShape(F32, {}),
+                            ShapeUtil::MakeTokenShape()};
+
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape(ret), {token}, "__xla_test$$tokens", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
