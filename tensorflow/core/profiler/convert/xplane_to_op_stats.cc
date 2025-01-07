@@ -370,10 +370,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       auto stat = visitor.GetStat(StatType::kCoreDetails);
       if (stat.has_value()) {
         CoreDetails core_details;
-        // TODO: Switch to StrOrRefValue once protobuf version is updated.
-        core_details.ParseFromString(stat->ToString());
-        core_details.set_hostname(hostname);
-        core_id_to_details[device_plane->id()] = core_details;
+        absl::string_view core_details_bytes = stat->BytesValue();
+        if (core_details.ParseFromArray(core_details_bytes.data(),
+                                        core_details_bytes.size())) {
+          core_details.set_hostname(hostname);
+          core_id_to_details[device_plane->id()] = core_details;
+        }
       }
     }
   }
