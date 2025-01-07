@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -78,22 +79,12 @@ HloRunnerAgnosticTestBase::CreateNewVerifiedModule(
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, int64_t replica_count, int64_t num_partitions) {
-  return ParseAndReturnVerifiedModule(
-      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
-}
-
-absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config,
-    const HloParserOptions& parser_options) {
-  auto module = std::make_unique<VerifiedHloModule>(
-      TestName(), config, verifier_layout_sensitive(),
-      allow_mixed_precision_in_hlo_verifier(),
-      test_runner_->device_shape_size_fn(),
-      instruction_can_change_layout_func());
-  TF_RETURN_IF_ERROR(
-      module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
+    const HloParserOptions& parser_options) const {
+  TF_ASSIGN_OR_RETURN(
+      auto module, HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
+                       hlo_text, config, parser_options,
+                       test_runner_->device_shape_size_fn()));
   return std::move(module);
 }
 
