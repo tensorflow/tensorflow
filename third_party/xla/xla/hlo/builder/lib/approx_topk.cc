@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/approx_topk.h"
 
-#include <limits>
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <vector>

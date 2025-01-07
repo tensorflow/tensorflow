@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/conv_grad_size_util.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"

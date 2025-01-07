@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/svd.h"
 
+#include <cstdint>
 #include <numeric>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"

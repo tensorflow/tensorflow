@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 

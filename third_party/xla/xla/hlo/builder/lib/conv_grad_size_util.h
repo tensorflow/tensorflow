@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_CONV_GRAD_SIZE_UTIL_H_
 #define XLA_HLO_BUILDER_LIB_CONV_GRAD_SIZE_UTIL_H_
 
+#include <cstdint>
+
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/padding.h"
 

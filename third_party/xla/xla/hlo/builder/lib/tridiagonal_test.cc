@@ -19,6 +19,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/array.h"
 #include "xla/array3d.h"

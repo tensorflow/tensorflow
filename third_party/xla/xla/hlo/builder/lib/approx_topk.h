@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_APPROX_TOPK_H_
 #define XLA_HLO_BUILDER_LIB_APPROX_TOPK_H_
 
+#include <cstdint>
+
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
