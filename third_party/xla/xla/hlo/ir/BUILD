@@ -232,6 +232,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_instruction_utils_test",
+    srcs = ["hlo_instruction_utils_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_instruction_utils",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_query",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "hlo_reachability",
     hdrs = ["hlo_reachability.h"],
