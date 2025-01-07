@@ -1122,8 +1122,3 @@ alias(
     name = "dynamic_dimension_simplifier",
     actual = "//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier",
 )
-
-alias(
-    name = "tuple_simplifier",
-    actual = "//xla/hlo/transforms/simplifiers:tuple_simplifier",
-)
