@@ -210,7 +210,7 @@ class CommandBufferCmd {
     // This argument allows conditional commands to record a command sequence
     // into non-default execution scope.
     se::CommandBuffer::ExecutionScopeId execution_scope_id =
-        se::CommandBuffer::kDefaulExecutionScope;
+        se::CommandBuffer::kDefaultExecutionScope;
   };
 
   // See Thunk documentation for XLA execution stages (prepare, initialize,
