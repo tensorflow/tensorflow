@@ -234,6 +234,33 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "kernel_api_ir_builder_test",
+    srcs = ["kernel_api_ir_builder_test.cc"],
+    deps = [
+        ":kernel_api_ir_builder",
+        "//xla:cpu_function_runtime",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_module_config",
+        "//xla/service:logical_buffer",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 cc_library(
     name = "llvm_ir_kernel_spec",
     srcs = ["llvm_ir_kernel_spec.cc"],
@@ -280,6 +307,32 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "elemental_kernel_emitter_test",
+    srcs = ["elemental_kernel_emitter_test.cc"],
+    deps = [
+        ":elemental_kernel_emitter",
+        ":llvm_ir_kernel_spec",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service:buffer_assignment",
+        "//xla/service:logical_buffer",
+        "//xla/service/cpu:target_machine_features_stub",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

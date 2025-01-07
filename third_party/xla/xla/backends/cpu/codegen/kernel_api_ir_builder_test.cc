@@ -13,31 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/ir_emitter2.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 
-#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
-#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -46,72 +41,53 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
-class IrEmitter2Test : public HloTestBase {
+class KernelApiIrBuilderTest : public HloTestBase {
  public:
-  // This is a proxy function that allows us access to private member
-  // IrEmitter2::kernel_api_ir_builder_.
-  static auto EmitKernelPrototype(
-      IrEmitter2& ir_emitter,
-      const std::vector<KernelApiIrBuilder::KernelParameter>& arguments,
-      const std::vector<KernelApiIrBuilder::KernelParameter>& results) {
-    return ir_emitter.kernel_api_ir_builder_.EmitKernelPrototype(
-        *ir_emitter.module_, "test", arguments, results);
+  KernelApiIrBuilderTest()
+      : module_("KernelApiIrBuilderTest", context_),
+        kernel_api_ir_builder_(context_,
+                               KernelApiIrBuilder::Options{true, 256}) {}
+
+  llvm::IRBuilder<> getBuilder() { return llvm::IRBuilder<>(context_); }
+
+  auto EmitKernelPrototype(const HloInstruction* instr,
+                           const BufferAssignment* buffer_assignment) {
+    return kernel_api_ir_builder_.EmitKernelPrototype(module_, instr,
+                                                      buffer_assignment);
   }
 
-  absl::StatusOr<IrEmitter2> MakeIrEmitter2(llvm::Module& module,
-                                            const HloModule& hlo) {
-    TF_ASSIGN_OR_RETURN(
-        buffer_assignment_,
-        BufferAssigner::Run(
-            &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
-            backend().compiler()->BufferSizeBytesFunction(),
-            [](LogicalBuffer::Color) { return /*alignment=*/1; }));
-
-    target_machine_ = std::make_unique<TargetMachineFeaturesStub>(
-        [](int64_t size) { return 1; });
-
-    nested_ir_emitter_ = absl::WrapUnique(
-        new IrEmitter(nullptr, hlo, *buffer_assignment_, &module, {}, {}, {},
-                      target_machine_.get(), false));
-
-    return IrEmitter2(hlo, &module, nested_ir_emitter_.get());
+  auto EmitKernelPrototype(
+      absl::string_view name,
+      absl::Span<const KernelApiIrBuilder::KernelParameter> arguments,
+      absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
+    return kernel_api_ir_builder_.EmitKernelPrototype(module_, name, arguments,
+                                                      results);
   }
 
-  // TODO(abanas): This function could be static. It requires making the
-  // underlying FindInstruction function static first.
-  absl::StatusOr<IrEmitter2::KernelInfo> EmitElementalHostKernel(
-      IrEmitter2& ir_emitter, HloModule& hlo,
-      absl::string_view instruction_name) {
-    HloInstruction* instruction = FindInstruction(&hlo, instruction_name);
-
-    if (instruction == nullptr) {
-      return absl::InternalError("Instruction not found");
-    }
-    TF_ASSIGN_OR_RETURN(IrEmitter2::KernelInfo kernel,
-                        ir_emitter.EmitElementalHostKernel(instruction));
-    return kernel;
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
+      const HloModule& hlo) {
+    return BufferAssigner::Run(
+        &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
+        backend().compiler()->BufferSizeBytesFunction(),
+        [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
+
+  llvm::LLVMContext& context() { return context_; }
+  std::string DumpToString() { return llvm_ir::DumpToString(&module_); }
 
  private:
-  // Dependencies of IrEmitter2. These are created in MakeIrEmitter2 and kept
-  // alive for the duration of the test, because IrEmitter2 does not take
-  // ownership of them.
-  std::unique_ptr<BufferAssignment> buffer_assignment_;
-  std::unique_ptr<TargetMachineFeaturesStub> target_machine_;
-  std::unique_ptr<IrEmitter> nested_ir_emitter_;
+  llvm::LLVMContext context_;
+  llvm::Module module_;
+  KernelApiIrBuilder kernel_api_ir_builder_;
 };
 
 namespace {
 
-TEST_F(IrEmitter2Test, BuildKernelPrototype) {
+TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   auto hlo = std::make_unique<HloModule>("test", HloModuleConfig());
-
-  llvm::LLVMContext context;
-  auto module = std::make_unique<llvm::Module>("test", context);
 
   auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
 
@@ -126,24 +102,26 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   std::vector<KernelApiIrBuilder::KernelParameter> results = {{shape, res0},
                                                               {shape, res1}};
 
-  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto prototype,
-                          EmitKernelPrototype(ir_emitter, arguments, results));
+                          EmitKernelPrototype("test", arguments, results));
+  llvm::IRBuilder<> builder = getBuilder();
+  builder.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
 
-  llvm::IRBuilder<> b(context);
-  b.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
-
-  auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
-  llvm_ir::IrArray::Index index(zero, shape, &b);
+  auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context()), 0);
+  llvm_ir::IrArray::Index index(zero, shape, &builder);
 
   // Emit loads from arguments and results buffers to test alias scope metadata.
-  EXPECT_NE(prototype.arguments[0].EmitReadArrayElement(index, &b), nullptr);
-  EXPECT_NE(prototype.arguments[1].EmitReadArrayElement(index, &b), nullptr);
-  EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &b), nullptr);
-  EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &b), nullptr);
+  EXPECT_NE(prototype.arguments[0].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.arguments[1].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &builder),
+            nullptr);
 
   // clang-format off
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()),
+  ASSERT_TRUE(*RunFileCheck(DumpToString(),
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr %0) #0 {
 
@@ -219,72 +197,13 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   // Match for dereferenceable metadata in separate check, because depending on
   // the alignment value, it may be the same scope as align, and may be a
   // separate one. It's impossible to match both these cases in one FileCheck.
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+  ASSERT_TRUE(*RunFileCheck(DumpToString(), R"(
     CHECK:      {{.+}} = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]],
     CHECK: ![[DEREF_BYTES]] = !{i64 32}
   )"));
 }
 
-TEST_F(IrEmitter2Test, EmitElementalKernel) {
-  llvm::LLVMContext context;
-  auto module = std::make_unique<llvm::Module>("test", context);
-
-  const char* hlo_text = R"(
-    HloModule m
-    ENTRY main {
-      p0 = f32[2,2] parameter(0)
-      ROOT convert = s32[2,2] convert(p0)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "convert"));
-
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
-    CHECK: define ptr @convert(ptr %0) #0 {
-    CHECK:   fptosi float {{.*}} to i32
-    CHECK: }
-  )"));
-}
-
-TEST_F(IrEmitter2Test, EmitParallelKernel) {
-  llvm::LLVMContext context;
-  auto module = std::make_unique<llvm::Module>("test", context);
-
-  const char* hlo_text = R"(
-    HloModule m
-    ENTRY main {
-      p0 = f32[1,2,1,16384,256] parameter(0)
-      ROOT convert = s32[1,2,1,16384,256] convert(p0),
-        backend_config={"outer_dimension_partitions":["1","2","1","4"]}
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "convert"));
-
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
-    CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
-
-    CHECK: define ptr @convert(ptr %0) #0 {
-    CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 0
-    CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 1
-    CHECK:   %lo_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 0
-    CHECK:   %up_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 1
-    CHECK:   %lo_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 0
-    CHECK:   %up_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 1
-    CHECK:   %lo_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 0
-    CHECK:   %up_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 1
-    CHECK:   fptosi float {{.*}} to i32
-    CHECK: }
-  )"));
-}
-
-using IrEmitter2InvariantBuffersTest = IrEmitter2Test;
-
-TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
+TEST_F(KernelApiIrBuilderTest, AllInvariantBuffers) {
   llvm::LLVMContext context;
   auto module = std::make_unique<llvm::Module>("test", context);
 
@@ -297,14 +216,16 @@ TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelApiIrBuilder::KernelPrototype prototype,
+      EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
+                          buffer_assignement.get()));
 
-  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
+  ASSERT_EQ(prototype.invariant_arguments.size(), 2);
 }
 
-TEST_F(IrEmitter2InvariantBuffersTest, InvariantBufferPassedTwice) {
+TEST_F(KernelApiIrBuilderTest, InvariantBufferPassedTwice) {
   llvm::LLVMContext context;
   auto module = std::make_unique<llvm::Module>("test", context);
 
@@ -316,16 +237,18 @@ TEST_F(IrEmitter2InvariantBuffersTest, InvariantBufferPassedTwice) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelApiIrBuilder::KernelPrototype prototype,
+      EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
+                          buffer_assignement.get()));
 
   // Invariant buffers contains indices of both arguments, even though it is the
   // same buffer slice.
-  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
+  ASSERT_EQ(prototype.invariant_arguments.size(), 2);
 }
 
-TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
+TEST_F(KernelApiIrBuilderTest, NoInvariantBuffers) {
   llvm::LLVMContext context;
   auto module = std::make_unique<llvm::Module>("test", context);
 
@@ -337,14 +260,16 @@ TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelApiIrBuilder::KernelPrototype prototype,
+      EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
+                          buffer_assignement.get()));
 
-  ASSERT_EQ(kernel.invariant_arguments.size(), 0);
+  ASSERT_EQ(prototype.invariant_arguments.size(), 0);
 }
 
-TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
+TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
   llvm::LLVMContext context;
   auto module = std::make_unique<llvm::Module>("test", context);
 
@@ -357,14 +282,16 @@ TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
-  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
-                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelApiIrBuilder::KernelPrototype prototype,
+      EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
+                          buffer_assignement.get()));
 
   // The first argument is invariant, the second is not because it's aliased to
   // the output.
-  EXPECT_EQ(kernel.invariant_arguments.size(), 1);
-  EXPECT_TRUE(kernel.invariant_arguments.contains(0));
+  EXPECT_EQ(prototype.invariant_arguments.size(), 1);
+  EXPECT_TRUE(prototype.invariant_arguments.contains(0));
 }
 
 }  // namespace

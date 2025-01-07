@@ -724,39 +724,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "ir_emitter2_test",
-    srcs = ["ir_emitter2_test.cc"],
-    deps = [
-        ":ir_emitter",
-        ":ir_emitter2",
-        ":target_machine_features_stub",
-        "//xla:cpu_function_runtime",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
-        "//xla/hlo/analysis:hlo_ordering",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service:buffer_assignment",
-        "//xla/service:hlo_module_config",
-        "//xla/service:logical_buffer",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:Core",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
 cc_library(
     name = "ir_emitter",
     srcs = ["ir_emitter.cc"],
