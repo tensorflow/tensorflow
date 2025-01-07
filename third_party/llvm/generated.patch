@@ -1,1 +1,23 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel b/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
+@@ -1071,6 +1071,7 @@
+         "//lldb:APIHeaders",
+         "//lldb:Headers",
+         "//lldb:Host",
++        "//lldb:Utility",
+         "//lldb:liblldb.wrapper",
+         "//llvm:Option",
+         "//llvm:Support",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -2270,6 +2270,7 @@
+             ("-gen-register-info", "lib/Target/RISCV/RISCVGenRegisterInfo.inc"),
+             ("-gen-subtarget", "lib/Target/RISCV/RISCVGenSubtargetInfo.inc"),
+             ("-gen-searchable-tables", "lib/Target/RISCV/RISCVGenSearchableTables.inc"),
++            ("-gen-exegesis", "lib/Target/RISCV/RISCVGenExegesis.inc"),
+         ],
+         "tbl_deps": [
+             ":riscv_isel_target_gen",
