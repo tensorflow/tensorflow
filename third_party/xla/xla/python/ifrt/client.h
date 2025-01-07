@@ -237,13 +237,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const tsl::RCReference<DeviceList>& devices) const = 0;
 
-  // Returns the default layout on `device` for a buffer with `dtype` and
-  // single-shard dimensions `dims`.
+  // Returns the default layout on `device` with `memory_kind` for a buffer with
+  // `dtype` and single-shard dimensions `dims`.
   // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
   // single-shard dimensions and device.
-  virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>>
-  GetDefaultLayoutForDevice(DType dtype, absl::Span<const int64_t> dims,
-                            Device* device) const = 0;
+  virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+      DType dtype, absl::Span<const int64_t> dims, Device* device,
+      xla::ifrt::MemoryKind memory_kind) const = 0;
 
   static char ID;  // NOLINT
 };

@@ -174,9 +174,9 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const tsl::RCReference<xla::ifrt::DeviceList>& devices),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>,
-              GetDefaultLayoutForDevice,
+              GetDefaultLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-               xla::ifrt::Device* device),
+               xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
               (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 

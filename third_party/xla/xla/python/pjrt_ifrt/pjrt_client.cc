@@ -44,9 +44,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/topology_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -1116,10 +1118,14 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
                                                           topology));
 }
 
-absl::StatusOr<std::shared_ptr<const PjRtLayout>>
-PjRtClient::GetDefaultLayoutForDevice(DType dtype,
-                                      absl::Span<const int64_t> dims,
-                                      Device* device) const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtClient::GetDefaultLayout(
+    DType dtype, absl::Span<const int64_t> dims, Device* device,
+    MemoryKind memory_kind) const {
+  static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
+  if (memory_kind == kUnpinnedHostMemoryKind) {
+    return std::make_shared<PjRtXlaLayout>(
+        LayoutUtil::MakeDescendingLayout(dims.size()));
+  }
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
   TF_ASSIGN_OR_RETURN(xla::Layout layout,
                       pjrt_client_->GetDefaultLayout(element_type, dims));

@@ -218,11 +218,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
           [this](const tsl::RCReference<xla::ifrt::DeviceList>& devices) {
             return delegated_->GetTopologyForDevices(devices);
           });
-  ON_CALL(*this, GetDefaultLayoutForDevice)
+  ON_CALL(*this, GetDefaultLayout)
       .WillByDefault([this](xla::ifrt::DType dtype,
                             absl::Span<const int64_t> dims,
-                            xla::ifrt::Device* device) {
-        return delegated_->GetDefaultLayoutForDevice(dtype, dims, device);
+                            xla::ifrt::Device* device,
+                            xla::ifrt::MemoryKind memory_kind) {
+        return delegated_->GetDefaultLayout(dtype, dims, device, memory_kind);
       });
 }
 // LINT.ThenChange()

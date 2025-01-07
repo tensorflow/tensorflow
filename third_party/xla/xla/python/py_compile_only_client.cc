@@ -38,6 +38,8 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -336,9 +338,13 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayoutForDevice(
-      ifrt::DType dtype, absl::Span<const int64_t> dims,
-      ifrt::Device* device) const override {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+      ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
+      ifrt::MemoryKind memory_kind) const override {
+    if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
+      return std::make_shared<PjRtXlaLayout>(
+          LayoutUtil::MakeDescendingLayout(dims.size()));
+    }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));

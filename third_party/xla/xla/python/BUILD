@@ -387,6 +387,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
