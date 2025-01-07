@@ -527,6 +527,7 @@ TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemAllocate;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemCopy;
+TF_CONST_INIT extern const absl::string_view kMegaScaleActivateGraph;
 TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
 TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
 TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;

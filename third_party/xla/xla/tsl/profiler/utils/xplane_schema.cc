@@ -568,6 +568,7 @@ const absl::string_view kMegaScaleDcnSend =
 const absl::string_view kMegaScaleDcnSendFinished = "MegaScale: Send Finished";
 const absl::string_view kMegaScaleDcnMemAllocate = "MegaScale: Memory Allocate";
 const absl::string_view kMegaScaleDcnMemCopy = "MegaScale: Memory Copy";
+const absl::string_view kMegaScaleActivateGraph = "MegaScale: Activate Graph";
 const absl::string_view kMegaScaleTopologyDiscovery =
     "MegaScale: Communication Topology Discovery.";
 const absl::string_view kMegaScaleBarrier = "MegaScale: Barrier.";
