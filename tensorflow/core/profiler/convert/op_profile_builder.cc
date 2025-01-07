@@ -128,10 +128,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
     for (Node& program_node : *root->mutable_children()) {
       for (Node& category_node : *program_node.mutable_children()) {
         for (Node& deduplicated_node : *category_node.mutable_children()) {
-          // Skip for non deduplicated nodes. Those nodes already have name set.
-          if (!deduplicated_node.name().empty() ||
-              deduplicated_node.children().empty())
+          // Node with 1 child doesn't have deduplication, the child is itself.
+          // Removing the dedup layer.
+          if (deduplicated_node.children_size() == 1) {
+            Node child = *deduplicated_node.mutable_children(0);
+            deduplicated_node = child;
             continue;
+          }
           CopySymbolDetailsToDeduplicatedNode(
               deduplicated_node.mutable_children(0), &deduplicated_node);
         }
@@ -140,10 +143,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   } else {
     for (Node& category_node : *root->mutable_children()) {
       for (Node& deduplicated_node : *category_node.mutable_children()) {
-        // Skip for non deduplicated nodes. Those nodes already have name set.
-        if (!deduplicated_node.name().empty() ||
-            deduplicated_node.children().empty())
+        // Node with 1 child doesn't have deduplication, the child is itself.
+        // Removing the dedup layer.
+        if (deduplicated_node.children_size() == 1) {
+          Node child = *deduplicated_node.mutable_children(0);
+          deduplicated_node = child;
           continue;
+        }
         CopySymbolDetailsToDeduplicatedNode(
             deduplicated_node.mutable_children(0), &deduplicated_node);
       }
@@ -281,12 +287,62 @@ Node* OpProfileBuilder::AddOpNode(const OpMetrics& op_metrics,
   return leaf;
 }
 
+// Function to create deduplicated aggregation layer.
+// 1. Empty deduplicated_name in op_metrics means either:
+// (1) a grouping op of a deduplicated op list. (fusion.3 in the example below)
+// (2) an op that does not have duplicates. (fusion.4 in the example below)
+// We create dedup layer for both cases due to lack of clue which case it is.
+// The op name is used directly as the hash key for the dedup group. The dedup
+// layer will be removed in the 2nd pass for case (2).
+// 2. Non-empty deduplicated_name means this op can be grouped to a
+// deduplicated op list (fusion.1 in the example below).
+// Example:
+// op_metrics {
+//   name: "fusion.1"
+//   deduplicated_name: "fusion.3"
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.3"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.4"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// The data above will create the following tree after calling the function
+// repeatedly:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
+//       - fusion.4
+// After finalization, the tree will look like:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3 and its duplicate(s)
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
 Node* OpProfileBuilder::LookupOrAddDeduplicatedNode(const OpMetrics& op_metrics,
                                                     Category* category) {
-  Node*& deduplicated_node =
-      category->deduplicated_nodes[op_metrics.deduplicated_name()];
+  std::string deduplicated_name = op_metrics.deduplicated_name().empty()
+                                      ? op_metrics.name()
+                                      : op_metrics.deduplicated_name();
+  Node*& deduplicated_node = category->deduplicated_nodes[deduplicated_name];
   if (deduplicated_node == nullptr) {
     deduplicated_node = category->node->add_children();
+    // Set deduplicated name which is the hash key for the dedup group.
+    // Symbol details will be added in finalization step.
+    deduplicated_node->set_name(deduplicated_name);
   }
   return deduplicated_node;
 }
@@ -341,8 +397,7 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
     nested_grouping_nodes.push_back(category->node);
 
     Node* deduplicated_node = nullptr;
-    if (options_.group_by_deduplicated_name &&
-        !op_metrics.deduplicated_name().empty()) {
+    if (options_.group_by_deduplicated_name) {
       deduplicated_node = LookupOrAddDeduplicatedNode(op_metrics, category);
       nested_grouping_nodes.push_back(deduplicated_node);
     }
