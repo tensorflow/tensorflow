@@ -560,9 +560,8 @@ TEST_F(ShardyXLATest, WhileWithFreeVariables) {
               op::Sharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
   // Verify the sharding of the while, and specifically that the sharding of the
   // result that corresponds to parameter(1) is further sharded.
-  EXPECT_THAT(whileInst,
-              op::Sharding("{{devices=[2,2]<=[4]}, {replicated}, {replicated}, "
-                           "{devices=[2,2]<=[4]}, {replicated}}"));
+  EXPECT_THAT(whileInst, op::Sharding("{{devices=[2,2]<=[4]}, {replicated}, "
+                                      "{devices=[2,2]<=[4]}}"));
 }
 
 TEST_F(ShardyXLATest, ShardMap) {

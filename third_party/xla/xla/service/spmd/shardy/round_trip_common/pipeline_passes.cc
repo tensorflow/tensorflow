@@ -31,6 +31,7 @@ using ::mlir::func::FuncOp;
 
 void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
   // We call prepare-for-export pass before SDY propagation, so that all IR
   // changes happen before shardings are added to operations, to ensure the
