@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
@@ -267,7 +268,9 @@ absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(ComparisonKernel kernel, GetComparisonKernel(executor));
+  TF_ASSIGN_OR_RETURN(
+      const ComparisonKernel* kernel,
+      GetComparisonKernel(stream_->parent(), GpuAsmOpts()));
 
   stream_executor::DeviceMemoryHandle out_param(
       executor, executor->AllocateScalar<uint64_t>());
@@ -279,7 +282,7 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
                                DeviceMemory<uint64_t>(out_param.memory()),
-                               kernel, buf_and_size.second, redzone_size_,
+                               *kernel, buf_and_size.second, redzone_size_,
                                redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;

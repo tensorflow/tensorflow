@@ -45,6 +45,14 @@ inline absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
                        std::string(ptx_contents), options, cancel_if_reg_spill);
 }
 
+// Same as CompileGpuAsm, but caches the result, and returns unowned view of
+// the compiled binary.
+//
+// A copy of the string provided in ptx will be made.
+absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
+    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    GpuAsmOpts compilation_options);
+
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the
 // resulting binary (i.e. a fatbin) as a byte array.
 absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
