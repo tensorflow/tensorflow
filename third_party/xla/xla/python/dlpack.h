@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

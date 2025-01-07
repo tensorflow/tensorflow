@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
