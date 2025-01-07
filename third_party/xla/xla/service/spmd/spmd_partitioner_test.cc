@@ -8734,22 +8734,19 @@ TEST_P(SpmdPartitioningTest, TiledReversePassthrough) {
 HloModule module
 
 ENTRY entry {
-  constant = f32[3,3]{1,0} constant({{1,1,1},{1,1,1},{1,1,1}}),
-    sharding={devices=[2,1]0,1}
-  ROOT reverse = f32[3,3]{1,0} reverse(constant), dimensions={1},
+  p0 = f32[3,3] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT reverse = f32[3,3] reverse(p0), dimensions={1},
     sharding={devices=[2,1]0,1}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("f32[2,3]{1,0}"),
-                          op::Reverse(op::DynamicSlice(
-                              op::Pad(op::Constant(), op::Constant()),
-                              op::Reshape(), op::Constant()))));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Shape("f32[2,3]"), op::Reverse(op::Parameter(0))));
 }
 
-TEST_P(SpmdPartitioningTest, TiledReversePassthroughViaReversedSharding) {
+TEST_P(SpmdPartitioningTest, TiledReverseViaReversedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
