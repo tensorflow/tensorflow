@@ -69,14 +69,14 @@ std::string GraphImportConfig::str() const {
   return ss.str();
 }
 
-Status ParseOutputArrayInfo(absl::string_view array_names,
-                            std::vector<string>* outputs) {
+absl::Status ParseOutputArrayInfo(absl::string_view array_names,
+                                  std::vector<string>* outputs) {
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, *outputs));
   return absl::OkStatus();
 }
 
-Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                            std::vector<string>* outputs) {
+absl::Status ParseOutputArrayInfo(const std::vector<string>& output_names,
+                                  std::vector<string>* outputs) {
   for (auto& output_name : output_names) {
     if (output_name.empty()) continue;
     outputs->push_back(output_name);
@@ -84,10 +84,10 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
   return absl::OkStatus();
 }
 
-Status ParseInputArrayInfo(absl::string_view array_names,
-                           absl::string_view data_types,
-                           absl::string_view shapes,
-                           GraphImportConfig::InputArrays* inputs) {
+absl::Status ParseInputArrayInfo(absl::string_view array_names,
+                                 absl::string_view data_types,
+                                 absl::string_view shapes,
+                                 GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
@@ -114,8 +114,8 @@ static absl::StatusOr<std::vector<int>> ParseShapeStr(
   return dims;
 }
 
-static Status HandleSubtype(absl::string_view subtype,
-                            ArrayInfo::SubTypeInfo* result) {
+static absl::Status HandleSubtype(absl::string_view subtype,
+                                  ArrayInfo::SubTypeInfo* result) {
   std::vector<std::string> shape_and_type = absl::StrSplit(subtype, ':');
 
   std::vector<int> dims;
@@ -143,7 +143,7 @@ static Status HandleSubtype(absl::string_view subtype,
   return absl::OkStatus();
 }
 
-Status ParseInputArrayInfo(
+absl::Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
     const std::vector<std::optional<std::vector<int>>>& node_shapes,
@@ -219,7 +219,7 @@ Status ParseInputArrayInfo(
   return absl::OkStatus();
 }
 
-Status ParseNodeShapes(
+absl::Status ParseNodeShapes(
     absl::string_view shapes_str,
     std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
@@ -237,8 +237,8 @@ Status ParseNodeShapes(
   return absl::OkStatus();
 }
 
-Status ParseNodeNames(absl::string_view names_str,
-                      std::vector<std::string>& names_vector) {
+absl::Status ParseNodeNames(absl::string_view names_str,
+                            std::vector<std::string>& names_vector) {
   names_vector = absl::StrSplit(names_str, ',', absl::SkipEmpty());
   return absl::OkStatus();
 }
@@ -286,8 +286,8 @@ static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
   return dtypes;
 }
 
-Status ParseNodeDataTypes(absl::string_view data_types_str,
-                          std::vector<std::string>& data_type_vector) {
+absl::Status ParseNodeDataTypes(absl::string_view data_types_str,
+                                std::vector<std::string>& data_type_vector) {
   data_type_vector.clear();
   if (!data_types_str.empty()) {
     TF_ASSIGN_OR_RETURN(data_type_vector, ParseDTypesHelper(data_types_str));

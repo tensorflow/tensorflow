@@ -44,7 +44,7 @@ const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
 
 }  // namespace
 
-Status GenerateResourceSharedNameIfEmpty(
+absl::Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry) {
   auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
                                                   const OpDef& op_def) {
