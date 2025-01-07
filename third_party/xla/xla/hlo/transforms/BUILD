@@ -1114,11 +1114,6 @@ alias(
 )
 
 alias(
-    name = "hlo_memory_scheduler",
-    actual = "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
-)
-
-alias(
     name = "dynamic_dimension_simplifier",
     actual = "//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier",
 )
