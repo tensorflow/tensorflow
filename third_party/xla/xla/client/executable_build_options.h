@@ -309,7 +309,7 @@ class ExecutableBuildOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
-  bool use_spmd_partitioning_ = false;
+  bool use_spmd_partitioning_ = true;
   bool use_auto_spmd_partitioning_ = false;
   std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
