@@ -1,4 +1,4 @@
-// RUN: xla_cpu_opt %s | FileCheck %s
+// RUN: emitters_opt %s | FileCheck %s
 
 func.func @call_frame_arg(%arg0: !xla_cpu.call_frame) {
   return
