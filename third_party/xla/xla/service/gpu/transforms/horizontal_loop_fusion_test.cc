@@ -665,7 +665,7 @@ TEST_F(HorizontalLoopFusionTest,
               GmockMatch(m::Tuple(m::Multiply(), m::Add())));
 }
 
-TEST_F(HorizontalLoopFusionTest, ForbidSharedParametersWhenUsingConcatenation) {
+TEST_F(HorizontalLoopFusionTest, AllowSharedOperandsWhenUsingConcatenation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 f {
   p = f16[] parameter(0)
@@ -685,9 +685,7 @@ e {
 
   // As fusions f and g have different output shapes, the horizontal fusion
   // algorithm would only consider merging them using concatenation/slicing.
-  // The horizontal fusion is not supposed to happen in this
-  // example though because f and g share an input parameter.
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       HorizontalLoopFusion{device_description_}.Run(module.get()).value());
 }
 
