@@ -3355,36 +3355,48 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
+
+  // Replicate along the slice dims to get temp_sharding.
+  std::vector<int64_t> slice_dims;
   for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-    if (hlo->sharding().tile_assignment().dim(i) != 1 &&
-        hlo->dynamic_slice_sizes()[i] !=
-            hlo->operand(0)->shape().dimensions(i)) {
-      // We currently do not partition the sliced dimensions.
-      return DefaultAction(hlo);
-    }
-  }
-  std::vector<HloInstruction*> new_indices(hlo->shape().rank());
-  auto new_input =
-      GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding()).hlo();
-  for (int64_t i = 0; i < new_indices.size(); ++i) {
-    if (hlo->dynamic_slice_sizes()[i] ==
+    if (hlo->dynamic_slice_sizes()[i] !=
         hlo->operand(0)->shape().dimensions(i)) {
-      // Trivial slice dim: index must be clampped to 0.
-      new_indices[i] = CreateZero(hlo->operand(i + 1)->shape(), &b_);
-      continue;
+      slice_dims.push_back(i);
     }
-    // Replicate the indices.;
-    new_indices[i] = GetPartitionedHlo(hlo->operand(i + 1))
-                         .Reshard(HloSharding::Replicate())
-                         .hlo();
   }
-  SetPartitionedHlo(hlo, [&]() {
-    auto partitioned_shape =
-        MakePartitionedShape(hlo->shape(), hlo->sharding());
-    return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
-        partitioned_shape, new_input, new_indices,
-        partitioned_shape.dimensions()));
-  });
+  const HloSharding temp_sharding =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(hlo->sharding(),
+                                                               slice_dims);
+
+  // Reshard the input to temp_sharding.
+  HloInstruction* input_with_temp_sharding =
+      GetPartitionedHlo(hlo->operand(0)).Reshard(temp_sharding).hlo();
+
+  std::vector<HloInstruction*> new_indices;
+  new_indices.reserve(hlo->shape().rank());
+  for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
+    if (hlo->dynamic_slice_sizes()[i] !=
+        hlo->operand(0)->shape().dimensions(i)) {
+      new_indices.push_back(
+          GetPartitionedHlo(hlo->operand(i + 1)).Replicate().hlo());
+    } else {
+      // Index must be clamped to be 0.
+      new_indices.push_back(CreateZero(hlo->operand(i + 1)->shape(), &b_));
+    }
+  }
+
+  // Apply dynamic slice with temp_sharding.
+  Shape temp_sharded_shape = MakePartitionedShape(hlo->shape(), temp_sharding);
+  HloInstruction* ds_with_temp_sharding =
+      b_.AddInstruction(HloInstruction::CreateDynamicSlice(
+          temp_sharded_shape, input_with_temp_sharding, new_indices,
+          temp_sharded_shape.dimensions()));
+  ds_with_temp_sharding->set_sharding(temp_sharding);
+
+  // Reshard the output to the final sharding.
+  SetPartitionedHlo(hlo, PartitionedHlo(ds_with_temp_sharding, hlo->shape(),
+                                        MakePartitioningState())
+                             .Reshard(hlo->sharding()));
   return absl::OkStatus();
 }
 

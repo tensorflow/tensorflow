@@ -7531,7 +7531,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::PartitionId());
 }
 
-TEST_P(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
+TEST_P(SpmdPartitioningTest, DynamicSlicePartitionedBatchDimension) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7539,19 +7539,71 @@ ENTRY entry {
   %input = s32[128,64] parameter(0), sharding={devices=[2,1]0,1}
   %index = s32[] parameter(1)
   %trivial_index = s32[] parameter(2)
-  ROOT %dynamic-slice = s32[128,2] dynamic-slice(%input, %trivial_index, %index),
-    dynamic_slice_sizes={128,2}, sharding={devices=[2,1]0,1}
+  ROOT %dynamic-slice = s32[128,16] dynamic-slice(%input, %trivial_index, %index),
+    dynamic_slice_sizes={128,16}, sharding={devices=[2,1]0,1}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
 
-  const auto root = module->entry_computation()->root_instruction();
   auto input = AllOf(op::Parameter(0), op::Shape("s32[64,64]"));
-  EXPECT_THAT(root,
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(1)),
-                    op::Shape("s32[64,2]")));
+                    op::Shape("s32[64,16]")));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicSlicePartitionedSliceDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
+  %index = s32[] parameter(1)
+  %trivial_index = s32[] parameter(2)
+  ROOT %dynamic-slice = s32[128,16] dynamic-slice(%input, %trivial_index, %index),
+    dynamic_slice_sizes={128,16}, sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
+  auto input_replicated =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), input, _, _)),
+            op::Shape("s32[128,64]"));
+  auto ds_replicated = AllOf(
+      op::DynamicSlice(input_replicated, op::Constant(), op::Parameter(1)),
+      op::Shape("s32[128,16]"));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::DynamicSlice(ds_replicated, _, _), op::Shape("s32[128,8]")));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicSlicePartitionedBothDimensions) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[128,64] parameter(0), sharding={devices=[2,2]<=[4]}
+  %index = s32[] parameter(1)
+  %trivial_index = s32[] parameter(2)
+  ROOT %dynamic-slice = s32[128,16] dynamic-slice(%input, %trivial_index, %index),
+    dynamic_slice_sizes={128,16}, sharding={devices=[2,2]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[64,32]"));
+  auto input_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), input, _, _)),
+            op::Shape("s32[64,64]"));
+  auto ds =
+      AllOf(op::DynamicSlice(input_reshard, op::Constant(), op::Parameter(1)),
+            op::Shape("s32[64,16]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::DynamicSlice(ds, _, _), op::Shape("s32[64,8]")));
 }
 
 TEST_P(SpmdPartitioningTest, DynamicUpdateSliceAlongNonPartitionedDimension) {
