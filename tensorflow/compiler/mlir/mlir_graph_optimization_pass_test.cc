@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -385,6 +386,7 @@ class MlirGraphOptimizationV1PassTest : public Test {
               pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
                                    [false]);
     EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
+    EXPECT_EQ(mlir_v1_compat_graph_conversion_count_.Read(kOk), 1);
   }
 
   void TearDown() override {
@@ -417,6 +419,11 @@ class MlirGraphOptimizationV1PassTest : public Test {
           monitoring::testing::CellReader<int64_t>(
               /* metric name */
               "/tensorflow/core/mlir_function_pass_graph_conversion_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_v1_compat_graph_conversion_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_v1_compat_graph_conversion_count");
 };
 
 TEST_F(MlirGraphOptimizationV1PassTest, OptimizationPassDoesNotFailFallback) {

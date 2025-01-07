@@ -84,6 +84,14 @@ auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
     "optimization pass",
     /* metric field */ "status");
 
+auto* mlir_v1_compat_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_v1_compat_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in MLIR V1 compat "
+    "optimization pass",
+    /* metric field */ "status");
+
 // The status metric field is used to record success/failure of mlir
 // function/graph optimization passes.
 constexpr char kSuccess[] = "kSuccess";
@@ -434,6 +442,9 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
       **options.graph, debug_info, *options.flib_def, import_config, &context,
       /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
       tensorflow::TF2XLABridgeVersion::kV1Compat);
+  mlir_v1_compat_graph_conversion_count
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
+      ->IncrementBy(1);
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();
