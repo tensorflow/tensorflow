@@ -31,13 +31,6 @@ namespace gpu {
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
-// Returns the range of a given value, if it can be statically determined.
-std::optional<Interval> GetRange(mlir::Value value);
-
-// Returns the range for the induction variable, if it can be statically
-// determined.
-std::optional<Interval> GetIVRange(mlir::Value iv);
-
 std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass();
 std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
     const se::DeviceDescription& device_description);

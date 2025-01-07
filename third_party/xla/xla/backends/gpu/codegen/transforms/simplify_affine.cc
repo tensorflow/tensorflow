@@ -314,65 +314,6 @@ struct SimplifyAffinePass
 
 }  // namespace
 
-std::optional<Interval> GetRange(mlir::Value value) {
-  auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Interval> {
-    if (!attr) {
-      return std::nullopt;
-    }
-    auto values = llvm::to_vector(
-        mlir::cast<mlir::ArrayAttr>(attr).getAsValueRange<mlir::IntegerAttr>());
-    return {{values[0].getSExtValue(), values[1].getSExtValue()}};
-  };
-
-  if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
-    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
-        apply.getIndexingMap().GetAffineMap().getResult(
-            mlir::cast<mlir::OpResult>(value).getResultNumber()));
-  } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
-    return {{cst.value(), cst.value()}};
-  } else if (value.getDefiningOp()) {
-    return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
-  }
-
-  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(value);
-  if (!bbarg) {
-    return std::nullopt;
-  }
-
-  auto parent = bbarg.getParentBlock()->getParentOp();
-  if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(parent)) {
-    return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
-  }
-  return GetIVRange(value);
-}
-
-std::optional<Interval> GetIVRange(mlir::Value iv) {
-  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(iv);
-  if (!bbarg) {
-    return std::nullopt;
-  }
-  auto parent = bbarg.getParentBlock()->getParentOp();
-  if (auto for_op = mlir::dyn_cast<mlir::scf::ForOp>(parent)) {
-    llvm::APInt lb, ub;
-    if (mlir::matchPattern(for_op.getLowerBound(), mlir::m_ConstantInt(&lb)) &&
-        mlir::matchPattern(for_op.getUpperBound(), mlir::m_ConstantInt(&ub))) {
-      return {{lb.getSExtValue(), ub.getSExtValue() - 1}};
-    }
-  }
-  if (auto loop_op = mlir::dyn_cast<xla::LoopOp>(parent)) {
-    const auto& indexing_map = loop_op.getIndexingMap();
-    if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
-        bbarg.getArgNumber() <
-            loop_op.getNumInductionVars() + indexing_map.GetNumResults()) {
-      RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
-      return range_evaluator.ComputeExpressionRange(
-          indexing_map.GetAffineMap().getResult(bbarg.getArgNumber() -
-                                                loop_op.getNumInductionVars()));
-    }
-  }
-  return std::nullopt;
-}
-
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass() {
   return std::make_unique<SimplifyAffinePass>();
 }

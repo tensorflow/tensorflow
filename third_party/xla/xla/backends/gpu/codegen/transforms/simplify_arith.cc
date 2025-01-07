@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 

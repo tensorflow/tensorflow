@@ -234,7 +234,7 @@ func.func @apply_indexing_move_syms_to_dims(%dim0: index, %sym0: index)
 // CHECK-NEXT:  xla.apply_indexing #[[$MAP]]
 // CHECK-SAME:      (%[[ARG0:.*]], %[[ARG1:.*]])
 
-// // -----
+// -----
 
 #map0 = #xla.indexing_map<"(d0) -> (4 * d0), domain: d0 in [0, 3]">
 #map1 = #xla.indexing_map<"(d0)[s0, s1] -> (d0 + s0, s1),"
@@ -278,3 +278,51 @@ func.func @loop_of_apply_indexing_with_syms(%dim0: index, %sym0: index, %input: 
 // CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index
 // CHECK:         xla.loop (%[[ARG0]], %[[ARG1]])
 // CHECK-SAME:      in #[[$MAP]]
+
+// -----
+
+#map = #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z, p1, p2, p3)[idx]"
+"-> ((th_x floordiv 64) * 100 + bl_x * 200 + idx + th_x + th_y + th_z + bl_x + bl_y + bl_z + p1 + p2 + p3),"
+"domain:"
+"th_x in [0, 127], th_y in [0, 0], th_z in [0, 10],"
+"bl_x in [0, 174], bl_y in [2, 2], bl_z in [3, 3], p1 in [1, 5], p2 in [1, 5], p3 in [0,1000],"
+"idx in [0, 99], bl_x + bl_y + bl_z in [0, 200],"
+"th_x + th_y + th_z + idx in [-1, 200],"
+"th_y + bl_y in [0,4],p1+p2+p3 in [0,10]">
+
+func.func private @compute(%in: tensor<350xf32>) -> (tensor<350xf32>)
+
+func.func @fold_constant_dimensions(%input: tensor<350xf32>, %a1 : index) -> (tensor<350xf32>) {
+  %c1 = arith.constant 4 : index
+  %c2 = arith.constant 9 : index // Outside of map bounds.
+  %thread_id_x = gpu.thread_id  x {xla.range = [0 : index, 127 : index]}
+  %thread_id_y = gpu.thread_id  y {xla.range = [0 : index, 0 : index]}
+  %thread_id_z = gpu.thread_id  z {xla.range = [1 : index, 1 : index]}
+  %block_id_x = gpu.block_id  x {xla.range = [0 : index, 174 : index]}
+  %block_id_y = gpu.block_id  y {xla.range = [2 : index, 2 : index]}
+  %block_id_z = gpu.block_id  z {xla.range = [3 : index, 3 : index]}
+
+  %result = xla.loop (%thread_id_x, %thread_id_y, %thread_id_z,
+                  %block_id_x, %block_id_y, %block_id_z, %c1, %c2, %a1)[%i] -> (%ra) in #map
+                  iter_args(%iter_ = %input) -> (tensor<350xf32>) {
+  %0 = func.call @compute(%iter_) : (tensor<350xf32>) -> (tensor<350xf32>)
+  xla.yield %0 : tensor<350xf32>
+  }
+  func.return %result : tensor<350xf32>
+}
+
+// CHECK:      #[[$MAP:.*]] = #xla.indexing_map<"(th_x, bl_x, p2, p3)[idx] -> (
+// CHECK-SAME:   (th_x floordiv 64) * 100 + bl_x * 200 + idx + th_x + bl_x + p2 + p3 + 10)
+// CHECK-SAME:   domain: th_x in [0, 127], bl_x in [0, 174],
+// CHECK-SAME:   p2 in [1, 5], p3 in [0, 1000], idx in [0, 99],
+// CHECK-SAME:   bl_x + 5 in [0, 200],
+// CHECK-SAME:   p2 + p3 + 4 in [0, 10],
+// CHECK-SAME:   th_x + idx + 1 in [-1, 200]">
+
+// CHECK-LABEL:   func.func @fold_constant_dimensions(
+// CHECK-SAME:        %[[ARG:.*]]: tensor<350xf32>, %[[SCALAR:.*]]: index)
+// CHECK:           %[[C9:.*]] = arith.constant 9
+// CHECK:           %[[TH_X:.*]] = gpu.thread_id  x
+// CHECK:           %[[BL_X:.*]] = gpu.block_id  x
+// CHECK:           xla.loop (%[[TH_X]], %[[BL_X]], %[[C9]], %[[SCALAR]])
+// CHECK-SAME:        in #[[$MAP]]

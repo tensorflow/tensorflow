@@ -61,6 +61,13 @@ mlir::ParseResult parseOperands(
 std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
     mlir::AsmParser& parser);
 
+// Returns the range of a given value, if it can be statically determined.
+std::optional<Interval> GetRange(mlir::Value value);
+
+// Returns the range for the induction variable, if it can be statically
+// determined.
+std::optional<Interval> GetIVRange(mlir::Value iv);
+
 }  // namespace xla
 
 #endif  // XLA_CODEGEN_IR_XLA_OPS_H_

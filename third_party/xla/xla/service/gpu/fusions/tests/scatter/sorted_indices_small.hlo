@@ -27,7 +27,7 @@ scatter {
 }
 // When there is not enough indices per warp, we fall back to the naive impl,
 // when one warp processes one slice.
-// CHECK:      #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1]
+// CHECK:      #xla.indexing_map<"(th_x, bl_x)[s0, s1]
 // CHECK-SAME:   -> (bl_x * 4 + th_x floordiv 32, th_x mod 32),
 // CHECK-SAME:   domain: th_x in [0, 127],
 // CHECK-SAME:           bl_x in [0, 49],
