@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
@@ -246,6 +248,42 @@ TEST_P(RemapPlanTest, InvalidOutputDtypeFromMixedInputDtypes) {
   EXPECT_THAT(plan.Validate(),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Input and output must have the same dtype")));
+}
+
+TEST_P(RemapPlanTest, InvalidLayout) {
+  RemapPlan plan;
+  plan.input_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtXlaLayout>(
+          xla::LayoutUtil::MakeDescendingLayout(2)),
+  });
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtXlaLayout>(
+          xla::LayoutUtil::MakeAscendingLayout(2)),  // layout differs
+  });
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  EXPECT_THAT(
+      plan.Validate(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Input and output must have the same layout")));
 }
 
 TEST_P(RemapPlanTest, InvalidInputArrayIndex) {

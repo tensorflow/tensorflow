@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
