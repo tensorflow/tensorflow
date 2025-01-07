@@ -19,12 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
@@ -50,6 +53,11 @@ namespace xla::cpu {
 // multiple LLVM modules compiled to object files).
 class ThunkEmitter {
  public:
+  struct EmittedKernel {
+    std::string kernel_name;
+    llvm::orc::ThreadSafeModule module;
+  };
+
   ThunkEmitter(IrEmitter2& ir_emitter,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
@@ -57,6 +65,8 @@ class ThunkEmitter {
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
+
+  std::vector<EmittedKernel>& kernels() { return kernels_; }
 
  private:
   struct HostKernelAllocationSlices {
@@ -209,6 +219,11 @@ class ThunkEmitter {
       const IrEmitter2::KernelInfo& kernel,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
+  static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
+      const HloInstruction* instruction,
+      std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+      std::optional<uint64_t> min_alignment = std::nullopt);
+
   IrEmitter2& ir_emitter_;
   const BufferAssignment& buffer_assignment_;
 
@@ -223,6 +238,8 @@ class ThunkEmitter {
   // create a separate resource for each unique allocation slice.
   absl::flat_hash_map<BufferAllocation::Slice, std::shared_ptr<Resource>>
       token_resources_;
+
+  std::vector<EmittedKernel> kernels_;
 };
 
 }  // namespace xla::cpu

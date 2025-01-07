@@ -1507,12 +1507,16 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     }
 
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
+    for (const auto& [name, module] : thunk_emitter.kernels()) {
+      TF_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
+    }
 
     // We define the number of module parts based on the total number of
     // compiled functions (kernels and comparators) that are called from thunks,
     // and the maximum number of parts that we want to split the module into.
-    size_t num_compiled_functions =
-        ir_emitter2.kernels().size() + ir_emitter2.comparators().size();
+    size_t num_compiled_functions = ir_emitter2.kernels().size() +
+                                    ir_emitter2.comparators().size() +
+                                    thunk_emitter.kernels().size();
     size_t num_parts =
         std::min(num_compiled_functions, parallel_codegen_split_count);
 
@@ -1575,6 +1579,18 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     // Collect compiled symbols from all LLVM module parts.
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
+
+    VLOG(3) << "Adding " << thunk_emitter.kernels().size()
+            << " kernels to the JIT compiler";
+    int kernel_dylib_index = 0;
+    for (auto& [name, module] : thunk_emitter.kernels()) {
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
+      TF_CHECK_OK(
+          jit_compiler.AddModule(std::move(module), kernel_dylib_index));
+      // Simply roundrobin the kernel dylibs
+      kernel_dylib_index = (kernel_dylib_index + 1) % num_parts;
+    }
 
     for (const CompiledSymbolsPart& part : compiled_parts) {
       for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
@@ -2152,6 +2168,10 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     // Collect compiled symbols from IrEmitter2.
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
+    for (auto& [name, module] : thunk_emitter.kernels()) {
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
+    }
     for (const auto& kernel : ir_emitter2.kernels()) {
       compiled_symbols.push_back(
           FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));

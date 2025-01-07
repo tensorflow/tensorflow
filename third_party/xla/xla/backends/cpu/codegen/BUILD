@@ -262,6 +262,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
+        "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:elemental_ir_emitter",
         "//xla/service/cpu:ir_emitter",

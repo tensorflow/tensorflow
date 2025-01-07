@@ -76,7 +76,7 @@ TEST(KernelThunkTest, AddF32) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
-                          se::ThreadDim(4), /*invariant_arguments=*/{0}));
+                          se::ThreadDim(4), /*invariant_arguments=*/{{0}}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -99,7 +99,7 @@ TEST(KernelThunkTest, AddF32Inline) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
-                          se::ThreadDim(4), /*invariant_arguments=*/{}));
+                          se::ThreadDim(4), /*invariant_arguments=*/{{}}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -128,7 +128,7 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
-                          se::ThreadDim(4), /*invariant_arguments=*/{}));
+                          se::ThreadDim(4), /*invariant_arguments=*/{{}}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -159,7 +159,7 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
-                          se::ThreadDim(4), /*invariant_arguments=*/{0}));
+                          se::ThreadDim(4), /*invariant_arguments=*/{{0}}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -196,7 +196,7 @@ TEST(KernelThunkInvariantBuffersTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, KernelThunk::Create({"add_f32"}, {slice_0, slice_1},
                                       {slice_0}, "add_f32", se::ThreadDim(4),
-                                      /*invariant_arguments=*/{1}));
+                                      /*invariant_arguments=*/{{1}}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
