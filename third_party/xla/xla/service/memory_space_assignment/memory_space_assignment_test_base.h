@@ -89,6 +89,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   // and large) and alternate (fast and small) memory spaces.
   const int64_t kDefaultMemorySpace = 0;
   const int64_t kAlternateMemorySpace = 1;
+  const int64_t kPinnedDefaultMemorySpace = 2;
 
   static HloCostAnalysis::Options DefaultHloCostAnalysisOptions() {
     HloCostAnalysis::Options options;

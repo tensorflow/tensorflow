@@ -48,6 +48,10 @@ absl::StatusOr<absl::string_view> GetCustomCallTarget(
       host_memory_offload_annotations::kMemoryTargetDeviceSram) {
     return host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget;
   }
+  if (external_annotation ==
+      host_memory_offload_annotations::kMemoryTargetPinnedDevice) {
+    return host_memory_offload_annotations::kPinToDeviceCustomCallTarget;
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Invalid external annotation: ", external_annotation));
 }
@@ -68,7 +72,9 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
            host_memory_offload_annotations::kMemoryTargetUnpinnedHost);
   const bool is_to_device_case =
       (it->second == host_memory_offload_annotations::kMemoryTargetDevice ||
-       it->second == host_memory_offload_annotations::kMemoryTargetDeviceSram);
+       it->second == host_memory_offload_annotations::kMemoryTargetDeviceSram ||
+       it->second ==
+           host_memory_offload_annotations::kMemoryTargetPinnedDevice);
   if (!is_to_host_case && !is_to_device_case) {
     return false;
   }

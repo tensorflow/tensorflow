@@ -25,7 +25,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
@@ -75,18 +75,19 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/service/memory_space_assignment/testing_utils.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -235,6 +236,53 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
   EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_F(MemorySpaceAssignmentTest, PinnedDefaultMemorySpace) {
+  absl::string_view hlo_string = R"(
+  HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0:S(2)})->f32[2,3]{1,0}}
+
+  ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
+    %p0 = f32[2,3]{1,0} parameter(0)
+    %p1 = f32[2,3]{1,0:S(2)} parameter(1)
+    %negate = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0} %p0)
+    %negate.1 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate)
+    %negate.2 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate.1)
+    %negate.3 = f32[2,3]{1,0} negate(f32[2,3]{1,0:S(2)} %negate.2)
+    %negate.4 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0} %negate.3)
+    %negate.5 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate.4)
+    %negate.6 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate.5)
+    ROOT %add = f32[2,3]{1,0} add(f32[2,3]{1,0:S(2)} %negate.6, f32[2,3]{1,0:S(2)} %p1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* negate = FindInstruction(module.get(), "negate");
+  HloInstruction* negate_1 = FindInstruction(module.get(), "negate.1");
+  HloInstruction* negate_2 = FindInstruction(module.get(), "negate.2");
+  HloInstruction* negate_3 = FindInstruction(module.get(), "negate.3");
+  HloInstruction* negate_4 = FindInstruction(module.get(), "negate.4");
+  HloInstruction* negate_5 = FindInstruction(module.get(), "negate.5");
+  HloInstruction* negate_6 = FindInstruction(module.get(), "negate.6");
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  std::vector<const HloInstruction*> pinned_hbm_instructions = {
+      p1, negate, negate_1, negate_2, negate_4, negate_5, negate_6};
+  for (const HloInstruction* instruction : pinned_hbm_instructions) {
+    EXPECT_EQ(instruction->shape().layout().memory_space(),
+              kPinnedDefaultMemorySpace);
+  }
+  // Check p0 and add are in the default memory space.
+  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_EQ(add->shape().layout().memory_space(), kDefaultMemorySpace);
+  // Check negate_3 is in pinned to alternate memory space.
+  EXPECT_EQ(negate_3->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Check that p1 is only used once at the add instruction. ie, the there is no
+  // copy/prefetch.
+  CHECK_EQ(p1->users().size(), 1);
+  EXPECT_EQ(p1->users()[0], add);
 }
 
 // A simple case where the synchronous copy is actually redundant, because its
