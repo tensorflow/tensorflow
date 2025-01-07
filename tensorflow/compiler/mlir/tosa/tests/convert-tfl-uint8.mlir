@@ -18,9 +18,9 @@ func.func @test_add_u8(%arg0: tensor<14x19x!quant.uniform<u8:f32, 0.015603500418
 // ----
 
 // CHECK-LABEL: test_cast_ui8
-// CHECK-DAG: %[[multiplier:.+]] = "tosa.const"() <{value = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
-// CHECK-DAG: %[[shift:.+]] = "tosa.const"() <{value = dense<30> : tensor<1xi8>}> : () -> tensor<1xi8>
-// CHECK: tosa.rescale %arg0, %[[multiplier]], %[[shift]] {double_round = false, input_unsigned = true, input_zp = 0 : i32, output_unsigned = false, output_zp = -128 : i32, per_channel = false, scale32 = true}
+// CHECK-DAG: %[[multiplier:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[shift:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK: tosa.rescale %arg0, %[[multiplier]], %[[shift]] {input_unsigned = true, input_zp = 0 : i32, output_unsigned = false, output_zp = -128 : i32, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
 // CHECK: tfl.cast
 func.func @test_cast_ui8(%arg0: tensor<1x256x256x3xui8>) -> tensor<1x256x256x3xf32> {
   %0 = "tfl.cast"(%arg0) : (tensor<1x256x256x3xui8>) -> tensor<1x256x256x3xf32>

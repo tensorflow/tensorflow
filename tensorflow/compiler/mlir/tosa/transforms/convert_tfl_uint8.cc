@@ -230,7 +230,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           /* input_zp = */ builder.getI32IntegerAttr(rescale_input_zp),
           /* output_zp = */ builder.getI32IntegerAttr(rescale_output_zp),
           /* scale32 = */ builder.getBoolAttr(true),
-          /* double_round = */ builder.getBoolAttr(false),
+          /* rounding_mode = */ builder.getStringAttr("SINGLE_ROUND"),
           /* per_channel = */ builder.getBoolAttr(false),
           /* input_unsigned = */ builder.getBoolAttr(true),     // uint8_t ->
           /* output_unsigned = */ builder.getBoolAttr(false));  // int8_t
@@ -286,7 +286,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       // Check if graph output is uint8 type.
       Type rescaled_type;
       int32_t uint8_zp, rescale_output_zp;
-      if (!getUint8RescaleInfo(builder, shaped_output_type, rescaled_type,
+      if (!getUint8RescaleInfo(builder, uint8_output_type, rescaled_type,
                                uint8_zp, rescale_output_zp))
         continue;
 
@@ -310,7 +310,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           /* input_zp = */ builder.getI32IntegerAttr(operand_zp),
           /* output_zp = */ builder.getI32IntegerAttr(uint8_zp),
           /* scale32 = */ builder.getBoolAttr(true),
-          /* double_rount = */ builder.getBoolAttr(false),
+          /* rounding_mode = */ builder.getStringAttr("SINGLE_ROUND"),
           /* per_channel = */ builder.getBoolAttr(false),
           /* input_unsigned = */ builder.getBoolAttr(false),   // int8_t ->
           /* output_unsigned = */ builder.getBoolAttr(true));  // uint8_t

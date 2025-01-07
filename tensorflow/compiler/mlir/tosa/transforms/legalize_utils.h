@@ -67,13 +67,13 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
                    int32_t scale_multiplier, int32_t scale_shit,
-                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
                    bool scale32);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
                    bool scale32);
 
 // Removes the zero point and cast to int32, no need to handle roundings modes
