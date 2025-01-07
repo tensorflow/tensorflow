@@ -12,10 +12,6 @@ load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -842,14 +838,10 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     shard_count = 25,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
@@ -861,18 +853,14 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:types",
-        "//xla/client:global_data",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@ml_dtypes//:float8",
-    ] + if_rocm_is_configured([
-        # keep sorted
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
