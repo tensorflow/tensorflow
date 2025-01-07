@@ -92,10 +92,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/lib/core/bits.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1161,6 +1163,7 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
     return absl::StrFormat("XlaAutotunerMeasurement:#hlo_op=%s#",
                            fusion.name());
   });
+  VLOG(2) << "Profiling " << fusion.name() << ".";
   std::vector<AutotuneResult> results;
   std::optional<ScopedShapedBuffer> reference_buffer;
   for (int i = 0; i < candidates.size(); ++i) {
@@ -1175,12 +1178,20 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
       continue;
     }
 
+    if (stream_executor::IsMemoryAllocationError(result.status()) &&
+        reference_buffer.has_value()) {
+      LOG(WARNING)
+          << "Autotuning candidate failed with out of memory error. Consider "
+             "disabling correctness checking (i.e. --xla_gpu_autotune_level=3) "
+             "to reduce autotuning memory usage.";
+    }
+
     VLOG(2) << "Ran " << i + 1 << " configs out of " << candidates.size()
             << ".";
     TF_RETURN_IF_ERROR(result.status());
     results.push_back(std::move(*result));
   }
-  VLOG(2) << "Done running.";
+  VLOG(2) << "Done profiling " << fusion.name() << ".";
   return results;
 }
 
