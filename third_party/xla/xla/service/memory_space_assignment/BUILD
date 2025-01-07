@@ -173,7 +173,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:instruction_hoister",
+        "//xla/hlo/transforms/simplifiers:instruction_hoister",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:buffer_value",
         "//xla/service:hlo_buffer",

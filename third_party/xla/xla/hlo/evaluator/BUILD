@@ -140,7 +140,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/transforms:hlo_element_type_converter",
+        "//xla/hlo/transforms/simplifiers:hlo_element_type_converter",
         "//xla/service:call_graph",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:hlo_module_config",
