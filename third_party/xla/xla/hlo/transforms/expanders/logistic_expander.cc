@@ -34,7 +34,7 @@ absl::StatusOr<HloInstruction*> LogisticExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloInstruction* operand = instruction->mutable_operand(0);
   const Shape operand_shape = operand->shape();
-  // Computing 1.0 / (1.0 - exp(-x))
+  // Computing 1.0 / (1.0 + exp(-x))
   HloInstruction* one_constant = MakeScalarLike(operand, 1.0f);
   HloInstruction* exp_instr =
       MakeUnaryHlo(HloOpcode::kExp,
