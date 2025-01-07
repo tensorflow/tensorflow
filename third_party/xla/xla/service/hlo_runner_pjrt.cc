@@ -237,6 +237,9 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
   compile_options.executable_build_options.set_result_layout(
       module->entry_computation_layout().result_shape());
 
+  compile_options.executable_build_options.set_use_spmd_partitioning(
+      module->config().use_spmd_partitioning());
+
   return compile_options;
 }
 
@@ -328,9 +331,6 @@ absl::StatusOr<Literal> HloRunnerPjRt::Execute(
     ExecutionProfile* profile) {
   // TODO (b/245550554) : Remove UpdateEntryComputationLayout from runner.
   UpdateEntryComputationLayout(module.get());
-  TF_ASSIGN_OR_RETURN(auto compile_options, GenerateDefaultCompileOptions(
-                                                module.get(), run_hlo_passes));
-
   TF_ASSIGN_OR_RETURN(auto executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
 
