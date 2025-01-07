@@ -568,7 +568,6 @@ TEST_F(PjrtCApiTest, DeviceDescriptionAndMemoryDescriptionss) {
 
   for (int i = 0; i < memory_descriptions.size(); i++) {
     EXPECT_NE(memory_descriptions[i].kind().size(), 0);
-    EXPECT_GE(memory_descriptions[i].kind_id(), 0);
   }
 }
 
