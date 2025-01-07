@@ -422,7 +422,24 @@ ConcreteSharding::ConcreteSharding(tsl::RCReference<DeviceList> devices,
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false),
       shape_(std::move(shape)),
-      shard_shapes_(std::move(shard_shapes)) {}
+      shard_shapes_(std::move(shard_shapes)) {
+  // If all per-shard shapes are the same, cache this shape for
+  // `GetShardShape()`. Ideally, users should have used `ConcreteEvenSharding`
+  // for such a case, but there are existing use cases that instantiate
+  // `ConcreteSharding` from a list of per-shard shapes without checking for
+  // identical per-shard shapes.
+  const auto& static_shard_shapes = std::get<std::vector<Shape>>(shard_shapes_);
+  bool identical = true;
+  for (int i = 1; i < static_shard_shapes.size(); ++i) {
+    if (static_shard_shapes[i] != static_shard_shapes[0]) {
+      identical = false;
+      break;
+    }
+  }
+  if (identical) {
+    shard_shape_ = static_shard_shapes[0];
+  }
+}
 
 ConcreteSharding::ConcreteSharding(
     tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
@@ -434,6 +451,9 @@ ConcreteSharding::ConcreteSharding(
 
 absl::StatusOr<Shape> ConcreteSharding::GetShardShape(
     const Shape& shape) const {
+  if (shard_shape_.has_value()) {
+    return *shard_shape_;
+  }
   return InvalidArgument("ConcreteSharding does not have a fixed shard shape");
 }
 
