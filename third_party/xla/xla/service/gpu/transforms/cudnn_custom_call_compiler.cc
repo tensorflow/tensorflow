@@ -149,12 +149,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
 
     const int sliding_window_length = config.sliding_window_length();
+    const int max_seg_per_batch = config.max_seg_per_batch();
     TF_ASSIGN_OR_RETURN(
         se::gpu::CudnnGraph graph,
         se::gpu::GetCudnnFlashAttentionOperationGraph(
             dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
             static_cast<float>(config.fmha_scale()), dropout_rate > 0.0,
-            dropout_rate, dnn_mask_type, sliding_window_length));
+            dropout_rate, dnn_mask_type, sliding_window_length,
+            max_seg_per_batch));
     return graph;
   } else if (IsFwdCustomCallTofMHAF8(*custom_call)) {
     TF_ASSIGN_OR_RETURN(
@@ -230,10 +232,17 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     // Unused fwd_output_shape
     ++input_index;
 
+    const int max_seg_per_batch = config.max_seg_per_batch();
     if (config.mask_type() == xla::gpu::CudnnfMHABackendConfig::PADDING ||
         config.mask_type() ==
-            xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL) {
+            xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL ||
+        max_seg_per_batch > 1) {
       // skip q_seqlen and kv_seqlen
+      input_index += 2;
+    }
+
+    if (max_seg_per_batch > 1) {
+      // skip q_offsets and kv_offsets
       input_index += 2;
     }
     TF_RET_CHECK(input_index == custom_call->operand_count());
@@ -312,7 +321,8 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             bmm2_grad_gemm1_lhs, bmm2_grad_gemm2_rhs, d_output, d_bmm1_lhs,
             d_bmm1_rhs, d_bmm2_rhs, bias, dropout_rate, config.seed(),
             config.fmha_scale(), dropout_rate > 0.0, bias != std::nullopt,
-            dnn_mask_type, force_deterministic, sliding_window_length));
+            dnn_mask_type, force_deterministic, sliding_window_length,
+            max_seg_per_batch));
     return graph;
   } else {
     TF_ASSIGN_OR_RETURN(

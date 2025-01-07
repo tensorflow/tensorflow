@@ -270,6 +270,11 @@ message CudnnfMHABackendConfig {
   // Sliding window length
   // ignored if the value <= 0
   int32 sliding_window_length = 24;
+
+  // The maximum number of segments in each batch
+  // Only used with packed layout
+  // ignored if the valued <= 1
+  int32 max_seg_per_batch = 25;
 }
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.
