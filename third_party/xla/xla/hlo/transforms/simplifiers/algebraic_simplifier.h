@@ -322,6 +322,16 @@ class AlgebraicSimplifierOptions {
     return enable_broadcast_degenerate_dimension_;
   }
 
+  void set_enable_remove_no_op_reduce_precision(
+      bool enable_remove_no_op_reduce_precision) {
+    enable_remove_no_op_reduce_precision_ =
+        enable_remove_no_op_reduce_precision;
+  }
+
+  bool enable_remove_no_op_reduce_precision() const {
+    return enable_remove_no_op_reduce_precision_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -364,6 +374,7 @@ class AlgebraicSimplifierOptions {
   bool disable_dynamic_slice_to_slice_conversion_{false};
   bool enable_fast_math_{false};
   bool enable_broadcast_degenerate_dimension_{true};
+  bool enable_remove_no_op_reduce_precision_{false};
   Metadata metadata_;
 };
 
@@ -483,6 +494,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleReshape(HloInstruction* reshape) override;
 
   absl::Status HandleReduce(HloInstruction* hlo) override;
+
+  absl::Status HandleReducePrecision(HloInstruction* hlo) override;
 
   absl::Status HandleReduceWindow(HloInstruction* hlo) override;
 

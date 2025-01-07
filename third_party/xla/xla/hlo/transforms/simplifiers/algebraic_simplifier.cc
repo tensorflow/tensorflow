@@ -5939,8 +5939,9 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
         new_operands.push_back(operand);
       }
     }
-    VLOG(4) << "Sinking broadcast after user:" << "\n  old broadcast: "
-            << broadcast->ToString() << "\n  old user: " << user->ToString();
+    VLOG(4) << "Sinking broadcast after user:"
+            << "\n  old broadcast: " << broadcast->ToString()
+            << "\n  old user: " << user->ToString();
     changed_shape = ShapeUtil::ChangeElementType(operand->shape(),
                                                  user->shape().element_type());
     simplifier_->UpdateLayout(&changed_shape);
@@ -8230,6 +8231,24 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleReducePrecision(
+    HloInstruction* hlo) {
+  HloReducePrecisionInstruction* reduce_precision =
+      Cast<HloReducePrecisionInstruction>(hlo);
+  PrimitiveType element_type =
+      reduce_precision->operand(0)->shape().element_type();
+  if (options_.enable_remove_no_op_reduce_precision() &&
+      reduce_precision->exponent_bits() ==
+          primitive_util::ExponentWidth(element_type) &&
+      reduce_precision->mantissa_bits() + 1 ==
+          primitive_util::SignificandWidth(element_type)) {
+    return ReplaceInstruction(
+        /*old_instruction=*/hlo,
+        /*new_instruction=*/reduce_precision->mutable_operand(0));
+  }
   return absl::OkStatus();
 }
 
