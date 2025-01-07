@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -1356,6 +1358,14 @@ class HloConstantInstruction : public HloInstruction {
     return false;
   }
 
+  // Add literal to the hash state.
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    if (HasLiteral()) {
+      absl::HashState::combine(std::move(h),
+                               Literal::AbslHashable<true>(literal()));
+    }
+  }
+
  private:
   bool IsElementwiseImpl(
       const std::optional<int64_t>& operand_idx) const override;
@@ -1595,6 +1605,13 @@ class HloFusionInstruction : public HloCallableInstruction {
     return hlo->opcode() == HloOpcode::kFusion;
   }
 
+  // Add various fusion parameters to the hash.
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), *fused_expression_root(),
+                             fusion_kind(), fused_instruction_count(),
+                             fused_parameters().size());
+  }
+
  protected:
   std::string default_called_computation_name() const override {
     return "fused_computation";
@@ -1712,6 +1729,11 @@ class HloParameterInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kParameter;
+  }
+
+  // Add parameter number to the hash.
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), parameter_number());
   }
 
  private:
