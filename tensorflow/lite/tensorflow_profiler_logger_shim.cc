@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 
