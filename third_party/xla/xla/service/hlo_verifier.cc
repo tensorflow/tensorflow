@@ -3079,9 +3079,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 absl::StatusOr<bool> HloVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto disabled = module->config().debug_options().xla_disable_hlo_passes();
+  const HloModuleConfig& config = module->config();
+  auto disabled = config.debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
+  }
+  if (!config.use_spmd_partitioning() && config.num_partitions() > 1) {
+    return InvalidArgument(
+        "Model parallelism without spmd partitioning is deprecated.");
   }
   auto status_or_changed = [&]() -> absl::StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());

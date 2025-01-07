@@ -1146,6 +1146,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
+  config.set_use_spmd_partitioning(true);
   bool default_config = true;
   if (alias_passthrough_params.value_or(false)) {
     config.set_alias_passthrough_params(true);
@@ -1153,7 +1154,6 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   if (num_partitions.value_or(1) != 1) {
     config.set_num_partitions(*num_partitions);
-    config.set_use_spmd_partitioning(true);
     default_config = false;
   }
   if (replica_count.value_or(1) != 1) {
