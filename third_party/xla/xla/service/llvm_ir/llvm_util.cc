@@ -687,8 +687,8 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   std::string suffix =
-      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
-                   filename_suffix.empty() ? "" : ".", filename_suffix);
+      absl::StrCat(filename_suffix, filename_suffix.empty() ? "" : ".", "ir-",
+                   optimized ? "with" : "no", "-opt");
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
 }
