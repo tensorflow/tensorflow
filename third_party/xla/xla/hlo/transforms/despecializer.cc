@@ -23,12 +23,17 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/defuser.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,6 +52,10 @@ void Despecializer::AddAssumeGatherIndicesInBoundRewriteToCopy() {
   pipeline_.AddPass<AssumeGatherIndicesInBoundRewriteToCopy>();
 }
 
+void Despecializer::AddHostMemoryOffloadRewriteToCopy() {
+  pipeline_.AddPass<HostMemoryOffloadRewriteToCopy>();
+}
+
 void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {
   pipeline_.AddPass<DeconstructReduceWindowToReduceBroadcast>();
 }
@@ -56,6 +65,21 @@ absl::StatusOr<bool> Despecializer::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pipeline_.Run(module, execution_threads);
 }
+
+namespace {
+
+absl::Status RewriteToCopy(const std::vector<HloInstruction*>& candidates) {
+  for (HloInstruction* gather_indices : candidates) {
+    auto computation = gather_indices->parent();
+    auto copy = computation->AddInstruction(
+        HloInstruction::CreateUnary(gather_indices->shape(), HloOpcode::kCopy,
+                                    gather_indices->mutable_operand(0)));
+    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(gather_indices, copy));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 // AssumeGatherIndicesInBoundRewriteToCopy is needed to handle the
 // "AssumeGatherIndicesInBound" custom-call in a gather fusion.
@@ -75,13 +99,29 @@ absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::Run(
       }
     }
   }
-  for (HloInstruction* gather_indices : candidates) {
-    auto computation = gather_indices->parent();
-    auto copy = computation->AddInstruction(
-        HloInstruction::CreateUnary(gather_indices->shape(), HloOpcode::kCopy,
-                                    gather_indices->mutable_operand(0)));
-    TF_CHECK_OK(computation->ReplaceInstruction(gather_indices, copy));
+  TF_RETURN_IF_ERROR(RewriteToCopy(candidates));
+  return !candidates.empty();
+}
+
+absl::StatusOr<bool> HostMemoryOffloadRewriteToCopy::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::vector<HloInstruction*> candidates;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall(host_memory_offload_annotations::
+                                        kPinToDeviceSramCustomCallTarget) ||
+          instruction->IsCustomCall(
+              host_memory_offload_annotations::kPinToDeviceCustomCallTarget) ||
+          instruction->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) ||
+          instruction->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+        candidates.push_back(instruction);
+      }
+    }
   }
+  TF_RETURN_IF_ERROR(RewriteToCopy(candidates));
   return !candidates.empty();
 }
 

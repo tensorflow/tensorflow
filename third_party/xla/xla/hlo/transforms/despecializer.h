@@ -37,13 +37,20 @@ namespace xla {
 // optimized for one specific platform on a different platform (undoing platform
 // specific passes) with matching numerics for comparison.
 //
-// Current despecialization passes are HloDescheduler, ControlDepRemover,
-// Defuser and BFloat16MixedPrecisionRemoval.
+// Current despecialization passes are
+//  - HloDescheduler
+//  - Defuser
+//  - BFloat16MixedPrecisionRemoval
+//  - ControlDepRemover
+//  - DeconstructReduceWindowToReduceBroadcast
+//  - AssumeGatherIndicesInBoundRewriteToCopy
+//  - HostMemoryOffloadRewriteToCopy
 class Despecializer : public HloModulePass {
  public:
   Despecializer();
   void AddReduceWindowToReduceBroadcastDeconstruct();
   void AddAssumeGatherIndicesInBoundRewriteToCopy();
+  void AddHostMemoryOffloadRewriteToCopy();
   absl::string_view name() const override { return "despecializer"; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -59,6 +66,18 @@ class AssumeGatherIndicesInBoundRewriteToCopy : public HloModulePass {
   AssumeGatherIndicesInBoundRewriteToCopy() = default;
   absl::string_view name() const override {
     return "AssumeGatherIndicesInBoundRewriteToCopy";
+  }
+  using HloPassInterface::Run;
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+};
+
+class HostMemoryOffloadRewriteToCopy : public HloModulePass {
+ public:
+  HostMemoryOffloadRewriteToCopy() = default;
+  absl::string_view name() const override {
+    return "HostMemoryOffloadRewriteToCopy";
   }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
