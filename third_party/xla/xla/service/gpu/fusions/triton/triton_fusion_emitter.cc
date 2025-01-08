@@ -218,7 +218,7 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
       *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
   ScalarOrTensor input = values[tiled_hlo_reduce.operand(0)];
   llvm::ArrayRef<int64_t> input_shape =
-      mlir::cast<ShapedType>(input.Type()).getShape();
+      mlir::cast<ShapedType>(input.getType()).getShape();
   absl::Span<const int64_t> source_tensor_shape =
       hlo_reduce.operand(0)->shape().dimensions();
 
@@ -511,7 +511,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledReshape(EmitterLocOpBuilder& b,
 
   // At this point we know that the input is a non-0D tensor.
 
-  auto input_shaped_type = mlir::cast<ShapedType>(input.Type());
+  auto input_shaped_type = mlir::cast<ShapedType>(input.getType());
 
   // Handle the case of reshaping [1,1,1...] to a scalar.
   if (tile_sizes.empty()) {
@@ -621,7 +621,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     // as i8. It's important to type checking that we perform a conversion after
     // loading if the type of the loaded parameter does not match what is
     // expected.
-    Type loaded_element_type = getElementTypeOrSelf(parameter.Type());
+    Type loaded_element_type = getElementTypeOrSelf(parameter.getType());
     TF_ASSIGN_OR_RETURN(Type expected_element_type,
                         TritonType(b, hlo->shape().element_type()));
 
@@ -976,7 +976,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   // as i8. It's important to type checking that we perform a conversion before
   // storing if the type of the result does not match the type of the output
   // pointer.
-  Type result_element_type = getElementTypeOrSelf(result.Type());
+  Type result_element_type = getElementTypeOrSelf(result.getType());
   Type result_storage_type = StorageType(b, result_element_type);
 
   if (result_element_type != result_storage_type) {

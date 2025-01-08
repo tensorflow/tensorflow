@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -64,13 +65,9 @@ namespace mh = ::mlir::mhlo;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
 
-ScalarOrTensor::ScalarOrTensor(mlir::Value value) {
-  if (auto tt = mlir::dyn_cast<mlir::RankedTensorType>(value.getType())) {
-    CHECK_GT(tt.getRank(), 0);
-    value_ = TensorValue{value};
-  } else {
-    value_ = ScalarValue{value};
-  }
+ScalarOrTensor::ScalarOrTensor(mlir::Value value) : value_(value) {
+  CHECK(IsScalar() || UnwrapTensor().getType().getRank() > 0)
+      << "0D tensors are not supported by Triton";
 }
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
@@ -313,7 +310,7 @@ Value Minimum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
 ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
                      ArrayRef<int64_t> shape) {
   CHECK(!shape.empty());
-  auto type = mlir::RankedTensorType::get(shape, value.Type());
+  auto type = mlir::RankedTensorType::get(shape, value.getType());
   return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
 }
 

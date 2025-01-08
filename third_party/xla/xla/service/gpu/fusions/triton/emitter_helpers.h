@@ -48,6 +48,8 @@ namespace xla::gpu::triton {
 // non-0D tensor. An attempt to use this class with 0D tensors will CHECK-fail
 // because 0D tensors are not supported by Triton.
 class ScalarOrTensor {
+  using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+
  public:
   ScalarOrTensor() = default;
 
@@ -55,17 +57,17 @@ class ScalarOrTensor {
   // value is a 0D tensor, because Triton does not support 0D tensors.
   explicit ScalarOrTensor(mlir::Value value);
 
-  bool IsScalar() const { return std::holds_alternative<ScalarValue>(value_); }
-  bool IsTensor() const { return std::holds_alternative<TensorValue>(value_); }
+  bool IsScalar() const { return !IsTensor(); }
+  bool IsTensor() const { return mlir::isa<TensorValue>(value_); }
 
-  mlir::Value UnwrapScalar() {
+  mlir::Value UnwrapScalar() const {
     CHECK(IsScalar());
-    return std::get<ScalarValue>(value_).scalar_value;
+    return value_;
   }
 
-  mlir::Value UnwrapTensor() {
+  TensorValue UnwrapTensor() const {
     CHECK(IsTensor());
-    return std::get<TensorValue>(value_).tensor_value;
+    return mlir::cast<TensorValue>(value_);
   }
 
   // Returns the underlying value regardless of whether it is a scalar or a
@@ -73,25 +75,12 @@ class ScalarOrTensor {
   // both needs to use an `mlir::Value` and functions identically for scalars
   // and tensors. In other cases, prefer to use the `UnwrapScalar` or
   // `UnwrapTensor` methods.
-  mlir::Value UnwrapUnsafe() {
-    if (auto* scalar = std::get_if<ScalarValue>(&value_)) {
-      return scalar->scalar_value;
-    }
-    return std::get<TensorValue>(value_).tensor_value;
-  }
+  mlir::Value UnwrapUnsafe() const { return value_; }
 
-  mlir::Type Type() { return UnwrapUnsafe().getType(); }
+  mlir::Type getType() const { return value_.getType(); }
 
  private:
-  struct ScalarValue {
-    mlir::Value scalar_value;
-  };
-
-  struct TensorValue {
-    mlir::Value tensor_value;
-  };
-
-  std::variant<ScalarValue, TensorValue> value_;
+  mlir::Value value_;
 };
 
 // Triton requires that all block dimensions are a power of 2.
