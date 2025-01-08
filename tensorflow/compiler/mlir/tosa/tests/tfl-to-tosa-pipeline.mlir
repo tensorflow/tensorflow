@@ -1784,7 +1784,8 @@ func.func @test_fullyconnected_extra_dim(%arg0: tensor<1x14x19xf32>, %arg1: tens
 
 // CHECK-LABEL: @test_batch_matmul
 func.func @test_batch_matmul(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x16x32xf32> ) {
-  // CHECK: tosa.matmul %arg0, %arg1
+  // CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}>
+  // CHECK: %[[VAR0:.*]] = tosa.matmul %arg0, %arg1, %[[ZP]], %[[ZP]]
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x16x128xf32>, tensor<1x128x32xf32>) -> tensor<1x16x32xf32>
   func.return %0 : tensor<1x16x32xf32>
 }
@@ -1796,9 +1797,10 @@ func.func @test_batch_matmul2d(%arg0: tensor<16x128xf32>, %arg1: tensor<128x32xf
   // CHECK-DAG: %[[VAR_10:.*]] = tosa.const_shape {value = dense<[1, 16, 128]> : tensor<3xindex>}
   // CHECK-DAG: %[[VAR_11:.*]] = tosa.const_shape {value = dense<[1, 128, 32]> : tensor<3xindex>}
   // CHECK-DAG: %[[VAR_12:.*]] = tosa.const_shape {value = dense<[16, 32]> : tensor<2xindex>}
+  // CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}>
   // CHECK: %[[VAL_0:.*]] = tosa.reshape %arg0, %[[VAR_10]]
   // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg1, %[[VAR_11]]
-  // CHECK: %[[VAL_2:.*]] = tosa.matmul %[[VAL_0]], %[[VAL_1]]
+  // CHECK: %[[VAL_2:.*]] = tosa.matmul %[[VAL_0]], %[[VAL_1]], %[[ZP]], %[[ZP]]
   // CHECK: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAR_12]]
   // CHECK: return %[[VAL_3]]
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<16x128xf32>, tensor<128x32xf32>) -> tensor<16x32xf32>
@@ -1812,9 +1814,10 @@ func.func @test_batch_matmul_4d(%arg0: tensor<4x5x16x128xf32>, %arg1: tensor<4x5
   // CHECK-DAG: %[[C0:.*]] = tosa.const_shape {value = dense<[20, 16, 128]> : tensor<3xindex>}
   // CHECK-DAG: %[[C1:.*]] = tosa.const_shape {value = dense<[20, 128, 32]> : tensor<3xindex>}
   // CHECK-DAG: %[[C2:.*]] = tosa.const_shape {value = dense<[4, 5, 16, 32]> : tensor<4xindex>}
+  // CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}>
   // CHECK: %[[R0:.*]] = tosa.reshape %arg0, %[[C0]]
   // CHECK: %[[R1:.*]] = tosa.reshape %arg1, %[[C1]]
-  // CHECK: %[[MM:.*]] = tosa.matmul %[[R0]], %[[R1]]
+  // CHECK: %[[MM:.*]] = tosa.matmul %[[R0]], %[[R1]], %[[ZP]], %[[ZP]]
   // CHECK: tosa.reshape %[[MM]], %[[C2]]
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<4x5x16x128xf32>, tensor<4x5x128x32xf32>) -> tensor<4x5x16x32xf32>
   func.return %0 : tensor<4x5x16x32xf32>
@@ -1824,9 +1827,10 @@ func.func @test_batch_matmul_4d(%arg0: tensor<4x5x16x128xf32>, %arg1: tensor<4x5
 
 // CHECK-LABEL: @test_batch_matmul_transpose
 func.func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x32x16xf32> ) {
+  // CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}>
   // CHECK-DAG: %[[TP0:.+]] = tosa.transpose %arg0 {perms = array<i32: 0, 2, 1>}
   // CHECK-DAG: %[[TP1:.+]] = tosa.transpose %arg1 {perms = array<i32: 0, 2, 1>}
-  // CHECK: tosa.matmul %[[TP1]], %[[TP0]]
+  // CHECK: tosa.matmul %[[TP1]], %[[TP0]], %[[ZP]], %[[ZP]]
   %0 = "tfl.batch_matmul"(%arg1, %arg0) {adj_x = true, adj_y = true} : (tensor<1x128x32xf32>, tensor<1x16x128xf32>) -> tensor<1x32x16xf32>
   func.return %0 : tensor<1x32x16xf32>
 }
@@ -1840,7 +1844,8 @@ func.func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tenso
 // CHECK-DAG: %[[VAL_2:.*]] = tosa.reshape %[[VAL_0]], %[[VAR_10]] : (tensor<1x3x4x4x!quant.uniform<i8:f32, 0.003921466413885355:-128>>, !tosa.shape<3>) -> tensor<3x4x4x!quant.uniform<i8:f32, 0.003921466413885355:-128>>
 // CHECK-DAG: %[[VAR_11:.*]] = tosa.const_shape {value = dense<[3, 4, 3]> : tensor<3xindex>}
 // CHECK-DAG: %[[VAL_3:.*]] = tosa.reshape %[[VAL_1]], %[[VAR_11]] : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0039215362630784512:-128>>, !tosa.shape<3>) -> tensor<3x4x3x!quant.uniform<i8:f32, 0.0039215362630784512:-128>>
-// CHECK-DAG: %[[VAL_4:.*]] = tosa.matmul %[[VAL_2]], %[[VAL_3]] {a_zp = -128 : i32, b_zp = -128 : i32} : (tensor<3x4x4x!quant.uniform<i8:f32, 0.003921466413885355:-128>>, tensor<3x4x3x!quant.uniform<i8:f32, 0.0039215362630784512:-128>>) -> tensor<3x4x3xi32>
+// CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<-128> : tensor<1xi8>}>
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.matmul %[[VAL_2]], %[[VAL_3]], %[[ZP]], %[[ZP]] : (tensor<3x4x4x!quant.uniform<i8:f32, 0.003921466413885355:-128>>, tensor<3x4x3x!quant.uniform<i8:f32, 0.0039215362630784512:-128>>, tensor<1xi8>, tensor<1xi8>) -> tensor<3x4x3xi32>
 // CHECK-DAG: %[[VAR_12:.*]] = tosa.const_shape {value = dense<[1, 3, 4, 3]> : tensor<4xindex>}
 // CHECK-DAG: %[[VAL_5:.*]] = tosa.reshape %[[VAL_4]], %[[VAR_12]] : (tensor<3x4x3xi32>, !tosa.shape<4>) -> tensor<1x3x4x3xi32>
 // CHECK-DAG: %[[VAL_6:.*]] = tosa.rescale %[[VAL_5]] {double_round = true, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1488699087>, output_unsigned = false, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 40>} : (tensor<1x3x4x3xi32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.011357889510691166:-128>>
@@ -1870,10 +1875,11 @@ func.func @test_batch_matmul_with_input_broadcast(%arg0: tensor<25x12x14x14x64xf
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<1x3x4x4x!quant.uniform<i16:f32, 3.0517894629156217E-5>>,
 // CHECK-SAME: %[[VAL_1:.*]]: tensor<1x3x4x3x!quant.uniform<i16:f32, 3.051840394618921E-5>>) -> tensor<1x3x4x3x!quant.uniform<i16:f32, 9.9311851954553276E-5>>
 // CHECK-DAG: %[[VAL_10:.*]] = tosa.const_shape {value = dense<[3, 4, 4]> : tensor<3xindex>}
+// CHECK-DAG: %[[ZP:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
 // CHECK-DAG: %[[VAL_2:.*]] = tosa.reshape %[[VAL_0]], %[[VAL_10]] : (tensor<1x3x4x4x!quant.uniform<i16:f32, 3.0517894629156217E-5>>, !tosa.shape<3>) -> tensor<3x4x4x!quant.uniform<i16:f32, 3.0517894629156217E-5>>
 // CHECK-DAG: %[[VAL_11:.*]] = tosa.const_shape {value = dense<[3, 4, 3]> : tensor<3xindex>}
 // CHECK-DAG: %[[VAL_3:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_11]] : (tensor<1x3x4x3x!quant.uniform<i16:f32, 3.051840394618921E-5>>, !tosa.shape<3>) -> tensor<3x4x3x!quant.uniform<i16:f32, 3.051840394618921E-5>>
-// CHECK-DAG: %[[VAL_4:.*]] = tosa.matmul %[[VAL_2]], %[[VAL_3]] {a_zp = 0 : i32, b_zp = 0 : i32} : (tensor<3x4x4x!quant.uniform<i16:f32, 3.0517894629156217E-5>>, tensor<3x4x3x!quant.uniform<i16:f32, 3.051840394618921E-5>>) -> tensor<3x4x3xi48>
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.matmul %[[VAL_2]], %[[VAL_3]], %[[ZP]], %[[ZP]] : (tensor<3x4x4x!quant.uniform<i16:f32, 3.0517894629156217E-5>>, tensor<3x4x3x!quant.uniform<i16:f32, 3.051840394618921E-5>>, tensor<1xi16>, tensor<1xi16>) -> tensor<3x4x3xi48>
 // CHECK-DAG: %[[VAR_12:.*]] = tosa.const_shape {value = dense<[1, 3, 4, 3]> : tensor<4xindex>}
 // CHECK-DAG: %[[VAL_5:.*]] = tosa.reshape %[[VAL_4]], %[[VAR_12]] : (tensor<3x4x3xi48>, !tosa.shape<4>) -> tensor<1x3x4x3xi48>
 // CHECK-DAG: %[[VAL_6:.*]] = tosa.rescale %[[VAL_5]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 20139>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = false, shift = array<i8: 31>} : (tensor<1x3x4x3xi48>) -> tensor<1x3x4x3x!quant.uniform<i16:f32, 9.9311851954553276E-5>>
