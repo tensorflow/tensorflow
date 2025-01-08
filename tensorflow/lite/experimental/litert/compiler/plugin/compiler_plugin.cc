@@ -24,6 +24,9 @@
 #include <vector>
 
 #include "absl/log/absl_check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
@@ -291,6 +294,16 @@ CompilerPlugin::~CompilerPlugin() {
   }
 }
 
+std::string CompilerPlugin::DebugString() const {
+  std::string version_str = "?";
+  if (auto version = ApiVersion(); version) {
+    version_str = absl::StrFormat("%d.%d.%d", version->major, version->minor,
+                                  version->patch);
+  }
+  return absl::StrFormat("%s compiler plugin (ver %s)", SocManufacturer(),
+                         version_str);
+}
+
 Expected<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
   LiteRtApiVersion api_version;
   LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_version(&api_version));
@@ -426,7 +439,7 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
   return {};
 }
 
-Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
+Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators) {
   auto environment = litert::internal::Environment::Instance();
   if (!environment) {
@@ -448,13 +461,25 @@ Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
   if (!compiler_plugins) {
     return compiler_plugins.Error();
   }
+  if (compiler_plugins->empty()) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "No compiler plugin found");
+  }
 
-  std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
+  OwningBufferRef<uint8_t> new_flatbuffer;
+  std::vector<std::string> success_messages;
+  std::vector<std::string> error_messages;
 
+  ApplyPluginsResult result;
+  result.num_applied_plugins = 0;
   for (auto& compiler_plugin : *compiler_plugins) {
+    auto plugin_name = compiler_plugin.DebugString();
+
     auto plugin_supported_hardware = compiler_plugin.SupportedHardware();
     if (!plugin_supported_hardware) {
-      return plugin_supported_hardware.Error();
+      error_messages.push_back(absl::StrCat(
+          plugin_name, " ", plugin_supported_hardware.Error().Message()));
+      continue;
     }
 
     if (*plugin_supported_hardware & selected_hw_accelerators) {
@@ -462,28 +487,39 @@ Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
       // shouldn't be needing to serialize a model to then read it again from
       // the serialized buffer when applying a compiler plugin.
       if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
-        return status.Error();
+        error_messages.push_back(
+            absl::StrCat(plugin_name, " ", status.Error().Message()));
+        continue;
       }
+
       auto serialized_model =
           litert::internal::SerializeModel(std::move(*model));
       if (!serialized_model) {
-        return serialized_model.Error();
+        error_messages.push_back(
+            absl::StrCat(plugin_name, " ", serialized_model.Error().Message()));
+        continue;
       }
+
       auto new_model = litert::Model::CreateFromBuffer(*serialized_model);
       if (!new_model) {
-        return new_model.Error();
+        error_messages.push_back(
+            absl::StrCat(plugin_name, " ", new_model.Error().Message()));
+        continue;
       }
+
       new_flatbuffer = std::move(*serialized_model);
       *model = std::move(*new_model->Get());
+
+      success_messages.push_back(absl::StrCat(plugin_name));
+      result.num_applied_plugins++;
     }
   }
 
-  if (!new_flatbuffer.has_value()) {
-    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
-                         "No applicable compiler plugin found");
-  }
+  result.new_flatbuffer = std::move(new_flatbuffer);
+  result.success_message = absl::StrJoin(success_messages, ", ");
+  result.error_message = absl::StrJoin(error_messages, ", ");
 
-  return *new_flatbuffer;
+  return result;
 }
 
 }  // namespace litert::internal

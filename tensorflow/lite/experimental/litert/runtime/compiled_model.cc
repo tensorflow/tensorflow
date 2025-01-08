@@ -94,14 +94,23 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
   // TODO: b/379317134 - Support other delegates with compilation options.
   if (compilation_options != kLiteRtHwAccelatorNone) {
-    LITERT_LOG(LITERT_INFO, "Applying compiler plugins");
-    if (auto flatbuffer =
+    LITERT_LOG(LITERT_INFO, "Applying compiler plugins...");
+    if (auto result =
             litert::internal::ApplyPlugins(model, compilation_options);
-        !flatbuffer) {
-      LITERT_LOG(LITERT_ERROR, "Failed to applying compiler plugins");
-      return flatbuffer.Error();
+        !result) {
+      LITERT_LOG(LITERT_WARNING, "Failed to apply compiler plugins: %s",
+                 result.Error().Message().data());
     } else {
-      new_flatbuffer = *flatbuffer;
+      if (result->num_applied_plugins > 0) {
+        LITERT_LOG(LITERT_INFO, "Successfully applied %d compiler plugins: %s",
+                   result->num_applied_plugins,
+                   result->success_message.c_str());
+        new_flatbuffer = std::move(result->new_flatbuffer);
+      }
+      if (!result->error_message.empty()) {
+        LITERT_LOG(LITERT_WARNING, "Some compiler plugins failed to apply: %s",
+                   result->error_message.c_str());
+      }
     }
   }
 
@@ -109,8 +118,11 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   size_t model_buffer_size = 0;
   // The following code gets the original FB pointer from LiteRtModel.
   // TODO b/383120429 - Use a better way of getting the FB pointer.
-  auto init_model_buffer = detail::GetTflInitFlatbuffer(*model);
-  if (init_model_buffer.Size() != 0) {
+  if (new_flatbuffer) {
+    model_buffer = reinterpret_cast<const char*>(new_flatbuffer->Data());
+    model_buffer_size = new_flatbuffer->Size();
+  } else if (auto init_model_buffer = detail::GetTflInitFlatbuffer(*model);
+             init_model_buffer.Size() != 0) {
     // Use the saved the original FB pointer when the LiteRtModel was created
     // from a buffer.
     model_buffer = init_model_buffer.StrData();

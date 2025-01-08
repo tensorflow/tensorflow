@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -72,6 +73,8 @@ class CompiledResult {
 // Wraps vendor compiler plugin.
 class CompilerPlugin {
  public:
+  std::string DebugString() const;
+
   // Get the compiler plugin's API version.
   Expected<LiteRtApiVersion> ApiVersion() const;
 
@@ -150,9 +153,19 @@ Expected<void> ApplyPlugin(
     Serialization serialization = Serialization::kAppend);
 
 // Apply all available plugins providing the selected HW accelerators to the
-// given model, modify the model accordingly, and return a new flatbuffer
-// backing the modified model.
-Expected<OwningBufferRef<uint8_t>> ApplyPlugins(
+// given model, modify the model accordingly, and return (1) the number of
+// compiler plugins succesfully applied, (2) a new flatbuffer backing the
+// modified model, (3) a string listing the compiler plugins that were
+// succesfully applied, and (4) a string listing the compiler plugins that
+// failed to apply with an associated error message.
+struct ApplyPluginsResult {
+  size_t num_applied_plugins;
+  OwningBufferRef<uint8_t> new_flatbuffer;
+  std::string success_message;
+  std::string error_message;
+};
+
+Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators);
 
 }  // namespace litert::internal
