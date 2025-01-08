@@ -382,7 +382,7 @@ absl::Status DebugNodeInserter::ParseDebugOpName(
 
     std::vector<string> attribute_segs = str_util::Split(arguments, ";");
     for (const string& attribute_seg : attribute_segs) {
-      StringPiece seg(attribute_seg);
+      absl::string_view seg(attribute_seg);
       str_util::RemoveWhitespaceContext(&seg);
       if (seg.empty()) {
         continue;
