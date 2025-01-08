@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/svd.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
@@ -360,25 +361,38 @@ void BuildOpsSubmodule(nb::module_& m) {
           nb::arg("channel_id") = std::nullopt,
           nb::arg("shape_with_layout") = std::nullopt,
           nb::arg("use_global_device_ids") = std::nullopt);
-  ops.def("ReduceScatter", &ReduceScatter, nb::arg("operand"),
-          nb::arg("computation"), nb::arg("scatter_dimension"),
-          nb::arg("shard_count"), nb::arg("replica_groups") = nb::list(),
-          nb::arg("channel_id") = std::nullopt,
-          nb::arg("layout") = std::nullopt,
-          nb::arg("use_global_device_ids") = std::nullopt);
+  ops.def(
+      "ReduceScatter",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, int64_t, int64_t,
+          absl::Span<const ReplicaGroup>, const std::optional<ChannelHandle>&,
+          const std::optional<Layout>& layout,
+          std::optional<bool> use_global_device_ids)>(&ReduceScatter),
+      nb::arg("operand"), nb::arg("computation"), nb::arg("scatter_dimension"),
+      nb::arg("shard_count"), nb::arg("replica_groups") = nb::list(),
+      nb::arg("channel_id") = std::nullopt, nb::arg("layout") = std::nullopt,
+      nb::arg("use_global_device_ids") = std::nullopt);
   ops.def("AllToAll", &AllToAll, nb::arg("operand"), nb::arg("split_dimension"),
           nb::arg("concat_dimension"), nb::arg("split_count"),
           nb::arg("replica_groups") = nb::list(),
           nb::arg("layout") = std::nullopt,
           nb::arg("channel_id") = std::nullopt);
-  ops.def("ApproxTopK", &ApproxTopK, nb::arg("builder"), nb::arg("operands"),
-          nb::arg("init_values"), nb::arg("top_k"), nb::arg("reduction_dim"),
-          nb::arg("comparator"), nb::arg("recall_target") = 0.9,
-          nb::arg("aggregate_to_topk") = true,
+  ops.def("ApproxTopK",
+          static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
+                                absl::Span<const XlaOp>, int64_t, int64_t,
+                                const XlaComputation&, float, bool, int64_t)>(
+              &ApproxTopK),
+          nb::arg("builder"), nb::arg("operands"), nb::arg("init_values"),
+          nb::arg("top_k"), nb::arg("reduction_dim"), nb::arg("comparator"),
+          nb::arg("recall_target") = 0.9, nb::arg("aggregate_to_topk") = true,
           nb::arg("reduction_input_size_override") = -1);
-  ops.def("ApproxTopKFallback", &ApproxTopKFallback, nb::arg("builder"),
-          nb::arg("operands"), nb::arg("init_values"), nb::arg("top_k"),
-          nb::arg("reduction_dim"), nb::arg("comparator"),
+  ops.def("ApproxTopKFallback",
+          static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
+                                absl::Span<const XlaOp>, int64_t, int64_t,
+                                const XlaComputation&, float, bool, int64_t)>(
+              &ApproxTopKFallback),
+          nb::arg("builder"), nb::arg("operands"), nb::arg("init_values"),
+          nb::arg("top_k"), nb::arg("reduction_dim"), nb::arg("comparator"),
           nb::arg("recall_target") = 0.9, nb::arg("aggregate_to_topk") = true,
           nb::arg("reduction_input_size_override") = -1);
   ops.def("ApproxTopKReductionOutputSize",
@@ -391,8 +405,10 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Broadcast", &Broadcast, nb::arg("operand"), nb::arg("sizes"));
   ops.def("BroadcastInDim", &BroadcastInDim, nb::arg("operand"),
           nb::arg("shape"), nb::arg("broadcast_dimensions"));
-  ops.def("Call", &Call, nb::arg("builder"), nb::arg("computation"),
-          nb::arg("operands"));
+  ops.def("Call",
+          static_cast<XlaOp (*)(XlaBuilder*, const XlaComputation&,
+                                absl::Span<const XlaOp>)>(&Call),
+          nb::arg("builder"), nb::arg("computation"), nb::arg("operands"));
   ops.def("Cholesky", &Cholesky, nb::arg("a"), nb::arg("lower") = true);
   ops.def("Clamp", &Clamp, nb::arg("min"), nb::arg("operand"), nb::arg("max"));
   ops.def("Collapse", &Collapse, nb::arg("operand"), nb::arg("dimensions"));
@@ -572,9 +588,12 @@ void BuildOpsSubmodule(nb::module_& m) {
         return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
       },
       nb::arg("operand"));
-  ops.def("Map", &Map, nb::arg("builder"), nb::arg("operands"),
-          nb::arg("computation"), nb::arg("dimensions"),
-          nb::arg("static_operands") = nb::list());
+  ops.def("Map",
+          static_cast<XlaOp (*)(
+              XlaBuilder*, absl::Span<const XlaOp>, const XlaComputation&,
+              absl::Span<const int64_t>, absl::Span<const XlaOp>)>(&Map),
+          nb::arg("builder"), nb::arg("operands"), nb::arg("computation"),
+          nb::arg("dimensions"), nb::arg("static_operands") = nb::list());
   ops.def("NextAfter", &NextAfter, nb::arg("from"), nb::arg("to"));
   ops.def("OutfeedWithToken", &OutfeedWithToken, nb::arg("operand"),
           nb::arg("token"), nb::arg("shape_with_layout"),
@@ -676,8 +695,12 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Select", &Select, nb::arg("pred"), nb::arg("on_true"),
           nb::arg("on_false"));
   ops.def("SelectAndScatterWithGeneralPadding",
-          &SelectAndScatterWithGeneralPadding, nb::arg("operand"),
-          nb::arg("select"), nb::arg("window_dimensions"),
+          static_cast<XlaOp (*)(
+              XlaOp, const XlaComputation&, absl::Span<const int64_t>,
+              absl::Span<const int64_t>,
+              absl::Span<const std::pair<int64_t, int64_t>>, XlaOp, XlaOp,
+              const XlaComputation&)>(&SelectAndScatterWithGeneralPadding),
+          nb::arg("operand"), nb::arg("select"), nb::arg("window_dimensions"),
           nb::arg("window_strides"), nb::arg("padding"), nb::arg("source"),
           nb::arg("init_value"), nb::arg("scatter"));
   ops.def("SendToHost", &SendToHost, nb::arg("operand"), nb::arg("token"),
@@ -732,8 +755,10 @@ void BuildOpsSubmodule(nb::module_& m) {
           nb::arg("left_side"), nb::arg("lower"), nb::arg("unit_diagonal"),
           nb::arg("transpose_a"));
   ops.def("Tuple", &Tuple, nb::arg("builder"), nb::arg("elements"));
-  ops.def("While", &While, nb::arg("condition"), nb::arg("body"),
-          nb::arg("init"));
+  ops.def("While",
+          static_cast<XlaOp (*)(const XlaComputation&, const XlaComputation&,
+                                XlaOp)>(&While),
+          nb::arg("condition"), nb::arg("body"), nb::arg("init"));
 
   ops.def("Igamma", &Igamma, nb::arg("a"), nb::arg("x"));
   ops.def("Igammac", &Igammac, nb::arg("a"), nb::arg("x"));
@@ -822,6 +847,6 @@ void BuildOpsSubmodule(nb::module_& m) {
   UNARY_OP(Conj);
   UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace xla
