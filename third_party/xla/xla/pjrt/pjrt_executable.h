@@ -101,7 +101,9 @@ struct CompileOptions {
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
   using OptionOverride = std::variant<std::string, bool, int64_t, double>;
-  std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+  using EnvironmentOptionOverrides =
+      std::vector<std::pair<std::string, OptionOverride>>;
+  EnvironmentOptionOverrides env_option_overrides;
 
   std::optional<xla::Compiler::TargetConfig> target_config;
 
