@@ -286,7 +286,7 @@ class IndexingMap {
   RangeEvaluator GetRangeEvaluator() const;
 
   // Getters for dimension vars.
-  const Variable& GetDimVars(int64_t id) const { return dim_vars_[id]; }
+  const Variable& GetDimVar(int64_t id) const { return dim_vars_[id]; }
   const std::vector<Variable>& GetDimVars() const { return dim_vars_; }
   int64_t GetDimVarsCount() const { return dim_vars_.size(); }
 
@@ -407,18 +407,18 @@ class IndexingMap {
 
   mlir::AffineMap affine_map_;
 
-  // Dimension variable represents a dimension of a tensor or a GPU grid.
-  // Dimensions correspond to the dimension parameter of `affine_map_`.
+  // A dimension variable represents a dimension of a tensor or a GPU grid.
+  // Dimension variables correspond to the dimensions of the `affine_map_`.
   std::vector<Variable> dim_vars_;
 
-  // RangeSymbol variable represents a range of values, e.g. to compute a single
+  // A range variable represents a range of values, e.g. to compute a single
   // element of the reduction's result we need a range of values from the input
-  // tensor. RangeSymbol variables correspond to the front portion of the
+  // tensor. Range variables correspond to the front portion of the
   // symbols in `affine_map_`.
   std::vector<Variable> range_vars_;
 
-  // RTSymbol variable represents a runtime symbol, e.g. a dynamic offset in
-  // HLO dynamic-update-slice op. RTSymbol variables correspond to the back
+  // A runtime variable represents a runtime symbol, e.g. a dynamic offset in of
+  // a HLO dynamic-update-slice op. Runtime variables correspond to the back
   // portion of the symbols in `affine_map_`.
   std::vector<Variable> rt_vars_;
 
