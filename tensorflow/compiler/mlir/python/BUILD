@@ -36,7 +36,6 @@ cc_library(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -62,15 +61,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tosa:passes_header",
-        "//tensorflow/compiler/mlir/tosa:tf_passes",
-        "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
-        "//tensorflow/compiler/mlir/tosa:tfl_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
         "//tensorflow/core/common_runtime/eager:context",
         # (yongtang) The graph_optimization_pass_registration needs to be part
         # of a shared object that will be loaded whenever `import tensorflow`

@@ -65,14 +65,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tosa:tf_passes",
-        "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
-        "//tensorflow/compiler/mlir/tosa:tfl_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
     ],
@@ -101,8 +97,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tosa:tf_passes",
-        "//tensorflow/compiler/mlir/tosa:tfl_passes",
     ],
 )
 
