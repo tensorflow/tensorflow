@@ -5726,6 +5726,20 @@ ENTRY %test {
                                      HasSubstr("expects instruction shape")));
 }
 
+TEST_F(HloParserTest, EmptyLeafInOriginalValue) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  ROOT op = ((f32[], f32[3]{0}), f32[2,3]) parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
@@ -5840,22 +5854,6 @@ ENTRY main {
   EXPECT_NE(absl::OkStatus(), result.status());
   ExpectHasSubstr(result.status().message(),
                   "error: unexpected attribute \"result_accuracy\"");
-}
-
-TEST_F(HloParserTest, EmptyOriginalValueIsPrintedCorrectly) {
-  const std::string hlo_string = R"(HloModule test
-
-ENTRY %test {
-  ROOT op = f32[] parameter(0), origin={}
-}
-
-
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  ExpectHasSubstr(module->ToString(HloPrintOptions::Fingerprint()),
-                  "origin={}");
 }
 
 }  // namespace

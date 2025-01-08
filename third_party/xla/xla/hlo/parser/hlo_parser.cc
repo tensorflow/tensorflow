@@ -6488,18 +6488,25 @@ bool HloParserImpl::ParseOriginalValue(
       ++leaf_shape_index.back();
     } else if (lexer_.GetKind() == TokKind::kLbrace) {
       lexer_.Lex();
-      std::string instruction_name;
-      ShapeIndex shape_index;
-      if (!ParseString(&instruction_name)) {
-        return false;
-      }
       if (lexer_.GetKind() != TokKind::kRbrace) {
-        if (!ParseShapeIndex(&shape_index)) {
+        std::string instruction_name;
+        ShapeIndex shape_index;
+        if (!ParseString(&instruction_name)) {
           return false;
         }
+        if (lexer_.GetKind() != TokKind::kRbrace) {
+          if (!ParseShapeIndex(&shape_index)) {
+            return false;
+          }
+        }
+        *(**original_value)->mutable_element(leaf_shape_index) = {
+            instruction_name, shape_index};
+      } else {
+        // The original_value is not expected to have any leaf without values.
+        // However we should not fail the execution here. This should
+        // be done in HloVerifier instead.
+        LOG(WARNING) << "Found an empty leaf node in an original value";
       }
-      *(**original_value)->mutable_element(leaf_shape_index) = {
-          instruction_name, shape_index};
       if (!ParseToken(TokKind::kRbrace,
                       "Expects '} at end of each OriginalArray'")) {
         return false;

@@ -3635,5 +3635,19 @@ TEST_F(HloVerifierTest, UnaryOpWithResultAccuracy) {
   EXPECT_TRUE(status.ok()) << status;
 }
 
+TEST_F(HloVerifierTest, EmptyLeafInOriginalValue) {
+  const std::string hlo_string = R"(
+HloModule module
+ENTRY %entry_computation {
+  ROOT op = ((f32[], f32[3]{0}), f32[2,3]) parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+}
+
 }  // namespace
 }  // namespace xla
