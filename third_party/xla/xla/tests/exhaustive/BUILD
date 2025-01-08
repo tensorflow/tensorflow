@@ -250,7 +250,6 @@ exhaustive_xla_test(
     shard_count = 50,
     tags = [
         "optonly",
-        "test_xla_cpu_no_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
