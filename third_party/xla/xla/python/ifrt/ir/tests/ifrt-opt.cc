@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
