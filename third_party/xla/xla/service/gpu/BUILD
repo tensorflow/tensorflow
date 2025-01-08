@@ -1728,6 +1728,7 @@ xla_test(
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:logging",
     ],
