@@ -436,7 +436,8 @@ absl::Status ConvertComplexElementsAttr(const mlir::ElementsAttr elem_attr,
     return absl::InvalidArgumentError("Complex elements attr not found");
   }
 
-  auto complex_elem_ty = cast<mlir::ComplexType>(elementType).getElementType();
+  auto complex_elem_ty =
+      llvm::cast<mlir::ComplexType>(elementType).getElementType();
   if (complex_elem_ty.isF32()) {
     for (const auto& val : attr.getValues<std::complex<mlir::APFloat>>()) {
       output->Add(val.real().convertToFloat());
