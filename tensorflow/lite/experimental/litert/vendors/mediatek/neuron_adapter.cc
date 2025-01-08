@@ -19,7 +19,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -55,25 +57,21 @@ litert::Expected<NeuronAdapter::Ptr> NeuronAdapter::Create(
 
 litert::Expected<void> NeuronAdapter::LoadSymbols(
     std::optional<std::string> shared_library_dir) {
-  // The following preinstalled library is for system partition applications.
-  if (litert::internal::OpenLib("libneuronusdk_adapter.mtk.so",
-                                &dlib_handle_) != kLiteRtStatusOk) {
-    // The next preinstalled library is in the vendor partition.
-    if (litert::internal::OpenLib("libneuron_adapter_mgvi.so", &dlib_handle_) !=
-        kLiteRtStatusOk) {
+  constexpr auto kLibNeuronAdapterLib = "libneuron_adapter.so";
+
+  const std::vector<std::string> so_paths = {
+      // The following preinstalled library is for system partition
+      // applications.
+      "libneuronusdk_adapter.mtk.so",
+      // The next preinstalled library is in the vendor partition.
+      "libneuron_adapter_mgvi.so",
       // Finally, the app may want to provide their own version of the library.
-      constexpr auto kLibNeuronAdapterLib = "libneuron_adapter.so";
-      std::string library_path =
-          shared_library_dir.has_value()
-              ? *shared_library_dir + kLibNeuronAdapterLib
-              : kLibNeuronAdapterLib;
-      if (litert::internal::OpenLib(library_path, &dlib_handle_) !=
-          kLiteRtStatusOk) {
-        return litert::Unexpected(
-            kLiteRtStatusErrorRuntimeFailure,
-            "Failed to load NeuronAdapter shared library");
-      }
-    }
+      shared_library_dir.has_value()
+          ? absl::StrCat(*shared_library_dir, "/", kLibNeuronAdapterLib)
+          : kLibNeuronAdapterLib};
+  if (litert::internal::OpenLib(so_paths, &dlib_handle_) != kLiteRtStatusOk) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Failed to load NeuronAdapter shared library");
   }
 
   // Binds all supported symbols from the shared library to the function

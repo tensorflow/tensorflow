@@ -22,7 +22,6 @@
 #endif
 #endif
 
-#include <cstddef>
 #include <filesystem>  // NOLINT
 #include <string>
 #include <vector>
@@ -31,11 +30,22 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace litert::internal {
 
-LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
+LiteRtStatus OpenLib(const std::vector<std::string>& so_paths,
+                     void** lib_handle) {
+  for (const auto& so_path : so_paths) {
+    if (OpenLib(so_path, lib_handle, /*log_failure=*/false) ==
+        kLiteRtStatusOk) {
+      return kLiteRtStatusOk;
+    }
+  }
+  return kLiteRtStatusErrorDynamicLoading;
+}
+
+LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle,
+                     bool log_failure) {
 #ifdef RTLD_DEEPBIND
   void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
 #else
@@ -43,10 +53,11 @@ LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
 #endif
 
   if (res == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n",
-               so_path.data());
-    LogDlError();
-
+    if (log_failure) {
+      LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n",
+                 so_path.data());
+      LogDlError();
+    }
     return kLiteRtStatusErrorDynamicLoading;
   }
   *lib_handle = res;
