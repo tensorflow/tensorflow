@@ -337,8 +337,8 @@ NB_MODULE(xla_extension, m) {
       [](bool asynchronous,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id, int num_nodes,
-         std::shared_ptr<xla::cpu::CollectivesInterface> collectives)
-          -> nb_class_ptr<PyClient> {
+         std::shared_ptr<xla::cpu::CollectivesInterface> collectives,
+         std::optional<int> num_devices) -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
           nb::gil_scoped_release gil_release;
@@ -347,6 +347,7 @@ NB_MODULE(xla_extension, m) {
           options.asynchronous = asynchronous;
           options.collectives = std::move(collectives);
           options.process_id = node_id;
+          options.cpu_device_count = num_devices;
           std::unique_ptr<PjRtClient> client =
               xla::ValueOrThrow(xla::GetXlaPjrtCpuClient(std::move(options)));
           ifrt::PjRtClient::CreateOptions ifrt_options;
@@ -367,7 +368,8 @@ NB_MODULE(xla_extension, m) {
       nb::arg("asynchronous") = true, nb::arg("distributed_client") = nullptr,
       nb::arg("node_id") = 0, nb::arg("num_nodes") = 1,
       nb::arg("collectives").none() =
-          std::shared_ptr<xla::cpu::CollectivesInterface>());
+          std::shared_ptr<xla::cpu::CollectivesInterface>(),
+      nb::arg("num_devices").none() = std::nullopt);
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     absl::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();

@@ -607,6 +607,7 @@ def get_tfrt_cpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     collectives: Optional[CpuCollectives] = ...,
+    num_devices: int | None = ...,
 ) -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,

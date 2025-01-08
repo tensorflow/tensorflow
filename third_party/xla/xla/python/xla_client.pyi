@@ -89,6 +89,7 @@ def make_cpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     collectives: _xla.CpuCollectives | None = ...,
+    num_devices: int | None = ...,
 ) -> Client:
   ...
 
