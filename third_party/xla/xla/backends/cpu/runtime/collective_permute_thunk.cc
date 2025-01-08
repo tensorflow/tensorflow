@@ -131,7 +131,7 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
 
   return ExecuteWithCommunicator(
       params.collective_params,
-      [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+      [&](const RendezvousKey& key, Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
 
         for (int32_t i = 0; i < data.source.size(); ++i) {

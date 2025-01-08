@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,23 +54,24 @@ class Communicator {
     virtual absl::Status Unregister() = 0;
   };
 
+  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
+  // it registers the buffer for zero-copy collective operations).
+  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
+  RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
+    return Unimplemented("User-managed buffer registration is not supported");
+  }
+
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
   // this method.
-  virtual absl::Status Abort() = 0;
+  virtual absl::Status Abort() {
+    return Unimplemented("Aborting communicator is not implemented");
+  }
 
   // Checks the health of the communicator. It might return an error from the
   // previously launched asynchronous collective operations, and it does not
   // have to wait for the completion of scheduled operations.
-  virtual absl::Status HealthCheck() const = 0;
-
-  // Returns the number of ranks in the communicator.
-  virtual absl::StatusOr<size_t> NumRanks() const = 0;
-
-  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
-  // it registers the buffer for zero-copy collective operations).
-  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
-  RegisterBuffer(stream_executor::DeviceMemoryBase buffer) = 0;
+  virtual absl::Status HealthCheck() const { return absl::OkStatus(); }
 
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
@@ -129,6 +131,10 @@ class Communicator {
                             PrimitiveType dtype, size_t count, RankId peer,
                             const Executor& executor) = 0;
 
+  // Returns the number of ranks in the communicator.
+  virtual absl::StatusOr<size_t> NumRanks() const = 0;
+
+  // Returns a human-readable description of the communicator.
   virtual std::string ToString() const = 0;
 };
 

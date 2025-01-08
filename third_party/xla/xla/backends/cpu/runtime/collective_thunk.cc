@@ -183,7 +183,7 @@ CollectiveThunk::ExecuteWithCommunicator(
 
   VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
 
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectivesCommunicator> communicator,
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<Communicator> communicator,
                       collectives->GetCommunicator(key.global_devices, rank));
 
   TF_RETURN_IF_ERROR(callback(key, *communicator));

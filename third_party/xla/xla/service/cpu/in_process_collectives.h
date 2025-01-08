@@ -19,25 +19,29 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu::runtime {
 
 struct InProcessCollectivesState;
 
-class InProcessCollectivesCommunicator : public CollectivesCommunicator {
+class InProcessCollectivesCommunicator : public Communicator {
  public:
   InProcessCollectivesCommunicator(InProcessCollectivesState* state, int rank,
-                                   int size);
+                                   int num_ranks);
   ~InProcessCollectivesCommunicator() override;
 
   absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
@@ -67,9 +71,33 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                              ReductionKind reduction_kind,
                              const Executor& executor) override;
 
+  absl::Status Broadcast(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                         PrimitiveType, size_t, RankId,
+                         const Executor&) override {
+    return Unimplemented("Broadcast is not implemented");
+  }
+
+  absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+                    const Executor&) override {
+    return Unimplemented("Send is not implemented");
+  }
+
+  absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+                    const Executor&) override {
+    return Unimplemented("Recv is not implemented");
+  }
+
+  absl::StatusOr<size_t> NumRanks() const override { return num_ranks_; }
+
+  std::string ToString() const override {
+    return absl::StrCat("InProcessCommunicator [rank: ", rank_,
+                        " num_ranks: ", num_ranks_, "]");
+  }
+
  private:
   InProcessCollectivesState* state_;
   int rank_;
+  int num_ranks_;
 };
 
 class InProcessCollectives : public CollectivesInterface {
@@ -78,7 +106,7 @@ class InProcessCollectives : public CollectivesInterface {
   ~InProcessCollectives() override;
 
   // Thread-safe.
-  absl::StatusOr<std::shared_ptr<CollectivesCommunicator>> GetCommunicator(
+  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
       absl::Span<GlobalDeviceId const> devices, int rank) override;
 
  private:

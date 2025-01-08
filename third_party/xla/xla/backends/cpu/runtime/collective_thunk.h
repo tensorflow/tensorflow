@@ -86,8 +86,8 @@ class CollectiveThunk : public Thunk {
 
  protected:
   // Callback for collective thunk implementations.
-  using Callback = absl::AnyInvocable<absl::Status(
-      const RendezvousKey& key, CollectivesCommunicator& comm)>;
+  using Callback = absl::AnyInvocable<absl::Status(const RendezvousKey& key,
+                                                   Communicator& comm)>;
 
   static bool IsDataTypeSupportedByCollectiveReduce(PrimitiveType datatype);
 

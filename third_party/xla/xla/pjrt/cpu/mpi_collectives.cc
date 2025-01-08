@@ -261,9 +261,8 @@ void MpiCollectives::Finalize() {
   MPI_Finalize();
 }
 
-absl::StatusOr<std::shared_ptr<CollectivesCommunicator>>
-MpiCollectives::GetCommunicator(absl::Span<GlobalDeviceId const> global_devices,
-                                int rank) {
+absl::StatusOr<std::shared_ptr<Communicator>> MpiCollectives::GetCommunicator(
+    absl::Span<GlobalDeviceId const> global_devices, int rank) {
   int flag;
   MPI_Is_thread_main(&flag);
   if (!flag) {

@@ -64,8 +64,8 @@ limitations under the License.
 namespace xla::cpu {
 
 GlooCollectivesCommunicator::GlooCollectivesCommunicator(
-    std::shared_ptr<gloo::Context> context)
-    : context_(std::move(context)) {}
+    std::shared_ptr<gloo::Context> context, size_t rank, size_t num_ranks)
+    : context_(std::move(context)), rank_(rank), num_ranks_(num_ranks) {}
 GlooCollectivesCommunicator::~GlooCollectivesCommunicator() = default;
 
 template <typename T>
@@ -453,8 +453,7 @@ GlooCollectives::GlooCollectives(
 
 GlooCollectives::~GlooCollectives() = default;
 
-absl::StatusOr<std::shared_ptr<CollectivesCommunicator>>
-GlooCollectives::GetCommunicator(
+absl::StatusOr<std::shared_ptr<Communicator>> GlooCollectives::GetCommunicator(
     absl::Span<GlobalDeviceId const> global_devices, int rank) {
   Context* context;
   {
@@ -487,8 +486,8 @@ GlooCollectives::GetCommunicator(
     return absl::UnknownError(
         absl::StrCat("Gloo context initialization failed: ", e.what()));
   }
-  context->communicator =
-      std::make_shared<GlooCollectivesCommunicator>(std::move(gloo_context));
+  context->communicator = std::make_shared<GlooCollectivesCommunicator>(
+      std::move(gloo_context), rank, global_devices.size());
   return context->communicator;
 }
 

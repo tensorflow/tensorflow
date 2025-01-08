@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -32,11 +33,12 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class MpiCollectivesCommunicator : public CollectivesCommunicator {
+class MpiCollectivesCommunicator : public Communicator {
  public:
   explicit MpiCollectivesCommunicator(int color, int key);
   ~MpiCollectivesCommunicator() override;
@@ -64,6 +66,29 @@ class MpiCollectivesCommunicator : public CollectivesCommunicator {
                              ReductionKind reduction_kind,
                              const Executor& executor) override;
 
+  absl::Status Broadcast(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                         PrimitiveType, size_t, RankId,
+                         const Executor&) override {
+    return Unimplemented("Broadcast is not implemented");
+  }
+
+  absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+                    const Executor&) override {
+    return Unimplemented("Send is not implemented");
+  }
+
+  absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+                    const Executor&) override {
+    return Unimplemented("Recv is not implemented");
+  }
+
+  absl::StatusOr<size_t> NumRanks() const override { return mpi_size_; }
+
+  std::string ToString() const override {
+    return absl::StrCat("MpiCommunicator [rank: ", mpi_rank_,
+                        " num_ranks: ", mpi_size_, "]");
+  }
+
  private:
   MPI_Comm comm_;
   int mpi_rank_;
@@ -84,7 +109,7 @@ class MpiCollectives : public CollectivesInterface {
   void Init();
   void Finalize();
 
-  absl::StatusOr<std::shared_ptr<CollectivesCommunicator>> GetCommunicator(
+  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
       absl::Span<GlobalDeviceId const> global_devices, int rank) override;
 
  private:

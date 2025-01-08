@@ -435,8 +435,8 @@ struct InProcessCollectivesState {
 };
 
 InProcessCollectivesCommunicator::InProcessCollectivesCommunicator(
-    InProcessCollectivesState* state, int rank, int size)
-    : state_(state), rank_(rank) {}
+    InProcessCollectivesState* state, int rank, int num_ranks)
+    : state_(state), rank_(rank), num_ranks_(num_ranks) {}
 InProcessCollectivesCommunicator::~InProcessCollectivesCommunicator() = default;
 
 absl::Status InProcessCollectivesCommunicator::AllReduce(
@@ -576,7 +576,7 @@ InProcessCollectives::InProcessCollectives()
     : state_(std::make_unique<InProcessCollectivesState>()) {}
 InProcessCollectives::~InProcessCollectives() = default;
 
-absl::StatusOr<std::shared_ptr<CollectivesCommunicator>>
+absl::StatusOr<std::shared_ptr<Communicator>>
 InProcessCollectives::GetCommunicator(absl::Span<GlobalDeviceId const> devices,
                                       int rank) {
   // We don't care about devices here: we share rendezvous state globally.

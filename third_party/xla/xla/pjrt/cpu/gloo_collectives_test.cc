@@ -59,7 +59,7 @@ constexpr int kNumParticipants = 2;
 constexpr size_t kBufferSize = 256;
 constexpr absl::Duration kTimeout = absl::Seconds(5);
 
-absl::StatusOr<std::shared_ptr<CollectivesCommunicator>> GetCommunicator(
+absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
     size_t kNumParticipants, absl::Span<GlobalDeviceId const> global_devices,
     const std::shared_ptr<xla::KeyValueStoreInterface>& kv_store, int rank) {
   auto collectives = std::make_shared<cpu::GlooCollectives>(

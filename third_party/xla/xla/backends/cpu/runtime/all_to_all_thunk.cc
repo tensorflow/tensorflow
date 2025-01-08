@@ -76,7 +76,7 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
 
   return ExecuteWithCommunicator(
       params.collective_params,
-      [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+      [&](const RendezvousKey& key, Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         const Shape& shape = destination_shape(0);
 
