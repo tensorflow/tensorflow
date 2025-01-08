@@ -141,7 +141,6 @@ cc_library(
     ],
     # DEPRECATED: use v2/legalize_tf.h::LegalizeMlirToHlo instead.
     visibility = [
-        "//tensorflow/compiler/mlir/lite/stablehlo:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:__pkg__",
     ],
