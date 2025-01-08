@@ -1386,6 +1386,7 @@ xla_cc_test(
     tags = ["not_run:arm"],
     deps = [
         ":cpu_instruction_fusion",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -1539,6 +1540,7 @@ xla_cc_test(
     deps = [
         ":conv_canonicalization",
         ":target_machine_features_stub",
+        "//xla:literal_util",
         "//xla:test",
         "//xla:test_helpers",
         "//xla:util",

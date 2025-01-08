@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,31 +34,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
-#include "xla/service/backend.h"
-#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_verifier.h"
-#include "xla/service/platform_util.h"
-#include "xla/shape_layout.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -189,7 +174,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // backend, but it might need to be tailored so that it is able to run on the
   // reference backend. Note that the program shape of the module must not be
   // modified.
-  [[nodiscard]] ::testing::AssertionResult RunAndCompare(
+  ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
@@ -197,14 +182,14 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
-  [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Executes an hlo module with fake inputs and compares the results.
-  [[nodiscard]] ::testing::AssertionResult RunAndCompare(
+  ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr,
@@ -212,26 +197,26 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
-  [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
-  [[nodiscard]] ::testing::AssertionResult Run(
+  ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
-  [[nodiscard]] ::testing::AssertionResult RunAndCompare(
+  ::testing::AssertionResult RunAndCompare(
       absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
-  [[nodiscard]] ::testing::AssertionResult Run(
+  ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
@@ -299,19 +284,19 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Executes an hlo module with fake inputs on multiple replicas.
-  [[nodiscard]] ::testing::AssertionResult RunReplicated(
+  ::testing::AssertionResult RunReplicated(
       absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
       const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
-  [[nodiscard]] ::testing::AssertionResult RunMultipleTimes(
+  ::testing::AssertionResult RunMultipleTimes(
       absl::string_view hlo_string, bool run_hlo_passes,
       std::vector<ExecutionProfile>* profiles,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
-  [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
       absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);

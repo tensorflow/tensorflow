@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal_util.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
