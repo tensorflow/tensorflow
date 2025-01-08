@@ -98,20 +98,12 @@ class IrEmitter2 {
 
   absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
 
-  // Emits an elemental host kernel for the given HLO instruction.
-  absl::StatusOr<KernelInfo> EmitElementalHostKernel(
-      const HloInstruction* instr);
-
   // Emits a host kernel for the pad instruction.
   absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
 
   // Emits a host kernel for the given fusion instruction.
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
       const HloFusionInstruction* fusion);
-
-  // Emits a host kernel for the given reduction instruction.
-  absl::StatusOr<KernelInfo> EmitReductionHostKernel(
-      const HloInstruction* instr);
 
   // Emits a host kernel for the given dot instruction. Small dot operations
   // are emitted as LLVM IR directly, while larger ones are emitted as a dot
@@ -137,6 +129,9 @@ class IrEmitter2 {
   // Emits a comparator function for the given sort instruction.
   absl::StatusOr<ComparatorInfo> EmitSortComparator(HloComputation* comparator);
 
+  absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) const;
+  bool CanUpdateDynamicSliceInPlace(const HloInstruction* update) const;
+
  private:
   class ElementalIrEmitter;
 
@@ -159,8 +154,6 @@ class IrEmitter2 {
   // Returns parallel config for the given instruction or std::nullopt if
   // the instruction has to be compiled to a single threaded loop.
   std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
-
-  absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) const;
 
   // Emits LLVM IR that computes parallel partition bounds from the call frame's
   // block and thread dimensions and parallel execution config.
