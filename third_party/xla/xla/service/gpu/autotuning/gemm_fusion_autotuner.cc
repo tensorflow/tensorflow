@@ -1016,11 +1016,11 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
               << " with config '" << ConfigToString(config)
               << "'\nFused HLO computation:\n"
               << fusion->fused_instructions_computation()->ToString();
+          log(*executable != nullptr);
           if (*executable != nullptr) {
             absl::MutexLock lock(&results_mu);
             results[fusion].push_back({config, std::move(*executable)});
           }
-          log(*executable != nullptr);
           counter.DecrementCount();
         });
       }
@@ -1047,10 +1047,10 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<Executable> executable,
             compile(fusion, config, gemm_config_set.size() > 1));
+        log(executable != nullptr);
         if (executable != nullptr) {
           results[fusion].push_back({config, std::move(executable)});
         }
-        log(executable != nullptr);
       }
     }
   }
