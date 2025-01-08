@@ -574,6 +574,7 @@ build:rbe_win_clang --platforms="//tensorflow/tools/toolchains/win:x64_windows-c
 build:rbe_win_clang --compiler=clang-cl
 build:rbe_win_clang --linkopt=/FORCE:MULTIPLE
 build:rbe_win_clang --host_linkopt=/FORCE:MULTIPLE
+build:rbe_win_clang --test_output=errors --verbose_failures=true
 
 # TODO(belitskiy): Rename `rbe_win_clang` to this, once done switching presubmits.
 build:rbe_windows_x86_cpu --config=rbe_win_clang
