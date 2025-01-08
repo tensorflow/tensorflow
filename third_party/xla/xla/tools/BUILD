@@ -408,8 +408,8 @@ xla_cc_test(
     srcs = ["prepare_reference_module_test.cc"],
     deps = [
         ":prepare_reference_module",
-        "//xla:test",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
         "//xla/tests:hlo_test_base",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",

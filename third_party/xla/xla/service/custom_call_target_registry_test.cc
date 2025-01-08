@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/custom_call_target_registry.h"
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/test.h"
 
 namespace xla {
 namespace {

@@ -305,8 +305,8 @@ xla_cc_test(
     deps = [
         ":type_to_shape",
         "//xla:shape_util",
-        "//xla:test",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:test",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/mlir_hlo",
         "@com_google_absl//absl/status:statusor",
