@@ -2538,5 +2538,13 @@ CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
                            new_reshape_dims, new_transpose_dims));
 }
 
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b) {
+  HloInstruction* copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
+      phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
+  copy_hlo->copy_sharding(phlo.hlo());
+  return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
+}
+
 }  // namespace spmd
 }  // namespace xla
