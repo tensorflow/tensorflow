@@ -778,13 +778,8 @@ cc_library(
     name = "pattern_matcher_gmock",
     testonly = 1,
     hdrs = ["pattern_matcher_gmock.h"],
-    deps = [
-        ":pattern_matcher",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:pattern_matcher_gmock instead.",
+    deps = ["//xla/hlo/testlib:pattern_matcher_gmock"],
 )
 
 xla_cc_test(

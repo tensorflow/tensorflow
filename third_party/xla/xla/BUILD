@@ -1,7 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
@@ -200,12 +200,9 @@ cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test instead.",
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/testlib:test"],
 )
 
 cc_library(
@@ -909,12 +906,9 @@ cc_library(
     name = "test_helpers",
     testonly = 1,
     hdrs = ["test_helpers.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test_helpers instead.",
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/testlib:test_helpers"],
 )
 
 cc_library(
