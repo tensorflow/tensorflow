@@ -31,8 +31,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// TODO(mpcallanan): Refactor rewriters into shared base class.
-
 // Rewrites the dataset graph by removing the compression map.
 class RemoveCompressionMapRewriter {
  public:
