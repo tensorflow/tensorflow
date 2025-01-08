@@ -526,6 +526,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
+  if (absl::Status status = ir_emitter_.CanDoFastConcatenate(instruction);
+      !status.ok()) {
+    VLOG(1) << "Could not emit fast concatenate for " << instruction->ToString()
+            << ": " << status.message();
+    return EmitElementalKernelThunk(instruction);
+  }
+
   auto* concatenate = Cast<HloConcatenateInstruction>(instruction);
   TF_ASSIGN_OR_RETURN(auto kernel,
                       ir_emitter_.EmitConcatenateHostKernel(concatenate));
@@ -661,13 +668,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
     const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      ir_emitter_.EmitReductionHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(
-      instruction, buffers, kernel,
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
+  return EmitElementalKernelThunk(instruction);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
@@ -1041,6 +1043,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
     const HloInstruction* instruction) {
+  if (!ir_emitter_.CanUpdateDynamicSliceInPlace(instruction)) {
+    VLOG(2) << "Could not emit in-place dynamic-update-slice kernel: "
+            << instruction->name();
+    return EmitElementalKernelThunk(instruction);
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto kernel, ir_emitter_.EmitDynamicUpdateSliceHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));

@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1503,7 +1504,17 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
     std::string ir_module_string;
     if (embed_ir_in_executable) {
-      ir_module_string = llvm_ir::DumpToString(llvm_module.get());
+      std::string emitter2_ir = llvm_ir::DumpToString(llvm_module.get());
+
+      auto thunk_kernel_fmt = [](std::string* out,
+                                 const ThunkEmitter::EmittedKernel& kernel) {
+        absl::StrAppend(
+            out, llvm_ir::DumpToString(kernel.module.getModuleUnlocked()));
+      };
+      std::string thunks_ir =
+          absl::StrJoin(thunk_emitter.kernels(), "\n", thunk_kernel_fmt);
+
+      ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
     }
 
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
