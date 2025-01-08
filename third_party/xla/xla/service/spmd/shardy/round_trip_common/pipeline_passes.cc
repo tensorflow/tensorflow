@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_backend_func_calls.h"
@@ -48,7 +49,13 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // We need to canonicalize redundant mhlo::GetTupleElementOp and
   // mhlo::GetTupleOp. We also need to canonicalize mhlo::WhileOp before
   // `createOpenWhileFreeVarsShardingPass`.
-  pm.addPass(mlir::createCanonicalizerPass());
+  mlir::GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
+  config.fold = false;
+  config.cseConstants = false;
+  // TODO(tomnatan): consider only enabling the specific passes we need.
+  pm.addPass(mlir::createCanonicalizerPass(config));
   // Shardy is currently operating on stablehlo, since this is what JAX
   // emits. Long term shardy will be fully dialect agnostic, and both mhlo
   // and stablehlo can register their ops for sdy propagation.

@@ -110,6 +110,7 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
