@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"

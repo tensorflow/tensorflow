@@ -13,10 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
@@ -27,6 +34,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
