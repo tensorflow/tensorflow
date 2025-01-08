@@ -2757,6 +2757,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
     def testLocalDevices(self):
       self.assertNotEmpty(self.backend.local_devices())
+      if self.backend.platform == "cpu":
+        self.assertLen(self.backend.local_devices(), 2)
 
     def testGetAllDevices(self):
       # TODO(hyeontaek): Remove this method once we have a unified API for
@@ -3692,7 +3694,7 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
 
 
 backends = {
-    "cpu": xla_client.make_cpu_client,
+    "cpu": functools.partial(xla_client.make_cpu_client, num_devices=2),
     "gpu": xla_client.make_gpu_client,
 }
 
