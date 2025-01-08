@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -325,6 +324,11 @@ class PjitFunction {
     executables_->Clear();
   }
 
+  std::shared_ptr<PjitFunctionCache::Cache> executables() {
+    nb::ft_object_guard lock(cache_);
+    return executables_;
+  }
+
   nb::object PythonSignature() {
     if (!fun_.has_value()) {
       throw nb::value_error(
@@ -362,41 +366,6 @@ class PjitFunction {
   std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
 
-// Thread-safe.
-class PjitFunctionStore {
- public:
-  void Insert(PjitFunction* function) {
-    nb::ft_lock_guard lock(mu_);
-    compiled_functions_.insert(function);
-  }
-
-  void Erase(PjitFunction* function) {
-    nb::ft_lock_guard lock(mu_);
-    compiled_functions_.erase(function);
-  }
-
-  void ClearFunctionCache() {
-    absl::flat_hash_set<PjitFunction*> functions;
-    {
-      nb::ft_lock_guard lock(mu_);
-      std::swap(functions, compiled_functions_);
-    }
-    for (auto* function : functions) {
-      function->ClearCache();
-    }
-  }
-
- private:
-  // Protected by the GIL in GIL mode, and by mu_ in freethreading mode.
-  nb::ft_mutex mu_;
-  absl::flat_hash_set<PjitFunction*> compiled_functions_;
-};
-
-PjitFunctionStore& GetGlobalPjitFunctionStore() {
-  static auto* const store = new PjitFunctionStore();
-  return *store;
-}
-
 PjitFunction::PjitFunction(
     std::string function_name, std::optional<nb::callable> fun,
     nb::callable cache_miss, std::vector<int> static_argnums,
@@ -418,8 +387,6 @@ PjitFunction::PjitFunction(
     PyUnicode_InternInPlace(&s);
     static_argnames_.push_back(nb::steal<nb::str>(s));
   }
-
-  GetGlobalPjitFunctionStore().Insert(this);
 }
 
 void PjitFunction::InitExecutables() {
@@ -432,7 +399,7 @@ void PjitFunction::InitExecutables() {
   }
 }
 
-PjitFunction::~PjitFunction() { GetGlobalPjitFunctionStore().Erase(this); }
+PjitFunction::~PjitFunction() = default;
 
 void CallShardArgFallback(
     nb::handle arg, nb::handle sharding, nb::handle layout,
@@ -969,7 +936,63 @@ struct PjitFunctionObject {
 #endif                 // PY_VERSION_HEX < 0x030C0000
   vectorcallfunc vectorcall;
   PjitFunction fun;
+
+  // Doubly-linked list of PjitFunctionObjects, protected by
+  // PjitFunctionStore::mu_ or the GIL in GIL mode.
+  PjitFunctionObject* next;
+  PjitFunctionObject* prev;
 };
+
+// Contains a list of all PjitFunctionObjects.
+// Thread-safe.
+class PjitFunctionStore {
+ public:
+  void Insert(PjitFunctionObject* o) {
+    nb::ft_lock_guard lock(mu_);
+    o->next = compiled_functions_;
+    o->prev = nullptr;
+    if (o->next) {
+      o->next->prev = o;
+    }
+    compiled_functions_ = o;
+  }
+
+  void Remove(PjitFunctionObject* o) {
+    nb::ft_lock_guard lock(mu_);
+    if (o->next) {
+      o->next->prev = o->prev;
+    }
+    if (o->prev) {
+      o->prev->next = o->next;
+    } else {
+      compiled_functions_ = o->next;
+    }
+  }
+
+  void ClearCaches() {
+    std::vector<
+        std::pair<nb::object, std::shared_ptr<PjitFunctionCache::Cache>>>
+        caches;
+    {
+      nb::ft_lock_guard lock(mu_);
+      for (PjitFunctionObject* fn = compiled_functions_; fn != nullptr;
+           fn = fn->next) {
+        caches.emplace_back(fn->fun.cache(), fn->fun.executables());
+      }
+    }
+    for (auto& [cache, executables] : caches) {
+      nb::ft_object_guard lock(cache);
+      executables->Clear();
+    }
+  };
+
+ private:
+  // Protected by the GIL in GIL mode, and by mu_ in freethreading mode.
+  nb::ft_mutex mu_;
+  PjitFunctionObject* compiled_functions_;
+};
+
+PjitFunctionStore pjit_function_store;
 
 PyObject* PjitFunction_Type = nullptr;
 
@@ -1036,6 +1059,7 @@ void PjitFunction_tp_dealloc(PyObject* self) {
   PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
+  pjit_function_store.Remove(o);
   PyObject_ClearWeakRefs(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
@@ -1125,6 +1149,7 @@ void InitializePjitFunction(
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback,
     xla::nb_class_ptr<PjitFunctionCache> cache) {
+  fn_obj->next = fn_obj->prev = nullptr;
   if (nb::isinstance<nb::list>(global_cache_key)) {
     global_cache_key = nb::tuple(global_cache_key);
   }
@@ -1136,6 +1161,10 @@ void InitializePjitFunction(
   // Handled separately because it is not exception safe to call this
   // in the constructor because it leaves the object improperly constructed.
   fn_obj->fun.InitExecutables();
+
+  // Only add the executable to the store after executables_ has been
+  // initialized. We want only fully constructed executables in the store.
+  pjit_function_store.Insert(fn_obj);
 }
 
 nb::object MakePjitFunction(
@@ -1201,8 +1230,7 @@ void BuildPjitSubmodule(nb::module_& m) {
   cache.def("size", &PjitFunctionCache::Size, nb::lock_self());
   cache.def("capacity", &PjitFunctionCache::Capacity, nb::lock_self());
   cache.def("clear", &PjitFunctionCache::Clear, nb::lock_self());
-  cache.def_static("clear_all",
-                   []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
+  cache.def_static("clear_all", []() { pjit_function_store.ClearCaches(); });
   cache.def(
       "__getstate__",
       // Pickles as an empty cache; the client can repopulate as needed.

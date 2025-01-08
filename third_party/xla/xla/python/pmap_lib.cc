@@ -432,8 +432,10 @@ class PmapFunction {
   // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
   xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry_;
-  // We need a `unique_ptr` here to ensure value pointer stability.
-  absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
+  // We need a `shared_ptr` here to ensure value pointer stability, and to
+  // ensure that the cache entry remains alive in the presence of concurrent
+  // removals.
+  absl::flat_hash_map<CallSignature, std::shared_ptr<PmapCacheEntry>>
       executables_;
 
   // The fallback function to use with `ShardArgs`.
@@ -581,15 +583,14 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   }
 
   // Retrieve/Maybe add the executable to the cache.
-  absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>::iterator
-      it;
-  bool inserted;
-  std::tie(it, inserted) = executables_.try_emplace(
-      call_signature, std::unique_ptr<PmapCacheEntry>());
-  if (inserted) {
-    it->second = std::make_unique<PmapCacheEntry>(pytree_registry_.get());
+  bool inserted = false;
+  std::shared_ptr<PmapCacheEntry>& cache_entry_ptr =
+      executables_[call_signature];
+  if (cache_entry_ptr == nullptr) {
+    inserted = true;
+    cache_entry_ptr = std::make_shared<PmapCacheEntry>(pytree_registry_.get());
   }
-  PmapCacheEntry& cache_entry = *(it->second);
+  PmapCacheEntry& cache_entry = *cache_entry_ptr;
 
   if (!cache_entry.compilation_complete.HasBeenNotified()) {
     // In case of several threads attempting to compile the executable, only
