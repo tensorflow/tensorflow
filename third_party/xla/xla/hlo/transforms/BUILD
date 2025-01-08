@@ -1107,13 +1107,3 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
-
-alias(
-    name = "hlo_dce",
-    actual = "//xla/hlo/transforms/simplifiers:hlo_dce",
-)
-
-alias(
-    name = "dynamic_dimension_simplifier",
-    actual = "//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier",
-)
