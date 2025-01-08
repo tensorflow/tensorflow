@@ -544,6 +544,13 @@ class PartitionedHlo {
   // default of Replicate followed by Slice).
   PartitionedHlo ReshardWithAllToAll(
       const HloSharding& target,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_dims,
+      bool try_multiple_source_target_dims = true) const;
+
+  // Called by ReshardWithAllToAll if try_multiple_source_target_dims is true.
+  // Try to handle multiple source and target dims in a single AllToAll.
+  PartitionedHlo TryMultipleSourceTargetDims(
+      const HloSharding& target,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_dims) const;
 
   // Helper function to reshard the tensor using CollectivePermute.
