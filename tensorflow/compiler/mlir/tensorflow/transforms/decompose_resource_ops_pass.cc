@@ -120,7 +120,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
   // Apply patterns to reachable functions.
   for (Operation* op : reachable_functions) {
     assert(isa<func::FuncOp>(op));
-    if (failed(applyPatternsAndFoldGreedily(op, patterns))) {
+    if (failed(applyPatternsGreedily(op, patterns))) {
       return op->emitError() << kBadDecompositionMessage;
     }
   }
@@ -137,7 +137,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
     auto walk_result = func.walk([&](tf_device::ClusterOp cluster) {
       // Cluster ops are not isolated from above so we cannot use
-      // `applyPatternsAndFoldGreedily` utility. Instead we apply patterns
+      // `applyPatternsGreedily` utility. Instead we apply patterns
       // locally on each op within the cluster until convergence.
       if (failed(ApplyPatternsLocallyUntilConverged(cluster, patterns,
                                                     max_iterations))) {
@@ -162,8 +162,7 @@ struct DecomposeResourceOpsPass
     RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       getOperation().emitError() << kBadDecompositionMessage;
       signalPassFailure();
     }

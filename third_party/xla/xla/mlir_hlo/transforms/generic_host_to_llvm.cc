@@ -86,7 +86,7 @@ class GenericHostToLLVMPass
       // Vector transfer ops with rank > 1 should be lowered with VectorToSCF.
       vector::populateVectorTransferLoweringPatterns(patterns,
                                                      /*maxTransferRank=*/1);
-      (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+      (void)applyPatternsGreedily(getOperation(), std::move(patterns));
     }
 
     LLVMConversionTarget target(*ctx);

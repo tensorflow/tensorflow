@@ -89,8 +89,8 @@ void UnswitchLoopsPass::runOnOperation() {
   patterns.add<UnswitchLoop>(&getContext());
   mlir::scf::ForOp::getCanonicalizationPatterns(patterns, &getContext());
   mlir::scf::IfOp::getCanonicalizationPatterns(patterns, &getContext());
-  if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                      std::move(patterns)))) {
+  if (mlir::failed(
+          mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     signalPassFailure();
   }
 }

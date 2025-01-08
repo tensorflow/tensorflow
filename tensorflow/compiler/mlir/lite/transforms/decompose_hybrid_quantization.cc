@@ -142,7 +142,7 @@ void DecomposeHybridQuantizationPass::runOnOperation() {
                DequantizeConverter<TFL::DepthwiseConv2DOp>,
                DequantizeConverter<TFL::FullyConnectedOp>,
                DequantizeConverter<TFL::TransposeConvOp>>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

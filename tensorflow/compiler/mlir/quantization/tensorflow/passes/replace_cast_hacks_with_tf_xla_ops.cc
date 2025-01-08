@@ -1165,7 +1165,7 @@ void ReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-replace-cast-hacks-with-tf-xla-ops failed.";
     signalPassFailure();
   }

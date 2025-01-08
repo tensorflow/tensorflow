@@ -287,7 +287,7 @@ void DecomposeOptionalsPass::runOnOperation() {
   pattern_list.add<HandleIf>(&getContext());
   FrozenRewritePatternSet patterns(std::move(pattern_list));
 
-  if (failed(applyPatternsAndFoldGreedily(module, patterns))) {
+  if (failed(applyPatternsGreedily(module, patterns))) {
     signalPassFailure();
   }
 }

@@ -293,7 +293,7 @@ void AddDumpTensorOpPass::runOnOperation() {
                AddDumpTensorOp<TF::XlaCallModuleOp>>(ctx, debugger_type_,
                                                      log_dir_path_);
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
     module.emitError() << "quant-add-dump-tensor-op failed.";
     signalPassFailure();
   }

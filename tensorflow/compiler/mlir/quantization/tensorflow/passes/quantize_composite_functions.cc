@@ -1303,7 +1303,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
                                           target_opset_,
                                           enable_per_channel_quantization_);
 
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -1320,7 +1320,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     patterns_2.add<RestoreWeightShapePattern>(ctx);
   }
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns_2))) ||
+  if (failed(applyPatternsGreedily(module, std::move(patterns_2))) ||
       failed(verify(module))) {
     signalPassFailure();
   }
