@@ -301,8 +301,8 @@ class EmitterHelper {
                                  Value write_to_output_required,
                                  ValueRange thread_and_block_ids, Value iv,
                                  const IndexingMap& slice_indexing,
-                                 Value offsets_changed, ValueRange offsets,
-                                 Value accumulator, Value output_tensor) const;
+                                 ValueRange offsets, Value accumulator,
+                                 Value output_tensor) const;
 
  private:
   Value GetElement(ImplicitLocOpBuilder& b, int operand_index,
@@ -371,8 +371,8 @@ SmallVector<Value> EmitterHelper::WriteAccumulatedElementToOutput(
 Value EmitterHelper::WriteAccumulatorToOutput(
     ImplicitLocOpBuilder& b, Value write_to_output_required,
     ValueRange thread_and_block_ids, Value iv,
-    const IndexingMap& slice_indexing, Value offsets_changed,
-    ValueRange offsets, Value accumulator, Value output_tensor) const {
+    const IndexingMap& slice_indexing, ValueRange offsets, Value accumulator,
+    Value output_tensor) const {
   SmallVector<Value> dims = Pack({thread_and_block_ids, iv});
   return EmitUpdateIf(
              b, write_to_output_required, output_tensor,
@@ -721,11 +721,15 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].
   Value is_inbounds_init = b.create<arith::ConstantIntOp>(0, b.getI1Type());
+  Value slice_id_init = b.create<arith::ConstantIndexOp>(0);
   std::vector<Value> indices_init(description_.index_vector_length,
                                   b.create<arith::ConstantIndexOp>(-1));
   Value accumulator_init = InitializeAccumulator(b);
   SmallVector<Value> inits =
-      Pack({indices_init, is_inbounds_init, accumulator_init, output_tensor});
+      Pack({slice_id_init, indices_init, is_inbounds_init, accumulator_init,
+            output_tensor});
+
+  int64_t output_rank = description_.output_shape.size();
 
   auto loop_over_indices_fn =
       [&](ImplicitLocOpBuilder& nested_b, ValueRange ivs,
@@ -733,14 +737,13 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
           ValueRange outer_iter_args) -> SmallVector<Value> {
     // Unpack the iter_args.
     SmallVector<ValueRange> iter_args_unpack =
-        Unpack(outer_iter_args, {description_.index_vector_length, 1, 1, 1});
-    ValueRange trimmed_offsets = iter_args_unpack[0];
-    Value iter_is_inbounds = iter_args_unpack[1].front();
-    Value iter_acc = iter_args_unpack[2].front();
-    Value iter_output = iter_args_unpack[3].front();
+        Unpack(outer_iter_args, {1, description_.index_vector_length, 1, 1, 1});
+    ValueRange trimmed_offsets = iter_args_unpack[1];
+    Value iter_is_inbounds = iter_args_unpack[2].front();
+    Value iter_acc = iter_args_unpack[3].front();
+    Value iter_output = iter_args_unpack[4].front();
     Value iter_slice_id = ivs.front();
 
-    int64_t output_rank = description_.output_shape.size();
     SmallVector<Value> offsets =
         PadWithZeros(trimmed_offsets, output_rank, nested_b);
 
@@ -767,78 +770,95 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
         b.create<arith::AndIOp>(offsets_changed, iter_is_inbounds));
     iter_output = helper.WriteAccumulatorToOutput(
         b, write_to_output_required, thread_and_block_ids, iter_slice_id,
-        slice_indexing, offsets_changed, offsets, iter_acc, iter_output);
+        slice_indexing, offsets, iter_acc, iter_output);
 
     // Update `is_inbounds` if the offsets changed.
     Value new_is_inbounds = UpdateIsInbounds(
         nested_b, iter_is_inbounds, offsets_changed, new_offsets,
         description_.slice_shape, description_.output_shape);
 
-    // Update accumulator and/or output.
-    auto is_last_iteration = nested_b.create<arith::CmpIOp>(
-        arith::CmpIPredicate::eq, iter_slice_id,
-        b.create<arith::ConstantIndexOp>(num_indices_per_warp_ - 1));
-
-    SmallVector<Value> acc_and_output = {iter_acc, iter_output};
-    auto loop_over_slices_fn =
-        [&](ImplicitLocOpBuilder& update_loop_b, ValueRange accumulator_indices,
-            ValueRange slice_indices,
-            ValueRange inner_iter_args) -> SmallVector<Value> {
-      Value acc_arg = inner_iter_args.front();
-      Value output_arg = inner_iter_args.back();
-      auto update_elem = helper.GetUpdateElement(update_loop_b, slice_indices);
-      auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
-      // If the index changed, overwrite the accumulator element, otherwise
-      // apply the scatter computation to reduce with the accumulator element.
-      auto updated_accumulator =
-          update_loop_b
-              .create<scf::IfOp>(
-                  offsets_changed,
-                  [&](OpBuilder& then_b, Location then_loc) -> void {
-                    Value updated_accumulator = then_b.create<vector::InsertOp>(
-                        then_loc, update_elem, acc_arg, acc_ind_opfold);
-                    then_b.create<scf::YieldOp>(then_loc, updated_accumulator);
-                  },
-                  [&](OpBuilder& else_b, Location else_loc) -> void {
-                    ImplicitLocOpBuilder implicit_else_b(else_loc, else_b);
-                    Value accumulator_elem =
-                        implicit_else_b.create<vector::ExtractOp>(
-                            acc_arg, acc_ind_opfold);
-                    auto reduced_val = mlir_converter::InlineBlock(
-                        implicit_else_b, helper.GetReducer().getBody().front(),
-                        {accumulator_elem, update_elem})[0];
-                    Value updated_ac = implicit_else_b.create<vector::InsertOp>(
-                        reduced_val, acc_arg, acc_ind_opfold);
-                    implicit_else_b.create<scf::YieldOp>(updated_ac);
-                  })
-              .getResult(0);
-      // If this is the last index, that this warp has to process, then we write
-      // to the output.
-      auto updated_output =
-          EmitUpdateIf(update_loop_b, is_last_iteration, output_arg,
-                       [&](ImplicitLocOpBuilder& nested_b) {
-                         return helper.WriteAccumulatedElementToOutput(
-                             nested_b, updated_accumulator, accumulator_indices,
-                             slice_indices, new_offsets, output_arg);
-                       })
-              .front();
-      return {updated_accumulator, updated_output};
+    // Emits a loop that overwrites the accumulator with the new update elements
+    // if the offsets changed.
+    auto emit_overwrite_accumulator_fn = [&](OpBuilder& then_b,
+                                             Location then_loc) -> void {
+      ImplicitLocOpBuilder implicit_then_b(then_loc, then_b);
+      auto then_results = EmitXlaLoopOp(
+          implicit_then_b, Pack({thread_and_block_ids, iter_slice_id}),
+          {iter_acc}, slice_indexing,
+          [&](ImplicitLocOpBuilder& update_loop_b,
+              ValueRange accumulator_indices, ValueRange slice_indices,
+              ValueRange inner_iter_args) -> SmallVector<Value> {
+            Value acc_arg = inner_iter_args.front();
+            auto update_elem =
+                helper.GetUpdateElement(update_loop_b, slice_indices);
+            auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
+            return update_loop_b
+                .create<vector::InsertOp>(then_loc, update_elem, acc_arg,
+                                          acc_ind_opfold)
+                ->getResults();
+          });
+      implicit_then_b.create<scf::YieldOp>(then_loc, then_results);
     };
-    auto updated_accumulator_and_output =
-        EmitUpdateIf(nested_b, new_is_inbounds, acc_and_output,
+    // Emits a loop that combines the accumulator with the new update elements
+    // if the offsets did not change.
+    auto emit_combine_accumulator_fn = [&](OpBuilder& else_b,
+                                           Location else_loc) -> void {
+      ImplicitLocOpBuilder implicit_else_b(else_loc, else_b);
+      auto else_results = EmitXlaLoopOp(
+          implicit_else_b, Pack({thread_and_block_ids, iter_slice_id}),
+          {iter_acc}, slice_indexing,
+          [&](ImplicitLocOpBuilder& update_loop_b,
+              ValueRange accumulator_indices, ValueRange slice_indices,
+              ValueRange inner_iter_args) -> SmallVector<Value> {
+            Value acc_arg = inner_iter_args.front();
+            auto update_elem =
+                helper.GetUpdateElement(update_loop_b, slice_indices);
+            auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
+            Value accumulator_elem = update_loop_b.create<vector::ExtractOp>(
+                acc_arg, acc_ind_opfold);
+            auto reduced_val = mlir_converter::InlineBlock(
+                update_loop_b, helper.GetReducer().getBody().front(),
+                {accumulator_elem, update_elem})[0];
+            return update_loop_b
+                .create<vector::InsertOp>(reduced_val, acc_arg, acc_ind_opfold)
+                ->getResults();
+          });
+      implicit_else_b.create<scf::YieldOp>(else_results);
+    };
+    auto updated_accumulator =
+        EmitUpdateIf(nested_b, new_is_inbounds, {iter_acc},
                      [&](ImplicitLocOpBuilder& if_b) {
-                       return EmitXlaLoopOp(
-                           if_b, Pack({thread_and_block_ids, iter_slice_id}),
-                           acc_and_output, slice_indexing, loop_over_slices_fn);
-                     });
-    SmallVector<Value> updated_if_loop_results = Pack(
-        {new_trimmed_offsets, new_is_inbounds, updated_accumulator_and_output});
+                       return nested_b
+                           .create<scf::IfOp>(offsets_changed,
+                                              emit_overwrite_accumulator_fn,
+                                              emit_combine_accumulator_fn)
+                           .getResults();
+                     })
+            .front();
+    SmallVector<Value> updated_if_loop_results =
+        Pack({iter_slice_id, new_trimmed_offsets, new_is_inbounds,
+              updated_accumulator, iter_output});
     return updated_if_loop_results;
   };
   auto loop_over_indices_results =
       EmitXlaLoopOp(b, thread_and_block_ids, inits, thread_id_to_update_id_map,
                     loop_over_indices_fn);
-  b.create<ReturnOp>(loop_over_indices_results.back());
+
+  // Write the accumulator to the output tensor.
+  SmallVector<ValueRange> loop_over_indices_results_unpacked =
+      Unpack(loop_over_indices_results,
+             {1, description_.index_vector_length, 1, 1, 1});
+  Value result_slice_id = loop_over_indices_results_unpacked[0].front();
+  auto result_offsets =
+      PadWithZeros(loop_over_indices_results_unpacked[1], output_rank, b);
+  Value result_is_inbounds = loop_over_indices_results_unpacked[2].front();
+  Value result_acc = loop_over_indices_results_unpacked[3].front();
+  Value result_output = loop_over_indices_results_unpacked[4].front();
+  result_output = helper.WriteAccumulatorToOutput(
+      b, result_is_inbounds, thread_and_block_ids, result_slice_id,
+      slice_indexing, result_offsets, result_acc, result_output);
+
+  b.create<ReturnOp>(result_output);
   return absl::OkStatus();
 }
 

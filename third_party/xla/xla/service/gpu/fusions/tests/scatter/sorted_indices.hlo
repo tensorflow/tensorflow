@@ -9,13 +9,13 @@ add {
 }
 scatter {
   %operand = f32[100]  parameter(0)
-  %indices = s32[2000,1] parameter(1)
-  %update = f32[2000,32] parameter(2)
+  %indices = s32[2001,1] parameter(1)
+  %update = f32[2001,32] parameter(2)
 
   ROOT %scatter = f32[100] scatter(
       f32[100] %operand,
-      s32[2000,1] %indices,
-      f32[2000,32] %update
+      s32[2001,1] %indices,
+      f32[2001,32] %update
     ),
     update_window_dims={1},
     inserted_window_dims={},

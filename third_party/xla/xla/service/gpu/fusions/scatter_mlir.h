@@ -147,28 +147,36 @@ class ScatterWithDistributedUpdates : public MlirScatterFusion {
  %acc = vector<num_iter x vector_size>
 
  // #indices_map
- for %i = 0 to %num_indices_per_warp_ step 1 {
-   %new_indices = PadWithZeros(ExtractOffsets(%indices_operand, %i))
-   %indices_changed = EmitInequalityCheck(%new_indices, %indices)
-   if (%indices_changed && %i != 0) {
-     %output_tensor = WriteAccumulatorToTheOutput(%acc, %output_tensor);
-   }
-   if (%indices_changed) {
-     %inbounds = EmitBoundsCheck(%new_indices, %slice_shape, %output_shape)
-   }
-   if (%inbounds) {
+ %updated_accumulator, %updated_out = for %i = 0 to %num_indices_per_warp_ {
+  %new_indices = PadWithZeros(ExtractOffsets(%indices_operand, %i))
+  %indices_changed = EmitInequalityCheck(%new_indices, %indices)
+  if (%indices_changed && %i != 0) {
+    %output_tensor = WriteAccumulatorToOutput(%current_acc, %current_out);
+  }
+  if (%indices_changed) {
+    %inbounds = EmitBoundsCheck(%new_indices, %slice_shape, %output_shape)
+  }
+  if (%inbounds) {
+    if (%indices_changed) {
      // updates_map(%i)
      for %j = 0 to %num_slice_iterations_per_warp step 1 {
        for %k = 0 to %vector_size step 1 {
          %update_elem = GetUpdateElement
-         %acc = %indices_changed ?  %update_elem : Reduce(%update_elem, %acc)
-         if (%i = %num_indices_per_warp - 1) {
-           %output_tensor = WriteAccumulatorToTheOutput(%acc, %output_tensor);
-         }
+         %acc = %update_elem
        }
      }
-   }
- }
+    } else {
+     // updates_map(%i)
+     for %j = 0 to %num_slice_iterations_per_warp step 1 {
+       for %k = 0 to %vector_size step 1 {
+         %update_elem = GetUpdateElement
+         %acc = Reduce(%update_elem, %acc)
+       }
+     }
+    }
+  }
+}
+%final_out = WriteAccumulatorToOutput(%updated_accumulator, %updated_out);
 */
 class ScatterWithDistributedIndices : public MlirScatterFusion {
  public:
