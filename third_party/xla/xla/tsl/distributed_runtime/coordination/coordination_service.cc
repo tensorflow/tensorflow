@@ -1350,8 +1350,9 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
   for (it = begin; it != kv_store_.end(); ++it) {
     // Stop once the next key does not have the directory prefix. Since keys are
     // ordered, none of the other keys would have a matching prefix.
-    if (std::mismatch(dir.begin(), dir.end(), it->first.begin()).first !=
-        dir.end()) {
+    if (std::mismatch(dir.begin(), dir.end(), it->first.begin(),
+                      it->first.end())
+            .first != dir.end()) {
       break;
     }
     KeyValueEntry kv;
@@ -1373,8 +1374,9 @@ absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   auto begin = kv_store_.lower_bound(dir);
   std::map<std::string, std::string>::iterator end;
   for (end = begin; end != kv_store_.end(); end++) {
-    if (std::mismatch(dir.begin(), dir.end(), end->first.begin()).first !=
-        dir.end())
+    if (std::mismatch(dir.begin(), dir.end(), end->first.begin(),
+                      end->first.end())
+            .first != dir.end())
       break;
   }
   kv_store_.erase(begin, end);
