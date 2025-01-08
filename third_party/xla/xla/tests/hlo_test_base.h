@@ -18,22 +18,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_placer.h"
@@ -42,10 +36,11 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -83,7 +78,8 @@ namespace xla {
 // class.  HloTestBase remains as a shim on tests during this migration process.
 // While we would prefer if you can avoid introducing new tests that use this
 // class, we are still working on documenting the exact migration procedure.
-class HloTestBase : public HloRunnerAgnosticTestBase {
+class HloTestBase
+    : public HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase> {
  public:
   // Compiles the given `hlo` with optimizations, and verifies that optimized
   // HLO matches the given FileCheck pattern.
