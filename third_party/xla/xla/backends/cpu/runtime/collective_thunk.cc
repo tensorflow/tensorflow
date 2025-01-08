@@ -32,23 +32,27 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_clique_key.h"
+#include "xla/backends/cpu/collectives/cpu_cliques.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -172,7 +176,7 @@ CollectiveThunk::ExecuteWithCommunicator(
   TF_RET_CHECK(params)
       << "Collective parameters are not set for collective operation";
 
-  CollectivesInterface* collectives = params->collectives;
+  CpuCollectives* collectives = params->collectives;
   TF_RET_CHECK(collectives)
       << "Collectives interface is not set for collective operation";
 
@@ -183,8 +187,10 @@ CollectiveThunk::ExecuteWithCommunicator(
 
   VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
 
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Communicator> communicator,
-                      collectives->GetCommunicator(key.global_devices, rank));
+  CpuCliqueKey clique_key(key.global_devices);
+  TF_ASSIGN_OR_RETURN(
+      Communicator * communicator,
+      AcquireCommunicator(collectives, clique_key, RankId(rank)));
 
   TF_RETURN_IF_ERROR(callback(key, *communicator));
 

@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
@@ -30,7 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -121,8 +123,7 @@ Thunk::CollectiveExecuteParams::Create(
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assignment,
-    CollectivesInterface* collectives)
+    const DeviceAssignment* device_assignment, CpuCollectives* collectives)
     : run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),

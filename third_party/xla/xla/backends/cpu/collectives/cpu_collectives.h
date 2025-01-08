@@ -16,11 +16,19 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_COLLECTIVES_CPU_COLLECTIVES_H_
 #define XLA_BACKENDS_CPU_COLLECTIVES_CPU_COLLECTIVES_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -49,6 +57,17 @@ class CpuCollectives : public Collectives {
     RendezvousKey rendezvous_key_;
     absl::Duration timeout_;
   };
+
+  absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
+    return Unimplemented("CPU collectives do not support clique ids");
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, const Config& config) final {
+    return Unimplemented(
+        "CPU collectives do not support communicator splitting");
+  }
 
   // Tries to cast a Collectives::Device to a CpuCollectives::Device.
   static absl::StatusOr<const Device*> TryCast(

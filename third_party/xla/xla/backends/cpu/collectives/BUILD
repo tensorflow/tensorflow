@@ -15,6 +15,59 @@ package_group(
 )
 
 cc_library(
+    name = "cpu_clique_key",
+    srcs = ["cpu_clique_key.cc"],
+    hdrs = ["cpu_clique_key.h"],
+    deps = [
+        "//xla/core/collectives:clique_key",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "cpu_clique",
+    srcs = ["cpu_clique.cc"],
+    hdrs = ["cpu_clique.h"],
+    deps = [
+        ":cpu_clique_key",
+        "//xla/core/collectives:clique",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "cpu_cliques",
+    srcs = ["cpu_cliques.cc"],
+    hdrs = ["cpu_cliques.h"],
+    deps = [
+        ":cpu_clique",
+        ":cpu_clique_key",
+        ":cpu_collectives",
+        "//xla:util",
+        "//xla/core/collectives:clique",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "cpu_collectives",
     srcs = ["cpu_collectives.cc"],
     hdrs = ["cpu_collectives.h"],
@@ -23,14 +76,17 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
     ],
 )

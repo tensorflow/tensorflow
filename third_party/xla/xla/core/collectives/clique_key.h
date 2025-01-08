@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_CLIQUE_KEY_H_
 #define XLA_CORE_COLLECTIVES_CLIQUE_KEY_H_
 
+#include <cstddef>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -52,6 +53,7 @@ class CliqueKey {
   std::optional<RankId> rank(GlobalDeviceId id) const;
 
   absl::Span<const GlobalDeviceId> devices() const;
+  size_t num_devices() const;
 
   // Returns true if this clique is a subset of `other`.
   virtual bool IsSubsetOf(const CliqueKey& other) const = 0;
