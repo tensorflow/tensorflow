@@ -30,15 +30,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -91,10 +92,10 @@ absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
                               size_t>::Create(executor, "topk",
                                               kernel_symbol)));
 
-  TF_RETURN_IF_ERROR(stream->ThenLaunch(
-      se::ThreadDim(num_threads, 1, 1), se::BlockDim(batch_size, 1, 1),
-      shmem_size, kernel, data_typed, num_elements, top_elements_typed,
-      top_indices_typed, k));
+  TF_RETURN_IF_ERROR(kernel.Launch(se::ThreadDim(num_threads, 1, 1),
+                                   se::BlockDim(batch_size, 1, 1), shmem_size,
+                                   stream, data_typed, num_elements,
+                                   top_elements_typed, top_indices_typed, k));
 
   return absl::OkStatus();
 }

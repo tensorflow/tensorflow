@@ -44,7 +44,7 @@ class TypedKernelFactory {
     return TypedKernel<Params...>(std::move(kernel));
   }
 
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
+  // Creates a kernel which can be launched on a stream from a
   // PTX (and optional CUBIN), such that the types of the arguments provided for
   // launch would have to match types of the arguments provided at creation
   // time. The canonical storage for both ptx and cubin_data should outlive the
@@ -63,7 +63,7 @@ class TypedKernelFactory {
     return Create(executor, loader_spec);
   }
 
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
+  // Creates a kernel which can be launched on a stream from
   // an in-process symbol pointer.
   static absl::StatusOr<TypedKernel<Params...>> Create(
       StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {

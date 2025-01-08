@@ -219,7 +219,7 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
   EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
   EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
-  EXPECT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(kLength), add, a, b, c),
+  EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
               IsOk());
 
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());

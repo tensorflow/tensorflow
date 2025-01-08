@@ -91,8 +91,8 @@ static absl::StatusOr<bool> DeviceCompare(absl::string_view kernel_name,
       CalculateLaunchDimensions(*params.shape, gpu_device_info);
 
   se::DeviceMemory<uint64_t> as_uint64(out.memory());
-  TF_RETURN_IF_ERROR(params.stream->ThenLaunch(
-      dim.thread_counts_per_block(), dim.block_counts(), comparison_kernel,
+  TF_RETURN_IF_ERROR(comparison_kernel.Launch(
+      dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
       buffer_size, as_uint64));
 

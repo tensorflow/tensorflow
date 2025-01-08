@@ -104,13 +104,13 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    se::Stream* stream);
 
 // Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    const se::ClusterDim& cluster_dim,

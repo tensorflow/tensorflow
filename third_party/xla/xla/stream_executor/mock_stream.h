@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -75,10 +75,10 @@ class MockStream : public Stream {
               (const, override));
   MOCK_METHOD((std::variant<StreamPriority, int>), priority, (),
               (const, override));
-  MOCK_METHOD(absl::Status, Launch,
+  MOCK_METHOD(absl::Status, LaunchKernel,
               (const ThreadDim &thread_dims, const BlockDim &block_dims,
-               const std::optional<ClusterDim> &cluster_dims, const Kernel &k,
-               const KernelArgs &args),
+               const std::optional<ClusterDim> &cluster_dims, void *function,
+               absl::string_view name, void **args, int64_t shmem_bytes),
               (override));
   MOCK_METHOD(const std::string &, GetName, (), (const, override));
   MOCK_METHOD(void, SetName, (std::string name), (override));

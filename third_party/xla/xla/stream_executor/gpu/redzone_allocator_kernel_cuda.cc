@@ -120,8 +120,8 @@ LBB6_3:
 }
 )";
 
-absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
-    StreamExecutor* executor, GpuAsmOpts gpu_asm_opts) {
+absl::StatusOr<ComparisonKernel*> GetComparisonKernel(StreamExecutor* executor,
+                                                      GpuAsmOpts gpu_asm_opts) {
   absl::Span<const uint8_t> compiled_ptx = {};
   absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
       CompileGpuAsmOrGetCached(
