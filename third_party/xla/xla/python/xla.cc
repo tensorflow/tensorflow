@@ -540,11 +540,6 @@ NB_MODULE(xla_extension, m) {
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
-      .def("compile_options",
-           [](const PyLoadedExecutable& self) {
-             return xla::ValueOrThrow(
-                 self.pjrt_executable()->GetCompileOptions());
-           })
       .def("cost_analysis",
            [](const PyLoadedExecutable& self) {
              auto map = ValueOrThrow(self.GetCostAnalysis());
@@ -901,7 +896,6 @@ NB_MODULE(xla_extension, m) {
       .def("get_parameter_shardings", &ifrt::Executable::GetParameterShardings)
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&ifrt::Executable::GetCompiledMemoryStats))
-      .def("compile_options", &ifrt::Executable::GetCompileOptions)
       .def("serialize",
            [](const ifrt::Executable& exec) -> nb::bytes {
              std::string serialized = ValueOrThrow(exec.Serialize());

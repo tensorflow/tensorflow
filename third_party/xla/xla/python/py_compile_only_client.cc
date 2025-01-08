@@ -401,8 +401,7 @@ class CompileOnlyPyClient : public PyClient {
                         PjRtCompile(std::move(options), module.get(),
                                     *ifrt_client->topology().description()));
     TF_ASSIGN_OR_RETURN(auto ifrt_executable,
-                        ifrt::PjRtExecutable::Create(std::move(executable),
-                                                     std::move(xla_options)));
+                        ifrt::PjRtExecutable::Create(std::move(executable)));
     return std::shared_ptr<ifrt::Executable>(std::move(ifrt_executable));
   }
 

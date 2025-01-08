@@ -99,11 +99,6 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // differ for different implementations and platforms.
   virtual absl::StatusOr<AttributeMap> GetCostAnalysis() const = 0;
 
-  // Returns the compile options used to compile this executable.
-  // TODO(phawkins): consider removing this API and having the client remember
-  // the compile options used to create the executable.
-  virtual const CompileOptions* GetCompileOptions() const = 0;
-
   static char ID;  // NOLINT
 };
 
