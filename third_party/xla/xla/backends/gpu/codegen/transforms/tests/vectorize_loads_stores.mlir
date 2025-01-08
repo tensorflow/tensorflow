@@ -252,7 +252,7 @@ func.func @layout(%arg0: tensor<2x64xf32, dense<[0, 1]> : tensor<2xi64>>) -> (f3
 func.func @simple_write(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  %c4 = arith.constant 2 : index
+  %c4 = arith.constant 4 : index
   %cst = arith.constant 0.0 : f32
   %loop = scf.for %j = %c0 to %c4 step %c1 iter_args(%iter = %arg0) -> tensor<64xf32> {
     %inserted = tensor.insert %cst into %iter[%j] : tensor<64xf32>
@@ -264,6 +264,7 @@ func.func @simple_write(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 // CHECK-SAME:     (%[[ARG0:.*]]: tensor{{.*}})
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK:       %[[V:.*]] = scf.for
+// CHECK-SAME:      (vector<4xf32>)
 // CHECK-NEXT:    vector.insert
 // CHECK-NEXT:    scf.yield
 // CHECK:       %[[WRITTEN:.*]] = vector.transfer_write %[[V]], %[[ARG0]][%[[C0]]]
