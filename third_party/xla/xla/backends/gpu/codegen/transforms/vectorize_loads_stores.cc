@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/APInt.h"
@@ -40,7 +41,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
+#include "xla/codegen/ir/xla_ops.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -326,21 +329,45 @@ class VectorizeLoadsAndStoresPass
     : public impl::VectorizeLoadsAndStoresPassBase<
           VectorizeLoadsAndStoresPass> {
  public:
+  explicit VectorizeLoadsAndStoresPass(
+      const VectorizeLoadsAndStoresPassOptions& options)
+      : VectorizeLoadsAndStoresPassBase(options) {}
+
+  explicit VectorizeLoadsAndStoresPass(
+      const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
+
   void runOnOperation() override {
-    mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<VectorizeLoad, VectorizeStore>(&getContext());
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (!gpu_device_info_.empty()) {
+      se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description_ = se::DeviceDescription(device_info);
+    }
+    mlir::MLIRContext* mlir_context = &getContext();
+    mlir::RewritePatternSet patterns(mlir_context);
+    patterns.add<VectorizeLoad, VectorizeStore>(mlir_context);
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }
+
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateVectorizeLoadsAndStoresPass() {
-  return std::make_unique<VectorizeLoadsAndStoresPass>();
+std::unique_ptr<::mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+    const std::string& gpu_device_info) {
+  VectorizeLoadsAndStoresPassOptions options;
+  options.gpu_device_info_ = gpu_device_info;
+  return std::make_unique<VectorizeLoadsAndStoresPass>(options);
+}
+
+std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+    const se::DeviceDescription& device_description) {
+  return std::make_unique<VectorizeLoadsAndStoresPass>(device_description);
 }
 
 }  // namespace gpu

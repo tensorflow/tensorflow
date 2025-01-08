@@ -256,6 +256,11 @@ def VectorizeLoadsAndStoresPass :
     "mlir::vector::VectorDialect",
   ];
 
+  let options = [
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto.">,
+  ];
+
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
 }
 

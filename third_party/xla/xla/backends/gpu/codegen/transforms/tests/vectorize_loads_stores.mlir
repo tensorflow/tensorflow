@@ -1,5 +1,6 @@
 // RUN: emitters_opt -allow-unregistered-dialect %s -split-input-file \
-// RUN:  -xla-gpu-vectorize-loads-stores -cse -canonicalize | FileCheck %s
+// RUN: -xla-gpu-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 6}'" -cse -canonicalize \
+// RUN: | FileCheck %s
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
   "domain: d0 in [0, 63], s0 in [0, 1]">
