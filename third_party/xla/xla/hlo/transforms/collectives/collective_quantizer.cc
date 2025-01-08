@@ -193,7 +193,7 @@ std::optional<ConversionSubgraph> IsSupportedDequantization(
                        ScalarBroadcast(&subgraph.scale_bcast))))) {
     subgraph.unaries = {candidate_subgraph.begin() + 2,
                         candidate_subgraph.end()};
-  } else if (candidate_subgraph.size() > 0 &&
+  } else if (!candidate_subgraph.empty() &&
              Match(candidate_subgraph[0], m::Convert(&subgraph.convert))) {
     subgraph.unaries = {candidate_subgraph.begin() + 1,
                         candidate_subgraph.end()};
@@ -265,8 +265,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
                                     ScalarBroadcast(&subgraph.scale_bcast)),
                           ScalarBroadcast(m::Constant())))))) {
     subgraph.unaries = {ops.begin(), ops.end() - 3};
-  } else if (ops.size() > 0 &&
-             Match(ops.back(), m::Convert(&subgraph.convert))) {
+  } else if (!ops.empty() && Match(ops.back(), m::Convert(&subgraph.convert))) {
     subgraph.unaries = {ops.begin(), ops.end() - 1};
   } else {
     VLOG(5) << "Did not find type conversion or quantization pattern.";
