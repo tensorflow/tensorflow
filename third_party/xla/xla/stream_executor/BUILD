@@ -3,7 +3,6 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -34,80 +33,6 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
     ] + stream_executor_build_defs_bzl_deps(),
-)
-
-#===--------------------------------------------------------------------------------------------===#
-# StreamExecutor public API
-#===--------------------------------------------------------------------------------------------===#
-
-# StreamExecutor itself is a small abstrtaction layer on top of platform-specific API
-# implementations (e.g. see `stream_executor/cuda` folder for CUDA-specific details), and should
-# not contribute a lot to binary size or compilation time.
-
-# TODO(klucke) Remove this target once the final user of this target is changed to use "stream" instead.
-cc_library(
-    name = "stream_executor",
-    hdrs = [
-        "stream.h",
-    ],
-    deps = [
-        ":activate_context",
-        ":allocator_stats",
-        ":blas",
-        ":command_buffer",
-        ":data_type",
-        ":device_description",
-        ":device_description_proto_cc",
-        ":device_memory",
-        ":device_memory_allocator",
-        ":dnn",
-        ":event",
-        ":event_based_timer",
-        ":fft",
-        ":host_memory_allocation",  # build_cleaner: keep
-        ":host_or_device_scalar",
-        ":kernel",
-        ":kernel_spec",
-        ":launch_dim",
-        ":memory_allocation",
-        ":module_spec",
-        ":numeric_options",
-        ":platform",
-        ":semantic_version",
-        ":stream_common",
-        ":stream_executor_common",
-        ":stream_executor_h",
-        "//xla/tsl/framework:device_id",
-        "//xla/tsl/framework:device_type",
-        "//xla/tsl/lib/gtl:int_type",
-        "//xla/tsl/protobuf:dnn_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/meta:type_traits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
-    ] + if_static([
-        ":stream_executor_impl",
-    ]) + if_google([
-        "@com_google_protobuf//:wrappers_cc_proto",  # indirectly-used by dnn.h
-    ]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
