@@ -1554,6 +1554,19 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
+TEST_F(PassOrderTest,
+       ReducePrecisionIsRemovedAfterAllCallsToSimplifyFPConversions) {
+  // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:
+  // https://github.com/jax-ml/jax/pull/22244), we can only eliminate the
+  // no-op reduce-precision operations after the last call to
+  // `SimplifyFPConversions`. No-op reduce-precisions are removed within
+  // algebraic simplifier, if the option to remove them is set. In the compiler
+  // pipeline, this is done as a subpipeline, which should be after the last
+  // invocation of SimplifyFPConversions.
+  VerifyPassOrder("simplify-fp-conversions",
+                  "remove-no-op-reduce-precision-algebraic-simplifier");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
