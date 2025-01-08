@@ -15,7 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_EXPORT_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_EXPORT_H_
 
+#include <cstddef>
+#include <functional>
+#include <map>
+#include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "absl/log/log.h"
 #include "tensorflow/core/platform/status.h"
