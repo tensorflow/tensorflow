@@ -95,8 +95,8 @@ struct TfrtXlaRewritePass
 
     patterns.add<RewriteStatefulPartitionedCallToXlaLaunchOnCpu>(&getContext());
 
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
       return;
     }

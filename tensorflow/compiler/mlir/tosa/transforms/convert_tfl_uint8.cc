@@ -333,7 +333,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.add<ConvertUint8QConstOp>(&ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
   (void)convert_graph_uint8_tensor(ctx, func);
