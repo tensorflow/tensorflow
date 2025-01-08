@@ -394,13 +394,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return client()->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return client()->CreateDeviceToHostChannelHandle();
-  }
-
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented");
