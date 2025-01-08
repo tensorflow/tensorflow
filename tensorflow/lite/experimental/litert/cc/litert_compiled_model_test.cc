@@ -129,7 +129,7 @@ TEST(CompiledModelTest, RunWithInputOutputMap) {
   output_map["tfl.add"] = std::move(output_buffers[0]);
 
   // Execute model.
-  compiled_model.Run(signature_index, input_map, output_map);
+  compiled_model.Run(signature_key, input_map, output_map);
 
   // Check model output.
   {

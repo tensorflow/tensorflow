@@ -159,14 +159,15 @@ Expected<void> CompiledModel::Run(
 }
 
 Expected<void> CompiledModel::Run(
-    size_t signature_index,
+    absl::string_view signature_key,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map) {
-  auto signature = model_->GetSignature(signature_index);
-  if (!signature) {
-    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  auto signature_index = model_->GetSignatureIndex(signature_key);
+  if (!signature_index) {
+    return Unexpected(kLiteRtStatusErrorNotFound,
+                      "Failed to get signature_index");
   }
-  auto subgraph = model_->Subgraph(signature->Key());
+  auto subgraph = model_->Subgraph(signature_key);
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
@@ -194,7 +195,7 @@ Expected<void> CompiledModel::Run(
     }
     output_buffers_ptr[i] = it->second.Get();
   }
-  if (auto status = LiteRtRunCompiledModel(Get(), signature_index, num_inputs,
+  if (auto status = LiteRtRunCompiledModel(Get(), *signature_index, num_inputs,
                                            input_buffers_ptr.get(), num_outputs,
                                            output_buffers_ptr.get());
       status != kLiteRtStatusOk) {
