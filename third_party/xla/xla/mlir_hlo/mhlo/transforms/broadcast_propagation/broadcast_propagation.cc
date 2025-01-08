@@ -439,8 +439,8 @@ struct BroadcastPropagationPass
     GreedyRewriteConfig config;
     config.useTopDownTraversal = false;
 
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
+                                     config))) {
       return signalPassFailure();
     }
   }
