@@ -28,6 +28,7 @@ cc_library(
     hdrs = ["run_handler_util.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
     ],
 )
