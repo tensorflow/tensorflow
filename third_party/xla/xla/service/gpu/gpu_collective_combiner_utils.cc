@@ -25,14 +25,11 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
-using MemoryAwareScheduler = std::function<absl::StatusOr<HloSchedule>(
-    const HloModule*, int64_t, int64_t*)>;
-
 namespace {
 
 int64_t GetDefaultValue(HloOpcode opcode) {
@@ -52,13 +49,13 @@ int64_t GetDefaultValue(HloOpcode opcode) {
 
 int64_t ComputeSuggestedCombinerThreshold(
     const HloModule& module, const se::DeviceDescription& device_info,
-    MemoryAwareScheduler scheduler, HloOpcode collective_opcode,
-    int64_t pointer_size) {
+    HloOpcode collective_opcode, int64_t pointer_size) {
   int64_t base_limit = module.config().device_memory_size() != 0
                            ? module.config().device_memory_size()
                            : device_info.device_memory_size();
   int64_t peak_memory_bytes = -1;
-  auto mem_schedule = scheduler(&module, pointer_size, &peak_memory_bytes);
+  auto mem_schedule = ScheduleGpuModuleWithMemoryScheduler(
+      &module, pointer_size, &peak_memory_bytes);
 
   if (!mem_schedule.ok() || peak_memory_bytes == -1) {
     VLOG(1) << "Cannot schedule module: " << mem_schedule.status().message();

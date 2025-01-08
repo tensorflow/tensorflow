@@ -3071,13 +3071,13 @@ cc_library(
     hdrs = ["gpu_collective_combiner_utils.h"],
     deps = [
         ":backend_configs_cc",
+        ":gpu_hlo_schedule",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_utils",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -3088,7 +3088,6 @@ xla_cc_test(
     deps = [
         ":backend_configs_cc",
         ":gpu_collective_combiner_utils",
-        ":gpu_hlo_schedule",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -3096,16 +3095,12 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_pipeliner",
-        "//xla/service:collective_utils",
         "//xla/service:hlo_module_config",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -3116,7 +3111,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":gpu_collective_combiner_utils",
-        ":gpu_hlo_schedule",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/collectives:all_gather_combiner",
@@ -3155,7 +3149,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":gpu_collective_combiner_utils",
-        ":gpu_hlo_schedule",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_domain_map",
@@ -3192,7 +3185,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":gpu_collective_combiner_utils",
-        ":gpu_hlo_schedule",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/collectives:all_reduce_combiner",
