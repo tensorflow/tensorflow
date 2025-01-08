@@ -2758,6 +2758,14 @@ absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status SpmdPartitioningVisitor::HandleCollectivePermute(
+    HloInstruction* hlo) {
+  if (hlo->channel_id()) {
+    return HandleElementwise(hlo);
+  }
+  return DefaultAction(hlo);
+}
+
 absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
