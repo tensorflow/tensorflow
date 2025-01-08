@@ -12,6 +12,7 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
     "if_google",
+    "if_oss",
     "internal_visibility",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
@@ -1357,9 +1358,8 @@ tsl_pybind_extension(
     }) + select({
         # mpitrampoline does not build on windows
         "//xla/tsl:windows": [],
-        "//conditions:default": [
-            "//xla/pjrt/cpu:mpi_collectives",
-        ],
+        # we support MPI collectives only in OSS builds
+        "//conditions:default": if_oss(["//xla/pjrt/cpu:mpi_collectives"]),
     }),
 )
 

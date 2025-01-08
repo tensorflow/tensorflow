@@ -103,3 +103,47 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
     ],
 )
+
+# TODO(b/380457503): Restrict visibility to private.
+cc_library(
+    name = "mpi_communicator",
+    srcs = ["mpi_communicator.cc"],
+    hdrs = ["mpi_communicator.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+        # copybara:uncomment_begin(google-only)
+        # "-Ithird_party/openmpi/ompi/include",
+        # copybara:uncomment_end
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/service/cpu:collectives_interface",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@mpitrampoline",
+    ],
+)
