@@ -140,7 +140,7 @@ class ShapeUtil {
     return product;
   }
 
-  // Returns the number of elements are contained within the provided shape;
+  // Returns the number of elements contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
