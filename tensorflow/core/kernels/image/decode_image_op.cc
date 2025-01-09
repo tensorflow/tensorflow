@@ -21,6 +21,9 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/match.h"
