@@ -87,7 +87,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context, bool emit_kernel = true);
+    mlir::MLIRContext& mlir_context, bool is_xla_fusion,
+    bool emit_kernel = true);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);

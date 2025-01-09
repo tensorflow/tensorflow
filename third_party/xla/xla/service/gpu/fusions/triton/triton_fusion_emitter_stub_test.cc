@@ -44,13 +44,16 @@ TEST(TritonStub, CallStubApi) {
   LoadMlirDialectsForTriton(context);
   EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, nullptr, context).ok());
   EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, context).ok());
-  EXPECT_FALSE(
-      CompileTritonToLLVM({}, {}, {}, {}, {}, nullptr, context, {}).ok());
+  EXPECT_FALSE(CompileTritonToLLVM({}, {}, {}, {}, {}, nullptr, context,
+                                   /*is_xla_fusion=*/true, {})
+                   .ok());
 
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
+  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info,
+                                    /*is_xla_fusion=*/true)
+                   .ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
   EmitterLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
