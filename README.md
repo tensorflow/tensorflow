@@ -173,3 +173,68 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
+
+
+
+## How to Run the Script > tensorflow/python/keras/optimizer_v2/adam.py
+
+To use the custom NonFusedAdam optimizer in your own TensorFlow project, follow these steps:
+
+1. Install TensorFlow
+First, ensure TensorFlow is installed. You can install it using:
+```
+pip install tensorflow
+```
+Make sure you’re using TensorFlow 2.x, as the code is designed for that version.
+
+2. Save the Code
+Save the NonFusedAdam implementation in a Python file, such as `custom_adam.py`.
+
+3. Import the Optimizer
+In your script, import the `NonFusedAdam` optimizer like this:
+```
+from custom_adam import NonFusedAdam
+```
+
+5. Set Up and Compile a Model
+You can now create a neural network model and compile it using the `NonFusedAdam` optimizer. Here’s an example:
+```
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from custom_adam import NonFusedAdam
+
+# Create a simple model
+model = models.Sequential([
+    layers.Dense(64, activation='relu', input_shape=(784,)),
+    layers.Dense(10, activation='softmax')
+])
+
+# Use the custom optimizer
+optimizer = NonFusedAdam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-7)
+
+# Compile the model with the custom optimizer
+model.compile(optimizer=optimizer,
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Load and preprocess MNIST dataset
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train = x_train.reshape(-1, 784).astype('float32') / 255.0
+x_test = x_test.reshape(-1, 784).astype('float32') / 255.0
+
+# Train the model
+model.fit(x_train, y_train, epochs=5, batch_size=32)
+
+# Evaluate the model
+test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
+print(f"Test accuracy: {test_acc}")
+```
+5. Run the Code
+Finally, run the script containing the model and optimizer code:
+```
+python your_script.py
+```
+Where your_script.py is the Python file you created.
+
+
+
