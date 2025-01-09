@@ -756,8 +756,8 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         handle last partial batch.
       dataset: `tf.data.Dataset` that will be used as the input source. Either
         dataset or components field should be passed when constructing
-        DistributedDataset. Use this when constructing DistributedDataset from a
-        new `tf.data.Dataset`. Use components when constructing using
+        DistributedDataset. Use this when constructing DistributedDataset from
+        a new `tf.data.Dataset`. Use components when constructing using
         DistributedDatasetSpec.
       num_replicas_in_sync: Optional integer. If this is not None, the value is
         used to decide how to rebatch datasets into smaller batches so that the
