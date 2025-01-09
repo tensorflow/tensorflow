@@ -665,6 +665,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service/spmd:shard_barrier_partitioner",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
