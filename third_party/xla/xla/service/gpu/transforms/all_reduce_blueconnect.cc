@@ -353,7 +353,7 @@ absl::StatusOr<bool> AllReduceBlueConnect::Run(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kAllReduce) {
+      if (HloPredicateIsOp<HloOpcode::kAllReduce>(instruction)) {
         all_reduces.push_back(Cast<HloAllReduceInstruction>(instruction));
       }
     }

@@ -112,11 +112,16 @@ struct SpmdPartitionerOptions {
 
   // Partitioning method to prioritize for gather operations.
   PartitioningMethod gather_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
 
   // Partitioning method to prioritize for scatter operations.
   PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
+
+  // The minimum size to enable windowed einsum in total bytes.
+  // This combines sizes in bytes of both operands.
+  // When it's set, it will override threshold_for_windowed_einsum_mib.
+  std::optional<int64_t> total_bytes_windowed_einsum_threshold = std::nullopt;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -154,6 +159,18 @@ class SpmdBuilder : public HloComputation::Builder {
   }
 
  private:
+  // Sets the broadcast dims for the newly added/created hlo.
+  void SetBroadcastDimsForAddedHlo(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForReshape(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForTranspose(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForPad(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForSlice(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForElementwise(const HloInstruction& hlo);
   // Currently visiting instruction.
   HloInstruction* visiting_hlo_;
 
@@ -526,6 +543,13 @@ class PartitionedHlo {
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
   PartitionedHlo ReshardWithAllToAll(
+      const HloSharding& target,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_dims,
+      bool try_multiple_source_target_dims = true) const;
+
+  // Called by ReshardWithAllToAll if try_multiple_source_target_dims is true.
+  // Try to handle multiple source and target dims in a single AllToAll.
+  PartitionedHlo TryMultipleSourceTargetDims(
       const HloSharding& target,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_dims) const;
 

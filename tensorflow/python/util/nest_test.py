@@ -92,7 +92,7 @@ class MaskedTensor:
     )
 
   def __len__(self):
-    # Used by `nest.map_structure_up_to` and releatd functions to verify the
+    # Used by `nest.map_structure_up_to` and related functions to verify the
     # arity compatibility.
     return 1
 

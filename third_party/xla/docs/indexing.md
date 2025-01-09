@@ -96,34 +96,26 @@ struct Interval {
  int64_t upper;
 };
 
-// Dimension variable represents a dimension of a tensor or a GPU grid.
-struct DimVar {
-  Interval bounds;
-};
-
-// RangeVar variable represents a range of values, e.g. to compute a single
-// element of the reduction's result we need a range of values from the input
-// tensor.
-struct RangeVar {
-  Interval range;
-};
-
-// RTVar represents a runtime value, e.g. a dynamic offset in
-// HLO dynamic-update-slice op.
-struct RTVar {
-  Interval feasible_values;
-  const HloInstruction* hlo;
-  // This is a map from the iteration space of the corresponding indexing map to
-  // the iteration space of `hlo`. It shows what element of `hlo` we need to
-  // extract to get the runtime value for the RTVar.
-  mlir::AffineMap map;
-};
-
 class IndexingMap {
+   // Variable represents dimension, range or runtime variable.
+  struct Variable {
+    Interval bounds;
+    // Name of the variable is used for nicer printing.
+    std::string name = "";
+  };
+
   mlir::AffineMap affine_map_;
-  std::vector<DimVar> dim_vars_;
-  std::vector<RangeVar> range_vars_;
-  std::vector<RTVar> rt_vars_;
+
+  // DimVars represent dimensions of a tensor or of a GPU grid.
+  std::vector<Variable> dim_vars_;
+
+  // RangeVars represent ranges of values, e.g. to compute a single element of
+  // the reduction's result we need a range of values from the input tensor.
+  std::vector<Variable> range_vars_;
+
+  // RTVars represent runtime values, e.g. a dynamic offset in
+  // HLO dynamic-update-slice op.
+  std::vector<Variable> rt_vars_;
   llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
 };
 ```
@@ -136,14 +128,9 @@ there are some exceptions like
 
 `range_vars_` encode possible values that **r** parameters can take.
 
-`rt_vars_` store the associated hlo instructions together with their access
-patterns and the feasible values in runtime. For example, the offset is dynamic
-for a 1D `HloDynamicSliceInstruction`. The corresponding `RTVar` will have an
-`HloInstruction*` that produces a rank-0 tensor with the `(d0) -> ()` access
-pattern, because for every element of the output we extract the same element
-from the offset tensor to compute the index of the input. We can also assume
-that the offset of the slice is always between `0` and
- `tensor_size - slice_size - 1`.
+`rt_vars_` encode the feasible values in runtime. For example, the offset is
+dynamic for a 1D `HloDynamicSliceInstruction`. The corresponding `RTVar` will
+have the feasible values between `0` and `tensor_size - slice_size - 1`.
 
 Let's study-by-example to understand what's all of the above actually means.
 
@@ -164,9 +151,9 @@ The output to input maps:
 -   output -> input_i:
 
 ```
-(d0, d1) -> (d0, d1)
+(d0, d1) -> (d0, d1),
 domain:
-d0 in [0, 9]
+d0 in [0, 9],
 d1 in [0, 19]
 ```
 
@@ -175,9 +162,9 @@ The input to output maps
 -   input_i -> output:
 
 ```
-(d0, d1) -> (d0, d1)
+(d0, d1) -> (d0, d1),
 domain:
-d0 in [0, 9]
+d0 in [0, 9],
 d1 in [0, 19]
 ```
 
@@ -194,20 +181,20 @@ bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d1)
+(d0, d1, d2) -> (d1),
 domain:
-d0 in [0, 9]
-d1 in [0, 19]
+d0 in [0, 9],
+d1 in [0, 19],
 d2 in [0, 29]
 ```
 
 The input to output map
 
 ```
-(d0)[s0, s1] -> (s0, d0, s1)
+(d0)[s0, s1] -> (s0, d0, s1),
 domain:
-d0 in [0, 19]
-s0 in [0, 9]
+d0 in [0, 19],
+s0 in [0, 9],
 s1 in [0, 29]
 ```
 
@@ -223,6 +210,7 @@ compute indexing for.
 
 ### [DynamicSlice](https://openxla.org/xla/operation_semantics#dynamicslice)
 DynamicSlice is just like Slice, but the offsets are dynamic.
+
 ```c+
 src = s32[2,2,258] parameter(0)
 of1 = s32[] parameter(1)
@@ -232,24 +220,19 @@ ds = dynamic-slice(s32[2,2,258] src, s32[] of1, s32[] of2, s32[] of3), dynamic_s
 ```
 
 The output to input map for `src`:
+
 ```
-(d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)
+(d0, d1, d2){rt0, rt1, rt2} -> (d0 + rt0, d1 + rt1, d2 + rt2),
 domain:
-d0 in [0, 0]
-d1 in [0, 1]
-d2 in [0, 31]
-s0 in [0, 1]
-  hlo: of1 = s32[] parameter(1)
-  (d0, d1, d2)  -> ()
-s1 in [0, 0]
-  hlo: of2 = s32[] parameter(2)
-  (d0, d1, d2)  -> ()
-s2 in [0, 226]
-  hlo: of3 = s32[] parameter(3)
-  (d0, d1, d2) -> ()
+d0 in [0, 0],
+d1 in [0, 1],
+d2 in [0, 31],
+rt0 in [0, 1],
+rt1 in [0, 0],
+rt2 in [0, 226]
 ```
 
-Note that now we have **s** on the right side for the input-to-output mapping.
+Note that now we have **rt** on the right side for the input-to-output mapping.
 Those are the symbols that represent runtime values. For example, in this
 particular case for every element of the output with indices `d0, d1, d2` we
 access slice offsets `of1`, `of2` and `of3` to compute the index of the input.
@@ -257,15 +240,17 @@ The intervals for the runtime variables are derived by assuming that the entire
 slice stays in bounds.
 
 The output to input map for `of1`, `of2` and `of3`:
+
 ```
-(d0, d1, d2)  -> ()
+(d0, d1, d2)  -> (),
 domain:
-d0 in [0, 0]
-d1 in [0, 1]
+d0 in [0, 0],
+d1 in [0, 1],
 d2 in [0, 31]
 ```
 
 ### [DynamicUpdateSlice](https://openxla.org/xla/operation_semantics#dynamicupdateslice)
+
 ```c+
 src = s32[20,30] parameter(0)
 upd = s32[5,10] parameter(1)
@@ -278,25 +263,23 @@ dus = s32[20,30] dynamic-update-slice(
 The output to input map for `src` is trivial. It can be made more precise by
 restricting the domain to the not-updated indices, but right now indexing maps
 do not support inqequality constraints.
+
 ```
-(d0, d1) -> (d0, d1)
+(d0, d1) -> (d0, d1),
 domain:
-d0 in [0, 19]
+d0 in [0, 19],
 d1 in [0, 29]
 ```
 
 The output to input map for `upd`:
+
 ```
-(d0, d1)[s0, s1]  -> (d0 - s0, d1 - s1)
+(d0, d1){rt0, rt1}  -> (d0 - rt0, d1 - rt1),
 domain:
-d0 in [0, 19]
-d1 in [0, 29]
-s0 in [0, 15]
-  hlo: of1 = s32[] parameter(2)
-  (d0, d1)  -> ()
-s1 in [0, 20]
-  hlo: of2 = s32[] parameter(3)
-  (d0, d1)  -> ()
+d0 in [0, 19],
+d1 in [0, 29],
+rt0 in [0, 15],
+rt1 in [0, 20]
 ```
 
 Note that now we have **s** on the right side for the input-to-output mapping.
@@ -308,15 +291,17 @@ bounds.
 
 
 The output to input map for `of1` and `of2`:
+
 ```
-(d0, d1)  -> ()
+(d0, d1)  -> (),
 domain:
-d0 in [0, 19]
+d0 in [0, 19],
 d1 in [0, 29]
 ```
 
 ### [Gather](https://openxla.org/xla/operation_semantics#gather)
-Only the simplified gather is supported. See [gather_simplifier].(https://github.com/openxla/xla/blob/main/xla/service/gather_simplifier.h).
+
+Only the simplified gather is supported. See [gather_simplifier.h](https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_simplifier.h).
 
 ```c++
 operand = f32[33,76,70] parameter(0)
@@ -330,41 +315,34 @@ gather = f32[1806,7,8,4] gather(operand, indices),
 ```
 
 The output to input map for `operand`:
-```
 
-(d0, d1, d2, d3)[s0, s1] -> (d1 + s0, d2 + s1, d3)
+```
+(d0, d1, d2, d3){rt0, rt1} -> (d1 + rt0, d2 + rt1, d3),
 domain:
-d0 in [0, 1805]
-d1 in [0, 6]
-d2 in [0, 7]
-d3 in [0, 3]
-s0 in [0, 26]
-  hlo: indices = s32[1806,2]{1,0} parameter(1)
-  (d0, d1, d2, d3) -> (d0, 0)
-s1 in [0, 68]
-  hlo: indices = s32[1806,2]{1,0} parameter(1)
-  (d0, d1, d2, d3) -> (d0, 1)
+d0 in [0, 1805],
+d1 in [0, 6],
+d2 in [0, 7],
+d3 in [0, 3],
+rt0 in [0, 26],
+rt1 in [0, 68]
 ```
 
-Note that now we have **s** on the right side for the input-to-output mapping.
-Those are the symbols that represent runtime values. For example, in this
-particular case for every element of the output with indices `d0, d1, d2, d3` we
-extract elements (d0, 0) and (d0, 1) from `indices` tensor.
+Note that now we have **rt** symbols that represent runtime values.
 
 The output to input map for `indices`:
 
 ```
-  (d0, d1, d2, d3)[s0] -> (d0, s0)
-  domain:
-  d0 in [0, 1805]
-  d1 in [0, 6]
-  d2 in [0, 7]
-  d3 in [0, 3]
-  s0 in [0, 1]
+(d0, d1, d2, d3)[s0] -> (d0, s0),
+domain:
+d0 in [0, 1805],
+d1 in [0, 6],
+d2 in [0, 7],
+d3 in [0, 3],
+s0 in [0, 1]
 ```
+
 The range variable `s0` shows that we need the entire row (d0, *) of the
 `indices` tensor to compute an element of the output.
-
 
 ### [Transpose](https://openxla.org/xla/operation_semantics#transpose)
 
@@ -378,22 +356,22 @@ transpose = f32[3, 6, 128, 12288] transpose(p0), dimensions={0, 2, 3, 1}
 The output to input map:
 
 ```
-(d0, d1, d2, d3) -> (d0, d3, d1, d2)
+(d0, d1, d2, d3) -> (d0, d3, d1, d2),
 domain:
-d0 in [0, 2]
-d1 in [0, 5]
-d2 in [0, 127]
-d3 in [0, 12287]
+d0 in [0, 2],
+d1 in [0, 5],
+d2 in [0, 127],
+d3 in [0, 12287],
 ```
 
 The input to output map:
 
 ```
-(d0, d1, d2, d3) -> (d0, d2, d3, d1)
+(d0, d1, d2, d3) -> (d0, d2, d3, d1),
 domain:
-d0 in [0, 2]
-d1 in [0, 12287]
-d2 in [0, 5]
+d0 in [0, 2],
+d1 in [0, 12287],
+d2 in [0, 5],
 d3 in [0, 127]
 ```
 
@@ -410,22 +388,22 @@ reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
 The output to input map:
 
 ```
-(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
+(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3),
 domain:
-d0 in [0, 0]
-d1 in [0, 16]
-d2 in [0, 8]
+d0 in [0, 0],
+d1 in [0, 16],
+d2 in [0, 8],
 d3 in [0, 8]
 ```
 
 The input to output map:
 
 ```
-(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
+(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3),
 domain:
-d0 in [0, 0]
-d1 in [0, 16]
-d2 in [0, 8]
+d0 in [0, 0],
+d1 in [0, 16],
+d2 in [0, 8],
 d3 in [0, 8]
 ```
 
@@ -449,16 +427,16 @@ The output to input maps:
 -   output -> input_j:
 
 ```
-(d0)[s0] -> (s0, d0)
+(d0)[s0] -> (s0, d0),
 domain:
-d0 in [0, 9]
+d0 in [0, 9],
 s0 in [0, 255]
 ```
 
 -   output -> init_j:
 
 ```
-(d0) -> ()
+(d0) -> (),
 domain:
 d0 in [0, 9]
 ```
@@ -468,16 +446,16 @@ The input to output maps:
 -   input_i -> output_j:
 
 ```
-(d0, d1) -> (d1)
+(d0, d1) -> (d1),
 domain:
-d0 in [0, 255]
+d0 in [0, 255],
 d1 in [0, 9]
 ```
 
 -   init_i -> output_j:
 
 ```
-()[s0] -> (s0)
+()[s0] -> (s0),
 domain:
 s0 in [0, 9]
 ```
@@ -499,22 +477,22 @@ slice = f32[5, 3, 25] slice(f32[10, 20, 50] p0),
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)
+(d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2),
 domain:
-d0 in [0, 4]
-d1 in [0, 2]
+d0 in [0, 4],
+d1 in [0, 2],
 d2 in [0, 24]
 ```
 
 The input to output map:
 
 ```
-(d0, d1, d2) -> (d0 - 5, (d1 - 3) floordiv 7, d2 floordiv 2)
+(d0, d1, d2) -> (d0 - 5, (d1 - 3) floordiv 7, d2 floordiv 2),
 domain:
-d0 in [5, 9]
-d1 in [3, 17]
-d2 in [0, 48]
-(d1 - 3) mod 7 in [0, 0]
+d0 in [5, 9],
+d1 in [3, 17],
+d2 in [0, 48],
+(d1 - 3) mod 7 in [0, 0],
 d2 mod 2 in [0, 0]
 ```
 
@@ -534,7 +512,7 @@ reshape = f32[32] reshape(p0)
 The output to input map:
 
 ```
-(d0) -> (d0 floordiv 8, d0 mod 8)
+(d0) -> (d0 floordiv 8, d0 mod 8),
 domain:
 d0 in [0, 31]
 ```
@@ -542,9 +520,9 @@ d0 in [0, 31]
 The input to output map:
 
 ```
-(d0, d1) -> (d0 * 8 + d1)
+(d0, d1) -> (d0 * 8 + d1),
 domain:
-d0 in [0, 3]
+d0 in [0, 3],
 d1 in [0, 7]
 ```
 
@@ -560,16 +538,16 @@ reshape = f32[4, 8] reshape(p0)
 The output to input map:
 
 ```
-(d0, d1) -> (d0 * 8 + d1)
+(d0, d1) -> (d0 * 8 + d1),
 domain:
-d0 in [0, 3]
+d0 in [0, 3],
 d1 in [0, 7]
 ```
 
 The input to output map:
 
 ```
-(d0) -> (d0 floordiv 8, d0 mod 8)
+(d0) -> (d0 floordiv 8, d0 mod 8),
 domain:
 d0 in [0, 31]
 ```
@@ -594,19 +572,19 @@ This reshape can be represented as a composition of collapse shape of
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4)
+(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4),
 domain:
-d0 in [0, 1]
-d1 in [0, 3]
+d0 in [0, 1],
+d1 in [0, 3],
 d2 in [0, 3]
 ```
 
 The input to output map:
 
 ```
-(d0, d1) -> (d0 floordiv 2, d1 floordiv 4 + (d0 mod 2) * 2, d1 mod 4)
+(d0, d1) -> (d0 floordiv 2, d1 floordiv 4 + (d0 mod 2) * 2, d1 mod 4),
 domain:
-d0 in [0, 3]
+d0 in [0, 3],
 d1 in [0, 7]
 ```
 
@@ -625,9 +603,9 @@ and the second one expand the innermost dimension `tensor<32x12xf32>` into
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
+(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2),
 domain:
-d0 in [0, 31]
+d0 in [0, 31],
 d1 in [0, 2]
 d2 in [0, 3]
 ```
@@ -635,10 +613,10 @@ d2 in [0, 3]
 The input to output map:
 
 ```
-(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
+(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4),
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
+d0 in [0, 3],
+d1 in [0, 7],
 d2 in [0, 11]
 ```
 
@@ -666,30 +644,30 @@ The output to inputs maps:
 -   output -> input 1:
 
 ```
-(d0, d1, d2) -> (d0, d1, d2)
+(d0, d1, d2) -> (d0, d1, d2),
 domain:
-d0 in [0, 1]
-d1 in [0, 4]
+d0 in [0, 1],
+d1 in [0, 4],
 d2 in [0, 6]
 ```
 
 -   output -> input 2:
 
 ```
-(d0, d1, d2) -> (d0, d1 - 5, d2)
+(d0, d1, d2) -> (d0, d1 - 5, d2),
 domain:
-d0 in [0, 1]
-d1 in [5, 15]
+d0 in [0, 1],
+d1 in [5, 15],
 d2 in [0, 6]
 ```
 
 -   output -> input 3:
 
 ```
-(d0, d1, d2) -> (d0, d1 - 16, d2)
+(d0, d1, d2) -> (d0, d1 - 16, d2),
 domain:
-d0 in [0, 1]
-d1 in [16, 32]
+d0 in [0, 1],
+d1 in [16, 32],
 d2 in [0, 6]
 ```
 
@@ -699,30 +677,30 @@ The inputs to output maps:
 -   input 1 -> output:
 
 ```
-(d0, d1, d2) -> (d0, d1, d2)
+(d0, d1, d2) -> (d0, d1, d2),
 domain:
-d0 in [0, 1]
-d1 in [0, 4]
+d0 in [0, 1],
+d1 in [0, 4],
 d2 in [0, 6]
 ```
 
 -   input 2 -> output:
 
 ```
-(d0, d1, d2) -> (d0, d1 + 5, d2)
+(d0, d1, d2) -> (d0, d1 + 5, d2),
 domain:
-d0 in [0, 1]
-d1 in [0, 10]
+d0 in [0, 1],
+d1 in [0, 10],
 d2 in [0, 6]
 ```
 
 -   input 3 -> output:
 
 ```
-(d0, d1, d2) -> (d0, d1 + 16, d2)
+(d0, d1, d2) -> (d0, d1 + 16, d2),
 domain:
-d0 in [0, 1]
-d1 in [0, 16]
+d0 in [0, 1],
+d1 in [0, 16],
 d2 in [0, 6]
 ```
 
@@ -743,22 +721,22 @@ The output to inputs maps:
 -   output -> input_1:
 
 ```
-(d0, d1, d2)[s0] -> (d0, d1, s0)
+(d0, d1, d2)[s0] -> (d0, d1, s0),
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 63]
+d0 in [0, 3],
+d1 in [0, 127],
+d2 in [0, 63],
 s0 in [0, 255]
 ```
 
 -   output -> input_2:
 
 ```
-(d0, d1, d2)[s0] -> (d0, s0, d2)
+(d0, d1, d2)[s0] -> (d0, s0, d2),
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 63]
+d0 in [0, 3],
+d1 in [0, 127],
+d2 in [0, 63],
 s0 in [0, 255]
 ```
 
@@ -767,22 +745,22 @@ The inputs to output maps:
 -   input_1 -> output:
 
 ```
-(d0, d1, d2)[s0] -> (d0, d1, s0)
+(d0, d1, d2)[s0] -> (d0, d1, s0),
 domain:
-d0 in [0, 3]
-d1 in [0, 127]
-d2 in [0, 255]
+d0 in [0, 3],
+d1 in [0, 127],
+d2 in [0, 255],
 s0 in [0, 63]
 ```
 
 -   input_2 -> output:
 
 ```
-(d0, d1, d2)[s0] -> (d0, s0, d1)
+(d0, d1, d2)[s0] -> (d0, s0, d1),
 domain:
-d0 in [0, 3]
-d1 in [0, 255]
-d2 in [0, 63]
+d0 in [0, 3],
+d1 in [0, 255],
+d2 in [0, 63],
 s0 in [0, 127]
 ```
 
@@ -803,19 +781,19 @@ The output to input maps:
 -   output -> input:
 
 ```
-(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)
+(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4),
 domain:
-d0 in [1, 7]
-d1 in [4, 7]
+d0 in [1, 7],
+d1 in [4, 7],
 (d0 - 1) mod 2 in [0, 0]
 ```
 
 -   output -> init:
 
 ```
-(d0, d1) -> ()
+(d0, d1) -> (),
 domain:
-d0 in [0, 11]
+d0 in [0, 11],
 d1 in [0, 15]
 ```
 
@@ -839,19 +817,19 @@ The output to input maps:
 -   output -> input:
 
 ```
-(d0, d1)[s0] -> (d0, d1 + s0)
+(d0, d1)[s0] -> (d0, d1 + s0),
 domain:
-d0 in [0, 1023]
-d1 in [0, 2]
+d0 in [0, 1023],
+d1 in [0, 2],
 s0 in [0, 511]
 ```
 
 -   output -> init:
 
 ```
-(d0, d1) -> ()
+(d0, d1) -> (),
 domain:
-d0 in [0, 1023]
+d0 in [0, 1023],
 d1 in [0, 2]
 ```
 
@@ -907,25 +885,27 @@ The output-to-input indexing map for `p0` in this case is just
 The output-to-input indexing maps for `parameter 0` for softmax:
 
 ```
-(d0, d1, d2)[s0] -> (d0, d1, s0)
+(d0, d1, d2)[s0] -> (d0, d1, s0),
 domain:
-d0 in [0, 1]
-d1 in [0, 64]
-d2 in [0, 124]
+d0 in [0, 1],
+d1 in [0, 64],
+d2 in [0, 124],
 s0 in [0, 124]
 ```
 
 and
 
 ```
-(d0, d1, d2) -> (d0, d1, d2)
+(d0, d1, d2) -> (d0, d1, d2),
 domain:
-d0 in [0, 1]
-d1 in [0, 64]
+d0 in [0, 1],
+d1 in [0, 64],
 d2 in [0, 124]
 ```
 
 where `s0` refers to the inner-most dimension of the input.
+
+For more examples see [indexing_analysis_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_analysis_test.cc).
 
 ## Indexing Map Simplifier
 
@@ -973,4 +953,4 @@ for `d0 in [0, 5]` and `s0 in [1, 3]` are eliminated.
 map above.
 
 
-For more examples see [indexing_map_test.cc](https://github.com/openxla/xla/blob/main/xla/service/gpu/model/indexing_map_test.cc).
+For more examples see [indexing_map_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_map_test.cc).

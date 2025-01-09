@@ -14,8 +14,9 @@
 
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
@@ -40,7 +41,7 @@ class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
     Tensor size(DT_INT32, {});
     size.flat<int32>()(0) = nbins;
 
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"arr", arr}, {"size", size}, {"weights", weights}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();

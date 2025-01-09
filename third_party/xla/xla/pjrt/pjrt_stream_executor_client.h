@@ -43,8 +43,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/threadpool.h"
@@ -290,7 +292,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
-  PjRtRuntimeType runtime_type() const override { return kStreamExecutor; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -392,13 +393,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
-
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return client()->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return client()->CreateDeviceToHostChannelHandle();
-  }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
@@ -1013,6 +1007,13 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return fingerprint_;
   };
 
+  void SetInputHloSnapshotBits(HloModuleProto hlo_module,
+                               DebugOptions debug_options) {
+    input_hlo_snapshot_bits_ =
+        std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
+            HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
+  }
+
  protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;
@@ -1062,6 +1063,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       int partition, const RunId& run_id, const ExecuteOptions& options,
       bool fill_future, PjRtDevice* device = nullptr) const;
 
+  absl::Status VerifyCompatibleDevices() const;
+
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
@@ -1092,6 +1095,14 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
   std::string fingerprint_;
+
+  struct InputHloSnapshotBits {
+    HloModuleProto hlo_module;
+    DebugOptions debug_options;
+  };
+
+  // The unoptimized (unsharded) HloModule. Primarily used for debugging.
+  std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
 };
 
 }  // namespace xla

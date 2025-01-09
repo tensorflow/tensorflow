@@ -32,6 +32,9 @@ from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
+# The following imports are needed to make the model_runtime_info_pb2
+# and profiling_info_pb2 protos available via the litert PIP package.
+from tensorflow.lite.profiling.proto import model_runtime_info_pb2  # pylint: disable=unused-import
 from tensorflow.lite.profiling.proto import profiling_info_pb2  # pylint: disable=unused-import
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import lite_constants as constants
@@ -114,8 +117,8 @@ class Optimize(enum.Enum):
       The default optimization strategy that enables post-training quantization.
       The type of post-training quantization that will be used is dependent on
       the other converter options supplied. Refer to the
-      [documentation](/lite/performance/post_training_quantization) for further
-      information on the types available and how to use them.
+      [documentation](https://ai.google.dev/edge/litert/models/post_training_quantization)
+      for further information on the types available and how to use them.
 
   OPTIMIZE_FOR_SIZE
       Deprecated. Does the same as DEFAULT.
@@ -677,6 +680,7 @@ class TFLiteConverterBase:
     self._experimental_enable_composite_direct_lowering = False
     self.model_origin_framework = constants.UNSET
     self.canonicalizing_inf_as_min_max_float = True
+    self._experimental_strict_qdq = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -687,6 +691,7 @@ class TFLiteConverterBase:
     self.print_ir_after = None
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
+    self.serialize_debug_metadata = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -775,6 +780,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
+          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -792,7 +798,6 @@ class TFLiteConverterBase:
         "allow_custom_ops": self.allow_custom_ops,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul": self.unfold_batchmatmul,
@@ -833,6 +838,7 @@ class TFLiteConverterBase:
             self.experimental_stablehlo_quantizer_config
         ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "strict_qdq_mode": self._experimental_strict_qdq,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
         ),
@@ -843,6 +849,7 @@ class TFLiteConverterBase:
         "canonicalizing_inf_as_min_max_float": (
             self.canonicalizing_inf_as_min_max_float
         ),
+        "serialize_debug_metadata": self.serialize_debug_metadata,
     }
 
     if self.saved_model_dir:
@@ -2113,6 +2120,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
       to be converted by this converter. This is only allowed if the
       from_saved_model interface is used. (default True)
+    serialize_debug_metadata: Enables serializing debug metadata into the TFLite 
+      model. (default False)
 
   Example usage:
 

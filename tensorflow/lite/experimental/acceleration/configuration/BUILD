@@ -15,10 +15,11 @@
 
 # buildifier: disable=out-of-order-load
 
+# Placeholder: load proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
 
 # copybara:comment_begin(oss-only)
-load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -155,7 +156,7 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
         "@platforms//cpu:aarch64": [
@@ -208,7 +209,7 @@ cc_library(
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:macos": [

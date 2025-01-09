@@ -26,9 +26,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -198,8 +201,10 @@ TEST(FfiTest, WrongNumAttrs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of attributes: expected 1 but got 2");
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, BuiltinAttributes) {
@@ -218,7 +223,7 @@ TEST(FfiTest, BuiltinAttributes) {
   auto call_frame = builder.Build();
 
   auto fn = [&](bool pred, int8_t i8, int16_t i16, int32_t i32, int64_t i64,
-                float f32, double f64, std::string_view str) {
+                float f32, double f64, absl::string_view str) {
     EXPECT_EQ(pred, true);
     EXPECT_EQ(i8, 42);
     EXPECT_EQ(i16, 42);
@@ -238,7 +243,7 @@ TEST(FfiTest, BuiltinAttributes) {
                      .Attr<int64_t>("i64")
                      .Attr<float>("f32")
                      .Attr<double>("f64")
-                     .Attr<std::string_view>("str")
+                     .Attr<absl::string_view>("str")
                      .To(fn);
 
   auto status = Call(*handler, call_frame);
@@ -261,7 +266,7 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
   static constexpr char kStr[] = "str";
 
   auto fn = [&](Attr<int32_t, kI32> i32, Attr<float, kF32> f32,
-                Attr<std::string_view, kStr> str) {
+                Attr<absl::string_view, kStr> str) {
     EXPECT_EQ(*i32, 42);
     EXPECT_EQ(*f32, 42.0f);
     EXPECT_EQ(*str, "foo");
@@ -355,7 +360,7 @@ TEST(FfiTest, AttrsAsDictionary) {
 
     absl::StatusOr<int32_t> i32 = dict.get<int32_t>("i32");
     absl::StatusOr<float> f32 = dict.get<float>("f32");
-    absl::StatusOr<std::string_view> str = dict.get<std::string_view>("str");
+    absl::StatusOr<absl::string_view> str = dict.get<absl::string_view>("str");
 
     EXPECT_TRUE(i32.ok());
     EXPECT_TRUE(f32.ok());
@@ -379,10 +384,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::FlatAttributesMap dict0;
+  CallFrameBuilder::AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::FlatAttributesMap dict1;
+  CallFrameBuilder::AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -421,7 +426,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::FlatAttributesMap dict;
+  CallFrameBuilder::AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -433,7 +438,7 @@ TEST(FfiTest, StructAttr) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
+  auto fn = [&](absl::string_view str, PairOfI32AndF32 i32_and_f32) {
     EXPECT_EQ(str, "foo");
     EXPECT_EQ(i32_and_f32.i32, 42);
     EXPECT_EQ(i32_and_f32.f32, 42.0f);
@@ -441,7 +446,7 @@ TEST(FfiTest, StructAttr) {
   };
 
   auto handler = Ffi::Bind()
-                     .Attr<std::string_view>("str")
+                     .Attr<absl::string_view>("str")
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 
@@ -482,7 +487,7 @@ TEST(FfiTest, DecodingErrors) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [](int32_t, int64_t, float, std::string_view) {
+  auto fn = [](int32_t, int64_t, float, absl::string_view) {
     return absl::OkStatus();
   };
 
@@ -490,7 +495,7 @@ TEST(FfiTest, DecodingErrors) {
                      .Attr<int32_t>("not_i32_should_fail")
                      .Attr<int64_t>("not_i64_should_fail")
                      .Attr<float>("f32")
-                     .Attr<std::string_view>("not_str_should_fail")
+                     .Attr<absl::string_view>("not_str_should_fail")
                      .To(fn);
 
   auto status = Call(*handler, call_frame);
@@ -528,6 +533,10 @@ TEST(FfiTest, AnyBufferArgument) {
   auto fn = [&](AnyBuffer buffer) {
     EXPECT_EQ(buffer.element_type(), PrimitiveType::F32);
     EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.typed_data<float>(),
+              reinterpret_cast<float*>(storage.data()));
+    EXPECT_EQ(buffer.reinterpret_data<int32_t>(),
+              reinterpret_cast<int32_t*>(storage.data()));
     AnyBuffer::Dimensions dimensions = buffer.dimensions();
     EXPECT_EQ(dimensions.size(), 2);
     EXPECT_EQ(dimensions[0], 2);
@@ -1069,6 +1078,21 @@ TEST(FfiTest, MetadataTraits) {
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+}
+
+// Use opaque struct to define a platform stream type just like platform
+// stream for GPU backend (e.g. `CUstream_st`  and `cudaStream_t`).
+struct TestStreamSt;
+using TestStream = TestStreamSt*;
+
+template <>
+struct CtxBinding<TestStream> {
+  using Ctx = PlatformStream<TestStream>;
+};
+
+TEST(FfiTest, PlatformStream) {
+  // We only check that it compiles.
+  (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
 }
 
 //===----------------------------------------------------------------------===//

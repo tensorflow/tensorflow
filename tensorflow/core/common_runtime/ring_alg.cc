@@ -107,7 +107,7 @@ RingAlg::RingAlg(CollectiveType type, const string& name)
       num_subdivs_(-1) {}
 
 namespace {
-Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
+absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   // This function generates subdivision_offsets. Expect it to be empty when
   // called.
   DCHECK(col_params->instance.impl_details.subdiv_offsets.empty());
@@ -177,7 +177,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
 }
 }  // namespace
 
-Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
+absl::Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   const string& device_name =
       col_params->group.members[col_params->default_rank].device.name();
   // Each subdiv permutation is a ring formed by rotating each
@@ -255,7 +255,7 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   return absl::OkStatus();
 }
 
-Status RingAlg::InitializeCollectiveContext(
+absl::Status RingAlg::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
@@ -270,7 +270,7 @@ string RingAlg::TensorDebugString(const Tensor& tensor) {
       col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
   if (accelerator_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Status st =
+    absl::Status st =
         accelerator_device_info->default_context->CopyDeviceTensorToCPUSync(
             &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
     DCHECK(st.ok());
@@ -280,7 +280,7 @@ string RingAlg::TensorDebugString(const Tensor& tensor) {
   }
 }
 
-void RingAlg::StartAbort(const Status& s) {
+void RingAlg::StartAbort(const absl::Status& s) {
   // In abort mode we stop issuing additional ProvideBuf
   // and ConsumeBuf calls, but we need to wait for all of the
   // outstanding callbacks to be invoked before quitting.
@@ -312,7 +312,7 @@ void RingAlg::Finish(bool ok) {
     // Recover the output from the adaptor.
     ca_->ConsumeFinalValue(col_ctx_->output);
   }
-  Status s;
+  absl::Status s;
   {
     mutex_lock l(status_mu_);
     s = status_;

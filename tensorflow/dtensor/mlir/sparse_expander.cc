@@ -53,7 +53,7 @@ InitOnStartupMarker SparseExpanderRegistry::RegisterSparseExpansionFn(
   return {};
 }
 
-Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
+absl::Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
   // Only expand if there are any SparseTensor inputs.
   if (HasAnySparseInput(op)) {
     SparseExpanderBase* expander =

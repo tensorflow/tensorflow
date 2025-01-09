@@ -73,10 +73,12 @@ enum class DataType : uint8_t {
   C128 = XLA_FFI_DataType_C128,
   TOKEN = XLA_FFI_DataType_TOKEN,
   F8E5M2 = XLA_FFI_DataType_F8E5M2,
+  F8E4M3 = XLA_FFI_DataType_F8E4M3,
   F8E4M3FN = XLA_FFI_DataType_F8E4M3FN,
   F8E4M3B11FNUZ = XLA_FFI_DataType_F8E4M3B11FNUZ,
   F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
+  F8E3M4 = XLA_FFI_DataType_F8E3M4,
 };
 
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
@@ -98,10 +100,12 @@ inline constexpr DataType C64 = DataType::C64;
 inline constexpr DataType C128 = DataType::C128;
 inline constexpr DataType TOKEN = DataType::TOKEN;
 inline constexpr DataType F8E5M2 = DataType::F8E5M2;
+inline constexpr DataType F8E4M3 = DataType::F8E4M3;
 inline constexpr DataType F8E4M3FN = DataType::F8E4M3FN;
 inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
 inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
 inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
+inline constexpr DataType F8E3M4 = DataType::F8E3M4;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -117,10 +121,12 @@ constexpr size_t ByteWidth(DataType dtype) {
     case DataType::S8:
     case DataType::U8:
     case DataType::F8E5M2:
+    case DataType::F8E4M3:
     case DataType::F8E4M3FN:
     case DataType::F8E4M3B11FNUZ:
     case DataType::F8E5M2FNUZ:
     case DataType::F8E4M3FNUZ:
+    case DataType::F8E3M4:
       return 1;
     case DataType::S16:
     case DataType::U16:
@@ -470,6 +476,22 @@ class AnyBuffer {
   }
 
   void* untyped_data() const { return buf_->data; }
+
+  template <typename T>
+  T* typed_data() const {
+    assert(internal::NativeTypeToCApiDataType<T>() == buf_->dtype &&
+           "Template type must match the underlying buffer dtype");
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
+  template <typename T>
+  T* reinterpret_data() const {
+    assert(sizeof(T) == ByteWidth(element_type()) &&
+           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)) &&
+           "Requested type must have the same byte width and alignment as the "
+           "underlying buffer type");
+    return reinterpret_cast<T*>(buf_->data);
+  }
 
  private:
   const XLA_FFI_Buffer* buf_;
@@ -871,6 +893,22 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
 #undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
 
+template <>
+struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
+  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
+                                                void* attr,
+                                                DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_STRING << " but got " << type;
+    }
+
+    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
+    return std::string_view(span->ptr, span->len);
+  }
+};
+
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>
 struct Pointer {};
@@ -1236,6 +1274,23 @@ class ThreadPool {
     }
   }
 
+  int64_t num_threads() const {
+    int64_t num_threads = 0;
+
+    XLA_FFI_ThreadPool_NumThreads_Args args;
+    args.struct_size = XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx_;
+    args.num_threads = &num_threads;
+
+    // Silently ignore errors if we can't get the number of threads.
+    if (XLA_FFI_Error* error = api_->XLA_FFI_ThreadPool_NumThreads(&args)) {
+      internal::DestroyError(api_, error);
+    }
+
+    return num_threads;
+  }
+
  private:
   friend struct CtxDecoding<ThreadPool>;
 
@@ -1271,30 +1326,14 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 // Type Registration
 //===----------------------------------------------------------------------===//
 
-namespace internal {
-
-inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
-                                   std::string_view name,
-                                   XLA_FFI_TypeId* type_id) {
-  XLA_FFI_TypeId_Register_Args args;
-  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
-  args.type_id = type_id;
-  return api->XLA_FFI_TypeId_Register(&args);
-}
-
-}  // namespace internal
-
 #define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
   XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)                 \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                 \
-      xla_ffi_type_##N##_registered_ = [] {                            \
-        return ::xla::ffi::internal::RegisterType(API, NAME, TYPE_ID); \
-      }()
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N) \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
+      xla_ffi_type_##N##_registered_ =                 \
+          [] { return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID); }()
 
 //===----------------------------------------------------------------------===//
 // UserData

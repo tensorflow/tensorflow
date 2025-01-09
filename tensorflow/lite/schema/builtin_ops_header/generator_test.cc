@@ -15,7 +15,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/schema/builtin_ops_header/generator.h"
-#include <fstream>
+
 #include <gtest/gtest.h>
 
 namespace {

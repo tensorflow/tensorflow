@@ -195,6 +195,7 @@ TfLiteRegistration* Register_STABLEHLO_REDUCE_WINDOW();
 TfLiteRegistration* Register_STABLEHLO_MAXIMUM();
 TfLiteRegistration* Register_STABLEHLO_MINIMUM();
 TfLiteRegistration* Register_STABLEHLO_PAD();
+TfLiteRegistration* Register_STABLEHLO_COMPOSITE();
 
 namespace {
 
@@ -560,6 +561,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_STABLEHLO_REDUCE_WINDOW());
   AddBuiltin(BuiltinOperator_STABLEHLO_GATHER, Register_STABLEHLO_GATHER());
   AddBuiltin(BuiltinOperator_STABLEHLO_PAD, Register_STABLEHLO_PAD());
+  AddBuiltin(BuiltinOperator_STABLEHLO_COMPOSITE,
+             Register_STABLEHLO_COMPOSITE());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

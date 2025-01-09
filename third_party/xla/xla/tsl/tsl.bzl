@@ -21,10 +21,9 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",
@@ -32,6 +31,10 @@ load(
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
+)
+load(
+    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "use_pywrap_rules",
 )
 
 # Internally this loads a macro, but in OSS this is a function
@@ -88,8 +91,7 @@ def if_cuda_or_rocm(if_true, if_false = []):
 
       """
     return select({
-        "@local_config_cuda//cuda:using_nvcc": if_true,
-        "@local_config_cuda//cuda:using_clang": if_true,
+        clean_dep("//xla/tsl:is_cuda_enabled"): if_true,
         "@local_config_rocm//rocm:using_hipcc": if_true,
         "//conditions:default": if_false,
     })
@@ -121,7 +123,10 @@ def internal_visibility(internal_targets):
     return if_google(internal_targets, ["//visibility:public"])
 
 # TODO(jakeharmon): Use this to replace if_static
+# TODO(b/356020232): remove completely after migration is done
 def if_tsl_link_protobuf(if_true, if_false = []):
+    if use_pywrap_rules():
+        return if_true
     return select({
         "//conditions:default": if_true,
         clean_dep("//xla/tsl:tsl_protobuf_header_only"): if_false,
@@ -164,7 +169,7 @@ def if_not_fuchsia(a):
 
 def if_nvcc(a):
     return select({
-        "@local_config_cuda//cuda:using_nvcc": a,
+        clean_dep("//xla/tsl:is_cuda_nvcc"): a,
         "//conditions:default": [],
     })
 
@@ -274,6 +279,8 @@ def get_win_copts(is_external = False):
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
         # copybara:comment_end
 
+# TODO(b/356020232): cleanup non-use_pywrap_rules part once migration is done
+# buildozer: disable=function-docstring-args
 def tsl_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
@@ -288,6 +295,16 @@ def tsl_copts(
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
+
+    framework_deps = []
+    if use_pywrap_rules():
+        pass
+    else:
+        framework_deps = select({
+            clean_dep("//xla/tsl:framework_shared_object"): [],
+            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
+        })
+
     return (
         if_not_windows([
             "-DEIGEN_AVOID_STL_ARRAY",
@@ -316,10 +333,7 @@ def tsl_copts(
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
-        select({
-            clean_dep("//xla/tsl:framework_shared_object"): [],
-            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
-        }) +
+        framework_deps +
         select({
             clean_dep("//xla/tsl:android"): android_copts,
             clean_dep("//xla/tsl:emscripten"): [],
@@ -367,7 +381,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    deps = deps + if_cuda_or_rocm(cuda_deps)
+    deps = deps + if_cuda(cuda_deps)
     if "default_copts" in kwargs:
         copts = kwargs["default_copts"] + copts
         kwargs.pop("default_copts", None)
@@ -375,7 +389,8 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         deps = deps + if_cuda([
             clean_dep("//xla/tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm_is_configured([
+        ]) + if_rocm([
+            "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
@@ -498,6 +513,24 @@ def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.filegroup(name = name, srcs = [":" + name + "_gather"], **kwargs)
 
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
+    if use_pywrap_rules():
+        cc_library(
+            name = name,
+            deps = deps + extra_deps,
+            compatible_with = compatible_with,
+            **kwargs
+        )
+    else:
+        custom_op_cc_header_only_library(
+            name,
+            deps,
+            includes,
+            extra_deps,
+            compatible_with,
+            **kwargs
+        )
+
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
 #
@@ -511,7 +544,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
 #   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
-def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
+def custom_op_cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
     _transitive_hdrs(
         name = name + "_gather",
         deps = deps,
@@ -802,3 +835,6 @@ def tsl_extra_config_settings():
 
 def tsl_extra_config_settings_targets():
     return []
+
+# TODO(b/356020232): remove after migration is done
+tsl_pybind_extension = tsl_pybind_extension_opensource

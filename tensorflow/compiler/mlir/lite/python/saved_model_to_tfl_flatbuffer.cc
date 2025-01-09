@@ -56,7 +56,7 @@ namespace tensorflow {
 
 using tensorflow::quantization::PyFunctionLibrary;
 
-Status HandleInputOutputArraysWithModule(
+absl::Status HandleInputOutputArraysWithModule(
     const tflite::ModelFlags& model_flags,
     mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::func::FuncOp entry_function = nullptr;
@@ -132,7 +132,7 @@ Status HandleInputOutputArraysWithModule(
   return absl::OkStatus();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
+absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
@@ -217,6 +217,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.model_origin_framework = converter_flags.model_origin_framework();
   pass_config.canonicalizing_inf_as_min_max_float =
       converter_flags.canonicalizing_inf_as_min_max_float();
+
+  pass_config.quant_specs.strict_qdq_mode = converter_flags.strict_qdq_mode();
 
   if (converter_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =

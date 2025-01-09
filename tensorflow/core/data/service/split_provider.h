@@ -44,12 +44,12 @@ class DataServiceSplitProvider : public SplitProvider {
         split_provider_index_(split_provider_index),
         timeout_ms_(timeout_ms) {}
 
-  Status GetNext(Tensor* split, bool* end_of_splits) override;
-  Status Reset() override;
-  Status Save(std::function<std::string(std::string)> full_name,
-              IteratorStateWriter* writer) override;
-  Status Restore(std::function<std::string(std::string)> full_name,
-                 IteratorStateReader* reader) override;
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override;
+  absl::Status Reset() override;
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer) override;
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader) override;
 
  private:
   const std::string address_;
@@ -64,7 +64,7 @@ class DataServiceSplitProvider : public SplitProvider {
 };
 
 // Makes split providers for `dataset_def` and stores them in `split_providers`.
-Status CreateSplitProviders(
+absl::Status CreateSplitProviders(
     const DatasetDef& dataset_def,
     std::vector<std::unique_ptr<SplitProvider>>& split_providers);
 

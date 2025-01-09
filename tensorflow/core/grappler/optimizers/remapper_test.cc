@@ -3002,7 +3002,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-    Status status;
+    absl::Status status;
     utils::MutableGraphView graph_view(&output, &status);
 
     const int num_nodes = output.node_size();

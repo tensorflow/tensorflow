@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_BOUND_LOOP_OPTIMIZER_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_BOUND_LOOP_OPTIMIZER_H_
 
-#include <algorithm>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -26,16 +25,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
@@ -49,8 +49,14 @@ namespace xla {
 namespace memory_space_assignment {
 
 // Pair of chunks for even and odd loop iterations.
-using EvenOddChunkPair = std::pair<std::optional<HeapSimulator::Chunk>,
-                                   std::optional<HeapSimulator::Chunk>>;
+struct EvenOddChunkPair {
+  std::optional<HeapSimulator::Chunk> even_chunk;
+  std::optional<HeapSimulator::Chunk> odd_chunk;
+
+  bool HasValues() const {
+    return even_chunk.has_value() && odd_chunk.has_value();
+  }
+};
 
 // LoopOptimizerBestFitHeap extends GlobalDecreasingSizeBestFitHeap to track
 // allocated buffers and their live intervals for the MemoryBoundLoopOptimizer.
@@ -134,10 +140,10 @@ class LoopOptimizerBestFitHeap
 
  private:
   // REQUIRES:
-  // - begin_idx_in_loop <= end_idx_in_loop
-  // - begin_idx_in_loop is within [-loop_size loop_size)
-  // - end_idx_in_loop is within [0, 2 * loop_size)
-  // - end_idx_in_loop - begin_idx_in_loop + 1 <= 2 * loop_size (allocation
+  // * begin_idx_in_loop <= end_idx_in_loop
+  // * begin_idx_in_loop is within [-loop_size loop_size)
+  // * end_idx_in_loop is within [0, 2 * loop_size)
+  // * end_idx_in_loop - begin_idx_in_loop + 1 <= 2 * loop_size (allocation
   //   colocated in even (or odd) iterations cannot span more than 2 loop
   //   iterations)
   void CheckAllocationIntervalValid(int64_t begin_idx_in_loop,
@@ -254,6 +260,7 @@ class MemoryBoundLoopOptimizer {
   // We represent each tensor used in the current iteration as a LoopValue,
   // wrapping the relevant information such as its HLO value, indices and
   // pointers to its use and position sites in different iterations.
+  // TODO(b/364621066): Make LoopValue a class.
   struct LoopValue {
     // An enum that encodes the allocation type that is suitable for this
     // LoopValue. See the comment above on what each of these mean.
@@ -272,6 +279,12 @@ class MemoryBoundLoopOptimizer {
     // Returns true if memory-bound loop optimizer supports allocating this type
     // of a loop value.
     bool IsAllocationTypeSupported() const;
+
+    // Sets the data members `chunks`, `alternate_memory_begin_idx_in_loop`, and
+    // `alternate_memory_end_idx_in_loop`.
+    void SetChunkPairAndInterval(EvenOddChunkPair chunk_pair,
+                                 int64_t begin_idx_in_loop,
+                                 int64_t end_idx_in_loop);
 
     // The HloValues that correspond to this LoopValue.
     std::vector<const HloValue*> hlo_values;
@@ -299,17 +312,25 @@ class MemoryBoundLoopOptimizer {
     float savings_per_byte;
     // The optimized AllocationSequence.
     AllocationSequence allocations;
+    // Chunks for even and odd iterations. If a loop value is double buffered
+    // then it must have different chunks for even and odd iterations.
+    EvenOddChunkPair chunks;
+    // Begin index of loop value in alternate memory.
+    // REQUIRES:
+    // * (-loop_size) <= alternate_memory_begin_idx_in_loop
+    // * alternate_memory_begin_idx_in_loop < loop_size
+    std::optional<int64_t> alternate_memory_begin_idx_in_loop = std::nullopt;
+    // End index of loop value in alternate memory.
+    // REQUIRES:
+    // * 0 <= alternate_memory_end_idx_in_loop
+    // * alternate_memory_end_idx_in_loop < 2*loop_size
+    std::optional<int64_t> alternate_memory_end_idx_in_loop = std::nullopt;
   };
 
   // Factory method to create and initialize a MemoryBoundLoopOptimizer.
   static absl::StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>> Create(
-      int loop_start, int loop_end, uint64_t alternate_memory_size,
-      const MemoryBoundLoopOptimizerOptions& options,
-      const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis_,
-      const CostAnalysis& cost_analysis,
-      const BufferValue::SizeFunction& size_function,
-      const ReservedScopedMemoryFunction& reserved_scoped_memory_fn);
+      int loop_start, int loop_end, const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Optimize the loop. Initialize must be called first.
   void Optimize();
@@ -324,13 +345,16 @@ class MemoryBoundLoopOptimizer {
 
   // Return the remaining memory vector for each point in time in the loop using
   // the allocation decisions so far.
-  const std::vector<int64_t>& remaining_memory() const {
-    return remaining_memory_;
+  std::vector<int64_t> RemainingMemory() const {
+    return heap_.RemainingMemoryByTime();
   }
 
   int64_t MaxAlternateMemoryUsed() const {
-    return alternate_memory_size_ - *std::min_element(remaining_memory_.begin(),
-                                                      remaining_memory_.end());
+    return heap_.LastMemoryOffsetOccupied();
+  }
+
+  std::string MemoryUsageToAsciiArt() const {
+    return heap_.MemoryUsageToAsciiArt();
   }
 
   // The loop start, end, and size accessors.
@@ -344,15 +368,12 @@ class MemoryBoundLoopOptimizer {
     // The values that are requested to be prefetched.
     absl::Span<LoopValue*> values;
 
-    // A list of indices into values array, sorted by the start time of the
-    // first use.
+    // A list of indices into values array, sorted by the (descending) start
+    // time of the first use.
     std::vector<int> value_indices;
 
     // Default memory remaining bandwidths assuming all prefetches succeeded.
     std::vector<float> bandwidth_idle_times;
-
-    // Additional memory used while performing prefetching.
-    std::vector<int64_t> additional_memory_used;
   };
 
   MemoryBoundLoopOptimizer(
@@ -362,7 +383,8 @@ class MemoryBoundLoopOptimizer {
       const HloAliasAnalysis& alias_analysis_,
       const CostAnalysis& cost_analysis,
       const BufferValue::SizeFunction& size_function,
-      const ReservedScopedMemoryFunction& reserved_scoped_memory_fn);
+      const ReservedScopedMemoryFunction& reserved_scoped_memory_fn,
+      int64_t alignment_in_bytes);
 
   // Initializes the data structures used by the optimizer.
   absl::Status Initialize();
@@ -383,9 +405,6 @@ class MemoryBoundLoopOptimizer {
 
   // Allocate LoopValues by dispatching to the correct Allocate method.
   void AllocateLoopValues();
-
-  // Allocate and reserve memory between the given indices.
-  bool AllocateBetween(int64_t begin_idx, int64_t end_idx, int64_t size);
 
   // Perform allocation type kTemporary. Return true if successful.
   bool AllocateTemporary(LoopValue& value);
@@ -440,13 +459,22 @@ class MemoryBoundLoopOptimizer {
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instructions_in_next_iteration_;
   std::vector<LoopValue> loop_values_;
-  std::vector<int64_t> remaining_memory_;
   absl::flat_hash_map<const HloInstruction*,
                       std::vector<std::pair<int64_t, ShapeIndex>>>
       uses_in_alternate_mem_;
   absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
       positions_in_alternate_mem_;
   const ReservedScopedMemoryFunction& reserved_scoped_memory_fn_;
+
+  // The heap used to allocate loop values. Since some loop values can be double
+  // buffered, between successive iterations, they must have different chunks
+  // for even and odd iterations. We model 4 iterations of the loop to allocate
+  // the loop values to alternate memory so we can model the buffers that cross
+  // one or two loop boundaries. The allocations in the 2nd and 3rd iterations
+  // represent the actual memory view. The 0th and 1st iteration serve to
+  // account for allocations, whose buffers cross one or two loop boundaries,
+  // into the 2nd and 3rd iterations.
+  LoopOptimizerBestFitHeap heap_;
 };
 
 }  // namespace memory_space_assignment

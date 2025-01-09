@@ -17,7 +17,6 @@ limitations under the License.
 // the replica id attribute.
 
 #include <memory>
-#include <utility>
 
 #include "llvm/Support/Casting.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project

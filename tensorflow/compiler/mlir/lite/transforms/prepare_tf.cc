@@ -45,7 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -64,7 +64,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -1613,6 +1614,83 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
   bool use_fake_quant_num_bits_;
 };
 
+// Quantizes Mean ops where the inputs are quantized with fake quant but the
+// result is not explicitly quantized. Propagating the quant parameters from the
+// input to the output allow proper quantization later.
+// Note that this pass is intended to work around a shortcoming of TF QAT in
+// which some models do not have FQ ops generated for the output of this op.
+class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
+ public:
+  QuantizeMeanResult(MLIRContext *context, bool use_fake_quant_num_bits)
+      : OpRewritePattern<TF::MeanOp>(context),
+        use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
+
+  LogicalResult matchAndRewrite(TF::MeanOp mean,
+                                PatternRewriter &rewriter) const override {
+    // Skip ops where the output is already quantized.
+    for (auto *user : mean->getUsers()) {
+      if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
+          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
+        return failure();
+      }
+    }
+
+    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
+    // had qdq ops generated so we'll need to follow up the chain to get to the
+    // fake quants.
+    Value operand_value = mean.getInput();
+    auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
+        operand_value.getDefiningOp());
+
+    if (!dq) {
+      return failure();
+    }
+
+    auto q =
+        mlir::dyn_cast_or_null<TFL::QuantizeOp>(dq.getInput().getDefiningOp());
+
+    if (!q) {
+      return failure();
+    }
+
+    auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
+        q.getInput().getDefiningOp());
+
+    if (!fq) {
+      return failure();
+    }
+
+    Value mean_result = mean.getResult();
+    llvm::SmallVector<OpOperand *> uses;
+    for (OpOperand &use : mean_result.getUses()) {
+      uses.push_back(&use);
+    }
+
+    llvm::SmallVector<Value, 4> inputs{mean_result, fq.getMin(), fq.getMax()};
+
+    rewriter.setInsertionPointAfter(mean.getOperation());
+    auto new_fake_quant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
+        mean.getLoc(), mean->getResultTypes(), inputs, fq->getAttrs());
+
+    for (OpOperand *use : uses) {
+      use->assign(new_fake_quant_op);
+    }
+
+    // Rather than directly generating qdq ops ourselves we leverage existing
+    // logic to do it for us.
+    (void)InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
+        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>(
+        use_fake_quant_num_bits_)
+        .matchAndRewrite(new_fake_quant_op, rewriter);
+
+    return success();
+  }
+
+ private:
+  bool use_fake_quant_num_bits_;
+};
+
 void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
@@ -1687,6 +1765,7 @@ void PrepareTFPass::runOnOperation() {
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 
   phase_3_patterns.add<QuantizeConcatResult>(ctx, use_fake_quant_num_bits_);
+  phase_3_patterns.add<QuantizeMeanResult>(ctx, use_fake_quant_num_bits_);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_3_patterns));
 }
 

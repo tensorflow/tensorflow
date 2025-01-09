@@ -68,16 +68,14 @@ inline Options Defaults() {
   Options o;
   return o;
 }
-tensorflow::Status GetContents(const std::string& filename,
-                               std::string* contents, const Options& options);
-tensorflow::Status SetContents(const std::string& filename,
-                               const std::string& contents,
-                               const Options& options);
+absl::Status GetContents(const std::string& filename, std::string* contents,
+                         const Options& options);
+absl::Status SetContents(const std::string& filename,
+                         const std::string& contents, const Options& options);
 std::string JoinPath(const std::string& a, const std::string& b);
-tensorflow::Status Writable(const std::string& filename);
-tensorflow::Status Readable(const std::string& filename,
-                            const Options& options);
-tensorflow::Status Exists(const std::string& filename, const Options& options);
+absl::Status Writable(const std::string& filename);
+absl::Status Readable(const std::string& filename, const Options& options);
+absl::Status Exists(const std::string& filename, const Options& options);
 }  // namespace file
 
 // Copy `src` string to `dest`. User must ensure `dest` has enough space.

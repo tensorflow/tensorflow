@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize | FileCheck %s
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
 fusion {
@@ -12,4 +12,4 @@ ENTRY main {
   %p0 = f64[5] parameter(0)
   ROOT %fusion = f64[4]{0} fusion(%c, %p0), kind=kInput, calls=fusion
 }
-// CHECK: dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64 : i32>>
+// CHECK: dlti.dl_spec = #dlti.dl_spec<index = 64 : i32>

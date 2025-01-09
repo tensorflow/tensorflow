@@ -398,7 +398,7 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   std::vector<int> perm;
   perm.reserve(rank + expand_tile_sizes.size());
   for (int64_t dim = 0; dim < rank; dim++) {
-    perm.emplace_back(dim);
+    perm.push_back(dim);
     if (expand_tile_dims_indices[dim] > -1) {
       perm.emplace_back(expand_tile_dims_indices[dim] + rank);
     }
@@ -530,7 +530,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
     // If src sharding at this dimension is not partitioned, simply pad to
     // the desired shape.
     if (src_shard_count == 1) {
-      expand_dims_without_halo_exchange.emplace_back(dim);
+      expand_dims_without_halo_exchange.push_back(dim);
       continue;
     }
 
@@ -956,8 +956,7 @@ HloInstruction* ExchangeHaloCompact(
         (i + 1) * input_shard_size + right_halo_size_function.Calculate(i);
     max_window_size = std::max(max_window_size, limit - start);
     while (next_start < limit) {
-      halos[i].emplace_back();
-      Halo& halo = halos[i].back();
+      Halo& halo = halos[i].emplace_back();
       halo.my_index = i;
       halo.halo_offset = next_start - start;
       halo.start = next_start % input_shard_size;
@@ -1038,11 +1037,12 @@ HloInstruction* ExchangeHaloCompact(
   // Sort halos that are from the same src according to halo_offset, so that
   // they are more likely to have similar characteristics.
   for (int64_t i = 0; i < src_to_dst.size(); ++i) {
-    absl::c_sort(src_to_dst[i], [&](const std::pair<int64_t, int64_t>& a,
-                                    const std::pair<int64_t, int64_t>& b) {
-      return halos[a.first][a.second].halo_offset <
-             halos[b.first][b.second].halo_offset;
-    });
+    absl::c_stable_sort(src_to_dst[i],
+                        [&](const std::pair<int64_t, int64_t>& a,
+                            const std::pair<int64_t, int64_t>& b) {
+                          return halos[a.first][a.second].halo_offset <
+                                 halos[b.first][b.second].halo_offset;
+                        });
   }
 
   // Build collective permutes with distinct src/dst values.
@@ -2141,9 +2141,9 @@ HloSharding CreateMatchingShardingOnDims(
 std::optional<GatherScatterParallelDimSharding>
 GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
-  const auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
-  const auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
+    const hlo_sharding_util::GatherScatterDims& parallel_dims) {
+  const auto& indices_parallel_dims = parallel_dims.indices_dims;
+  const auto& operand_parallel_dims = parallel_dims.operand_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
     return std::nullopt;
   }

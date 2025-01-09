@@ -52,7 +52,8 @@ class PriorityQueue
                 const std::vector<TensorShape>& component_shapes,
                 const string& name);
 
-  Status Initialize() override;  // Must be called before any other method.
+  absl::Status Initialize()
+      override;  // Must be called before any other method.
 
   // Implementations of QueueInterface methods --------------------------------
 
@@ -64,9 +65,9 @@ class PriorityQueue
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       bool allow_small_batch,
                       CallbackWithTuple callback) override;
-  Status MatchesNodeDef(const NodeDef& node_def) override;
-  Status MatchesPriorityNodeDefTypes(const NodeDef& node_def) const;
-  Status MatchesPriorityNodeDefShapes(const NodeDef& node_def) const;
+  absl::Status MatchesNodeDef(const NodeDef& node_def) override;
+  absl::Status MatchesPriorityNodeDefTypes(const NodeDef& node_def) const;
+  absl::Status MatchesPriorityNodeDefShapes(const NodeDef& node_def) const;
 
   int32 size() const override {
     mutex_lock lock(mu_);
@@ -80,10 +81,10 @@ class PriorityQueue
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  static Status GetElementComponentFromBatch(const Tuple& tuple, int index,
-                                             int component,
-                                             OpKernelContext* ctx,
-                                             Tensor* out_element);
+  static absl::Status GetElementComponentFromBatch(const Tuple& tuple,
+                                                   int index, int component,
+                                                   OpKernelContext* ctx,
+                                                   Tensor* out_element);
 
   PriorityQueue(const PriorityQueue&) = delete;
   void operator=(const PriorityQueue&) = delete;

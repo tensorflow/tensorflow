@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetPaddingFromString(StringPiece str_value, Padding* value) {
+absl::Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   if (str_value == "SAME") {
     *value = SAME;
   } else if (str_value == "VALID") {
@@ -35,9 +35,9 @@ Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   return absl::OkStatus();
 }
 
-Status CheckValidPadding(Padding padding_type,
-                         const std::vector<int64_t>& explicit_paddings,
-                         int num_dims, TensorFormat data_format) {
+absl::Status CheckValidPadding(Padding padding_type,
+                               const std::vector<int64_t>& explicit_paddings,
+                               int num_dims, TensorFormat data_format) {
   if (padding_type == Padding::EXPLICIT) {
     const int num_paddings = explicit_paddings.size();
     if (num_paddings != 2 * num_dims) {

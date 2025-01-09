@@ -16,15 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
 #define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
 
-#include "absl/strings/string_view.h"
-
 namespace stream_executor {
 // Returns true if XLA was built with libnvptxcompiler support. Otherwise false
 // is returned.
 bool IsLibNvPtxCompilerSupported();
-
-// Checks whether ptxas log contains errors related to register allocation.
-bool IsPtxRegisterAllocationError(absl::string_view);
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_

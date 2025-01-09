@@ -41,7 +41,7 @@ struct WorkerEnv;
 // SessionMgr is threadsafe.
 class SessionMgr {
  public:
-  typedef std::function<Status(const ServerDef&, WorkerCacheInterface**)>
+  typedef std::function<absl::Status(const ServerDef&, WorkerCacheInterface**)>
       WorkerCacheFactory;
 
   explicit SessionMgr(
@@ -52,13 +52,13 @@ class SessionMgr {
   ~SessionMgr() {}
 
   // Allocates state for a new session.
-  Status CreateSession(
+  absl::Status CreateSession(
       const std::string& session, const ServerDef& server_def,
       bool isolate_session_state,
-      StatusCallback coordination_error_callback = [](Status s) {
+      StatusCallback coordination_error_callback = [](absl::Status s) {
         LOG(ERROR) << "Coordination agent is set to error: " << s;
       });
-  Status CreateSession(
+  absl::Status CreateSession(
       const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state);
@@ -70,12 +70,12 @@ class SessionMgr {
   // master has restarted before deleting the sessions on worker. When it
   // happens, old sessions associated with the master will be automatically
   // removed before the new session is created.
-  Status CreateSession(
+  absl::Status CreateSession(
       const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state, std::string master_task,
       int64_t master_incarnation,
-      StatusCallback coordination_error_callback = [](Status s) {
+      StatusCallback coordination_error_callback = [](absl::Status s) {
         LOG(ERROR) << "Coordination agent is set to error: " << s;
       });
 
@@ -83,19 +83,21 @@ class SessionMgr {
 
   // Updates state (worker cache, devices) of worker session identified by
   // session name (`session`) based on a new server_def and set of devices.
-  Status UpdateSession(const std::string& session, const ServerDef& server_def,
-                       const protobuf::RepeatedPtrField<DeviceAttributes>&
-                           cluster_device_attributes);
+  absl::Status UpdateSession(const std::string& session,
+                             const ServerDef& server_def,
+                             const protobuf::RepeatedPtrField<DeviceAttributes>&
+                                 cluster_device_attributes);
 
   // Locates the worker session for a given session handle
-  Status WorkerSessionForSession(const std::string& session_handle,
-                                 std::shared_ptr<WorkerSession>* out_session);
+  absl::Status WorkerSessionForSession(
+      const std::string& session_handle,
+      std::shared_ptr<WorkerSession>* out_session);
   std::shared_ptr<WorkerSession> LegacySession();
 
-  Status DeleteSession(const std::string& session);
+  absl::Status DeleteSession(const std::string& session);
 
   // Deletes all existing sessions.
-  Status DeleteAllSessions();
+  absl::Status DeleteAllSessions();
 
   // Provides access to the coordination service agent. This method should only
   // be called after the agent has been initialized during session creation, or
@@ -142,7 +144,7 @@ class SessionMgr {
   // Not owned. And should only be used for setting the coordination service.
   tsl::CoordinationServiceRpcHandler* coordination_handler_ = nullptr;
 
-  Status WorkerSessionForSessionLocked(
+  absl::Status WorkerSessionForSessionLocked(
       const std::string& session_handle,
       std::shared_ptr<WorkerSession>* out_session)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

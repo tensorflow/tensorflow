@@ -26,8 +26,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
-                               GraphDef* output) {
+absl::Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                     GraphDef* output) {
   bool can_optimize = false;
   for (const NodeDef& node : item.graph.node()) {
     if (IsAssert(node) || IsCheckNumerics(node) || IsPrint(node)) {

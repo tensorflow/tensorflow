@@ -20,13 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -54,7 +54,7 @@ using ::testing::Values;
 //  - batch_size
 //  - dtype
 using ParameterizedInterface =
-    ::testing::WithParamInterface<std::tuple<int, int, int, std::string_view>>;
+    ::testing::WithParamInterface<std::tuple<int, int, int, absl::string_view>>;
 
 class TopkTest : public HloTestBase, public ParameterizedInterface {
  public:
@@ -65,7 +65,7 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
  protected:
   absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k,
                                                      int batch_size,
-                                                     std::string_view dtype) {
+                                                     absl::string_view dtype) {
     return ParseAndReturnVerifiedModule(absl::Substitute(
         R"(
       %compare {

@@ -66,7 +66,7 @@ class WhileLoopConstantSinking : public HloModulePass {
 
  private:
   absl::StatusOr<bool> TrySinkingConstantsIntoWhileLoop(
-      HloInstruction* while_instr);
+      HloModule* module, HloInstruction* while_instr);
 
   const bool sink_broadcast_of_constants_;
   const bool sink_only_scalar_constants_;

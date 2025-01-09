@@ -20,7 +20,6 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 
@@ -36,7 +35,8 @@ GPUcudaMallocAllocator::GPUcudaMallocAllocator(
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
   // allocate with cudaMalloc
-  se::gpu::ScopedActivateContext scoped_activation{stream_exec_};
+  std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+      stream_exec_->Activate();
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {

@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void CollectiveRemoteAccessLocal::StartAbort(const Status& s) {
+void CollectiveRemoteAccessLocal::StartAbort(const absl::Status& s) {
   buf_rendezvous_.StartAbort(s);
 }
 
@@ -39,7 +39,7 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
   }
 
   Device* from_device;
-  Status status = dev_mgr_->LookupDevice(peer_device, &from_device);
+  absl::Status status = dev_mgr_->LookupDevice(peer_device, &from_device);
   if (!status.ok()) {
     done(status);
     return;
@@ -47,9 +47,9 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
 
   auto consumer_callback = [to_tensor, to_device_ctx, to_device, to_alloc_attr,
                             dev_to_dev_stream_index,
-                            done](const Status& status,
+                            done](const absl::Status& status,
                                   BufRendezvous::Hook* hook) {
-    Status s = status;
+    absl::Status s = status;
     if (s.ok()) {
       if (hook == nullptr) {
         s = errors::Internal("Invalid null hook in ConsumeBuf callback");
@@ -73,7 +73,7 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
                   hook->prod_value,  // src Tensor*
                   to_tensor,         // dst Tensor*
                   dev_to_dev_stream_index,
-                  [hook, done](const Status& memcpy_status) {
+                  [hook, done](const absl::Status& memcpy_status) {
                     // This callback may be executing in the GPUEventMgr
                     // pool in which case it must be very short duration
                     // and non-blocking (except e.g. for queue insertion).

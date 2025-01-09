@@ -34,7 +34,10 @@ limitations under the License.
 // clang-format on
 #include <frameobject.h>
 
-#include <algorithm>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"

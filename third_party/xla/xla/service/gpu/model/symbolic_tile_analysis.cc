@@ -46,13 +46,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -132,7 +132,7 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
                      })) {
     return absl::FailedPreconditionError(
         absl::StrCat("Symbol lower bound is not zero. ",
-                     tiled_hlo.indexing_map().ToString()));
+                     ToString(tiled_hlo.indexing_map())));
   }
 
   std::vector<AffineExpr> symbol_lower_bounds(
@@ -228,8 +228,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // Bail out on instructions that are known to cause problems down the
   // line. This is not an inherent limitation of the approach, but simply
   // issues to be resolved in the current implementation.
-  if (hlo->opcode() == HloOpcode::kDot ||
-      hlo->opcode() == HloOpcode::kConcatenate) {
+  if (hlo->opcode() == HloOpcode::kConcatenate) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
@@ -256,7 +255,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     if (!reshape_symbolic_tile.has_value()) {
       return FusionDecision::Forbid("Bailing out on reshape ")
              << hlo->ToString() << " with indexing map "
-             << reshape_indexing_map.ToString();
+             << ToString(reshape_indexing_map);
     }
   }
 
@@ -272,7 +271,7 @@ SetSymbolicTilesAndComputeConstraints(
     std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
         tiled_hlo_instructions,
     const HloFusionAdaptor& fusion_adaptor) {
-  ConstraintExpression constraints;
+  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
   for (const std::unique_ptr<SymbolicTiledHloInstruction>&
            tiled_hlo_instruction : tiled_hlo_instructions) {
     const HloInstruction* hlo = tiled_hlo_instruction->hlo();
@@ -293,17 +292,16 @@ SetSymbolicTilesAndComputeConstraints(
     auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
     if (!symbolic_tile.has_value()) {
       return FusionDecision::Forbid("Failed to compute symbolic tile for ")
-             << indexing_map.ToString() << " for HLO " << hlo->ToString();
+             << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
     if (!symbolic_tile->is_satisfiable()) {
       return FusionDecision::Forbid("Symbolic tile ")
              << symbolic_tile->ToString() << " is not satisfiable for "
-             << indexing_map.ToString() << " for HLO " << hlo->ToString();
+             << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
-    constraints = ConstraintExpression::And(std::move(constraints),
-                                            symbolic_tile->constraints());
+    constraints = constraints && symbolic_tile->constraints();
     constraints.Simplify();
 
     if (!constraints.is_satisfiable()) {
@@ -345,7 +343,7 @@ void SortTiledHloInstructionsInPostOrder(
                });
 }
 
-}  // namespace
+}  // anonymous namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
     const HloComputation& computation, MLIRContext* ctx,
@@ -562,7 +560,8 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
 
     std::optional<IndexingMap> tile_offset_indexing;
     if (compute_all_tile_offset_indexing_maps ||
-        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo())) {
+        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo()) ||
+        symbolic_tiled_hlo->hlo()->opcode() == HloOpcode::kIota) {
       TF_ASSIGN_OR_RETURN(
           tile_offset_indexing,
           ComputeTileOffsetIndexing(
@@ -592,8 +591,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       output_tiling_info.num_output_tiles_per_dim);
 }
 
-std::string SymbolicTileAnalysis::ToString(
-    const AffineMapPrinter& printer) const {
+std::string SymbolicTileAnalysis::ToString() const {
   std::stringstream ss;
   NameUniquer name_uniquer("_");
   absl::flat_hash_map<SymbolicTiledHloInstruction*, std::string> tile_names;

@@ -3,15 +3,30 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
+    "pybind_extension",
+    "pywrap_aware_cc_import",
+    "pywrap_aware_filegroup",
+    "pywrap_aware_genrule",
+    "pywrap_binaries",
+    "pywrap_common_library",
+    "pywrap_library",
+    "pywrap_tensorflow_macro",
+    "tf_external_workspace_visible",
+    "tf_monitoring_python_deps",
+    "tf_pybind_cc_library_wrapper",
+    "tf_python_pybind_extension",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -19,6 +34,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
+    "if_pywrap",
     "if_static",
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
@@ -552,7 +568,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
 )
 
 # TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
@@ -668,10 +684,8 @@ pywrap_tensorflow_macro(
         "@local_config_python//:python_headers",
     ] + if_windows([
         "//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
         "@local_xla//xla:__subpackages__",
@@ -695,7 +709,6 @@ pywrap_tensorflow_macro(
         "@cpuinfo//:__subpackages__",
         "@curl//:__subpackages__",
         "@dlpack//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@farmhash_archive//:__subpackages__",
         "@farmhash_gpu_archive//:__subpackages__",
@@ -723,7 +736,6 @@ pywrap_tensorflow_macro(
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -852,9 +864,7 @@ pywrap_tensorflow_macro(
     ]) + if_google([
         "//base",
         "//tensorflow/core/util/tensor_bundle",
-    ]) + if_oss(if_static(
-        [clean_dep("@nsync//:nsync_headers")],
-    )) + if_oss([
+    ]) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ]) + if_oss(if_cuda_is_configured([
@@ -864,6 +874,7 @@ pywrap_tensorflow_macro(
         # be brought in via other dependencies.
         "@local_xla//xla/tsl/cuda:cudnn",
         "@local_xla//xla/tsl/cuda:cufft",
+        "@local_xla//xla/tsl/cuda:cupti",
         "@local_xla//xla/tsl/cuda:nccl_rpath",
     ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
@@ -873,7 +884,7 @@ pywrap_tensorflow_macro(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
-filegroup(
+pywrap_aware_filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
@@ -953,7 +964,6 @@ filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_xla//xla/stream_executor",  # stat_summarizer
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
@@ -975,7 +985,7 @@ filegroup(
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
 # the dynamic libraries of custom ops can find it at runtime.
-genrule(
+pywrap_aware_genrule(
     name = "pywrap_tensorflow_filtered_def_file",
     srcs = select({
         "//tensorflow:windows": [
@@ -1003,7 +1013,7 @@ genrule(
 )
 
 # Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
-genrule(
+pywrap_aware_genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [":win_lib_files_for_exported_symbols"],
     outs = ["pybind_symbol_target_libs_file.txt"],
@@ -1019,25 +1029,25 @@ genrule(
 )
 
 # Get the import library of _pywrap_tensorflow_internal.pyd, platform-specific to Windows.
-filegroup(
+pywrap_aware_filegroup(
     name = "get_pywrap_tensorflow_import_lib_file",
     srcs = [":_pywrap_tensorflow_internal.so"],
     output_group = "interface_library",
 )
 
-cc_import(
+pywrap_aware_cc_import(
     name = "_pywrap_tensorflow_internal_linux",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
     visibility = tf_external_workspace_visible(visibility),
 )
 
-cc_import(
+pywrap_aware_cc_import(
     name = "_pywrap_tensorflow_internal_macos",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
     visibility = tf_external_workspace_visible(visibility),
 )
 
-cc_import(
+pywrap_aware_cc_import(
     name = "_pywrap_tensorflow_internal_windows",
     interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
@@ -1046,7 +1056,7 @@ cc_import(
 
 # Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib
 # (It was _pywrap_tensorflow_internal.so.if.lib).
-genrule(
+pywrap_aware_genrule(
     name = "pywrap_tensorflow_import_lib_file",
     srcs = [":get_pywrap_tensorflow_import_lib_file"],
     outs = ["_pywrap_tensorflow_internal.lib"],
@@ -1059,7 +1069,7 @@ genrule(
 
 # Create a cc_import rule for the import library of _pywrap_tensorflow_internal.dll
 # so that custom ops' dynamic libraries can link against it.
-cc_import(
+pywrap_aware_cc_import(
     name = "pywrap_tensorflow_import_lib",
     interface_library = select({
         "//tensorflow:windows": ":pywrap_tensorflow_import_lib_file",
@@ -1097,15 +1107,19 @@ tf_python_pybind_extension(
         "_pywrap_mlir.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/tf2tensorrt:common_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/compiler/mlir/python:mlir"]),
 )
 
 py_strict_library(
@@ -1194,30 +1208,33 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_tfe",
     srcs = ["tfe_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/c:headers",
-        "//tensorflow/c:safe_ptr_hdr",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/c/eager:pywrap_required_hdrs",
-        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/python/util:util_hdr",
-        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
-    ],
+    hdrs = if_pywrap(
+        if_false = [
+            "//tensorflow/c:headers",
+            "//tensorflow/c:safe_ptr_hdr",
+            "//tensorflow/c/eager:headers",
+            "//tensorflow/c/eager:pywrap_required_hdrs",
+            "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+            "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+            "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+            "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
+            "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+            "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+            "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
+            "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+            "//tensorflow/python/eager:pywrap_required_hdrs",
+            "//tensorflow/python/lib/core:py_exception_registry_hdr",
+            "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+            "//tensorflow/python/util:util_hdr",
+        ],
+    ),
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
     enable_stub_generation = True,
+    linkopts = [],
     pytype_srcs = [
         "_pywrap_tfe.pyi",
     ],
@@ -1248,18 +1265,20 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ] + if_static(
+    ] + if_pywrap(
+        if_true = ["//tensorflow/python/eager:pywrap_tfe_lib"],
+    ) + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -1401,7 +1420,6 @@ py_strict_library(
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":protos_all"],
 # )
 #
@@ -1425,4 +1443,184 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+pybind_extension(
+    name = "_pywrap_tensorflow_internal",
+    srcs = ["pywrap_tensorflow_internal.cc"],
+    pywrap_only = True,
+    deps = [],
+)
+
+pybind_extension(
+    name = "_pywrap_tensorflow_cc_only",
+    srcs = [],
+    deps = [
+        ":_protobuf_inline_symbols_enforcer",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/core/kernels:reader_ops",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
+    ],
+)
+
+cc_library(
+    name = "_protobuf_inline_symbols_enforcer",
+    srcs = ["protobuf_inline_symbols_enforcer.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/dtensor/proto:layout_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "_pywrap_lib_filter",
+    deps = if_pywrap(
+        if_true = [
+            "@pybind11_abseil//pybind11_abseil:absl_casters",
+            "@pybind11_abseil//pybind11_abseil:import_status_module",
+            "@pybind11_abseil//pybind11_abseil:status_casters",
+            "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        ],
+    ),
+)
+
+cc_library(
+    name = "_pywrap_lib_exclusion_filter",
+    deps = if_pywrap(
+        if_true = [
+            "@com_google_protobuf//:protobuf",
+            "@com_google_protobuf//:protobuf_lite",
+            "@zlib//:zlib",
+        ],
+    ),
+)
+
+pywrap_library(
+    name = "_pywrap_tensorflow",
+    # buildifier: disable=unsorted-dict-items
+    # @unsorted-dict-items
+    common_lib_filters = {
+        "//tensorflow:tensorflow_framework_pywrap_filter": "tensorflow/libtensorflow_framework.so.2",
+        "//tensorflow:tensorflow_cc_pywrap_filter": "tensorflow/libtensorflow_cc.so.2",
+    },
+    linkopts = select({
+        "//tensorflow:windows": [
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
+            "-DEFAULTLIB:ntdll.lib",
+        ],
+        "//conditions:default": [],
+    }),
+    pywrap_lib_exclusion_filter = ":_pywrap_lib_exclusion_filter",
+    pywrap_lib_filter = ":_pywrap_lib_filter",
+    starlark_only_deps = [
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization",
+        "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/python/framework:_errors_test_helper",
+        "//tensorflow/python/framework/experimental:_math_ops",
+        "//tensorflow/python/framework/experimental:_nn_ops",
+        "//tensorflow/python/framework/experimental:_tape",
+        "//tensorflow/python/framework/experimental:_unified_api",
+        "//tensorflow/python/framework:_op_def_util",
+        "//tensorflow/python/framework:_py_context_manager",
+        "//tensorflow/python/framework:_pywrap_python_api_info",
+        "//tensorflow/python/framework:_pywrap_python_api_parameter_converter",
+        "//tensorflow/python/framework:_pywrap_python_tensor_converter",
+        "//tensorflow/python/grappler:_pywrap_cost_analyzer",
+        "//tensorflow/python/grappler:_pywrap_model_analyzer",
+        "//tensorflow/python/util:_function_parameter_canonicalizer_binding_for_test",
+    ],
+    visibility = ["//visibility:public"],
+    win_def_file = "_pywrap_tensorflow.def",
+    deps = [
+        "//tensorflow/compiler/mlir/lite/python:_pywrap_converter_api",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
+        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/lite/python/metrics:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/optimize:_pywrap_tensorflow_lite_calibration_wrapper",
+        "//tensorflow/python:_pywrap_dtensor_device",
+        "//tensorflow/python:_pywrap_mlir",
+        "//tensorflow/python:_pywrap_parallel_device",
+        "//tensorflow/python:_pywrap_py_exception_registry",
+        "//tensorflow/python:_pywrap_quantize_training",
+        "//tensorflow/python:_pywrap_sanitizers",
+        "//tensorflow/python:_pywrap_tensorflow_cc_only",
+        "//tensorflow/python:_pywrap_tensorflow_internal",
+        "//tensorflow/python:_pywrap_tfcompile",
+        "//tensorflow/python:_pywrap_tfe",
+        "//tensorflow/python:_pywrap_toco_api",
+        "//tensorflow/python:flags_pybind",
+        "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
+        "//tensorflow/python/client:_pywrap_debug_events_writer",
+        "//tensorflow/python/client:_pywrap_device_lib",
+        "//tensorflow/python/client:_pywrap_events_writer",
+        "//tensorflow/python/client:_pywrap_tf_session",
+        "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
+        "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
+        "//tensorflow/python/data/experimental/service:_pywrap_utils_exp",
+        "//tensorflow/python/framework:_dtypes",
+        "//tensorflow/python/framework:_op_def_library_pybind",
+        "//tensorflow/python/framework:_op_def_registry",
+        "//tensorflow/python/framework:_proto_comparators",
+        "//tensorflow/python/framework:_python_memory_checker_helper",
+        "//tensorflow/python/framework:_pywrap_python_api_dispatcher",
+        "//tensorflow/python/framework:_pywrap_python_op_gen",
+        "//tensorflow/python/framework:_test_metrics_util",
+        "//tensorflow/python/grappler:_pywrap_tf_cluster",
+        "//tensorflow/python/grappler:_pywrap_tf_item",
+        "//tensorflow/python/grappler:_pywrap_tf_optimizer",
+        "//tensorflow/python/lib/core:_pywrap_py_func",
+        "//tensorflow/python/lib/io:_pywrap_file_io",
+        "//tensorflow/python/lib/io:_pywrap_record_io",
+        "//tensorflow/python/platform:_pywrap_cpu_feature_guard",
+        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
+        "//tensorflow/python/platform:_pywrap_tf2",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
+        "//tensorflow/python/tpu:_pywrap_sparse_core_layout",
+        "//tensorflow/python/tpu:_pywrap_tpu_embedding",
+        "//tensorflow/python/util:_pywrap_checkpoint_reader",
+        "//tensorflow/python/util:_pywrap_determinism",
+        "//tensorflow/python/util:_pywrap_kernel_registry",
+        "//tensorflow/python/util:_pywrap_nest",
+        "//tensorflow/python/util:_pywrap_stat_summarizer",
+        "//tensorflow/python/util:_pywrap_tensor_float_32_execution",
+        "//tensorflow/python/util:_pywrap_tfprof",
+        "//tensorflow/python/util:_pywrap_transform_graph",
+        "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:_tf_stack",
+        "//tensorflow/python/util:fast_module_type",
+        "//tensorflow/python/util:pywrap_xla_ops",
+    ],
+)
+
+pywrap_common_library(
+    name = "tensorflow_common_framework",
+    dep = ":_pywrap_tensorflow",
+    filter_name = "libtensorflow_framework.so.2",
+)
+
+pywrap_binaries(
+    name = "pywrap_tensorflow_binaries",
+    dep = ":_pywrap_tensorflow",
 )

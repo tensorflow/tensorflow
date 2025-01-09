@@ -15,33 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 
-#include <memory>
-#include <string>
-
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-std::string SaxpyIRFile() {
-  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                           "llvm_gpu_backend", "tests_data", "saxpy.ll");
-}
-
-TEST(UtilsTest, TestLoadIRModule) {
-  llvm::LLVMContext llvm_context;
-  std::string test_srcdir = tsl::testing::TensorFlowSrcRoot();
-  std::unique_ptr<llvm::Module> module =
-      LoadIRModule(SaxpyIRFile(), &llvm_context);
-  // Sanity check that the module was loaded properly.
-  ASSERT_NE(nullptr, module);
-  ASSERT_NE(std::string::npos, module->getModuleIdentifier().find("saxpy.ll"));
-  ASSERT_NE(nullptr, module->getFunction("cuda_saxpy"));
-}
 
 TEST(UtilsTest, TestReplaceFilenameExtension) {
   ASSERT_EQ(ReplaceFilenameExtension("baz.tx", "cc"), "baz.cc");

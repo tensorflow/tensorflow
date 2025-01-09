@@ -47,7 +47,7 @@ TEST(TestReporter, UsesEnv) {
   CHECK_EQ(string(std::getenv(TestReporter::kTestReporterEnv)),
            string("/cant/find/me:!"));
   TestReporter test_reporter("b1");
-  Status s = test_reporter.Initialize();
+  absl::Status s = test_reporter.Initialize();
   ExpectHasSubstr(s.ToString(), "/cant/find/me");
 
   // Remove the env variable, no logging is performed
@@ -75,7 +75,7 @@ TEST(TestReporter, CreateTwiceFails) {
   {
     TestReporter test_reporter(
         strings::StrCat(testing::TmpDir(), "/test_reporter_dupe"), "t1");
-    Status s = test_reporter.Initialize();
+    absl::Status s = test_reporter.Initialize();
     ExpectHasSubstr(s.ToString(), "file exists:");
   }
 }
@@ -87,7 +87,7 @@ TEST(TestReporter, CreateCloseCreateAgainSkipsSecond) {
   TF_EXPECT_OK(test_reporter.Close());
   TF_EXPECT_OK(test_reporter.Benchmark(1, 1.0, 2.0, 3.0));  // No-op, closed
   TF_EXPECT_OK(test_reporter.Close());                      // No-op, closed
-  Status s = test_reporter.Initialize();  // Try to reinitialize
+  absl::Status s = test_reporter.Initialize();  // Try to reinitialize
   ExpectHasSubstr(s.ToString(), "file exists:");
 }
 

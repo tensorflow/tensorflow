@@ -16,6 +16,7 @@ cc_library(
     srcs = ["png_io.cc"],
     hdrs = ["png_io.h"],
     features = ["-layering_check"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:logging",

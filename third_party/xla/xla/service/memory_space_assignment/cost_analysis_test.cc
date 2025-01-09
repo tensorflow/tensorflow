@@ -38,22 +38,15 @@ namespace {
 using memory_space_assignment::CostAnalysis;
 using memory_space_assignment::CostAnalysisOptions;
 
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
 class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
  protected:
   absl::Status Initialize(const HloModule* module,
                           float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
-    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.default_mem_bandwidth_bytes_per_second = 32;
     options_.pipeline_overhead_window_size_mib =
         pipeline_overhead_window_size_mib;
-    options.shape_size = ShapeSize;
     options.set_flops_per_second(8);
     options.set_bytes_per_second(32);
     options.set_transcendentals_per_second(16);

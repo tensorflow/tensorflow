@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -64,12 +64,14 @@ class FakeDevice : public Device {
   explicit FakeDevice(const DeviceAttributes& device_attributes)
       : Device(nullptr, device_attributes) {}
 
-  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+  absl::Status Sync() override {
+    return errors::Unimplemented("FakeDevice::Sync()");
+  }
 };
 
 // Translates the graph input information from tf2xla:::Config to
 // GraphImportConfig.
-Status ConvertInputInfo(
+absl::Status ConvertInputInfo(
     const tf2xla::Config& config,
     const std::unordered_map<std::string, std::string>& feed_name_remap,
     GraphImportConfig* specs) {
@@ -99,8 +101,8 @@ Status ConvertInputInfo(
 
 // Translates the graph output information from tf2xla:::Config to
 // GraphImportConfig.
-Status ConvertOutputInfo(const tf2xla::Config& config,
-                         GraphImportConfig* specs) {
+absl::Status ConvertOutputInfo(const tf2xla::Config& config,
+                               GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   for (const tf2xla::Fetch& fetch : config.fetch()) {
     array_names.push_back(fetch.id().node_name());
@@ -111,7 +113,7 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
 
 }  // namespace
 
-Status ConvertGraphDefToXlaViaMlir(
+absl::Status ConvertGraphDefToXlaViaMlir(
     GraphDef graph_def, const tf2xla::Config& config,
     xla::XlaComputation* computation, absl::string_view debug_info_filename,
     absl::string_view debug_info_path_begin_marker) {

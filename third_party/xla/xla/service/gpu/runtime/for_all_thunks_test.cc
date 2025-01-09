@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/for_all_thunks.h"
-
 #include <memory>
 #include <utility>
 #include <vector>
@@ -41,7 +39,7 @@ using ::testing::UnorderedElementsAre;
 // iterated `Thunks`.
 std::vector<const Thunk*> GetAllThunks(Thunk* root) {
   std::vector<const Thunk*> thunks;
-  ForAllThunks([&](const Thunk* thunk) { thunks.push_back(thunk); }, root);
+  root->ForAllThunks([&](const Thunk* thunk) { thunks.push_back(thunk); });
   return thunks;
 }
 

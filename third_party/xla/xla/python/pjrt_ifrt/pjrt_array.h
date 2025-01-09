@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_dtype.h"  // IWYU pragma: keep  // TODO(hyeontaek): Remove this include once downstream users are migrated to use the new header directly.
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -152,10 +151,14 @@ class PjRtArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<> CopyToHostBuffer(

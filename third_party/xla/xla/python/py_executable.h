@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -187,14 +186,14 @@ class PyLoadedExecutable {
 
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  absl::StatusOr<std::vector<std::vector<std::string_view>>>
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetParameterLayouts()
-      const;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>> GetOutputLayouts()
-      const;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
@@ -208,15 +207,6 @@ class PyLoadedExecutable {
 
   // Short-term escape hatch to get PjRtLoadedExecutable from PyExecutable.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
-  PjRtLoadedExecutable* pjrt_executable() const {
-    auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleLoadedExecutable>(
-        ifrt_loaded_executable_.get());
-    if (exec == nullptr) {
-      throw XlaRuntimeError(
-          "This operation is implemented for a PjRt-compatible backend only.");
-    }
-    return exec->pjrt_loaded_executable();
-  }
   std::shared_ptr<PjRtLoadedExecutable> shared_ptr_pjrt_executable() {
     auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleLoadedExecutable>(
         ifrt_loaded_executable_.get());
@@ -227,7 +217,7 @@ class PyLoadedExecutable {
     return exec->shared_ptr_pjrt_loaded_executable();
   }
 
-  const ExecuteOptions& options() const { return options_; }
+  const ifrt::ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyLoadedExecutable.
@@ -246,7 +236,7 @@ class PyLoadedExecutable {
   std::optional<std::string> fingerprint_;
 
   // The options to pass to `executable_.Execute`.
-  ExecuteOptions options_;
+  ifrt::ExecuteOptions options_;
 
   // Python objects to keep alive as requested by user.
   std::vector<nanobind::object> keepalives_;

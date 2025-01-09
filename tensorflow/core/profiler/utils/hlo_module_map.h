@@ -45,51 +45,111 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
+class HloInstructionInterface {
+ public:
+  virtual ~HloInstructionInterface() = default;
+  virtual absl::string_view Name() const = 0;
+  virtual xla::HloOpcode HloOpcode() const = 0;
+  virtual absl::string_view Category() const = 0;
+  virtual std::string HloOpcodeString() const = 0;
+  virtual const xla::OpMetadata& Metadata() const = 0;
+  virtual size_t flops() const = 0;
+  virtual size_t bytes_accessed() const = 0;
+  virtual std::string_view op_full_name() const = 0;
+  virtual std::string source_info() const = 0;
+  virtual bool isRoot() const = 0;
+  virtual bool IsFusion() const = 0;
+  virtual const std::string& Expression() const = 0;
+
+  virtual void ProcessXlaCostAnalysis(
+      const xla::HloCostAnalysis* cost_analysis) = 0;
+};
+
 // This wrapper allows caching the results of HloInstruction methods.
 // This wrapper is not thread safe.
-class HloInstructionWrapper {
+class HloInstructionWrapper : public HloInstructionInterface {
  public:
   explicit HloInstructionWrapper(
       const xla::HloInstruction* instr,
       const xla::HloCostAnalysis* cost_analysis = nullptr);
 
-  // Non copiable
+  // Non copyable
   HloInstructionWrapper(const HloInstructionWrapper&) = delete;
   HloInstructionWrapper& operator=(const HloInstructionWrapper&) = delete;
   // Movable.
   HloInstructionWrapper(HloInstructionWrapper&&) = default;
   HloInstructionWrapper& operator=(HloInstructionWrapper&&) = default;
 
-  absl::string_view Name() const { return instr_->name(); }
+  absl::string_view Name() const override { return instr_->name(); }
 
-  xla::HloOpcode HloOpcode() const { return instr_->opcode(); }
+  xla::HloOpcode HloOpcode() const override { return instr_->opcode(); }
 
-  std::string HloOpcodeString() const {
+  absl::string_view Category() const override { return category_; }
+
+  std::string HloOpcodeString() const override {
     return std::string(xla::HloOpcodeString(instr_->opcode()));
   }
 
-  const xla::OpMetadata& Metadata() const { return instr_->metadata(); }
+  const xla::OpMetadata& Metadata() const override {
+    return instr_->metadata();
+  }
 
-  size_t flops() const { return flops_; }
-  size_t bytes_accessed() const { return bytes_accessed_; }
+  size_t flops() const override { return flops_; }
+  size_t bytes_accessed() const override { return bytes_accessed_; }
 
-  std::string_view op_full_name() const { return op_full_name_; }
-  std::string source_info() const;
+  std::string_view op_full_name() const override { return op_full_name_; }
+  std::string source_info() const override;
+
+  bool isRoot() const override { return instr_->IsRoot(); }
+  bool IsFusion() const override { return !fused_children_.empty(); };
+
+  void ProcessXlaCostAnalysis(
+      const xla::HloCostAnalysis* cost_analysis) override {
+    if (cost_analysis == nullptr) return;
+    flops_ = cost_analysis->flop_count(*instr_);
+    bytes_accessed_ = cost_analysis->bytes_accessed(*instr_);
+  }
+
+  const std::string& Expression() const override { return expression_; }
+
+  void AddFusedChild(const HloInstructionWrapper* child) {
+    fused_children_.push_back(child);
+  };
+
+  const std::vector<const HloInstructionWrapper*>& FusedChildren() const {
+    return fused_children_;
+  }
 
  private:
   const xla::HloInstruction* instr_;
+  std::vector<const HloInstructionWrapper*> fused_children_;
   std::string op_full_name_;
   size_t flops_ = 0;
   size_t bytes_accessed_ = 0;
+  std::string category_;
+  std::string expression_;
 };
 
-// Wrahps HLO module and provides an interface that maps HLO names to
+// Helper class for accessing HloModule.
+class HloModuleInterface {
+ public:
+  virtual ~HloModuleInterface() = default;
+
+  // If the module contains no instructions.
+  virtual bool Empty() const = 0;
+  virtual absl::string_view Name() const = 0;
+  // Function to populated nested childs= instructions in a fusion.
+  virtual void GatherFusionInstructions(xla::HloInstruction* inst) = 0;
+};
+
+// Wraps HLO module and provides an interface that maps HLO names to
 // HloInstructionWrappers.
-class HloModuleWrapper {
+class HloModuleWrapper : public HloModuleInterface {
  public:
   explicit HloModuleWrapper(
       const xla::HloProto& hlo_proto,
@@ -101,10 +161,12 @@ class HloModuleWrapper {
 
   const HloInstructionWrapper* GetHloInstruction(
       absl::string_view hlo_name) const;
+  HloInstructionWrapper* GetMutableHloInstruction(absl::string_view hlo_name);
 
-  bool Empty() const { return instructions_by_name_.empty(); }
+  bool Empty() const override { return instructions_by_name_.empty(); }
 
-  absl::string_view Name() const { return module_->name(); }
+  absl::string_view Name() const override { return module_->name(); }
+  void GatherFusionInstructions(xla::HloInstruction* inst) override;
 
  private:
   std::unique_ptr<xla::HloModule> module_;
@@ -122,11 +184,16 @@ using HloModuleMap =
 void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
                  const xla::HloProto& hlo_proto);
 
+// Process HloModuleMap from single XSpace.
+void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
+                                   const XSpace* space);
+
 // WARNING: The returned pointer will be invalidated if HloModuleMap is mutated.
-inline const HloModuleWrapper* GetHloModule(const HloModuleMap& hlo_module_map,
+inline const HloModuleWrapper* GetHloModule(const HloModuleMap* hlo_module_map,
                                             uint64_t program_id) {
-  auto iter = hlo_module_map.find(program_id);
-  if (iter == hlo_module_map.end()) return nullptr;
+  if (hlo_module_map == nullptr) return nullptr;
+  auto iter = hlo_module_map->find(program_id);
+  if (iter == hlo_module_map->end()) return nullptr;
   return &iter->second;
 }
 
@@ -134,7 +201,7 @@ inline const HloInstructionWrapper* GetHloInstruction(
     const HloModuleMap& hlo_module_map, std::optional<uint64_t> program_id,
     absl::string_view hlo_name) {
   if (!program_id.has_value()) return nullptr;
-  const auto* hlo_module = GetHloModule(hlo_module_map, *program_id);
+  const auto* hlo_module = GetHloModule(&hlo_module_map, *program_id);
   if (hlo_module == nullptr) return nullptr;
   return hlo_module->GetHloInstruction(hlo_name);
 }

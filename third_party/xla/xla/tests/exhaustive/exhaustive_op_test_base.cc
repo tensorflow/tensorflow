@@ -40,9 +40,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/shaped_buffer.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
@@ -59,10 +61,6 @@ limitations under the License.
 
 namespace xla {
 namespace exhaustive_op_test {
-
-int eup_version = 0;
-
-int GetEupVersion() { return eup_version; }
 
 bool dump_values = false;
 
@@ -198,7 +196,6 @@ int GetCacheLocation(const std::array<NativeRefT, N>& input) {
 }
 
 // The inverse function of GetCacheLocation.
-
 template <typename RetT,
           typename std::enable_if<!is_complex_t<RetT>::value>::type* = nullptr>
 RetT FromCacheLocationComponent(int cache_loc) {
@@ -568,11 +565,11 @@ ExhaustiveOpTestBase<T, N>::GetTestValuesWithSubnormalSubstitutions(
     ComponentNativeRefT value) {
   std::vector<ComponentNativeRefT> test_values;
   if (std::fpclassify(value) == FP_SUBNORMAL) {
-    test_values.reserve(relaxed_denormal_signs_ ? 3 : 2);
+    test_values.reserve(RelaxedDenormalSigns() ? 3 : 2);
     test_values.push_back(std::copysign(0, value));
     test_values.push_back(
         std::copysign(std::numeric_limits<ComponentNativeRefT>::min(), value));
-    if (relaxed_denormal_signs_) {
+    if (RelaxedDenormalSigns()) {
       test_values.push_back(std::copysign(0, -value));
     }
   } else {
@@ -869,11 +866,15 @@ template class ExhaustiveOpTestBase<F64, 1>;
 template class ExhaustiveOpTestBase<F32, 1>;
 template class ExhaustiveOpTestBase<F16, 1>;
 template class ExhaustiveOpTestBase<BF16, 1>;
+template class ExhaustiveOpTestBase<F8E5M2, 1>;
+template class ExhaustiveOpTestBase<F8E4M3FN, 1>;
 
 template class ExhaustiveOpTestBase<F64, 2>;
 template class ExhaustiveOpTestBase<F32, 2>;
 template class ExhaustiveOpTestBase<F16, 2>;
 template class ExhaustiveOpTestBase<BF16, 2>;
+template class ExhaustiveOpTestBase<F8E5M2, 2>;
+template class ExhaustiveOpTestBase<F8E4M3FN, 2>;
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

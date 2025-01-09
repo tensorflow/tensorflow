@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -46,8 +47,8 @@ void FuzzEndToEnd(
   TF_CHECK_OK(tsl::WriteBinaryProto(tensorflow::Env::Default(),
                                     export_dir + kSavedModelFilenamePb, model));
 
-  Status status = LoadSavedModel(session_options, run_options, export_dir,
-                                 {kSavedModelTagServe}, &bundle);
+  absl::Status status = LoadSavedModel(session_options, run_options, export_dir,
+                                       {kSavedModelTagServe}, &bundle);
   if (!status.ok()) {
     return;
   }
@@ -55,7 +56,7 @@ void FuzzEndToEnd(
   // Create output placeholder tensors for results
   std::vector<tensorflow::Tensor> outputs;
   std::vector<std::string> output_names = {"fuzz_out:0", "fuzz_out:1"};
-  tensorflow::Status status_run =
+  absl::Status status_run =
       bundle.session->Run(input_dict, output_names, {}, &outputs);
 }
 

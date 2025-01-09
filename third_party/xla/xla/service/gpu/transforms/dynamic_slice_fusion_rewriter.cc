@@ -33,25 +33,22 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/literal_util.h"
-#include "xla/primitive_util.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/pattern_matcher.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tools/hlo_extractor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -61,8 +58,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace m = ::xla::match;
 
 // A dataflow path flowing from a definition to a user.
 using DefUseDataflowPath = absl::InlinedVector<HloInstruction*, 2>;
@@ -81,9 +76,6 @@ using DataflowPathView = absl::Span<HloInstruction* const>;
 using DataflowPathsView = absl::Span<DataflowPathView>;
 
 using InstructionSet = absl::flat_hash_set<HloInstruction*>;
-
-using OffsetValueMap =
-    absl::flat_hash_map<HloInstruction*, std::vector<Literal>>;
 
 bool IsNoOp(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
@@ -129,9 +121,8 @@ bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
 // be conservative by only accepting sliced shapes that have the product of all
 // non-sliced dimensions being a multiple of `kXlaAllocatedBufferAlignBytes`.
 bool IsAlignedSlice(const HloInstruction* slice) {
-  DCHECK(slice->opcode() == HloOpcode::kSlice ||
-         slice->opcode() == HloOpcode::kDynamicSlice ||
-         slice->opcode() == HloOpcode::kDynamicUpdateSlice)
+  DCHECK((HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
+                           HloOpcode::kDynamicUpdateSlice>(slice)))
       << "Unknown slice operation: " << slice->ToString();
 
   if (!IsContiguousSlice(*slice)) return false;
@@ -151,7 +142,7 @@ bool IsAlignedSlice(const HloInstruction* slice) {
       return true;
     }
     if (slice_shape.dimensions(dim) < full_shape.dimensions(dim)) {
-      return (slice->opcode() == HloOpcode::kSlice &&
+      return (HloPredicateIsOp<HloOpcode::kSlice>(slice) &&
               (((*strides)[dim] * slice->slice_starts(dim)) %
                    kXlaAllocatedBufferAlignBytes ==
                0));
@@ -160,424 +151,104 @@ bool IsAlignedSlice(const HloInstruction* slice) {
   return true;
 }
 
-// Function looks for while backend config. If this config is present, it
-// returns the value of trip count, otherwise it runs the while loop analysis to
-// compute trip count. `whileop` must be a while operaton. Returns
-// `std::nullopt` if it cannot figure out the trip count.
-std::optional<int64_t> GetWhileLoopTripCount(HloInstruction* whileop) {
-  CHECK(whileop->opcode() == HloOpcode::kWhile);
-  auto backend_config = whileop->backend_config<WhileLoopBackendConfig>();
-  if (!backend_config.ok() || !backend_config.value().has_known_trip_count()) {
-    VLOG(4) << "Backend config not ok. Computing while loop trip count for "
-            << whileop->name();
-    return ComputeWhileLoopTripCount(whileop);
+// Returns true if the `consumer` only depends on the `producer` and no other
+// instructions. This is a recursive function checking all paths from the
+// `consumer` to the parameters of the computation and if there is any path
+// without `producer`, then it returns false.
+bool IsOnlyDependentOn(const HloInstruction* consumer,
+                       HloInstruction* producer) {
+  if (consumer == producer ||
+      HloPredicateIsOp<HloOpcode::kConstant>(consumer)) {
+    return true;
   }
-  int trip_count = backend_config.value().known_trip_count().n();
-  VLOG(4) << "Found trip count in backend config for " << whileop->name()
-          << ": " << trip_count;
-  return trip_count;
-}
-
-// Given an HLO operation `idx`, which is wrapped by while operation, this
-// function tries to find the values of the variable in all the iterations as an
-// array of literals. This is done by repeatedly executing the loop update
-// operation(s) and the operation(s) to calculate the value of `idx` at each
-// iteration. If this is successful, then the vector of literals is returned. If
-// for some reason this is not successful then `std::nullopt` is returned.
-std::optional<std::vector<Literal>> GetValues(const HloInstruction* idx) {
-  VLOG(3) << "Getting values for " << idx->name();
-  const HloComputation* computation = idx->parent();
-  if (!computation->IsWhileBodyComputation()) {
-    VLOG(3) << "While calculating offset values for " << idx->name()
-            << ", the parent computation(" << computation->name()
-            << ") is not a while computation";
-    return std::nullopt;
+  if (consumer->operand_count() == 0) {
+    return false;
   }
-  HloInstruction* whileop = computation->WhileCallInstruction();
-  std::optional<int64_t> trip_count = GetWhileLoopTripCount(whileop);
-  if (trip_count == std::nullopt) {
-    VLOG(3) << "Unable to get trip count for " << whileop->name();
-    return std::nullopt;
-  }
-  auto root_tuple = computation->root_instruction();
-  if (root_tuple->opcode() != HloOpcode::kTuple) {
-    VLOG(3) << "Root operation " << root_tuple->name() << " of computation "
-            << computation->name()
-            << " expected to be a tuple because it is a while body. Found: "
-            << root_tuple->opcode();
-    return std::nullopt;
-  }
-  std::optional<int64_t> loop_indvar_tuple_idx =
-      GetLoopInductionVarTupleIdx(whileop);
-  if (loop_indvar_tuple_idx == std::nullopt) {
-    VLOG(3) << "Unable to find tuple index for loop induction variable";
-    return std::nullopt;
-  }
-  auto update_operation =
-      computation->root_instruction()->operand(*loop_indvar_tuple_idx);
-  HloInstruction* loop_indvar = nullptr;
-  for (auto instr : computation->instructions()) {
-    if (instr->opcode() == HloOpcode::kGetTupleElement &&
-        instr->operand(0) == computation->parameter_instruction(0) &&
-        instr->tuple_index() == *loop_indvar_tuple_idx) {
-      loop_indvar = instr;
-    }
-  }
-  if (loop_indvar == nullptr) {
-    VLOG(3) << "Unable to find get-tuple-element("
-            << computation->parameter_instruction(0)->name()
-            << "), index=" << *loop_indvar_tuple_idx << " in "
-            << computation->name();
-    return std::nullopt;
-  }
-
-  // Extract the offset and update modules and verify that they only take the
-  // loop iteration counter as parameter.
-  // The operation we are extracting (update and offset) are from `computation`.
-  // In the `extract_selector`, we stop at the parameter (tuple) for this
-  // `computation` or at the loop induction variable and convert that to a
-  // parameter. If the operation depends on the tuple parameter, then the
-  // argument to the extracted module will have the shape of a tuple. So, if the
-  // extracted module has only one parameter and the shape of that parameter is
-  // same as the loop induction variable, then the operation only depends on the
-  // loop induction variable. We also have to ensure there are no `partition-id`
-  // or `replica-id` operations in the extracted module.
-  auto IsValidModule =
-      [loop_indvar](std::unique_ptr<HloModule>& module) -> bool {
-    if (module == nullptr || module->entry_computation()->num_parameters() != 1)
-      return false;
-    const HloInstruction* p0 =
-        module->entry_computation()->parameter_instruction(0);
-    if (p0->shape() != loop_indvar->shape()) {
-      VLOG(4) << "Extracted module must depend only on the loop induction "
-                 "variable.";
-      return false;
-    };
-    return llvm::all_of(module->entry_computation()->instructions(),
-                        [](const HloInstruction* instr) {
-                          return instr->opcode() != HloOpcode::kPartitionId &&
-                                 instr->opcode() != HloOpcode::kReplicaId;
+  return absl::c_all_of(consumer->operands(),
+                        [producer](const HloInstruction* operand) {
+                          return IsOnlyDependentOn(operand, producer);
                         });
-  };
-  auto params = computation->parameter_instructions();
-  if (params.size() != 1 || !params[0]->shape().IsTuple()) {
-    VLOG(3) << "While loop parameter is expected to be a tuple.";
-    return std::nullopt;
-  }
-  std::unique_ptr<HloModule> offset_module = ExtractModule(
-      /*instruction=*/
-      idx, /*height=*/-1,
-      /*extract_selector=*/
-      [loop_indvar, params](const HloInstruction* inst) -> bool {
-        return inst != loop_indvar && llvm::find(params, inst) == params.end();
-      },
-      /*replace_type_selector=*/
-      [](const HloInstruction* inst) -> ReplaceType {
-        return ReplaceType::kReplaceParam;
-      });
-  std::unique_ptr<HloModule> update_module = ExtractModule(
-      /*instruction=*/
-      update_operation, /*height=*/-1,
-      /*extract_selector=*/
-      [loop_indvar, params](const HloInstruction* inst) -> bool {
-        return inst != loop_indvar && llvm::find(params, inst) == params.end();
-      },
-      /*replace_type_selector=*/
-      [](const HloInstruction* inst) -> ReplaceType {
-        return ReplaceType::kReplaceParam;
-      });
-  if (!IsValidModule(offset_module) || !IsValidModule(update_module)) {
-    return std::nullopt;
-  }
-  VLOG(3) << "Successfully generated offset and update modules";
+};
 
-  std::vector<Literal> offset_values;
-  absl::Status status = [&]() -> absl::Status {
-    HloEvaluator evaluator;
-    const Literal& init =
-        whileop->operand(0)->operand(*loop_indvar_tuple_idx)->literal();
-    std::unique_ptr<Literal> updated_value = nullptr;
-    for (int64_t i = 0; i < *trip_count; i++) {
-      if (i == 0) {
-        evaluator.ResetVisitStates();
-        TF_ASSIGN_OR_RETURN(offset_values.emplace_back(),
-                            evaluator.Evaluate(*offset_module, {&init}));
-        CHECK(offset_values.back().shape() == idx->shape());
-        evaluator.ResetVisitStates();
-        TF_ASSIGN_OR_RETURN(Literal next_update_value,
-                            evaluator.Evaluate(*update_module, {&init}));
-        updated_value = next_update_value.CloneToUnique();
-      } else {
-        evaluator.ResetVisitStates();
-        TF_ASSIGN_OR_RETURN(
-            offset_values.emplace_back(),
-            evaluator.Evaluate(*offset_module, {updated_value.get()}));
-        CHECK(offset_values.back().shape() == idx->shape());
-        evaluator.ResetVisitStates();
-        TF_ASSIGN_OR_RETURN(
-            Literal next_update_value,
-            evaluator.Evaluate(*update_module, {updated_value.get()}));
-        updated_value = next_update_value.CloneToUnique();
-      }
-    }
-    VLOG(3) << "Offset values for " << idx->name() << ": "
-            << absl::StrJoin(offset_values, ",",
-                             [](std::string* out, const Literal& l) {
-                               out->append(l.ToString());
+// Returns true if the value is a function of the induction variable within a
+// while loop.
+bool IsValueFunctionOfLoopInductionVariable(const HloInstruction& value,
+                                            CallGraph* call_graph) {
+  std::vector<HloInstruction*> callers =
+      call_graph->GetComputationCallers(value.parent());
+  if (callers.size() != 1) {
+    VLOG(2) << "Computation has multiple callers: "
+            << absl::StrJoin(callers, ",",
+                             [](std::string* out, const HloInstruction* instr) {
+                               out->append(instr->name());
                              });
-    return absl::OkStatus();
-  }();
-  if (status.ok()) return offset_values;
-  return std::nullopt;
-}
-
-// This function takes a while operation and adds a loop iteration counter
-// variable as the last parameter in the loop. This is useful, especially
-// because the loop induction variable might not be 0,1,2,3... and we need a
-// variable of this form to access the array literal for offset.
-absl::StatusOr<HloInstruction*> AddLoopIterationParam(HloInstruction* whileop) {
-  CHECK(whileop->opcode() == HloOpcode::kWhile);
-  HloComputation* while_body = whileop->while_body();
-  HloComputation* while_cond = whileop->while_condition();
-  const HloInstruction* while_init = whileop->operand(0);
-
-  // First handle the initial values.
-  CHECK(while_init->opcode() == HloOpcode::kTuple);
-  std::vector<HloInstruction*> new_init_operands(while_init->operands().begin(),
-                                                 while_init->operands().end());
-  PrimitiveType indvar_type =
-      whileop->while_init()
-          ->operand(*GetLoopInductionVarTupleIdx(whileop))
-          ->shape()
-          .element_type();
-  new_init_operands.push_back(whileop->parent()->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(
-          whileop->while_init()
-              ->operand(*GetLoopInductionVarTupleIdx(whileop))
-              ->shape()
-              .element_type(),
-          0)),
-      "zero"));
-  HloInstruction* new_while_init = whileop->parent()->AddInstruction(
-      HloInstruction::CreateTuple(new_init_operands));
-  HloInstruction* new_whileop = whileop->parent()->AddInstruction(
-      whileop->CloneWithNewOperands(new_while_init->shape(), {new_while_init}));
-  if (whileop->IsRoot()) {
-    absl::InlinedVector<HloInstruction*, 4> tuple_entries;
-    tuple_entries.reserve(while_init->shape().tuple_shapes_size());
-    for (auto i = 0; i < while_init->shape().tuple_shapes_size(); i++) {
-      tuple_entries.push_back(whileop->parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(new_whileop, i)));
-    }
-    HloInstruction* new_whileop_result = whileop->parent()->AddInstruction(
-        HloInstruction::CreateTuple(tuple_entries));
-    TF_RETURN_IF_ERROR(
-        whileop->parent()->ReplaceInstruction(whileop, new_whileop_result));
-  } else {
-    TF_RETURN_IF_ERROR(whileop->parent()->ReplaceInstructionWithDifferentShape(
-        whileop, new_whileop));
+    return false;
   }
+  HloInstruction* while_op = callers[0];
+  if (HloPredicateIsNotOp<HloOpcode::kWhile>(while_op)) {
+    VLOG(2) << "Computation caller is not while, it is "
+            << while_op->ToString();
+    return false;
+  }
+  HloComputation* while_body = while_op->while_body();
+  std::optional<int64_t> loop_induction_variable_tuple_idx =
+      GetLoopInductionVarTupleIdx(while_op);
+  if (!loop_induction_variable_tuple_idx.has_value()) {
+    VLOG(2) << "Induction variable tuple index is nullopt";
+    return false;
+  }
+  // The verifier makes sure that there is exactly one parameter. So, it is okay
+  // to directly access the parameter here. The function
+  // `GetLoopInductionVarTupleIdx` above makes sure that the parameter is a
+  // tuple.
+  HloInstruction* indvar = hlo_query::GetUniqueGteInstruction(
+      while_body->parameter_instruction(0), *loop_induction_variable_tuple_idx);
+  if (!indvar) {
+    VLOG(2) << "Unable to find unique GTE for while induction variable idx: "
+            << *loop_induction_variable_tuple_idx
+            << ", while op: " << while_op->ToString();
+    return false;
+  }
+  const HloInstruction* update = while_body->root_instruction()->operand(
+      *loop_induction_variable_tuple_idx);
 
-  // Next, lets handle the condition
-  while_cond->ReplaceParameter(0, HloInstruction::CreateParameter(
-                                      0, new_while_init->shape(), "new_param"));
-
-  // Next, lets handle the body
-  HloInstruction* new_body_param = while_body->ReplaceParameter(
-      0,
-      HloInstruction::CreateParameter(0, new_while_init->shape(), "new_param"));
-
-  // Next, update the value of the param inside while op
-  HloInstruction* gte = while_body->AddInstruction(
-      HloInstruction::CreateGetTupleElement(
-          new_body_param, new_while_init->shape().tuple_shapes_size() - 1),
-      "loop_iteration_count");
-  HloInstruction* c1 = while_body->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(indvar_type, 1)),
-      "one");
-  HloInstruction* add = while_body->AddInstruction(
-      HloInstruction::CreateBinary(gte->shape(), HloOpcode::kAdd, gte, c1),
-      "updated_loop_iteration_count");
-  absl::InlinedVector<HloInstruction*, 2> old_return_tuple_operands =
-      while_body->root_instruction()->operands();
-  std::vector<HloInstruction*> new_return_tuple_operands(
-      old_return_tuple_operands.begin(), old_return_tuple_operands.end());
-  new_return_tuple_operands.push_back(add);
-  HloInstruction* new_return_tuple = while_body->AddInstruction(
-      HloInstruction::CreateTuple(new_return_tuple_operands));
-  while_body->set_root_instruction(new_return_tuple, true);
-  return gte;
+  // The `update` instruction and `value` should only depend on the induction
+  // variable.
+  return IsOnlyDependentOn(/*consumer=*/update, /*producer=*/indvar) &&
+         IsOnlyDependentOn(/*consumer=*/&value, /*producer=*/indvar);
 }
 
-// This function takes an array literal and gives a constant instruction with
-// that literal.
-std::unique_ptr<HloInstruction> GetAsConstantInstruction(
-    const std::vector<Literal>& offset_values) {
-  if (offset_values.empty()) return nullptr;
-  std::unique_ptr<HloInstruction> value =
-      primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
-          [&offset_values](
-              auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
-            if constexpr (primitive_util::IsIntegralType(
-                              primitive_type_constant)) {
-              using NativeT = typename primitive_util::PrimitiveTypeToNative<
-                  primitive_type_constant>::type;
-
-              Array<NativeT> constantLiterals({(int64_t)offset_values.size()});
-              std::vector<NativeT> valuesAsTy;
-              valuesAsTy.reserve(offset_values.size());
-              for (auto& i : offset_values) {
-                valuesAsTy.push_back(
-                    static_cast<NativeT>(i.data<NativeT>()[0]));
-              }
-              constantLiterals.SetValues(valuesAsTy);
-              return HloInstruction::CreateConstant(
-                  LiteralUtil::CreateFromArray(constantLiterals));
-            }
-            return nullptr;
-          },
-          offset_values[0].shape().element_type());
-  return value;
-}
-
-// This function takes an operation, and a reference to a map of
-// {operation: array literals containing their values}. If the operation is a
-// dynamic slicing operation, we populate the value map with the values of the
-// offsets. This only returns true if it can successfully find values
-// corresponding to all the offsets in the `matched_instrs`. If there is a
-// single offset for which we cannot find the values, then we do not add
-// anything to the value map, and return false.
-bool PopulateOffsetValueMap(const HloInstruction* matched_instr,
-                            OffsetValueMap& value_map) {
-  OffsetValueMap local_value_map;
-  if (auto dyn_idx_op = DynCast<HloDynamicIndexInstruction>(matched_instr);
-      dyn_idx_op) {
-    for (auto indexop : dyn_idx_op->index_operands()) {
-      if (indexop->IsConstant()) continue;
-      if (local_value_map.contains(indexop) || value_map.contains(indexop))
-        continue;
-      std::optional<std::vector<Literal>> values = GetValues(indexop);
-      if (values == std::nullopt) return false;
-      if (values->empty() || !primitive_util::IsIntegralType(
-                                 values->at(0).shape().element_type())) {
+// This returns true for the constants that are handled in the dynamic slice
+// fusion runtime. These constants do not force a D2H copy and hence preserve
+// the cuda graph.
+bool IsHandledConstantForDynamicSliceFusion(const HloInstruction& offset) {
+  if (auto* cst = DynCast<HloConstantInstruction>(&offset)) {
+    switch (cst->shape().element_type()) {
+      case PrimitiveType::S32:
+      case PrimitiveType::S64:
+      case PrimitiveType::U32:
+      case PrimitiveType::U64:
+        return true;
+      default:
         return false;
-      }
-      std::transform(values->begin(), values->end(),
-                     std::back_inserter(local_value_map[indexop]),
-                     [](Literal& l) { return std::move(l); });
-    }
+    };
   }
-  for (auto& [op, values] : local_value_map) {
-    std::transform(values.begin(), values.end(),
-                   std::back_inserter(value_map[op]),
-                   [](Literal& l) { return std::move(l); });
-  }
-  VLOG(2) << "Received " << local_value_map.size() << " new offsets.";
-  return true;
+  return false;
 }
 
-// This function takes a list of fusion instructions, and a value map
-// {operation: array literal containing its values across iterations}. These
-// fusions take the value of offset as a input. So, the value of this offset is
-// calculated outside the fusion. This function changes these fusions so that
-// the fusion instead only takes the loop iteration number and the offset is
-// read from a constant array. This constant array comes from the value map. On
-// a high level, the transform looks like:
-//
-// clang-format off
-//
-// input-fusion(p0, p1, p2, offset, c0) {
-//   ds = dynamic-slice(p0, offset, c0, c0)
-//   gemm = custom-call(ds, p1)
-//   ROOT dus = dynamic-update-slice(p2, gemm, offset, c0, c0)
-// }
-//
-// changes to
-//
-// output-fusion(p0, p1, p2, loop_counter, c0) {
-//   offset_values = constant({2,4,6,8,10})
-//   offset_array = dynamic-slice(offset_values, loop_counter), slice_size={1}
-//   offset = reshape(offset_array)
-//   ds = dynamic-slice(p0, offset, c0, c0)
-//   gemm = custom-call(ds, p1)
-//   ROOT dus = dynamic-update-slice(p2, gemm, offset, c0, c0)
-// }
-//
-// clang-format on
-absl::Status ReplaceOffsetCalculationWithArrayAccess(
-    PtrVec<HloInstruction*> fusions, OffsetValueMap& value_map) {
-  absl::flat_hash_map<HloComputation*, HloInstruction*> loop_iteration_param;
-  for (auto& [instr, _] : value_map) {
-    VLOG(2) << "Handling " << instr->name();
-    if (!instr->parent()->IsWhileBodyComputation()) {
-      VLOG(2) << "It is not a while body computation";
-      return absl::InternalError(
-          absl::StrFormat("%s is expected to be a while computation.",
-                          instr->parent()->name()));
-    }
-    if (loop_iteration_param.find(instr->parent()) !=
-        loop_iteration_param.end()) {
-      VLOG(2) << "This was already handled";
-      continue;
-    }
-    VLOG(2) << "Adding loop iteration param for " << instr->parent()->name();
-    TF_ASSIGN_OR_RETURN(
-        loop_iteration_param[instr->parent()],
-        AddLoopIterationParam(instr->parent()->WhileCallInstruction()));
-  }
-  for (auto fusion_instr : fusions) {
-    // Check that this fusion operation has something we need to replace:
-    for (auto maybe_offset : fusion_instr->operands()) {
-      if (value_map.find(maybe_offset) == value_map.end()) continue;
-      HloInstruction* loop_counter =
-          loop_iteration_param[fusion_instr->parent()];
-      HloComputation* fusion = fusion_instr->fused_instructions_computation();
-      loop_iteration_param[fusion] =
-          fusion_instr->AddFusionOperand(loop_counter);
-      break;
-    }
-  }
-  for (auto fusion_instr : fusions) {
-    absl::flat_hash_map<HloInstruction*, HloInstruction*> param_replacement_map;
-    absl::InlinedVector<HloInstruction*, 4> parameters;
-    HloComputation* fusion_comp =
-        fusion_instr->fused_instructions_computation();
-    for (auto [idx, maybe_offset] : llvm::enumerate(fusion_instr->operands())) {
-      HloInstruction* offset_param =
-          fusion_instr->fused_instructions_computation()->parameter_instruction(
-              idx);
-      if (value_map.find(maybe_offset) == value_map.end() ||
-          param_replacement_map.contains(offset_param))
-        continue;
-      std::vector<Literal>& values = value_map.at(maybe_offset);
-      std::unique_ptr<HloInstruction> values_as_const_instruction =
-          GetAsConstantInstruction(values);
-      if (values_as_const_instruction == nullptr) {
-        return absl::InternalError(
-            "Unable to convert offsets into constant array.");
-      }
-      HloInstruction* array = fusion_comp->AddInstruction(
-          std::move(values_as_const_instruction), "offset_values");
-      HloInstruction* ds =
-          fusion_comp->AddInstruction(HloInstruction::CreateDynamicSlice(
-              ShapeUtil::MakeShape(offset_param->shape().element_type(), {1}),
-              array, {loop_iteration_param[fusion_comp]}, {1}));
-      HloInstruction* offset = fusion_comp->AddInstruction(
-          HloInstruction::CreateReshape(offset_param->shape(), ds), "offset");
-      param_replacement_map[offset_param] = offset;
-      parameters.push_back(offset_param);
-    }
-    for (auto param = parameters.rbegin(); param != parameters.rend();
-         param++) {
-      auto offset = param_replacement_map[*param];
-      TF_RETURN_IF_ERROR(fusion_comp->ReplaceInstruction(*param, offset));
-    }
-  }
-  return absl::OkStatus();
+// This checks whether a dynamic index operation has all offsets that are either
+// constant or loop iteration offsets.
+bool HasConstantOrLoopIterationOffsets(const HloDynamicIndexInstruction& instr,
+                                       CallGraph* call_graph) {
+  return absl::c_all_of(
+      instr.index_operands(), [call_graph](const HloInstruction* offset) {
+        return IsValueFunctionOfLoopInductionVariable(*offset, call_graph) ||
+               IsHandledConstantForDynamicSliceFusion(*offset);
+      });
 }
 
 UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
-                                          OffsetValueMap& value_map) {
+                                          CallGraph* call_graph) {
   UseDefDataflowPaths sliced_operand_paths;
 
   // This set is used to avoid duplicates in the matched results. It contains
@@ -586,7 +257,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
 
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
       aliasing_pairs;
-  if (instr->opcode() == HloOpcode::kCustomCall) {
+  if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr)) {
     aliasing_pairs =
         Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
   }
@@ -625,9 +296,14 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
         });
 
     if (maybe_slice_instr == std::nullopt) continue;
-    bool valid_slice_status =
-        PopulateOffsetValueMap(*maybe_slice_instr, value_map);
-    if ((valid_slice_status && slice_found) ||
+    auto dynamic_index_operation =
+        DynCast<HloDynamicIndexInstruction>(maybe_slice_instr.value());
+    bool valid_slice_found =
+        slice_found && ((dynamic_index_operation &&
+                         HasConstantOrLoopIterationOffsets(
+                             *dynamic_index_operation, call_graph)) ||
+                        (*maybe_slice_instr)->opcode() == HloOpcode::kSlice);
+    if (valid_slice_found ||
         processed_instrs.contains(maybe_slice_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced operand path
@@ -649,7 +325,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
 // Each entry contains the sliced paths for that user, i.e. the sequence of ops
 // following the dataflow from the user itself to the DUS (included).
 DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr,
-                                       OffsetValueMap& value_map) {
+                                       CallGraph* call_graph) {
   DefUseDataflowPaths sliced_user_paths;
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
@@ -676,10 +352,12 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr,
         },
         /*visit_operands=*/false);
     if (maybe_dus_instr == std::nullopt) return;
-    bool valid_slice_status =
-        PopulateOffsetValueMap(*maybe_dus_instr, value_map);
-    if ((valid_slice_status && dus_found) ||
-        processed_instrs.contains(maybe_dus_instr.value())) {
+    auto dynamic_index_operation =
+        DynCast<HloDynamicIndexInstruction>(maybe_dus_instr.value());
+    bool valid_dus_found =
+        dus_found && dynamic_index_operation &&
+        HasConstantOrLoopIterationOffsets(*dynamic_index_operation, call_graph);
+    if (valid_dus_found || processed_instrs.contains(maybe_dus_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced user path
       // during the latest traversal.
@@ -714,7 +392,7 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
     for (HloInstruction* operand : instr->operands()) {
       if (!matched_instrs.contains(operand) &&
           absl::c_find(captures, operand) == captures.end()) {
-        captures.emplace_back(operand);
+        captures.push_back(operand);
       }
     }
   }
@@ -846,39 +524,19 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
       matches_kv;
 
   std::vector<HloInstruction*> matches;
-  OffsetValueMap value_map;
-
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   // Collect all potential custom call matches in the non-fusion computations.
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+      if ((HloPredicateIsOp<HloOpcode::kReduceScatter>(instr) &&
            instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         UseDefDataflowPaths sliced_operand_paths =
-            GetSlicedOperandPaths(instr, value_map);
-        VLOG(1) << "For operation: " << instr->name() << ", operands: "
-                << absl::StrJoin(
-                       sliced_operand_paths, ",",
-                       [](std::string* out, const HloInstruction* inst) {
-                         out->append(inst->name());
-                       });
+            GetSlicedOperandPaths(instr, call_graph.get());
         bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
         DefUseDataflowPaths sliced_user_paths =
-            GetSlicedUserPaths(instr, value_map);
-        VLOG(1) << "For operation: " << instr->name() << ", users: "
-                << absl::StrJoin(
-                       sliced_user_paths, ",",
-                       [](std::string* out, const DefUseDataflowPath& path) {
-                         out->append(
-                             "{" +
-                             absl::StrJoin(path, ",",
-                                           [](std::string* out,
-                                              const HloInstruction* inst) {
-                                             out->append(inst->name());
-                                           }) +
-                             "}");
-                       });
+            GetSlicedUserPaths(instr, call_graph.get());
         bool has_sliced_user_paths = absl::c_any_of(
             sliced_user_paths,
             [&](auto& sliced_user_path) { return !sliced_user_path.empty(); });
@@ -901,8 +559,6 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
   }
 
   if (matches.empty()) return false;
-
-  PtrVec<HloInstruction*> fusions;
 
   for (HloInstruction* hero : matches) {
     auto& paths = matches_kv[hero];
@@ -932,7 +588,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
         HloInstruction * fusion,
         CreateFusionInstruction(module, hero, captures, fusion_body,
                                 has_dynamic_slices));
-    fusions.push_back(fusion);
+
     HloComputation* parent = hero->parent();
     if (fusion->shape().IsTuple()) {
       TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
@@ -975,9 +631,6 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
       }
     }
   }
-
-  TF_RETURN_IF_ERROR(
-      ReplaceOffsetCalculationWithArrayAccess(fusions, value_map));
 
   return true;
 }

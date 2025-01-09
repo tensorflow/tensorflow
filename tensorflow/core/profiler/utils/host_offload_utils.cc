@@ -30,11 +30,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -173,6 +173,25 @@ void HostOffloadEventProcessor::ProcessHostOffloadOpEvent(
     const XStatMetadata& async_stat = *plane_builder_->GetOrCreateStatMetadata(
         GetStatTypeStr(StatType::kIsAsync));
     event_builder.AddStatValue(async_stat, 1);
+
+    // Set metadata stats for the event.
+    const XStatMetadata& raw_bytes_stat =
+        *plane_builder_->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kRawBytesAccessed));
+    event.Metadata().ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kRawBytesAccessed) {
+        event_builder.AddStatValue(raw_bytes_stat, stat.IntValue());
+      }
+    });
+    const XStatMetadata& shape_with_layout_str =
+        *plane_builder_->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kShapeWithLayout));
+    // Use the shape from start_event, since it contains the shape of end event.
+    start_event->Metadata().ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kShapeWithLayout) {
+        event_builder.AddStatValue(shape_with_layout_str, stat.StrOrRefValue());
+      }
+    });
   }
 }
 

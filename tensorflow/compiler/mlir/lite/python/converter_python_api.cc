@@ -17,7 +17,6 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -61,7 +60,7 @@ namespace tflite {
 PyObject* Convert(PyObject* model_flags_proto_txt_raw,
                   PyObject* converter_flags_proto_txt_raw,
                   PyObject* input_contents_txt_raw, bool extended_return,
-                  PyObject* debug_info_txt_raw, bool enable_mlir_converter,
+                  PyObject* debug_info_txt_raw,
                   const tensorflow::quantization::PyFunctionLibrary*
                       quantization_py_function_library) {
   // Use Python C API to validate and convert arguments. In py3 (bytes),
@@ -137,7 +136,7 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
   }
 
   std::string output_file_contents_txt;
-  tensorflow::Status status;
+  absl::Status status;
 
   // Convert model.
   if (model_flags.use_hlo_import() && model_flags.has_saved_model_dir()) {
@@ -388,8 +387,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
 
     // Register extra opdefs to TensorFlow global op registry.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](
-            tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> absl::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return absl::OkStatus();
         });

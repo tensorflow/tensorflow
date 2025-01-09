@@ -2,6 +2,30 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+// Predicted computational cost of the instruction associated with the symbol.
+// Estimated by traversing the HLO graph.
+message PerformanceInfo {
+  // The number of floating-point operations computed.
+  optional int64 flops = 1;
+  // The sum of bytes read and bytes written.
+  optional int64 bytes_accessed = 2;
+  // Breakdown of memory accessed by read/write and memory space.
+  message MemoryAccessed {
+    optional bool is_read = 1;
+    enum MemorySpace {
+      UNKNOWN = 0;
+      HBM = 1;
+      CMEM = 2;
+      VMEM = 3;
+    }
+    optional MemorySpace memory_space = 2;
+    optional int64 bytes_accessed = 3;
+  }
+  repeated MemoryAccessed memory_accessed_breakdown = 3;
+
+  reserved 4;
+}
+
 // Types of memory bandwidth we track in the system.
 enum MemBwType {
   option allow_alias = true;
@@ -11,17 +35,26 @@ enum MemBwType {
   // available as in C++.
   MEM_BW_TYPE_FIRST = 0;
   // Aggregated BW across on-chip and off-chip memory.
+  // For GPU, 1/2 is shared memory bandwisth.
   MEM_BW_TYPE_HBM_RW = 0;
   // On-chip memory read bw.
   MEM_BW_TYPE_SRAM_RD = 1;
   // On-chip memory write bw.
   MEM_BW_TYPE_SRAM_WR = 2;
+  MEM_BW_TYPE_CMEM_RD = 3;
+  MEM_BW_TYPE_CMEM_WR = 4;
+  MEM_BW_TYPE_VMEM_RD = 5;
+  MEM_BW_TYPE_VMEM_WR = 6;
 
   // Leave last.
+  // Leave this MAX unchanged now to avoid op profile changes.
+  // TODO(b/359279074) Revisit the memory breakdown in op profile since we have
+  // more memory types now.
   MEM_BW_TYPE_MAX = 2;
 }
 
 // Tensorflow generic memory space names.
+// These space names are used in analysis code to get memory bandwidth per core.
 enum MemorySpace {
   MEMORY_SPACE_UNDEFINED = 0;
   // Off-chip memory.
@@ -137,7 +170,7 @@ message PrecisionStats {
 }
 
 // A database for OpMetrics.
-// Next ID: 14
+// Next ID: 16
 message OpMetricsDb {
   // A bunch of OpMetrics.
   repeated OpMetrics metrics_db = 10;
@@ -152,5 +185,11 @@ message OpMetricsDb {
   uint64 total_op_time_ps = 12;
   // Precision-related stats.
   PrecisionStats precision_stats = 13;
+  // The below two stats will be different from the total time ps and total op
+  // time ps because they are unioned all cores (and not summed).
+  // For duty cycle, a device is idle if all the cores are idle.
+  uint64 idle_time_ps = 14;
+  // For duty cycle, a device is busy if any of the cores is busy.
+  uint64 busy_time_ps = 15;
   reserved 1, 4, 5, 6, 7, 8, 9;
 }

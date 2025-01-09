@@ -19,17 +19,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 
 namespace mlir {
-namespace bufferization {
-class BufferizeTypeConverter;
-}  // namespace bufferization
 class MLIRContext;
 class RewritePatternSet;
+class TypeConverter;
 
 /// Collects a set of patterns that bufferize operations from the standard and
 /// other dialects.
-void populateExtraBufferizePatterns(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    TypeConverter *converter,
+                                    RewritePatternSet *patterns);
 
 }  // namespace mlir
 

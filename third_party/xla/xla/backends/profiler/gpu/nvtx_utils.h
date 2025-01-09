@@ -25,6 +25,8 @@ namespace xla {
 namespace profiler {
 
 /***
+ * TODO: After using CUPTI activity marker, remove NVTXRangeTracker related
+ * code.
  * We have no intention to use NVTX in tensorflow right now, we use this class
  * to track NVTX instrumentation inside NVIDIA libraries (such as TensorRT).
  * This bears a lot of resemblance to ScopedAnnotation for now.  In the future,

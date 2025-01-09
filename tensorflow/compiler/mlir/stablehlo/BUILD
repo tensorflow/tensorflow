@@ -32,13 +32,18 @@ tsl_pybind_extension(
         "-frtti",
     ],
     features = ["-use_header_modules"],
+    visibility = [
+        ":friends",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
+    ],
     deps = [
         "//third_party/python_runtime:headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CAPIIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
-        "@pybind11",
+        "@nanobind",
         "@stablehlo//:stablehlo_capi",
     ],
 )

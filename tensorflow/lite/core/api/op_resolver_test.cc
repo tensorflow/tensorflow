@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/op_resolver.h"
 
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 
 #include <gtest/gtest.h>

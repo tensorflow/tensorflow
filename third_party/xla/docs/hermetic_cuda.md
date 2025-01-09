@@ -137,6 +137,16 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    test:cuda --@cuda_driver//:enable_forward_compatibility=true
    ```
 
+   The default flag value is `false`.
+
+   When CUDA forward compatibility mode is disabled, Bazel targets will use User
+   Mode and Kernel Mode Drivers pre-installed on the system.
+
+   When CUDA forward compatibility mode is enabled, Bazel targets will use User
+   Mode Driver from CUDA driver redistribution downloaded into Bazel cache and
+   Kernel Mode Driver pre-installed on the system. It allows enabling new CUDA
+   Toolkit features while using older Kernel Mode Driver.
+
    Forward compatibility mode should be enforced only when it is appropriate -
    see [NVIDIA documentation](https://docs.nvidia.com/deploy/cuda-compatibility/index.html#forward-compatibility-support-across-major-toolkit-versions) for the
    details.

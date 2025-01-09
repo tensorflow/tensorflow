@@ -232,8 +232,8 @@ class DTensorDevice {
     default_mesh_ = global_default_mesh_;
   }
 
-  Status SetTPUCoreIDs(const std::string& mesh_name,
-                       const std::vector<int>& tpu_core_ids) {
+  absl::Status SetTPUCoreIDs(const std::string& mesh_name,
+                             const std::vector<int>& tpu_core_ids) {
     if (VLOG_IS_ON(1)) {
       LOG(INFO) << "Setting TPU core IDs for "
                 << (mesh_name.empty() ? "default mesh" : mesh_name) << ": ";
@@ -871,7 +871,7 @@ StatusOr<NameAttrList> FetchAttributes(const TFE_OpAttrs* attributes) {
   if (TF_GetCode(status) == TF_OK) {
     TF_DeleteStatus(status);
   } else {
-    Status failure_status = StatusFromTF_Status(status);
+    absl::Status failure_status = StatusFromTF_Status(status);
     TF_DeleteStatus(status);
     return failure_status;
   }
@@ -979,7 +979,7 @@ TFE_TensorHandle* DTensorDevice::ToTensorHandle(TFE_Context* context,
       TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
       return tensor_handle;
     }
-    Status tf_tensor_from_tensor_status;
+    absl::Status tf_tensor_from_tensor_status;
     TF_Tensor* tf_tensor =
         TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
     if (!tf_tensor_from_tensor_status.ok()) {
@@ -1518,7 +1518,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 
 // Adds processed graph to run for each mesh computation in
 // `execution_functions` to function definition library.
-Status AddExecutionFunctionDefsToFunctionDefLibrary(
+absl::Status AddExecutionFunctionDefsToFunctionDefLibrary(
     const std::string doperation_name, const StackTracesMap& stack_traces,
     const absl::flat_hash_set<Node*>& control_ret_nodes, TFE_Context* context,
     const Graph& graph, ExecutionFunctions* execution_functions) {
@@ -2070,7 +2070,7 @@ void DTensorDevice::ExecuteRegularOperation(
       // for DeviceId. This is done as the first arg is always DeviceId, and it
       // isn't mapped to input Tensors.
       const int resource_index_to_update = entry.first - 1;
-      const Status s =
+      const absl::Status s =
           llvm::cast<ResourceHandleWithLayout>(inputs[resource_index_to_update])
               ->UpdateLayout(entry.second);
       if (!s.ok()) {
@@ -2223,7 +2223,8 @@ void DTensorDevice::ExecuteRegularOperation(
         for (int i = 0; i < result->size(); ++i) {
           auto& result_tensor = (*result)[i];
           const std::vector<int64_t>* result_tensor_shape;
-          Status shape_status = result_tensor->Shape(&result_tensor_shape);
+          absl::Status shape_status =
+              result_tensor->Shape(&result_tensor_shape);
           if (!shape_status.ok()) {
             Set_TF_Status_from_Status(status, shape_status);
             return;
@@ -2588,7 +2589,7 @@ bool DTensorDevice::ShouldFastExecuteEagerPureOperation(
   // Fetch the ops registy to get the output dtype for the op. Certain dtypes
   // like string are not supported by the broadcast.
   const OpDef* op_def = nullptr;
-  Status status =
+  absl::Status status =
       OpRegistry::Global()->LookUpOpDef(dtensor_operation.name, &op_def);
   if (!status.ok()) return false;
   for (const auto& output_arg : op_def->output_arg()) {

@@ -7,7 +7,8 @@ def aar_with_jni(
         android_library,
         headers = None,
         flatten_headers = False,
-        strip_headers_prefix = ""):
+        strip_headers_prefix = "",
+        third_party_notice = None):
     """Generates an Android AAR with repo root license given an Android library target.
 
     Args:
@@ -20,6 +21,7 @@ def aar_with_jni(
           .aars with native libs that can be used directly by native clients.
       flatten_headers: Whether to flatten the output paths of included headers.
       strip_headers_prefix: The prefix to strip from the output paths of included headers.
+      third_party_notice: Optional. The third party dependency licenses as THIRD_PARTY_NOTICE.txt.
     """
 
     # Generate dummy AndroidManifest.xml for dummy apk usage
@@ -94,6 +96,13 @@ zip $$origdir/$(location :{1}.aar) LICENSE
                     fi
                 """.format(src, strip_headers_prefix.replace("/", "\\/"))
         cmd += "zip -r $$origdir/$(location :{0}.aar) headers".format(name)
+
+    if third_party_notice:
+        srcs.append(third_party_notice)
+        cmd += """
+            cp $$origdir/$(location {0}) ./THIRD_PARTY_NOTICE.txt
+            zip $$origdir/$(location :{1}.aar) THIRD_PARTY_NOTICE.txt
+        """.format(third_party_notice, name)
 
     native.genrule(
         name = name,

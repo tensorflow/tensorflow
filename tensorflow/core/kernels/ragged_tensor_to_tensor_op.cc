@@ -84,7 +84,8 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     }
   }
 
-  Status GetMaxWidth(OpKernelContext* c, int dimension, INDEX_TYPE* result) {
+  absl::Status GetMaxWidth(OpKernelContext* c, int dimension,
+                           INDEX_TYPE* result) {
     const RowPartitionTensor row_partition_tensor =
         GetRowPartitionTensor(c, dimension - 1);
     switch (GetRowPartitionTypeByDimension(dimension - 1)) {
@@ -137,8 +138,8 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     return std::max(index_length - first_equal_index, max_width);
   }
 
-  Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
-                             vector<INDEX_TYPE>* result) {
+  absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
+                                   vector<INDEX_TYPE>* result) {
     TensorShapeProto value_shape_proto;
     c->input(kValueInputIndex).shape().AsProto(&value_shape_proto);
 
@@ -207,7 +208,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     DCHECK_EQ(result->size(), first_dimension);
   }
 
-  Status CalculateOutputIndexRowSplit(
+  absl::Status CalculateOutputIndexRowSplit(
       const RowPartitionTensor& row_split,
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
@@ -260,7 +261,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   // result[6] = -1 because parent_output_index[value_rowids[6]] == -1
   // result[7] = -1 because parent_output_index[value_rowids[6]] == -1
   // result[8] = parent_output_index[value_rowids[7]]
-  Status CalculateOutputIndexValueRowID(
+  absl::Status CalculateOutputIndexValueRowID(
       const RowPartitionTensor& value_rowids,
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
@@ -315,11 +316,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     return absl::OkStatus();
   }
 
-  Status CalculateOutputIndex(OpKernelContext* context, int dimension,
-                              const vector<INDEX_TYPE>& parent_output_index,
-                              INDEX_TYPE output_index_multiplier,
-                              INDEX_TYPE output_size,
-                              vector<INDEX_TYPE>* result) {
+  absl::Status CalculateOutputIndex(
+      OpKernelContext* context, int dimension,
+      const vector<INDEX_TYPE>& parent_output_index,
+      INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
+      vector<INDEX_TYPE>* result) {
     const RowPartitionTensor row_partition_tensor =
         GetRowPartitionTensor(context, dimension);
     auto partition_type = GetRowPartitionTypeByDimension(dimension);
@@ -345,7 +346,8 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     }
   }
 
-  Status GetFirstDimensionSize(OpKernelContext* context, INDEX_TYPE* result) {
+  absl::Status GetFirstDimensionSize(OpKernelContext* context,
+                                     INDEX_TYPE* result) {
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
     if (row_partition_types_.empty()) {

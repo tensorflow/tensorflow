@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/format_utils.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,8 +47,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/utils/format_utils.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -112,27 +112,6 @@ const char* kKernelLaunchTfDataContention =
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
   return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
-}
-
-StepSummary GetStepSummaryForSampleStats(
-    const tsl::Stat<double>& sample_stats) {
-  StepSummary step_time_summary;
-  double avg, sdv, min, max;
-  if (sample_stats.empty()) {
-    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
-    // prefer to show an 0 instead.
-    avg = sdv = min = max = 0.0;
-  } else {
-    avg = sample_stats.avg();
-    sdv = sqrt(sample_stats.sample_variance());
-    min = sample_stats.min();
-    max = sample_stats.max();
-  }
-  step_time_summary.set_average(avg);
-  step_time_summary.set_standard_deviation(sdv);
-  step_time_summary.set_minimum(min);
-  step_time_summary.set_maximum(max);
-  return step_time_summary;
 }
 
 GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
@@ -484,6 +463,27 @@ std::string DatasetIntroDoc() {
 
 }  // namespace
 
+StepSummary GetStepSummaryForSampleStats(
+    const tsl::Stat<double>& sample_stats) {
+  StepSummary step_time_summary;
+  double avg, sdv, min, max;
+  if (sample_stats.empty()) {
+    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
+    // prefer to show an 0 instead.
+    avg = sdv = min = max = 0.0;
+  } else {
+    avg = sample_stats.avg();
+    sdv = sqrt(sample_stats.sample_variance());
+    min = sample_stats.min();
+    max = sample_stats.max();
+  }
+  step_time_summary.set_average(avg);
+  step_time_summary.set_standard_deviation(sdv);
+  step_time_summary.set_minimum(min);
+  step_time_summary.set_maximum(max);
+  return step_time_summary;
+}
+
 void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result) {
   InputOpMetrics input_op_metrics = SelectInputOpMetrics(host_tf_metrics_db);
@@ -595,6 +595,7 @@ StepSummary ComputeStepTimeSummaryInMs(
     // iterates over each core.
     for (const auto& coreid_and_stepinfo :
          coreid_stepinfo_map.step_info_per_core()) {
+      if (coreid_and_stepinfo.first >= kSparseCoreIndexStart) continue;
       const auto& step_info = coreid_and_stepinfo.second;
       max_per_step_stats_in_ms = std::max(step_info.duration_ps() / kNumPsPerMs,
                                           max_per_step_stats_in_ms);

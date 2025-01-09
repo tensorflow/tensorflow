@@ -46,21 +46,23 @@ using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
-Status RegisterDataset(const std::string& dataset_id, DispatcherState& state) {
+absl::Status RegisterDataset(const std::string& dataset_id,
+                             DispatcherState& state) {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   return state.Apply(update);
 }
 
-Status RegisterWorker(std::string worker_address, DispatcherState& state) {
+absl::Status RegisterWorker(std::string worker_address,
+                            DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
   return state.Apply(update);
 }
 
-Status CreateJob(int64_t job_id, const std::string& dataset_id,
-                 const std::string& job_name, DispatcherState& state) {
+absl::Status CreateJob(int64_t job_id, const std::string& dataset_id,
+                       const std::string& job_name, DispatcherState& state) {
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
@@ -69,9 +71,10 @@ Status CreateJob(int64_t job_id, const std::string& dataset_id,
   return state.Apply(update);
 }
 
-Status CreateIteration(int64_t iteration_id, const std::string& dataset_id,
-                       const IterationKey& named_iteration_key,
-                       DispatcherState& state) {
+absl::Status CreateIteration(int64_t iteration_id,
+                             const std::string& dataset_id,
+                             const IterationKey& named_iteration_key,
+                             DispatcherState& state) {
   int64_t job_id = state.NextAvailableJobId();
   TF_RETURN_IF_ERROR(
       CreateJob(job_id, dataset_id, named_iteration_key.name, state));
@@ -83,15 +86,16 @@ Status CreateIteration(int64_t iteration_id, const std::string& dataset_id,
   return state.Apply(update);
 }
 
-Status CreateIteration(int64_t iteration_id, const std::string& dataset_id,
-                       DispatcherState& state) {
+absl::Status CreateIteration(int64_t iteration_id,
+                             const std::string& dataset_id,
+                             DispatcherState& state) {
   IterationKey key(/*name=*/absl::StrCat(random::New64()), /*repetition=*/0);
   return CreateIteration(iteration_id, dataset_id, key, state);
 }
 
-Status AcquireIterationClientId(int64_t iteration_id,
-                                int64_t iteration_client_id,
-                                DispatcherState& state) {
+absl::Status AcquireIterationClientId(int64_t iteration_id,
+                                      int64_t iteration_client_id,
+                                      DispatcherState& state) {
   Update update;
   AcquireIterationClientUpdate* acquire_iteration_client =
       update.mutable_acquire_iteration_client();
@@ -100,8 +104,9 @@ Status AcquireIterationClientId(int64_t iteration_id,
   return state.Apply(update);
 }
 
-Status ReleaseIterationClientId(int64_t iteration_client_id,
-                                int64_t release_time, DispatcherState& state) {
+absl::Status ReleaseIterationClientId(int64_t iteration_client_id,
+                                      int64_t release_time,
+                                      DispatcherState& state) {
   Update update;
   ReleaseIterationClientUpdate* release_iteration_client =
       update.mutable_release_iteration_client();
@@ -110,8 +115,9 @@ Status ReleaseIterationClientId(int64_t iteration_client_id,
   return state.Apply(update);
 }
 
-Status CreateTask(int64_t task_id, int64_t iteration_id,
-                  const std::string& worker_address, DispatcherState& state) {
+absl::Status CreateTask(int64_t task_id, int64_t iteration_id,
+                        const std::string& worker_address,
+                        DispatcherState& state) {
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
@@ -120,14 +126,14 @@ Status CreateTask(int64_t task_id, int64_t iteration_id,
   return state.Apply(update);
 }
 
-Status FinishTask(int64_t task_id, DispatcherState& state) {
+absl::Status FinishTask(int64_t task_id, DispatcherState& state) {
   Update update;
   FinishTaskUpdate* finish_task = update.mutable_finish_task();
   finish_task->set_task_id(task_id);
   return state.Apply(update);
 }
 
-Status Snapshot(const std::string& path, DispatcherState& state) {
+absl::Status Snapshot(const std::string& path, DispatcherState& state) {
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
   snapshot->set_path(path);
@@ -205,7 +211,7 @@ TEST(DispatcherState, RegisterDatasetElementSpec) {
 TEST(DispatcherState, MissingDatasetId) {
   DispatcherState state;
   std::shared_ptr<const Dataset> dataset;
-  Status s = state.DatasetFromId("missing_dataset_id", dataset);
+  absl::Status s = state.DatasetFromId("missing_dataset_id", dataset);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
@@ -293,14 +299,14 @@ TEST(DispatcherState, ListWorkers) {
 TEST(DispatcherState, MissingWorker) {
   DispatcherState state;
   std::shared_ptr<const Worker> worker;
-  Status s = state.WorkerFromAddress("test_worker_address", worker);
+  absl::Status s = state.WorkerFromAddress("test_worker_address", worker);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
 TEST(DispatcherState, UnknownUpdate) {
   DispatcherState state;
   Update update;
-  Status s = state.Apply(update);
+  absl::Status s = state.Apply(update);
   EXPECT_EQ(s.code(), error::INTERNAL);
 }
 
@@ -588,7 +594,7 @@ TEST(DispatcherState, ReleaseIterationClientId) {
   std::shared_ptr<const Iteration> iteration;
   TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
   EXPECT_EQ(iteration->num_clients, 0);
-  Status s =
+  absl::Status s =
       state.IterationForIterationClientId(iteration_client_id, iteration);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }

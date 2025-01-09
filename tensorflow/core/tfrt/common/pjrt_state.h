@@ -57,11 +57,11 @@ class PjRtState : public ResourceBase {
   absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
   absl::StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
       const DeviceType& device_type);
-  Status SetPjRtClient(const DeviceType& device_type,
-                       std::unique_ptr<xla::PjRtClient> client);
+  absl::Status SetPjRtClient(const DeviceType& device_type,
+                             std::unique_ptr<xla::PjRtClient> client);
   // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
   // be returned by `GetPjRtClient`.
-  Status MovePjRtClientToUnused(const DeviceType& device_type);
+  absl::Status MovePjRtClientToUnused(const DeviceType& device_type);
   string DebugString() const override;
 
   // Saves information needed to create a PJRT client (to enable creating a

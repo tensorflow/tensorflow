@@ -110,12 +110,6 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   bool KeyToCopyFromSubcomputation(absl::string_view key) const override;
 
-  // Some instructions create new LLVM basic blocks; with our current code
-  // generation this means in the worst case doubling the IR size of a fusion
-  // containing such an instruction.
-  // Count these to avoid unmanageable IR code size.
-  float IrBasicBlockSplitCount(const HloInstruction& hlo) const;
-
   // To estimate where within the computation an instruction output can be
   // reused and where it has to be recomputed again we group accesses to the
   // instruction by their origin from "element-wise use roots". All access

@@ -32,7 +32,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-Status WithErrorSourcePayload(Status error) {
+absl::Status WithErrorSourcePayload(absl::Status error) {
   core::platform::ErrorSourceProto error_source_proto;
   error_source_proto.set_error_source(
       core::platform::ErrorSourceProto::EAGER_REMOTE_MGR);
@@ -62,7 +62,7 @@ void RemoteMgr::AddOperationOutput(tensorflow::TensorHandle* handle,
       RemoteTensorHandleInternal(operation_id, output_num), handle);
 }
 
-Status RemoteMgr::GetTensorHandleImpl(
+absl::Status RemoteMgr::GetTensorHandleImpl(
     const RemoteTensorHandleInternal& remote_handle,
     tensorflow::TensorHandle** handle) {
   auto iter = remote_tensor_handle_map_.find(remote_handle);
@@ -96,14 +96,14 @@ Status RemoteMgr::GetTensorHandleImpl(
   return absl::OkStatus();
 }
 
-Status RemoteMgr::GetTensorHandle(
+absl::Status RemoteMgr::GetTensorHandle(
     const RemoteTensorHandleInternal& remote_handle,
     tensorflow::TensorHandle** handle) {
   tf_shared_lock l(remote_tensor_handle_mu_);
   return GetTensorHandleImpl(remote_handle, handle);
 }
 
-Status RemoteMgr::GetMirroredResourceShape(
+absl::Status RemoteMgr::GetMirroredResourceShape(
     const RemoteTensorHandleInternal& remote_handle,
     std::vector<DtypeAndPartialTensorShape>* handle) {
   tf_shared_lock l(mirrored_resource_shape_mu_);
@@ -125,9 +125,9 @@ Status RemoteMgr::GetMirroredResourceShape(
   return absl::OkStatus();
 }
 
-Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                                        const bool wait_until_ready,
-                                        int64_t* op_id, int32* output_num) {
+absl::Status RemoteMgr::GetRemoteTensorHandle(
+    const tensorflow::TensorHandle* handle, const bool wait_until_ready,
+    int64_t* op_id, int32* output_num) {
   TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
                                            op_id, output_num));
   tensorflow::TensorHandle* h;
@@ -141,7 +141,7 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
   return absl::OkStatus();
 }
 
-Status RemoteMgr::DeleteTensorHandle(
+absl::Status RemoteMgr::DeleteTensorHandle(
     const RemoteTensorHandleInternal& remote_handle) {
   {
     mutex_lock l(remote_tensor_handle_mu_);
@@ -165,7 +165,7 @@ Status RemoteMgr::DeleteTensorHandle(
       remote_handle.op_id, ", Output num: ", remote_handle.output_num));
 }
 
-Status RemoteMgr::SerializeRemoteTensorHandle(
+absl::Status RemoteMgr::SerializeRemoteTensorHandle(
     TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
     Device* device, absl::string_view device_name,
     const bool serialize_resource_dtype_and_shape) {
@@ -203,8 +203,8 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
   return absl::OkStatus();
 }
 
-Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
-                                                TensorHandle** out) {
+absl::Status RemoteMgr::DeserializeRemoteTensorHandle(
+    const RemoteTensorHandle& in, TensorHandle** out) {
   Device* device;
   if (parent_->local_device_mgr()->LookupDevice(in.op_device(), &device).ok() ||
       parent_->local_device_mgr()->LookupDevice(in.device(), &device).ok()) {
@@ -260,7 +260,7 @@ void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
   if (it == executor_map_.end()) {
     return;
   }
-  Status s = it->second.ShutDown();
+  absl::Status s = it->second.ShutDown();
   if (!s.ok()) {
     LOG(ERROR) << "EagerExecutor shutdown with error " << s.message();
   }

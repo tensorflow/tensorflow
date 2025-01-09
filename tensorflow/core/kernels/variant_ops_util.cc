@@ -31,12 +31,12 @@ namespace tensorflow {
 //                     : ctx->input(ix).scalar<Variant>()())
 // This reduces (possibly expensive) copying of Variants from
 // the inputs into temp at the lowest levels of the summation tree.
-static inline Status AddVariantTo(
+static inline absl::Status AddVariantTo(
     OpKernelContext* ctx, const int lhs_ix, const int rhs_ix,
     absl::InlinedVector<Variant, 4UL>* temp,
     absl::InlinedVector<bool, 4UL>* temp_filled,
-    std::function<Status(OpKernelContext*, const Variant&, const Variant&,
-                         Variant*)>
+    std::function<absl::Status(OpKernelContext*, const Variant&, const Variant&,
+                               Variant*)>
         binary_add_variant) {
   Variant tmp;
   if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
@@ -53,8 +53,8 @@ static inline Status AddVariantTo(
 }
 
 void AddNVariant(OpKernelContext* ctx,
-                 std::function<Status(OpKernelContext*, const Variant&,
-                                      const Variant&, Variant*)>
+                 std::function<absl::Status(OpKernelContext*, const Variant&,
+                                            const Variant&, Variant*)>
                      binary_add_variant) {
   const Tensor& input0 = ctx->input(0);
   const int num = ctx->num_inputs();

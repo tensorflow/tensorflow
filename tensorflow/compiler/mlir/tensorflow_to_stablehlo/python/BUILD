@@ -1,3 +1,4 @@
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -99,11 +100,13 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_tensorflow_to_stablehlo.pyi"],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
-        ":pywrap_tensorflow_to_stablehlo_lib_header_only",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings:string_view",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
+    ] + if_pywrap(
+        if_false = [":pywrap_tensorflow_to_stablehlo_lib_header_only"],
+        if_true = [":pywrap_tensorflow_to_stablehlo_lib_impl"],
+    ),
 )

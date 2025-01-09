@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -95,7 +96,6 @@ using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 // The information of a sub-dimension in IotaTileAssignment. One tile dimension
 // in tile assignment may correspond to multiple sub-dimensions. See
@@ -413,7 +413,7 @@ TensorShardingAttr convertToSdySharding(
   // device.
   if (hloSharding.HasUniqueDevice()) {
     return TensorShardingAttr::getFullyClosed(
-        ctx, rank,
+        ctx, /*rank=*/0,
         deviceIdToMaximalMeshName.lookup(hloSharding.GetUniqueDevice()));
   }
   CHECK(!hloSharding.IsTuple());
@@ -553,8 +553,7 @@ LogicalResult importShardings(
             mlir::cast<ShapedType>(resType).getRank(),
             /*openDims=*/false));
       }
-      op->setAttr(kShardingAttr, TensorShardingPerValueAttr::get(
-                                     globalMesh.getContext(), newShardings));
+      mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
     }
   });
@@ -659,8 +658,8 @@ void addMhloImportPipeline(mlir::OpPassManager& pm,
 void registerMhloImportPipeline() {
   mlir::PassPipelineRegistration<> importPipeline(
       "xla-sdy-mhlo-import-pipeline",
-      "Run passes to import an mhlo module with `mhlo.shardings` into the SDY "
-      "(Shardy) dialect.",
+      "Run passes to import a StableHLO module with `mhlo.shardings` into the "
+      "SDY (Shardy) dialect.",
       std::bind(addMhloImportPipeline, std::placeholders::_1, ArrayRef<bool>(),
                 ArrayRef<bool>()));
 }

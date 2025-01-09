@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -209,8 +208,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
 absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* /*hlo_execution_profile*/) {
+    std::vector<ExecutionInput> arguments) {
   std::vector<se::DeviceMemoryBase> memory_bases;
   memory_bases.reserve(arguments.size());
   for (auto& argument : arguments) {

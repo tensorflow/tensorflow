@@ -161,6 +161,17 @@ Useful logging and error messages
   - "Finding allocation for": Magical logging phrase indicating the point in
     time where we are are trying to determine how to update an AllocationValue's
     AllocationSequenece, for a particular use segment.
+
+  - To log the alternate memory allocations that MSA made at a given schedule
+    time:
+    * Find the time point of interest. For example, to find the time for an
+      instruction fusion.1:
+      - Set vlogging to 2 for algorithm.cc.
+      - Find logging lines that look like:
+        Initial resource[100] = 1.0 (fusion.1)
+      - That tells us that the fusion.1 has schedule time 100.
+    * Uncomment the line in memory_space_assignment.cc labeled
+      DEBUG_ALLOCATIONS_AT, and use time 100.
 */
 
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
@@ -178,12 +189,13 @@ Useful logging and error messages
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
@@ -294,11 +306,22 @@ class MemorySpaceAssignment {
       const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Calculates asynchronous copy statistics.
-  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
+  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats(
+      const HloDataflowAnalysis& dataflow_analysis) const;
+
+  // Verify that allocations_ are free of overlapping Allocations in time and
+  // space. This is a post-processing step called after all allocations have
+  // been finalized, before the async copies get scheduled.
+  absl::Status VerifyAllocations() const;
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
-  absl::Status VerifyAndExportHeapSimulatorTrace();
+  //
+  // If alt_mem_bytes_occupied is not null, it will be populated with the number
+  // of bytes occupied in the alternate memory space at each instruction time.
+  absl::Status VerifyAndExportHeapSimulatorTrace(
+      const HloAliasAnalysis& alias_analysis,
+      std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
  protected:
   // Main driver of the memory space assignment pass.
@@ -352,7 +375,7 @@ class MemorySpaceAssignment {
 
   // Export the alternate memory assignments to the PresetAssignments and color
   // the HLO graph with the determined memory spaces.
-  absl::Status ExportAndColorBuffers();
+  absl::Status ExportAndColorBuffers(const HloAliasAnalysis& alias_analysis);
 
   // Schedules asynchronous copies and ensures that the CopyStarts and their
   // corresponding CopyDones follow the same order.

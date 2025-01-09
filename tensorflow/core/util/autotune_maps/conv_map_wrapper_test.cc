@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/test.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace tensorflow {
 namespace {

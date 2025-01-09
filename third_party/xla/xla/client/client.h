@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_CLIENT_H_
 #define XLA_CLIENT_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo.pb.h"

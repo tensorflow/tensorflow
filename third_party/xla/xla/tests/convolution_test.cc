@@ -16,22 +16,28 @@ limitations under the License.
 // Tests of 2+D convolution with trivial kernels and no special variations (like
 // strides and padding).
 
-#include <memory>
+#include <string>
+#include <tuple>
+#include <variant>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -39,6 +45,17 @@ namespace xla {
 namespace {
 
 class ConvolutionTest : public ClientLibraryTestBase {
+ public:
+  // Returns true if the test is running on ROCm.
+  bool IsRocm() {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        client_->platform()
+            ->ExecutorForDevice(0)
+            .value()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
+  }
+
  protected:
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
@@ -1674,7 +1691,10 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 
 // Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
 // (We run this test on all platforms, because, what the heck.)
-XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU_ROCM(NoCudnnAlgorithmPicker)) {
+XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "gpu-conv-algorithm-picker");
 
@@ -1730,11 +1750,22 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
                     error_spec_);
 }
 
-class ConvolutionHloTest : public HloTestBase {};
+class ConvolutionHloTest : public HloTestBase {
+ public:
+  // Returns true if the test is running on ROCm.
+  bool IsRocm() {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
+  }
+};
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64Forward))) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64Forward)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1758,8 +1789,11 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_GPU_ROCM(ConvolveF32ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm";
+  }
+
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1771,9 +1805,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter))) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardFilter)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1785,9 +1820,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput))) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardInput)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1983,6 +2019,124 @@ ENTRY TestComputation {
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
+
+enum class PaddingMode {
+  kFull,
+  kHalf,  // also called 'same' padding
+  kNo,    // also called 'valid' padding
+};
+
+// Convolution with LHS dilation, i.e. strided transposed convolution. We use
+// a custom convolution algorithm for this case, so we need to test all cases
+// (batch, input channels, output channels, etc.)
+// Parameters are: batch size, input channels, output channels, padding mode,
+// and whether to use asymmetric shapes (i.e. x != y)
+class Transposed2DConvHloTest
+    : public ConvolutionHloTest,
+      public ::testing::WithParamInterface<
+          std::tuple<int, int, int, PaddingMode, bool>> {
+ public:
+  Transposed2DConvHloTest()
+      : batch_(std::get<0>(GetParam())),
+        input_channels_(std::get<1>(GetParam())),
+        output_channels_(std::get<2>(GetParam())),
+        padding_mode_(std::get<3>(GetParam())),
+        asymmetric_shapes_(std::get<4>(GetParam())),
+        input_x_(5),
+        input_y_(asymmetric_shapes_ ? input_x_ + 1 : input_x_),
+        kernel_x_(3),
+        kernel_y_(asymmetric_shapes_ ? kernel_x_ + 1 : kernel_x_),
+        lhs_dilation_x_(2),
+        lhs_dilation_y_(asymmetric_shapes_ ? lhs_dilation_x_ + 1
+                                           : lhs_dilation_x_) {}
+
+ public:
+  int GetPaddingValue(int kernel_size, bool low) {
+    switch (padding_mode_) {
+      case PaddingMode::kFull:
+        return 0;
+      case PaddingMode::kHalf:
+        if (low) {
+          // Padding on the low side (i.e. before the first element in given
+          // dimension)
+          return kernel_size / 2;
+        } else {
+          // Padding on the high side (i.e. after the last element in given
+          // dimension)
+          return (kernel_size - 1) / 2;
+        }
+      case PaddingMode::kNo:
+        return kernel_size - 1;
+    }
+  }
+
+  auto GetWindow() {
+    Window window;
+
+    auto add_dim = [&](int size, int lhs_dilation) {
+      auto dim = window.add_dimensions();
+      dim->set_size(size);
+      dim->set_stride(1);
+      dim->set_padding_low(GetPaddingValue(size, /*low=*/true));
+      dim->set_padding_high(GetPaddingValue(size, /*low=*/false));
+      dim->set_window_dilation(1);
+      dim->set_base_dilation(lhs_dilation);
+    };
+
+    add_dim(kernel_x_, lhs_dilation_x_);
+    add_dim(kernel_y_, lhs_dilation_y_);
+
+    return window;
+  }
+
+ public:
+  int batch_;
+  int input_channels_;
+  int output_channels_;
+  PaddingMode padding_mode_;
+  bool asymmetric_shapes_;
+  int input_x_;
+  int input_y_;
+  int kernel_x_;
+  int kernel_y_;
+  int lhs_dilation_x_;
+  int lhs_dilation_y_;
+};
+
+XLA_TEST_P(Transposed2DConvHloTest, Simple) {
+  const auto input_shape =
+      ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
+  const auto kernel_shape = ShapeUtil::MakeShape(
+      F32, {output_channels_, input_channels_, kernel_x_, kernel_y_});
+
+  const auto window = GetWindow();
+
+  // clang-format off
+  const std::string hlo = absl::StrCat(R"(
+    HloModule TestModule
+
+    ENTRY TestComputation {
+      input.1 = )", input_shape.ToString(), R"( parameter(0)
+      filter.2 = )", kernel_shape.ToString(), R"( parameter(1)
+      ROOT conv.3 = convolution(input.1, filter.2),
+        window={)", window_util::ToString(window), R"(},
+        dim_labels=bf01_oi01->bf01
+    }
+  )");
+  // clang-format on
+
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0.01, 0.01}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Transposed2DConvHloTest, Transposed2DConvHloTest,
+    ::testing::Combine(::testing::Values(1, 2),  // Batch size
+                       ::testing::Values(1, 3),  // Input channels
+                       ::testing::Values(1, 5),  // Output channels
+                       ::testing::Values(PaddingMode::kFull, PaddingMode::kNo,
+                                         PaddingMode::kHalf),  // Padding mode
+                       ::testing::Bool()  // Asymmetric shapes
+                       ));
 
 }  // namespace
 }  // namespace xla

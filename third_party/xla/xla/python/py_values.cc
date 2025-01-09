@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/complex.h"  // IWYU pragma: keep
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/py_array.h"
@@ -83,7 +82,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
         "Unable to convert Python scalar to %s. This most likely means the "
         "value (%s) overflows the range of the type.",
         PrimitiveType_Name(primitive_util::NativeToPrimitiveType<T>()),
-        nb::cast<std::string_view>(nb::repr(obj)));
+        nb::cast<absl::string_view>(nb::repr(obj)));
   }
 
   std::variant<T, SquashedT> data;
@@ -130,7 +129,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S32;
   } else {
@@ -141,7 +140,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S64;
   }
@@ -185,6 +184,12 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   } else if (std::is_same<T, bfloat16>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = BF16;
+  } else if (std::is_same<T, tsl::float8_e3m4>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
+    type = F8E3M4;
+  } else if (std::is_same<T, tsl::float8_e4m3>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
+    type = F8E4M3;
   } else if (std::is_same<T, tsl::float8_e4m3fn>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = F8E4M3FN;
@@ -372,8 +377,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
             HandlePythonScalar<complex128, complex64>;
 
-        const auto numpy = nb::module_::import_("numpy");
-        (*p)[numpy.attr("ndarray").ptr()] = HandleNumpyArray;
+        (*p)[reinterpret_cast<PyObject*>(&PyArray_Type)] = HandleNumpyArray;
 
         // Numpy scalar types. For some of them, we share the handler with
         // Python types (np_int64, np_float64, np_complex128).
@@ -394,6 +398,14 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
+        if (dtypes.np_float8_e3m4.has_value()) {
+          (*p)[dtypes.np_float8_e3m4->ptr()] =
+              HandleNumpyScalar<tsl::float8_e3m4>;
+        }
+        if (dtypes.np_float8_e4m3.has_value()) {
+          (*p)[dtypes.np_float8_e4m3->ptr()] =
+              HandleNumpyScalar<tsl::float8_e4m3>;
+        }
         (*p)[dtypes.np_float8_e4m3fn.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fn>;
         (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] =
@@ -438,7 +450,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
                   "Not supported: The C++ jax jit execution path, only accepts "
                   "DeviceArray, Numpy arrays scalars of supported types "
                   "(see implementation), or Python scalars. Got type ",
-                  nb::cast<std::string_view>(nb::str(arg.type()))));
+                  nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, client, to_device, options, to_memory_kind);
 }
@@ -491,7 +503,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
             [&dtypes](nb::handle h,
                       bool jax_enable_x64) -> absl::StatusOr<PyArgSignature> {
           // Only Python native types has a True weak_type.
-          bool weak_type = !xla::nb_isinstance(h, dtypes.np_float64);
+          bool weak_type = !nb::isinstance(h, dtypes.np_float64);
           if (jax_enable_x64) {
             return PyArgSignature(PrimitiveType::F64, {}, weak_type);
           } else {
@@ -504,7 +516,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
           // Note that this branch is also taken  for np.complex128:
           // isinstance(np.complex128(3), complex) returns True
           // isinstance(np.complex64(3), complex) returns False
-          bool weak_type = !xla::nb_isinstance(h, dtypes.np_complex128);
+          bool weak_type = !nb::isinstance(h, dtypes.np_complex128);
           if (jax_enable_x64) {
             return PyArgSignature(PrimitiveType::C128, {}, weak_type);
           } else {
@@ -539,8 +551,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
                   numpy_array.ndim()),
               /*weak_type=*/false);
         };
-        const auto numpy = nb::module_::import_("numpy");
-        (*p)[numpy.attr("ndarray").ptr()] = numpy_handler;
+        (*p)[reinterpret_cast<PyObject*>(&PyArray_Type)] = numpy_handler;
 
         ToPyArgSignatureHandler np_uint64_handler =
             [](nb::handle h,
@@ -583,6 +594,9 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
         (*p)[dtypes.np_uint16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
+        // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+        // (*p)[dtypes.np_float8_e3m4.ptr()] = numpy_array_handler;
+        // (*p)[dtypes.np_float8_e4m3.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;
@@ -626,7 +640,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
                      "Buffer/DeviceArray, Numpy "
                      "arrays scalars of supported types "
                      "(see implementation), or Python scalars. Got type ",
-                     nb::cast<std::string_view>(nb::str(arg.type()))));
+                     nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, jax_enable_x64);
 }

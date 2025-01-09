@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_BROADCAST_CANONICALIZER_H_
 #define XLA_SERVICE_BROADCAST_CANONICALIZER_H_
 
-#include <optional>
-
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// This transform ensures that dimensions in all broadcast operations are
-// sorted.
-class BroadcastCanonicalizer : public HloModulePass {
- public:
-  explicit BroadcastCanonicalizer();
-
-  absl::string_view name() const override { return "broadcast_canonicalizer"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 
 #endif  // XLA_SERVICE_BROADCAST_CANONICALIZER_H_

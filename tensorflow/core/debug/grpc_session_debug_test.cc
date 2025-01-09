@@ -255,7 +255,7 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
 
-      Status s = session->Create(def);
+      absl::Status s = session->Create(def);
       if (s.ok()) {
         std::vector<Tensor> outputs;
 

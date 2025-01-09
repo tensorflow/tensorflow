@@ -74,12 +74,25 @@ class HloSharding final
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  Disassemble(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
+
   absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<
+      std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+  Disassemble(
+      const DynamicShape& dynamic_shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   std::string DebugString() const override;
 
@@ -95,7 +108,8 @@ class HloSharding final
 // Test only: returns `HloSharding::IndexDomains()`, using `xla::HloSharding`
 // APIs internally.
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(
-    const HloSharding& sharding, const Shape& shape);
+    const HloSharding& sharding, const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics);
 
 }  // namespace ifrt
 }  // namespace xla

@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <cstdint>
 #include <numeric>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 #define EIGEN_USE_THREADS
 
@@ -228,9 +232,9 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
   }
 
  private:
-  Status ValidateInputs(const CSRSparseMatrix& sparse_matrix,
-                        const Tensor& permutation_indices, int* batch_size,
-                        int64_t* num_rows) {
+  absl::Status ValidateInputs(const CSRSparseMatrix& sparse_matrix,
+                              const Tensor& permutation_indices,
+                              int* batch_size, int64_t* num_rows) {
     if (sparse_matrix.dtype() != DataTypeToEnum<T>::value)
       return errors::InvalidArgument(
           "Asked for a CSRSparseMatrix of type ",

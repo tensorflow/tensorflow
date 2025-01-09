@@ -72,7 +72,7 @@ static Node* AddZerosLike(Graph* g, NodeOut input) {
     read_def.set_op("ReadVariableOp");
     read_def.add_input(input.name());
     AddNodeAttr("dtype", DT_FLOAT, &read_def);
-    Status s;
+    absl::Status s;
     Node* read = g->AddNode(read_def, &s);
     TF_CHECK_OK(s);
     g->AddEdge(input.node, input.index, read, 0);
@@ -91,7 +91,7 @@ static Node* AddZerosLike(Graph* g, NodeOut input) {
     ndef.set_op("ZerosLike");
     ndef.add_input(input.name());
     AddNodeAttr("T", input.dtype(), &ndef);
-    Status s;
+    absl::Status s;
     Node* ret = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
     g->AddEdge(input.node, input.index, ret, 0);
@@ -143,7 +143,7 @@ static Node* AddSymGrad(Graph* g, Node* n, absl::Span<const NodeOut> grads) {
     (*func.mutable_attr())[attr.first] = attr.second;
   }
   AddNodeAttr("f", func, &ndef);
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   return ret;
@@ -157,7 +157,7 @@ class SymbolicGradientBuilder {
                           std::vector<NodeOut>* x_grad_node_outputs,
                           Graph* graph);
 
-  Status Compute();
+  absl::Status Compute();
 
  private:
   absl::Span<const NodeOut> y_node_outputs_;
@@ -324,7 +324,7 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   }
   AddNodeAttr("N", static_cast<int64_t>(grads.size()), &ndef);
   AddNodeAttr("T", dtype, &ndef);
-  Status s;
+  absl::Status s;
   Node* add = graph_->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   for (size_t i = 0; i < grads.size(); ++i) {
@@ -336,11 +336,11 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
 
 static bool IsPrimitiveOpWithNoGrad(const string& func) {
   gradient::Creator creator;
-  Status s = gradient::GetOpGradientCreator(func, &creator);
+  absl::Status s = gradient::GetOpGradientCreator(func, &creator);
   return s.ok() && (creator == nullptr);
 }
 
-Status SymbolicGradientBuilder::Compute() {
+absl::Status SymbolicGradientBuilder::Compute() {
   // Initialize backprops.
   InitBackprop();
 
@@ -405,11 +405,11 @@ Status SymbolicGradientBuilder::Compute() {
   return absl::OkStatus();
 }
 
-Status AddSymbolicGradients(absl::Span<const NodeOut> y_node_outputs,
-                            absl::Span<const NodeOut> x_node_outputs,
-                            absl::Span<const NodeOut> y_grad_node_outputs,
-                            std::vector<NodeOut>* x_grad_node_outputs,
-                            Graph* graph) {
+absl::Status AddSymbolicGradients(absl::Span<const NodeOut> y_node_outputs,
+                                  absl::Span<const NodeOut> x_node_outputs,
+                                  absl::Span<const NodeOut> y_grad_node_outputs,
+                                  std::vector<NodeOut>* x_grad_node_outputs,
+                                  Graph* graph) {
   SymbolicGradientBuilder builder(y_node_outputs, x_node_outputs,
                                   y_grad_node_outputs, x_grad_node_outputs,
                                   graph);

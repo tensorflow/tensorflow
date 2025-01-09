@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -66,7 +67,8 @@ class FallbackState {
   // Create GraphExecutionState from the `graph_def`. The result will contain a
   // preprocessed graph with runtime information such as devices.
   absl::StatusOr<std::unique_ptr<GraphExecutionState>>
-  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true) const;
+  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true,
+                            bool enable_tf2xla_mlir_bridge = true) const;
 
   // Adds `func_def` to the function library.
   absl::Status AddFunctionDef(const FunctionDef &func_def);

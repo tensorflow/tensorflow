@@ -48,17 +48,17 @@ class BufRendezvous {
 
   // Inform all waiting parties that this BufRendezvous is defunct because of
   // an error Status interrupting the Step.
-  void StartAbort(const Status& s);
+  void StartAbort(const absl::Status& s);
 
   struct Hook;
   // Provided by the consumer to be called when access to the buffer
   // is available.  If the Status arg is not OK, then hook will not
   // be populated.  Ownership of Hook passes to consumer with the
   // callback.
-  typedef std::function<void(const Status&, Hook*)> ConsumerCallback;
+  typedef std::function<void(const absl::Status&, Hook*)> ConsumerCallback;
   // Provided by the producer to be called when the consumer has finished
   // reading the buffer and will no longer access it.
-  typedef std::function<void(const Status&)> ProducerCallback;
+  typedef std::function<void(const absl::Status&)> ProducerCallback;
 
   struct Hook {
     Device* prod_dev;
@@ -124,11 +124,11 @@ class BufRendezvous {
   const uint64 step_id_;
   const DeviceMgr* const dev_mgr_;  // Not owned.
   mutex mu_;
-  Status status_ TF_GUARDED_BY(mu_);
+  absl::Status status_ TF_GUARDED_BY(mu_);
   typedef absl::flat_hash_map<string, Hook*> HookTable;
   HookTable hook_table_ TF_GUARDED_BY(mu_);
 
-  void PurgeTable(const Status& s, HookTable* table);
+  void PurgeTable(const absl::Status& s, HookTable* table);
 };
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_BUF_RENDEZVOUS_H_

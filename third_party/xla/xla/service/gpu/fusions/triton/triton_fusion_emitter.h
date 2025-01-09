@@ -26,9 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -36,12 +34,9 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -58,34 +53,10 @@ struct ClusterInfo;
 namespace xla {
 namespace gpu {
 
-namespace mt = ::mlir::triton;
-
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
   std::optional<se::ClusterDim> cluster_dim;
 };
-
-// Generate Triton IR inside 'fn'. This uses the given output_tile_sizes
-// and the SymbolicTileAnalysis from the computation. The provided
-// TritonFusionAnalysis and TritonGemmConfig are ignored.
-absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters);
-
-// Compute the launch dimensions for the given Triton MatMul.
-absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config);
-
-// Use tiling and execution parameters from 'config'. output_tile_sizes is
-// ignored.
-absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
-                        const se::DeviceDescription& device_info,
-                        const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn,
-                        const BlockLevelParameters& block_level_parameters);
 
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
@@ -113,25 +84,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 // That is useful when deserializing from the compilation cache.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool emit_kernel = true);
-
-// Create Triton pipeline.
-//
-// `out_cluster_info` must be kept alive at least until pm.run() is called.
-// It should be read after that. We have to pass the cluster dims to
-// LaunchDimensions. Triton currently uses this as an out-parameter to return
-// the cluster dims determined based on `config.num_ctas` and a heuristic. There
-// are some signs that show that this was intended to be used as an in-out
-// parameter which would give a hint to Triton which cluster dims we prefer to
-// use, but that's not the case currently.
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const BlockLevelParameters& block_level_parameters,
-    mt::nvidia_gpu::ClusterInfo& out_cluster_info);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
@@ -141,12 +97,11 @@ namespace ir_emitter_triton_internal {
 
 // Computes the transformation from a 1-d program_id to a tile multi-index.
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    mlir::ImplicitLocOpBuilder& b,
-    absl::Span<const int64_t> num_output_tiles_per_dim);
+    EmitterLocOpBuilder& b, absl::Span<const int64_t> num_output_tiles_per_dim);
 
 // Used for creating Triton Load and Store ops.
 struct MakeTensorPtrOpAndBoundaryChecks {
-  mt::MakeTensorPtrOp op;
+  ::mlir::triton::MakeTensorPtrOp op;
 
   // Indices of dimensions where the original tile size is not a power of 2 and
   // requires a boundary check.
@@ -154,9 +109,16 @@ struct MakeTensorPtrOpAndBoundaryChecks {
 };
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
-    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
+    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
 }  // namespace ir_emitter_triton_internal
+
+// Dumps the Triton IR to a string.
+//
+// If `dump_annotations` is true, then the function also dumps the loc
+// attributes of the instructions. Otherwise, it dumps the IR without
+// annotations.
+std::string DumpTritonIR(mlir::ModuleOp triton_module, bool dump_annotations);
 
 }  // namespace gpu
 }  // namespace xla

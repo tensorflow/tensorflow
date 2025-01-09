@@ -52,8 +52,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla/tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -66,8 +66,8 @@ tf_cc_test(
         ":conv_parameters_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:test",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -78,7 +78,7 @@ tf_proto_library(
     ],
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -136,7 +136,7 @@ tf_proto_library(
     ],
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
     visibility = [
         "//waymo/ml/deploy/benchmark:__subpackages__",
@@ -148,7 +148,6 @@ tf_proto_library(
 # py_proto_library(
 #     name = "autotune_map_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
 # )
@@ -156,10 +155,7 @@ tf_proto_library(
 # tf_pyclif_proto_library(
 #     name = "autotune_map_pyclif",
 #     proto_lib = ":autotune_map_proto",
-#     visibility = [
-#         "//waymo/ml/deploy/benchmark:__subpackages__",
-#         "//waymo/ml/deploy/system/autotuning:__subpackages__",
-#     ],
+#     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 # )
 # copybara:uncomment_end
 
@@ -180,12 +176,14 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
         "@local_xla//xla/tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 

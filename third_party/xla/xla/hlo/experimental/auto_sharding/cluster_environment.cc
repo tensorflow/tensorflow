@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -23,9 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 
@@ -121,35 +127,79 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
   return AllToAllCostUtil(num_bytes, mesh_dim, num_devices);
 }
 
-// Do not consider device id changes yet.
-double ClusterEnvironment::ReshardingCostMixedMeshShape(
-    const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
-    absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const {
-  int64_t num_devices = device_mesh_.num_elements();
-  double resharding_costs = 0.0;
-  for (size_t i = 0; i < shape.rank(); ++i) {
-    // Only consider sharded dimensions, do not consider replicate_on_last_dim.
-    if (src_tensor_dim_to_mesh_dim[i] == dst_tensor_dim_to_mesh_dim[i]) {
-      continue;
-    }
-    if (dst_tensor_dim_to_mesh_dim[i] == -1 ||
-        src_tensor_dim_to_mesh_dim[i] == -1) {
-      // AllToAll cost
-      int64_t communication_dim;
-      if (dst_tensor_dim_to_mesh_dim[i] != -1) {
-        communication_dim = dst_tensor_dim_to_mesh_dim[i];
-      } else {
-        communication_dim = src_tensor_dim_to_mesh_dim[i];
-      }
-      int64_t communication_bytes = ByteSizeOfShape(shape);
-      resharding_costs +=
-          AllToAllCostUtil(communication_bytes, communication_dim, num_devices);
-    } else {
-      // Do not support this sharding, assuming it is gonna be very expensive.
-      return kInfinityCost;
+template <typename T>
+bool IsSubset(absl::btree_set<T> superset, absl::btree_set<T> subset) {
+  for (const T& element : subset) {
+    if (!superset.contains(element)) {
+      return false;
     }
   }
-  return resharding_costs;
+  return true;
+}
+
+// Do not consider device id changes yet.
+double ClusterEnvironment::ReshardingCostMixedMeshShape(
+    const Shape& shape, const HloSharding& src_sharding,
+    const HloSharding& dst_sharding) const {
+  absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+      src_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
+          shape.rank(), src_sharding, device_mesh_,
+          /*consider_reverse_device_meshes=*/true);
+  absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+      dst_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
+          shape.rank(), dst_sharding, device_mesh_,
+          /*consider_reverse_device_meshes=*/true);
+  if (!src_tensor_dim_to_mesh_axis.ok() || !dst_tensor_dim_to_mesh_axis.ok()) {
+    return OverestimateReplicationCost(shape, src_sharding, device_mesh_);
+  }
+
+  int64_t num_devices = device_mesh_.num_elements();
+  std::vector<int64_t> collective_mesh_axes;
+  // Only consider sharded dimensions, do not consider replicate_on_last_dim.
+  for (size_t i = 0; i < shape.rank(); ++i) {
+    if ((*src_tensor_dim_to_mesh_axis)[i] ==
+        (*dst_tensor_dim_to_mesh_axis)[i]) {
+      continue;
+    }
+    if (IsSubset((*dst_tensor_dim_to_mesh_axis)[i],
+                 (*src_tensor_dim_to_mesh_axis)[i])) {
+      // do nothing; the dst is sharded more than the src
+      continue;
+    }
+    if (!IsSubset((*src_tensor_dim_to_mesh_axis)[i],
+                  (*dst_tensor_dim_to_mesh_axis)[i])) {
+      // Do not support this sharding, assuming it is gonna be very expensive.
+      return OverestimateReplicationCost(shape, src_sharding, device_mesh_);
+    }
+    for (int64_t mesh_dim : (*src_tensor_dim_to_mesh_axis)[i]) {
+      if (!(*dst_tensor_dim_to_mesh_axis)[i].contains(mesh_dim)) {
+        collective_mesh_axes.push_back(mesh_dim);
+      }
+    }
+  }
+
+  auto is_mesh_axis_used_for_dst_sharding = [&](int64_t mesh_dim) {
+    int end = dst_sharding.ReplicateOnLastTileDim()
+                  ? dst_tensor_dim_to_mesh_axis->size() - 1
+                  : dst_tensor_dim_to_mesh_axis->size();
+    for (int i = 0; i < end; ++i) {
+      if ((*dst_tensor_dim_to_mesh_axis)[i].contains(mesh_dim)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  double resharding_cost = 0.0;
+  int64_t communication_bytes = ByteSizeOfShape(shape);
+  for (int mesh_dim : collective_mesh_axes) {
+    bool used_for_dst_sharding = is_mesh_axis_used_for_dst_sharding(mesh_dim);
+    resharding_cost +=
+        used_for_dst_sharding
+            ? AllToAllCostUtil(communication_bytes, mesh_dim, num_devices)
+            : AllGatherCost(communication_bytes, mesh_dim);
+  }
+  return resharding_cost;
 }
 
 double ClusterEnvironment::CollectivePermuteCost(
@@ -182,17 +232,16 @@ double ClusterEnvironment::CollectivePermuteCost(
 // Overestimate the cost of replicating a tensor by decomposing the resharding
 // operation as an all-gather on all mesh dimensions.
 double ClusterEnvironment::OverestimateReplicationCost(
-    const Shape& shape, const HloSharding& src_spec,
+    const Shape& shape, const HloSharding& src_sharding,
     const DeviceMesh& device_mesh) const {
-  if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
-    // TODO(b/238210866) Do not use kInfinityCost.
-    return kInfinityCost;
+  if (src_sharding.IsReplicated()) {
+    return 0;
   }
-  int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_spec);
+  int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_sharding);
   double cost = 0.0;
   for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
-    auto this_cost = this->AllGatherCost(bytes_moved, i);
-    cost += this_cost;
+    cost += src_sharding.IsTileMaximal() ? this->AllReduceCost(bytes_moved, i)
+                                         : this->AllGatherCost(bytes_moved, i);
     bytes_moved *= device_mesh.dimensions()[i];
   }
   return cost;
@@ -313,8 +362,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       dst_tensor_dim_to_mesh_dim_or.value();
 
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    return ReshardingCostMixedMeshShape(shape, src_tensor_dim_to_mesh_dim,
-                                        dst_tensor_dim_to_mesh_dim);
+    return ReshardingCostMixedMeshShape(shape, src_spec, dst_spec);
   }
 
   AdjustTensorMeshDimMapping(src_tensor_dim_to_mesh_dim, src_n_dim);

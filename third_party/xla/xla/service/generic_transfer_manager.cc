@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shaped_buffer.h"
@@ -298,6 +299,17 @@ Shape GenericTransferManager::HostShapeToDeviceShape(
         primitive_util::BitWidth(device_shape.element_type()));
   }
   return device_shape;
+}
+
+absl::StatusOr<Shape> GenericTransferManager::ChooseCompactLayoutForShape(
+    const Shape& host_shape) const {
+  Shape compact_shape = LayoutUtil::GetWithDefaultLayout(host_shape);
+  if (PackSubbyteTypes() &&
+      primitive_util::IsSubByteNonPredType(compact_shape.element_type())) {
+    compact_shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(compact_shape.element_type()));
+  }
+  return compact_shape;
 }
 
 }  // namespace xla

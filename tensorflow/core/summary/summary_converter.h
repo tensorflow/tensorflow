@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_SUMMARY_SUMMARY_CONVERTER_H_
 #define TENSORFLOW_CORE_SUMMARY_SUMMARY_CONVERTER_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -22,16 +23,16 @@ limitations under the License.
 namespace tensorflow {
 
 // TODO(jart): Delete these methods in favor of new Python implementation.
-Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
-                                  Summary* s);
-Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
-                                     Summary* s);
-Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
-                                 int max_images, const Tensor& bad_color,
-                                 Summary* s);
-Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
-                                 int max_outputs, float sample_rate,
-                                 Summary* s);
+absl::Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
+                                        Summary* s);
+absl::Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
+                                           Summary* s);
+absl::Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
+                                       int max_images, const Tensor& bad_color,
+                                       Summary* s);
+absl::Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
+                                       int max_outputs, float sample_rate,
+                                       Summary* s);
 
 }  // namespace tensorflow
 

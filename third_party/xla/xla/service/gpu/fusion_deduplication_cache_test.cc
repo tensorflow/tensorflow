@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/fusion_deduplication_cache.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -51,6 +52,8 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer) {
   return fusion_instruction;
 }
 
+bool IsFusible(const HloInstruction& instruction) { return true; }
+
 using FusionDeduplicationCacheTest = HloTestBase;
 
 TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
@@ -64,7 +67,8 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
       ROOT add2 = f32[8] add(add1, p1)
     })"));
 
-  FusionDeduplicationCache cache = FusionDeduplicationCache::Create(*module);
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
 
   const HloInstruction* add2 = module->entry_computation()->root_instruction();
   const HloInstruction* add1 = add2->operand(0);
@@ -88,7 +92,8 @@ TEST_F(FusionDeduplicationCacheTest,
       ROOT add2 = f32[8] add(p0, p0)
     })"));
 
-  FusionDeduplicationCache cache = FusionDeduplicationCache::Create(*module);
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
 
   const HloInstruction* add1 =
       module->GetComputationWithName("computation.1")->root_instruction();
@@ -115,7 +120,8 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
   auto* log1 = entry_computation->GetInstructionWithName("log1");
   auto* log2 = entry_computation->GetInstructionWithName("log2");
 
-  FusionDeduplicationCache cache = FusionDeduplicationCache::Create(*module);
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
   EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
   EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
   EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
@@ -153,7 +159,8 @@ TEST_F(FusionDeduplicationCacheTest,
   auto* log1 = entry_computation->GetInstructionWithName("log1");
   auto* log2 = entry_computation->GetInstructionWithName("log2");
 
-  FusionDeduplicationCache cache = FusionDeduplicationCache::Create(*module);
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
 
   EXPECT_NE(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
 
@@ -166,6 +173,35 @@ TEST_F(FusionDeduplicationCacheTest,
                                  /*consumer_operand_index=*/1);
 
   EXPECT_NE(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+}
+
+TEST_F(FusionDeduplicationCacheTest, OnlyFusibleInstructionsAreCached) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      p1 = (f32[8], f32[8]) parameter(1)
+      gte = f32[8] get-tuple-element(p1), index=0
+      add = f32[8] add(p0, gte)
+      ROOT mul = f32[8] multiply(add, p0)
+    })"));
+
+  HloComputation* entry_computation = module->entry_computation();
+
+  auto* add = entry_computation->GetInstructionWithName("add");
+  auto* mul = entry_computation->GetInstructionWithName("mul");
+
+  FusionDeduplicationCache cache = FusionDeduplicationCache::Create(
+      *module, [&](const HloInstruction& instruction) {
+        return instruction.opcode() == HloOpcode::kAdd ||
+               instruction.opcode() == HloOpcode::kMultiply;
+      });
+
+  // kParameter and kGetTupleElement are not fusible, so assignment of fusion
+  // IDs started from `add`.
+  EXPECT_EQ(cache.GetInstructionId(*add), 0);
+  EXPECT_EQ(cache.GetInstructionId(*mul), 1);
 }
 
 }  // namespace

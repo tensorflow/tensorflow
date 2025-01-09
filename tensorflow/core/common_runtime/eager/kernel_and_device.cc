@@ -57,8 +57,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
-                                    Tensor* val) const {
+absl::Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
+                                          Tensor* val) const {
   if (index.sub_index >= 0) {
     return errors::InvalidArgument("Got unexpected sub_index ", index.sub_index,
                                    " for argument ", index.index);
@@ -95,7 +95,7 @@ std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
 
 KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   if (handle_ != kInvalidHandle) {
-    Status status = pflr_->ReleaseHandle(handle_);
+    absl::Status status = pflr_->ReleaseHandle(handle_);
     if (!status.ok()) {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
@@ -104,7 +104,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
-Status KernelAndDeviceOp::Init(
+absl::Status KernelAndDeviceOp::Init(
     const bool log_device_placement, const NodeDef& ndef,
     GraphCollector* graph_collecto,
     const absl::optional<EagerFunctionParams>& eager_func_params) {
@@ -147,7 +147,7 @@ Status KernelAndDeviceOp::Init(
   return absl::OkStatus();
 }
 
-Status KernelAndDeviceFunc::InstantiateFunc(
+absl::Status KernelAndDeviceFunc::InstantiateFunc(
     const bool log_device_placement, const NodeDef& ndef,
     GraphCollector* graph_collector,
     const absl::optional<EagerFunctionParams>& eager_func_params) {
@@ -259,7 +259,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
-Status KernelAndDeviceFunc::Init(
+absl::Status KernelAndDeviceFunc::Init(
     const bool log_device_placement, const NodeDef& ndef,
     GraphCollector* graph_collector,
     const absl::optional<EagerFunctionParams>& eager_func_params) {
@@ -279,7 +279,7 @@ struct OpExecutionState : public core::RefCounted {
 };
 }  // anonymous namespace
 
-Status KernelAndDeviceOp::Run(
+absl::Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
@@ -345,7 +345,7 @@ Status KernelAndDeviceOp::Run(
     op_execution_state->Unref();
   }
 
-  Status s = context.status();
+  absl::Status s = context.status();
   if (TF_PREDICT_FALSE(!s.ok())) {
     if (absl::IsUnavailable(s) && !is_distributed_communication_op_) {
       s = errors::ReplaceErrorFromNonCommunicationOps(s, kernel_->name());
@@ -429,7 +429,7 @@ KernelAndDeviceFunc::PrepareForRun(
   return opts;
 }
 
-Status KernelAndDeviceFunc::Run(
+absl::Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
@@ -441,10 +441,10 @@ Status KernelAndDeviceFunc::Run(
   // Don't try to handle packed or remote inputs synchronously.
   if (inputs.HasRemoteOrPackedInputs() || eager_func_params.has_value()) {
     Notification n;
-    Status status;
+    absl::Status status;
     RunAsync(step_container, inputs, outputs, cancellation_manager,
              eager_func_params, coordination_service_agent,
-             [&status, &n](Status s) {
+             [&status, &n](absl::Status s) {
                status = s;
                n.Notify();
              });
@@ -457,7 +457,7 @@ Status KernelAndDeviceFunc::Run(
       stack_trace, coordination_service_agent, &created_rendezvous);
 
   std::vector<Tensor> rets;
-  Status s;
+  absl::Status s;
   {
     port::ScopedFlushDenormal flush;
     port::ScopedSetRound round(FE_TONEAREST);
@@ -480,7 +480,7 @@ void KernelAndDeviceFunc::RunAsync(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     tsl::CoordinationServiceAgent* coordination_service_agent,
-    std::function<void(const Status&)> done) {
+    std::function<void(const absl::Status&)> done) {
   tsl::profiler::TraceMe activity(
       [] {
         return tsl::profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
@@ -492,16 +492,16 @@ void KernelAndDeviceFunc::RunAsync(
       step_container, outputs, cancellation_manager, eager_func_params,
       std::nullopt, coordination_service_agent, &created_rendezvous);
 
-  pflr_->Run(
-      *opts, handle_, inputs, outputs,
-      [opts, cancellation_manager, done = std::move(done),
-       created_rendezvous = created_rendezvous.release()](const Status& s) {
-        if (cancellation_manager == nullptr) {
-          delete opts->cancellation_manager;
-        }
-        created_rendezvous->Unref();
-        done(s);
-      });
+  pflr_->Run(*opts, handle_, inputs, outputs,
+             [opts, cancellation_manager, done = std::move(done),
+              created_rendezvous =
+                  created_rendezvous.release()](const absl::Status& s) {
+               if (cancellation_manager == nullptr) {
+                 delete opts->cancellation_manager;
+               }
+               created_rendezvous->Unref();
+               done(s);
+             });
 }
 
 tensorflow::Device* KernelAndDeviceOp::OutputDevice(int idx) const {

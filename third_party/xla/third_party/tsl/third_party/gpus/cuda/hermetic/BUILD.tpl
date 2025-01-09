@@ -69,6 +69,16 @@ cc_library(
             ":nvjitlink_headers"],
 )
 
+# This target is needed by the `cuda_library` rule. We can't implicitly
+# depend on `:cuda_headers` directly since the user may explicit depend
+# on `:cuda_headers` and duplicated dependencies are not allowed in Bazel.
+# There is also no good way to deduplicate dependencies, but an alias works
+# just fine.
+alias(
+    name = "implicit_cuda_headers_dependency",
+    actual = ":cuda_headers",
+)
+
 cc_library(
     name = "cudart_static",
     srcs = ["@cuda_cudart//:static"],
@@ -77,6 +87,11 @@ cc_library(
         "-lpthread",
         %{cudart_static_linkopt}
     ],
+)
+
+alias(
+  name = "cuda_runtime",
+  actual = ":cudart_static",
 )
 
 alias(

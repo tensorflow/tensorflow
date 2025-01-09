@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/protobuf_util.h"
 
+#include <cstddef>
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "absl/status/status.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

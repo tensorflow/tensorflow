@@ -32,6 +32,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mxfloat",
+    hdrs = ["include/mxfloat.h"],
+    include_prefix = "ml_dtypes",
+    # Internal headers are all relative to . but other packages
+    # include these headers with the  prefix.
+    includes = [
+        ".",
+        "ml_dtypes",
+    ],
+)
+
 pybind_extension(
     name = "_ml_dtypes_ext",
     srcs = [
@@ -48,6 +60,7 @@ pybind_extension(
     deps = [
         ":float8",
         ":intn",
+        ":mxfloat",
         "@eigen_archive//:eigen3",
         "@local_tsl//third_party/py/numpy:headers",
     ],

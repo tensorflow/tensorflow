@@ -111,7 +111,7 @@ absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
   return reduction;
 }
 
-Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
+absl::Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
     return errors::InvalidArgument(
@@ -143,7 +143,7 @@ struct SumOp {
   static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
       s.device(ctx->eigen_cpu_device()) = v.sum();
   }
-  static StringPiece Name() {
+  static absl::string_view Name() {
       return "sum";
   }
 };
@@ -153,7 +153,7 @@ struct MaxOp {
   static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
       s.device(ctx->eigen_cpu_device()) = v.maximum();
   }
-  static StringPiece Name() {
+  static absl::string_view Name() {
       return "max";
   }
 };

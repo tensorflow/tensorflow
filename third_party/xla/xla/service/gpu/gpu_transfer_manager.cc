@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -238,7 +239,8 @@ static absl::Status ForEachChunk(
   for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
     TF_RETURN_IF_ERROR(callback(
         /*chunk_offset=*/chunk_index * chunk_size,
-        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size)));
+        /*chunk_size=*/std::min(
+            chunk_size, static_cast<size_t>(size - chunk_index * chunk_size))));
   }
   return absl::OkStatus();
 }
@@ -369,11 +371,20 @@ static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
           .getPointerSize(0 /* default address space */));
 }
 
+static std::unique_ptr<xla::TransferManager> CreateSYCLTransferManager() {
+  return std::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::sycl::kSyclPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::spir::DataLayout())
+          .getPointerSize(0 /* default address space */));
+}
+
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   xla::TransferManager::RegisterTransferManager(
       stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::sycl::kSyclPlatformId, &CreateSYCLTransferManager);
   return true;
 }
 

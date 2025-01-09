@@ -15,6 +15,8 @@ limitations under the License.
 #include "xla/service/gpu/fusions/tools/test_lib.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/status_macros.h"
@@ -50,10 +52,6 @@ namespace gpu {
 absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
     absl::string_view filename) {
   auto module = *xla::LoadModuleFromFile(std::string(filename));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_mlir_emitter_level(4);
-
   int num_fusions = absl::c_count_if(
       module->entry_computation()->instructions(),
       [](const HloInstruction* instruction) {
@@ -77,6 +75,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
     auto* new_entry = module->AddComputationAndUnifyNamesAndIds(
         builder.Build(), /*is_entry=*/false);
     module->ReplaceEntryComputation(new_entry);
+    *module->mutable_entry_computation_layout() =
+        module->compute_computation_layout();
   }
 
   return module;

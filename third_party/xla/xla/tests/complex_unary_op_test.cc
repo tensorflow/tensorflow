@@ -17,9 +17,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/client/global_data.h"
-#include "xla/client/lib/math.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/complex_unary_op_samples.h"
 #include "xla/tests/literal_test_util.h"

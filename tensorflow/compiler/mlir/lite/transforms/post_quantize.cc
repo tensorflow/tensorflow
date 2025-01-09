@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -234,9 +236,11 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     DenseIntElementsAttr perm_tensor;
     if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
 
-    if (!mlir::isa<quant::UniformQuantizedType>(
-            (getElementTypeOrSelf(op.getOutput().getType()))))
+    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
+    if (!mlir::isa<quant::UniformQuantizedType>(output_element_type) &&
+        !mlir::isa<quant::UniformQuantizedPerAxisType>(output_element_type)) {
       return failure();
+    }
 
     ElementsAttr input_tensor = qconst_op.getValue();
 
@@ -265,10 +269,19 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
                        /*output_axis=*/0, &input_indices, &new_values);
     auto result_type =
         RankedTensorType::get(output_shape, output_type.getElementType());
-    auto values_type = RankedTensorType::get(
-        output_shape,
-        mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
-            .getStorageType());
+    RankedTensorType values_type;
+    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(
+          output_shape,
+          mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
+              .getStorageType());
+    } else {
+      values_type = RankedTensorType::get(
+          output_shape, mlir::cast<quant::UniformQuantizedPerAxisType>(
+                            output_type.getElementType())
+                            .getStorageType());
+    }
+
     rewriter.replaceOpWithNewOp<QConstOp>(
         op, TypeAttr::get(result_type),
         DenseIntElementsAttr::get(values_type, new_values));

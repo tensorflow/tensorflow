@@ -93,7 +93,7 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
 int32 NumInterOpThreadsFromEnvironment() {
   int32_t num;
   const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
-  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+  return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
 }
 
 int32 NumIntraOpThreadsFromEnvironment() {

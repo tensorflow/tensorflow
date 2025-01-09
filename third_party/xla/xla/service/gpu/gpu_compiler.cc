@@ -20,10 +20,8 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/DenseMap.h"
@@ -61,7 +60,9 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -70,59 +71,94 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
+#include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
+#include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
+#include "xla/hlo/transforms/collectives/async_collective_creator.h"
+#include "xla/hlo/transforms/collectives/collective_quantizer.h"
+#include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
+#include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
+#include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
+#include "xla/hlo/transforms/expanders/comparison_expander.h"
+#include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
+#include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
+#include "xla/hlo/transforms/expanders/dot_decomposer.h"
+#include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
+#include "xla/hlo/transforms/expanders/eigh_expander.h"
+#include "xla/hlo/transforms/expanders/logistic_expander.h"
+#include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
+#include "xla/hlo/transforms/expanders/qr_expander.h"
+#include "xla/hlo/transforms/expanders/real_imag_expander.h"
+#include "xla/hlo/transforms/expanders/reduce_decomposer.h"
+#include "xla/hlo/transforms/expanders/reshape_decomposer.h"
+#include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
+#include "xla/hlo/transforms/expanders/rng_expander.h"
+#include "xla/hlo/transforms/expanders/stable_sort_expander.h"
+#include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
+#include "xla/hlo/transforms/host_offload_legalize.h"
+#include "xla/hlo/transforms/host_offloader.h"
+#include "xla/hlo/transforms/operand_upcaster.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
+#include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
+#include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/dot_merger.h"
+#include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/hlo_rematerialization.h"
+#include "xla/hlo/transforms/simplifiers/host_memory_transfer_asyncifier.h"
+#include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/result_caster.h"
+#include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
+#include "xla/hlo/transforms/simplifiers/slice_sinker.h"
+#include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
+#include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/maybe_owning.h"
-#include "xla/service/algebraic_simplifier.h"
-#include "xla/service/all_gather_broadcast_reorder.h"
-#include "xla/service/all_gather_combiner.h"
-#include "xla/service/all_reduce_combiner.h"
-#include "xla/service/all_reduce_contiguous.h"
-#include "xla/service/all_reduce_folder.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
-#include "xla/service/async_collective_creator.h"
+#include "xla/service/all_reduce_simplifier.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
-#include "xla/service/bitcast_dtypes_expander.h"
-#include "xla/service/broadcast_canonicalizer.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/service/collective_quantizer.h"
-#include "xla/service/collectives_schedule_linearizer.h"
-#include "xla/service/comparison_expander.h"
+#include "xla/service/collective_utils.h"
 #include "xla/service/compiler.h"
-#include "xla/service/conditional_canonicalizer.h"
 #include "xla/service/conditional_simplifier.h"
-#include "xla/service/convert_memory_placement_to_internal_annotations.h"
-#include "xla/service/convert_mover.h"
-#include "xla/service/convolution_4d_expander.h"
-#include "xla/service/convolution_pred_expander.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
-#include "xla/service/dot_decomposer.h"
-#include "xla/service/dot_merger.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/dynamic_dimension_simplifier.h"
-#include "xla/service/dynamic_index_splitter.h"
 #include "xla/service/dynamic_padder.h"
-#include "xla/service/eigh_expander.h"
 #include "xla/service/executable.h"
 #include "xla/service/export_hlo.h"
-#include "xla/service/flatten_call_graph.h"
-#include "xla/service/float_normalization.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
-#include "xla/service/gather_simplifier.h"
+#include "xla/service/gpu/all_gather_combiner.h"
+#include "xla/service/gpu/all_reduce_combiner.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
+#include "xla/service/gpu/flag_utils.h"
+#include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -138,12 +174,15 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
+#include "xla/service/gpu/reduce_scatter_combiner.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
+#include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
@@ -151,23 +190,28 @@ limitations under the License.
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
+#include "xla/service/gpu/transforms/collective_select_folder.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
+#include "xla/service/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 #include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
+#include "xla/service/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
@@ -177,7 +221,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
+#include "xla/service/gpu/transforms/simplify_int4_dots.h"
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
@@ -187,54 +233,25 @@ limitations under the License.
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_computation_deduplicator.h"
-#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_rematerialization.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/host_memory_transfer_asyncifier.h"
-#include "xla/service/host_offload_legalize.h"
-#include "xla/service/host_offloader.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/logistic_expander.h"
-#include "xla/service/operand_upcaster.h"
-#include "xla/service/optimization_barrier_expander.h"
-#include "xla/service/optimize_input_output_buffer_alias.h"
-#include "xla/service/qr_expander.h"
-#include "xla/service/real_imag_expander.h"
-#include "xla/service/reduce_decomposer.h"
-#include "xla/service/reduce_scatter_combiner.h"
 #include "xla/service/reduce_scatter_reassociate.h"
-#include "xla/service/reduce_window_rewriter.h"
-#include "xla/service/reshape_decomposer.h"
-#include "xla/service/reshape_mover.h"
-#include "xla/service/result_caster.h"
-#include "xla/service/rng_bit_generator_expander.h"
-#include "xla/service/rng_expander.h"
+#include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
+#include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
-#include "xla/service/simplify_fp_conversions.h"
-#include "xla/service/slice_sinker.h"
 #include "xla/service/slow_operation_alarm.h"
-#include "xla/service/sort_simplifier.h"
-#include "xla/service/stable_sort_expander.h"
-#include "xla/service/stochastic_convert_decomposer.h"
-#include "xla/service/sub_byte_normalization.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/service/while_loop_all_reduce_code_motion.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
-#include "xla/service/while_loop_trip_count_annotator.h"
-#include "xla/service/zero_sized_hlo_elimination.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -248,7 +265,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -264,6 +280,7 @@ limitations under the License.
 
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
@@ -323,7 +340,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
-             std::string_view asm_text, absl::Span<const uint8_t> binary,
+             absl::string_view asm_text, absl::Span<const uint8_t> binary,
              const BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
@@ -523,6 +540,10 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
 
+  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
+  // used.
+  layout_insensitive_algsimp_opts.set_enable_conv_add_multiply_reorder(true);
+
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !hlo_module_config.debug_options().xla_gpu_enable_fast_min_max());
@@ -545,8 +566,6 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
 
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
-  // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
-  pre_spmd_pipeline.AddPass<BatchedGatherScatterNormalizer>();
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
@@ -580,50 +599,19 @@ absl::Status RunSPMDPasses(
 #endif
 
   const int64_t num_partitions = hlo_module->config().num_partitions();
-  if (num_partitions > 1) {
-    if (!hlo_module->config().use_spmd_partitioning()) {
-      return InvalidArgument(
-          "num_partitions=%d but SPMD partitioning not enabled.",
-          num_partitions);
-    }
+  if (num_partitions > 1 && hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    AddSPMDPasses(
-        hlo_module, layout_insensitive_algsimp_opts,
-        gpu_target_config.device_description.gpu_compute_capability(),
-        spmd_pipeline,
+    AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
+                  gpu_target_config.device_description.gpu_compute_capability(),
+                  spmd_pipeline,
 #ifdef PLATFORM_GOOGLE
-        [&](HloPassPipeline& pipeline) {
-          if (auto_sharding) {
-            AutoShardingOption option;
-            option.enable = true;
-            if (!hlo_module->config()
-                     .auto_spmd_partitioning_mesh_shape()
-                     .empty()) {
-              option.device_mesh_shape =
-                  hlo_module->config().auto_spmd_partitioning_mesh_shape();
-            } else {
-              // Use a simple mesh shape if not specified.
-              option.device_mesh_shape = {
-                  gpu_target_config.device_description.core_count(), 1};
-            }
-            if (!hlo_module->config()
-                     .auto_spmd_partitioning_mesh_ids()
-                     .empty()) {
-              option.device_mesh_ids =
-                  hlo_module->config().auto_spmd_partitioning_mesh_ids();
-            }
-            option.memory_budget_per_device =
-                hlo_module->config()
-                    .debug_options()
-                    .xla_gpu_auto_spmd_partitioning_memory_budget_gb() *
-                1024 * 1024 * 1024;
-            option.memory_budget_ratio =
-                hlo_module->config()
-                    .debug_options()
-                    .xla_gpu_auto_spmd_partitioning_memory_budget_ratio();
-            spmd_pipeline.AddPass<AutoSharding>(option);
-          }
-        });
+                  [&](HloPassPipeline& pipeline) {
+                    if (auto_sharding) {
+                      spmd_pipeline.AddPass<AutoSharding>(
+                          DefaultAutoShardingOptionFromModuleConfig(
+                              hlo_module->config()));
+                    }
+                  });
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE
@@ -651,6 +639,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline,
                  !debug_options.xla_experimental_ignore_channel_id());
+  pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
   }
@@ -684,6 +673,10 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
+  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>();
+  }
+
   // Comparison total order expander
   pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
 
@@ -691,9 +684,15 @@ absl::Status RunOptimizationPasses(
   // handle it.
   pipeline.AddPass<ZeroSizedHloElimination>();
 
+  // Rewrite select-and-scatter as a scatter and a reduce-window.
+  pipeline.AddPass<SelectAndScatterExpander>();
+
   if (RequireDeterminism(hlo_module->config())) {
     // Scatter can be indeterministic if indices are not unique or a non
     // associative combiner function is used. Eliminate these Scatter ops.
+    if (debug_options.xla_gpu_enable_scatter_determinism_expander()) {
+      pipeline.AddPass<ScatterDeterminismExpander>();
+    }
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateIndeterministicScatters);
   }
@@ -707,7 +706,6 @@ absl::Status RunOptimizationPasses(
 
   pipeline.AddPass<DynamicIndexSplitter>();
 
-  // TODO(b/64094172): make Call work on GPU instead of inlining.
   pipeline.AddPass<CallInliner>();
 
   pipeline.AddPass<StochasticConvertDecomposer>();
@@ -716,9 +714,6 @@ absl::Status RunOptimizationPasses(
 
   // Replace PRED convolutions with F16.
   pipeline.AddPass<ConvolutionPredExpander>();
-
-  // Expand the sort op to support stable sorting if required.
-  pipeline.AddPass<StableSortExpander>();
 
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,
@@ -763,6 +758,14 @@ absl::Status RunOptimizationPasses(
   }
 
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
+
+  // Expand the sort op to support stable sorting if required.
+  pipeline.AddPass<StableSortExpander>();
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>();
+  }
+
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
 
@@ -790,9 +793,21 @@ absl::Status RunOptimizationPasses(
     // AlgebraicSimplifier may add contracting dimensions to a dot.
     pipeline.AddPass<DotDimensionSorter>();
     pipeline.AddPass<DotDecomposer>();
-    // Only merge "smallish" dots.  This threshold was not set carefully, but
-    // so far we know that 1mb is too small.
-    pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{32} << 20);
+    // Only merge "smallish" dots.  This threshold defaults to 32MB today, with
+    // a flag to override.
+    // Do not merge dots when they are assigned different stream ids.
+    std::function<bool(const HloInstruction* dot_a,
+                       const HloInstruction* dot_b)>
+        can_merge = [&](const HloInstruction* dot_a,
+                        const HloInstruction* dot_b) -> bool {
+      return dot_a->backend_config<GpuBackendConfig>()->operation_queue_id() ==
+             dot_b->backend_config<GpuBackendConfig>()->operation_queue_id();
+    };
+    pipeline.AddPass<DotMerger>(
+        /*max_size_to_merge=*/int64_t{debug_options
+                                          .xla_gpu_dot_merger_threshold_mb()}
+            << 20,
+        can_merge);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();
@@ -826,10 +841,41 @@ absl::Status RunOptimizationPasses(
   return pipeline.Run(hlo_module).status();
 }
 
-absl::Status AddCollectivePipelinerPasses(
-    const DebugOptions& debug_options, HloPassPipeline& collectives_pipeline) {
+absl::Status RunCollectiveOptimizationPasses(
+    HloModule* hlo_module,
+    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
+    se::GpuComputeCapability gpu_version) {
+  // Optimize collectives generated by SPMD partitioning. Enable these passes
+  // otherwise as well so that all collectives can get these optimizations.
+  const HloModuleConfig& config = hlo_module->config();
+  const DebugOptions& debug_options = config.debug_options();
+
+  HloPassPipeline collectives_pipeline("collective-optimizations");
+  if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
+    collectives_pipeline.AddPass<RaggedAllToAllDecomposer>();
+  }
+  collectives_pipeline.AddPass<AllReduceSimplifier>();
+  collectives_pipeline.AddPass<AllReduceFolder>();
+  collectives_pipeline.AddPass<AllReduceSplitter>();
+  collectives_pipeline.AddPass<AllGatherOptimizer>();
+  collectives_pipeline.AddPass<AllGatherDynamicSliceSimplifier>();
+  collectives_pipeline.AddPass<AllReduceReassociate>(
+      debug_options.xla_gpu_enable_reassociation_for_converted_ar());
+  collectives_pipeline.AddPass<ReduceScatterReassociate>();
+
+  collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
+      /*enable_reduce_scatter=*/debug_options
+          .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
+
+  // Moves collectives' subsequent quantization before the collective to
+  // minimize data transfers.
+  collectives_pipeline.AddPass<CollectiveQuantizer>();
+  // Remove dead computations after collective quantization.
+  collectives_pipeline.AddPass<HloDCE>();
+
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_all_reduce()) {
+      debug_options.xla_gpu_enable_pipelined_all_reduce() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -840,11 +886,19 @@ absl::Status AddCollectivePipelinerPasses(
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
         /*acceptable_formatting=*/HloPredicateTrue,
-        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
+        /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+        /*should_allow_control_dependencies=*/false,
+        /*postprocess_backward_peeled_op=*/std::nullopt,
+        /*postprocess_backward_rotated_op=*/std::nullopt,
+        /*should_add_loop_invariant_op_in_chain=*/false,
+        /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
+    };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_all_gather()) {
+      debug_options.xla_gpu_enable_pipelined_all_gather() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -861,11 +915,13 @@ absl::Status AddCollectivePipelinerPasses(
         /*postprocess_backward_peeled_op=*/std::nullopt,
         /*postprocess_backward_rotated_op=*/std::nullopt,
         /*should_add_loop_invariant_op_in_chain=*/true,
+        /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
     };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
+      debug_options.xla_gpu_enable_pipelined_reduce_scatter() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -876,57 +932,29 @@ absl::Status AddCollectivePipelinerPasses(
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
         /*acceptable_formatting=*/HloPredicateTrue,
-        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
+        /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+        /*should_allow_control_dependencies=*/false,
+        /*postprocess_backward_peeled_op=*/std::nullopt,
+        /*postprocess_backward_rotated_op=*/std::nullopt,
+        /*should_add_loop_invariant_op_in_chain=*/false,
+        /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
+    };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
-  return absl::OkStatus();
-}
 
-absl::Status RunPostLayoutCollectivePipelinerPasses(HloModule* hlo_module) {
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  HloPassPipeline collectives_pipeline("collective-pipeliner-optimizations");
-  if (debug_options.xla_gpu_run_post_layout_collective_pipeliner()) {
-    TF_RETURN_IF_ERROR(
-        AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
-    // We call WhileLoopTripCountAnnotator at the end of the collective
-    // pipeline, which might have changed the loop trip count.
-    collectives_pipeline.AddPass<WhileLoopTripCountAnnotator>();
-    // Flatten call graph after loop peeling.
-    collectives_pipeline.AddPass<FlattenCallGraph>();
-  }
-  return collectives_pipeline.Run(hlo_module).status();
-}
-
-absl::Status RunCollectiveOptimizationPasses(
-    HloModule* hlo_module,
-    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    se::GpuComputeCapability gpu_version) {
-  // Optimize collectives generated by SPMD partitioning. Enable these passes
-  // otherwise as well so that all collectives can get these optimizations.
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-
-  HloPassPipeline collectives_pipeline("collective-optimizations");
-  collectives_pipeline.AddPass<AllReduceFolder>();
-  collectives_pipeline.AddPass<AllReduceSplitter>();
-  collectives_pipeline.AddPass<AllGatherOptimizer>();
-  collectives_pipeline.AddPass<AllReduceReassociate>(
-      debug_options.xla_gpu_enable_reassociation_for_converted_ar());
-  collectives_pipeline.AddPass<ReduceScatterReassociate>();
-
-  collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
-      /*enable_reduce_scatter=*/debug_options
-          .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
-
-  if (!debug_options.xla_gpu_run_post_layout_collective_pipeliner()) {
-    TF_RETURN_IF_ERROR(
-        AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
-  }
   collectives_pipeline.AddPass<ReduceScatterCreator>();
 
   collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
       hlo_module->config()
           .debug_options()
           .xla_gpu_collective_permute_decomposer_threshold());
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_experimental_pipeline_parallelism_opt()) {
+    collectives_pipeline.AddPass<CollectiveSelectFolder>();
+  }
 
   collectives_pipeline.AddPass<CollectivePermuteDecomposer>(
       hlo_module->config()
@@ -937,7 +965,11 @@ absl::Status RunCollectiveOptimizationPasses(
           .debug_options()
           .xla_gpu_enable_pipelined_collectives() ||
       hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
-    AddP2PPipeliner(collectives_pipeline);
+    AddP2PPipeliner(
+        collectives_pipeline,
+        hlo_module->config()
+            .debug_options()
+            .xla_gpu_enable_experimental_pipeline_parallelism_opt());
   }
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when
@@ -955,12 +987,6 @@ absl::Status RunCollectiveOptimizationPasses(
   // Remove dead computations left over after ar/rs promotion.
   collectives_pipeline.AddPass<HloDCE>();
 
-  // Moves collectives' subsequent quantization before the collective to
-  // minimize data transfers.
-  collectives_pipeline.AddPass<CollectiveQuantizer>();
-  // Remove dead computations after collective quantization.
-  collectives_pipeline.AddPass<HloDCE>();
-
   // Run WhileLoopTripCountAnnotator after collective pipelining and before
   // layout assignment and fusion.This pass does some pattern-matching on
   // while bodies/conditions, and this is where the HLO is "nicest".
@@ -974,9 +1000,10 @@ absl::Status RunCollectiveOptimizationPasses(
   return collectives_pipeline.Run(hlo_module).status();
 }
 
-absl::Status RunLayoutAssignmentPasses(HloModule* hlo_module,
-                                       se::GpuComputeCapability gpu_version,
-                                       se::dnn::VersionInfo dnn_version) {
+absl::Status RunLayoutAssignmentPasses(
+    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+    se::dnn::VersionInfo dnn_version,
+    const se::DeviceDescription& device_description) {
   // Run layout assignment in a separate pipeline from
   // "post-layout-assignment" because we want everything after layout
   // assignment to have a layout-sensitive invariant-checker, but
@@ -990,12 +1017,18 @@ absl::Status RunLayoutAssignmentPasses(HloModule* hlo_module,
   ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version, dnn_version,
-      &layout_constraints);
+      device_description, &layout_constraints);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
       SubByteNormalization::SET_ELEMENT_SIZE);
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
+  // Run HostOffloadLegalize before LayoutNormalization to prevent
+  // the creation of invalid transpose/bitcast operations within
+  // host memory offloading segments.
+  pipeline.AddPass<HostOffloadLegalize>(
+      static_cast<int64_t>(stream_executor::MemoryType::kHost),
+      /* after_layout= */ true);
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1011,19 +1044,6 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                          .Run(hlo_module)
                          .status());
 
-  if (hlo_module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
-    GpuHloCostAnalysis::Options cost_analysis_options{
-        shape_size_fn,
-        /*per_second_rates=*/{},
-        /*min_latencies_seconds=*/{},
-        /*count_multiple_input_accesses=*/true};
-
-    HloPassPipeline post_fusion_analysis("post_fusion_analysis");
-    post_fusion_analysis.AddPass<GpuCostModelStatsCollection>(
-        gpu_device_info, cost_analysis_options);
-    TF_RETURN_IF_ERROR(post_fusion_analysis.Run(hlo_module).status());
-  }
-
   TF_RETURN_IF_ERROR(
       HorizontalFusionPipeline(gpu_device_info).Run(hlo_module).status());
 
@@ -1036,38 +1056,12 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
   return absl::OkStatus();
 }
 
-absl::Status RunPostFusionPasses(
-    HloModule* hlo_module,
-    std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
-        add_custom_kernel_replacement_passes) {
-  const DebugOptions& opts = hlo_module->config().debug_options();
-
-  HloPassPipeline pipeline("post-fusion optimization");
-  pipeline.AddPass<RenameFusions>();
-  pipeline.AddPass<AllGatherCombiner>(
-      opts.xla_gpu_all_gather_combine_threshold_bytes(),
-      /*combine_threshold_count=*/256,
-      opts.xla_gpu_enable_all_gather_combine_by_dim());
-  pipeline.AddPass<AllReduceCombiner>(
-      opts.xla_gpu_all_reduce_combine_threshold_bytes(),
-      /*combine_threshold_count=*/256);
-  pipeline.AddPass<ReduceScatterCombiner>(
-      opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-      /*combine_threshold_count=*/256,
-      opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
-
-  pipeline.AddPass<AllReduceContiguous>();
-
-  TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(&pipeline, opts));
-
-  int32_t blueconnect_num_devices_per_host =
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_all_reduce_blueconnect_num_devices_per_host();
-  if (blueconnect_num_devices_per_host > 0) {
-    pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
-  }
-
+// Adds unrolling while loop optimization. Mostly to get rid of extra D2D
+// copies, but also there are some performance benefits (better comm-compute
+// overlap) when collectives are present within a while loop.
+void AddDoubleBufferingPasses(const HloModule& module,
+                              HloPassPipeline& pipeline) {
+  const DebugOptions& opts = module.config().debug_options();
   std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
       std::nullopt;
   // Support old flag.
@@ -1086,11 +1080,59 @@ absl::Status RunPostFusionPasses(
            "`xla_gpu_enable_while_loop_double_buffering` flag.";
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
   }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+          DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
+      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module) &&
+      !opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
+  }
   if (unroll_strategy != std::nullopt) {
+    pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
   }
+}
+
+absl::Status RunPostFusionPasses(
+    HloModule* hlo_module, const se::DeviceDescription& device_description,
+    int pointer_size) {
+  const DebugOptions& opts = hlo_module->config().debug_options();
+
+  HloPassPipeline pipeline("post-fusion optimization");
+  pipeline.AddPass<RenameFusions>();
+  pipeline.AddPass<GpuAllGatherCombiner>(
+      device_description,
+      /*default_combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
+      /*combine_threshold_in_bytes=*/
+      opts.xla_gpu_all_gather_combine_threshold_bytes(),
+      /*combine_threshold_count=*/256,
+      /*combine_by_dim=*/opts.xla_gpu_enable_all_gather_combine_by_dim(),
+      /*combine_different_dtypes=*/true, /*pointer_size=*/pointer_size);
+  pipeline.AddPass<GpuAllReduceCombiner>(
+      device_description, kDefaultAllReduceCombineThreshold,
+      opts.xla_gpu_all_reduce_combine_threshold_bytes(),
+      /*combine_threshold_count=*/256, /*pointer_size=*/pointer_size);
+  pipeline.AddPass<GpuReduceScatterCombiner>(
+      device_description, /*default_combine_threshold_in_bytes=*/
+      kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_in_bytes=*/
+      opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
+      /*combine_threshold_count=*/256,
+      /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
+      /*pointer_size=*/pointer_size);
+
+  pipeline.AddPass<AllReduceContiguous>();
+
+  int32_t blueconnect_num_devices_per_host =
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_all_reduce_blueconnect_num_devices_per_host();
+  if (blueconnect_num_devices_per_host > 0) {
+    pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
+  }
+
+  AddDoubleBufferingPasses(*hlo_module, pipeline);
 
   return pipeline.Run(hlo_module).status();
 }
@@ -1102,12 +1144,13 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   // that actually need to run asynchronously with a GPU specific backend
   // config.
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
   config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
   config.convert_collective_permute = HloPredicateTrue;
-  config.convert_all_gather = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
-  config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
   absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
@@ -1135,6 +1178,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
             return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
           default:
             return false;
         }
@@ -1151,7 +1196,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
 absl::Status RunPostFusionSimplificationPasses(
     HloModule* hlo_module,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    se::GpuComputeCapability gpu_version) {
+    se::GpuComputeCapability gpu_version,
+    const Compiler::TargetConfig& gpu_target_config) {
   HloPassPipeline pipeline("post-fusion-simplification-pipeline optimization");
   AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
   options.set_is_layout_sensitive(true);
@@ -1166,7 +1212,8 @@ absl::Status RunPostFusionSimplificationPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<StreamAttributeAnnotator>();
+    pipeline.AddPass<StreamAttributeAnnotator>(
+        gpu_target_config.device_description);
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
   }
 
@@ -1202,6 +1249,7 @@ absl::Status RunLayoutNormalizationPasses(
   opts.set_supports_non_canonical_dots(false);
   opts.set_is_layout_sensitive(true);
   opts.set_enable_conv_operand_swap(false);
+  opts.set_enable_conv_add_multiply_reorder(true);
   // "slow" minmax means we propagate nan.
   opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
   opts.set_enable_unconditional_reduce_of_concat_replacement(false);
@@ -1310,11 +1358,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
   }
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, dnn_version, options.device_allocator,
+      hlo_module, gpu_version, dnn_version,
       gpu_target_config.device_description.runtime_version()));
 
   TF_RETURN_IF_ERROR(
-      RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version));
+      RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version,
+                                gpu_target_config.device_description));
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
 
@@ -1323,8 +1372,6 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module, stream_exec, options, gpu_target_config,
       thread_pool.get_mutable()));
 
-  TF_RETURN_IF_ERROR(RunPostLayoutCollectivePipelinerPasses(hlo_module));
-
   // This is a "low effort, high impact" fusion that should be run first.
   TF_RETURN_IF_ERROR(RunDynamicSliceFusionPasses(hlo_module, PlatformId()));
 
@@ -1332,13 +1379,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module,
-      [this](HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-        return AddCustomKernelReplacementPasses(pipeline, debug_options);
-      }));
+      hlo_module, gpu_target_config.device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
-      hlo_module, layout_insensitive_algsimp_opts, gpu_version));
+      hlo_module, layout_insensitive_algsimp_opts, gpu_version,
+      gpu_target_config));
 
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
@@ -1361,8 +1406,11 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
-  return PrepareHloModuleForIrEmittingPipeline(*hlo_module, GetCanShareBuffer())
+absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(
+    HloModule* hlo_module, const se::DeviceDescription& device_description) {
+  return PrepareHloModuleForIrEmittingPipeline(
+             *hlo_module, GetCanShareBuffer(device_description),
+             device_description)
       .Run(hlo_module)
       .status();
 }
@@ -1381,6 +1429,12 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
   if (debug_options.xla_gpu_async_dot()) {
     bias_mode = GemmRewriterOptions::BiasMode::kNoBias;
   }
+
+  // Rewrite dots with the algorithms that cannot be handled by cublas directly.
+  // I.e. transform single dot into a chain of dots with the default algorithm
+  // that cublas can handle. These dots were inlined by the CallInliner pass
+  // above.
+  pipeline.AddPass<DotAlgorithmRewriter>();
 
   pipeline.AddPass<GemmRewriter>(
       gpu_version, toolkit_version,
@@ -1405,6 +1459,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     opts.set_supports_non_canonical_dots(false);
     opts.set_is_layout_sensitive(true);
     opts.set_enable_conv_operand_swap(false);
+    opts.set_enable_conv_add_multiply_reorder(true);
     // "slow" minmax means we propagate nan.
     opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
     opts.set_enable_unconditional_reduce_of_concat_replacement(false);
@@ -1416,19 +1471,27 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
+  const GpuFloatSupport f8e4m3_support(gpu_version, F8E4M3, F16);
   const GpuFloatSupport f8e4m3fn_support(gpu_version, F8E4M3FN, F16);
   const FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ, F16);
   const GpuFloatSupport f8e5m2fnuz_support(gpu_version, F8E5M2FNUZ, F16);
   const GpuFloatSupport f8e4m3fnuz_support(gpu_version, F8E4M3FNUZ, F16);
+  const GpuFloatSupport f8e3m4_support(gpu_version, F8E3M4, F16);
+  const GpuFloatSupport s4_support(gpu_version, S4, S8);
+  const GpuFloatSupport u4_support(gpu_version, U4, U8);
   auto add_float_normalization = [&](HloPassPipeline& pipeline) {
     auto& sub_pipeline =
         pipeline.AddPass<HloPassPipeline>("float_normalization");
     sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e3m4_support);
+    sub_pipeline.AddPass<FloatNormalization>(&s4_support);
+    sub_pipeline.AddPass<FloatNormalization>(&u4_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
     if (debug_options.xla_allow_excess_precision()) {
       sub_pipeline.AddPass<SimplifyFPConversions>();
@@ -1451,15 +1514,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
-      return IsReductionFromOrToContiguousDimensions(*r);
+      return IsReductionFromOrToContiguousDimensions(
+          *r, gpu_target_config.device_description);
     });
 
     // Greedy pattern matching for custom kernel fusions. We run it before
     // Triton rewriter or a regular Gemm rewriter to be able to match compatible
     // GEMMs before they matched into Triton gemm or a cuBLAS custom call.
-    //
-    // TODO(b/361267225): Remove once we have a unified autotuner for Triton and
-    // custom kernel fusions.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
@@ -1474,15 +1535,22 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
 
+    // Make sure that dots have at least 1 contracting dimension in the
+    // operands. Needs to happen shortly before the dot rewrite, as otherwise
+    // AlgebraicSimplifier will simplify it away again.
+    // TODO(b/375566188): Figure out whether we can get rid of this pass.
+    pipeline.AddPass<DotNormalizer>();
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        (cuda_cc != nullptr &&
-         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE))) {
+        ((cuda_cc != nullptr &&
+          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+         rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
+      pipeline.AddPass<GemmFusionSwapOperands>();
+      pipeline.AddPass<SimplifyInt4Dots>();
     } else if (cuda_cc != nullptr &&
                cuda_cc->major == se::CudaComputeCapability::VOLTA) {
       // Greedy pattern matching for custom kernel fusions.
-      // TODO(b/361267225): Add Custom Kernel Fusions to GEMM Fusion Autotuner.
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
           &gpu_target_config.device_description);
@@ -1514,14 +1582,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options
-            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
-         rocm_cc != nullptr)) {
-      // Triton compilation needs normalized operations on bf16 (i.e. converted
-      // to f32).
-      add_float_normalization(pipeline);
+    if ((cuda_cc != nullptr &&
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+        rocm_cc != nullptr) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -1533,12 +1596,15 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
-    // Do not split small reduction dimensions unless priority fusion is
-    // enabled, which handles such cases well.
-    bool ignore_small_reduce_dims =
-        !debug_options.xla_gpu_enable_priority_fusion();
-    pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
-    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+        gpu_target_config.device_description,
+        /*ignore_small_reduce_dims=*/false);
+    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
+        gpu_target_config.device_description);
+    // Normalization passes might have introduced s4 tensors without bit width
+    // annotations, this pass will add the annotations.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1564,15 +1630,25 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
+
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
                         gpu_target_config.device_description.runtime_version());
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
+  // Recover host-offloader invariants (such as the single-use broadcast buffer
+  // initialization before loops) by re-running the offload legalizer.
   pipeline.AddPass<HostOffloadLegalize>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost),
       /* after_layout= */ true);
+
+  pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+
+  // Layout normalization will create scatters that are not simplified and
+  // also have unsorted update_window_dims.
+  pipeline.AddPass<ScatterSimplifier>();
+
   pipeline.AddPass<HostOffloader>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
 
@@ -1598,6 +1674,22 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // simplifier by rearranging ops (i.e. by pushing broadcasts towards the
     // root).
     pipeline.AddPass<SimplifyFPConversions>();
+  }
+
+  {
+    // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:
+    // https://github.com/jax-ml/jax/pull/22244), we can only eliminate the
+    // no-op reduce-precision operations after the last call to
+    // `SimplifyFPConversions`. We are creating a sub-pipeline here because that
+    // allows us to test this order in a unit test.
+    HloPassPipeline& remove_no_op_reduce_precision_pipeline =
+        pipeline.AddPass<HloPassPipeline>(
+            "remove-no-op-reduce-precision-algebraic-simplifier");
+    AlgebraicSimplifierOptions simplifier_options_{simplifier_options};
+    simplifier_options_.set_enable_remove_no_op_reduce_precision(true);
+    remove_no_op_reduce_precision_pipeline
+        .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options_,
+                                                     gpu_version);
   }
 
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -1695,7 +1787,21 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
                                        is_deviceless ? nullptr : stream_exec,
                                        options, gpu_target_config));
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(
+      module.get(), gpu_target_config.device_description));
+
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &gpu_target_config.device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+    // This needs to run after every pass affecting fusions, which includes
+    // `CopyFusion`, which itself must run in the
+    // `PrepareHloModuleForIrEmitting` pipeline.
+    TF_RETURN_IF_ERROR(
+        FusionDispatchPipeline(gpu_target_config.device_description,
+                               ShapeSizeBytesFunction())
+            .Run(module.get())
+            .status());
+  }
 
   uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
@@ -1817,12 +1923,11 @@ std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
 }  // namespace
 
 absl::StatusOr<GpuCompiler::BackendCompileResult>
-GpuCompiler::CompileSingleModule(const HloModuleConfig& module_config,
-                                 se::GpuComputeCapability gpu_version,
-                                 const HloModule* debug_module,
-                                 llvm::Module* llvm_module, bool relocatable,
-                                 const CompileOptions& options,
-                                 std::optional<int> shard_number) {
+GpuCompiler::CompileSingleModule(
+    const HloModuleConfig& module_config,
+    const stream_executor::DeviceDescription& device_description,
+    const HloModule* debug_module, llvm::Module* llvm_module, bool relocatable,
+    const CompileOptions& options, std::optional<int> shard_number) {
   {
     // This may print multiple lines per HLO compilation because of the
     // parallelized compilation of LLVM modules.
@@ -1852,8 +1957,8 @@ GpuCompiler::CompileSingleModule(const HloModuleConfig& module_config,
 
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult result,
-      CompileTargetBinary(module_config, llvm_module, gpu_version, relocatable,
-                          debug_module, options));
+      CompileTargetBinary(module_config, llvm_module, device_description,
+                          relocatable, debug_module, options));
 
   const bool should_dump = DumpingEnabledForHloModule(
       debug_module ? debug_module->name() : "", module_config.debug_options());
@@ -1929,8 +2034,9 @@ std::string SingleFunctionName(const llvm::Module& module) {
 absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     const HloModuleConfig& module_config,
     CompileModuleResults& compile_module_results,
-    se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const HloModule* debug_module) {
+    const se::DeviceDescription& device_description,
+    se::StreamExecutor* stream_exec, const CompileOptions& options,
+    const HloModule* debug_module) {
   llvm::Module* llvm_module = &*compile_module_results.llvm_module;
 
   bool force_module_split =
@@ -2046,19 +2152,19 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
   };
   std::vector<NamedCompileResult> compile_results(llvm_modules.size());
   if (thread_pool.get() != nullptr) {
-    tsl::BlockingCounter counter(llvm_modules.size());
+    absl::BlockingCounter counter(llvm_modules.size());
     for (int i = 0; i < llvm_modules.size(); ++i) {
       thread_pool.get_mutable()->Schedule(
           [&compile_results, i, &llvm_modules, &counter, this, &module_config,
-           &gpu_version, &debug_module, &options] {
+           &device_description, &debug_module, &options] {
             // Each thread has its own context to avoid race conditions.
             llvm::LLVMContext new_context;
             std::unique_ptr<llvm::Module> new_module =
                 CopyToContext(*llvm_modules.at(i).module, new_context);
             compile_results.at(i) = {
                 llvm_modules.at(i).name,
-                CompileSingleModule(module_config, gpu_version, debug_module,
-                                    new_module.get(),
+                CompileSingleModule(module_config, device_description,
+                                    debug_module, new_module.get(),
                                     /*relocatable=*/true, options,
                                     /*shard_number=*/i)};
             counter.DecrementCount();
@@ -2069,7 +2175,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     for (int i = 0; i < llvm_modules.size(); ++i) {
       compile_results.at(i) = {
           llvm_modules.at(i).name,
-          CompileSingleModule(module_config, gpu_version, debug_module,
+          CompileSingleModule(module_config, device_description, debug_module,
                               &*llvm_modules.at(i).module,
                               /*relocatable=*/true, options,
                               /*shard_number=*/i)};
@@ -2138,7 +2244,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
   }
 
   auto maybe_backend_result =
-      LinkModules(gpu_version, stream_exec, std::move(binaries_to_link),
+      LinkModules(device_description, stream_exec, std::move(binaries_to_link),
                   module_config.debug_options());
   if (!maybe_backend_result.ok()) {
     LOG(ERROR) << "The CUDA linking API did not work. Please use XLA_FLAGS="
@@ -2160,7 +2266,7 @@ GpuCompiler::CompileToBackendResult(
     const se::DeviceDescription& gpu_device_info) {
   tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
 
-  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor));
+  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
       ScheduleGpuModule(module, pointer_size_, gpu_device_info));
@@ -2174,7 +2280,7 @@ GpuCompiler::CompileToBackendResult(
   bool can_use_link_modules = (executor != nullptr);
   if (can_use_link_modules) {
     TF_ASSIGN_OR_RETURN(can_use_link_modules,
-                        CanUseLinkModules(module->config()));
+                        CanUseLinkModules(module->config(), gpu_device_info));
   }
   const bool split_modules =
       can_use_link_modules &&
@@ -2190,7 +2296,8 @@ GpuCompiler::CompileToBackendResult(
       CompileModuleResults compile_module_results,
       CompileModuleToLlvmIr(module, llvm_context, target_triple_, data_layout_,
                             platform->Name(), platform->id(), gpu_device_info,
-                            GetCanShareBuffer(), BufferSizeBytesFunction(),
+                            GetCanShareBuffer(gpu_device_info),
+                            BufferSizeBytesFunction(),
                             /*split_constants_module=*/use_cache));
 
   if (user_pre_optimization_hook_) {
@@ -2214,16 +2321,15 @@ GpuCompiler::CompileToBackendResult(
   // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
   // enabled.
   if (split_modules) {
-    TF_ASSIGN_OR_RETURN(backend_result,
-                        CompileAndLink(module->config(), compile_module_results,
-                                       gpu_device_info.gpu_compute_capability(),
-                                       executor, options, module));
+    TF_ASSIGN_OR_RETURN(
+        backend_result,
+        CompileAndLink(module->config(), compile_module_results,
+                       gpu_device_info, executor, options, module));
   } else {
     CHECK(compile_module_results.llvm_module_constants == nullptr);
     TF_ASSIGN_OR_RETURN(
         backend_result,
-        CompileSingleModule(module->config(),
-                            gpu_device_info.gpu_compute_capability(), module,
+        CompileSingleModule(module->config(), gpu_device_info, module,
                             &*compile_module_results.llvm_module,
                             /*relocatable=*/false, options,
                             /*shard_number=*/std::nullopt));
@@ -2246,6 +2352,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     return absl::StrFormat("XlaCompileBackend:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   }};
+
+  RecordGpuCompilerStacktrace();
+
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     TF_RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), stream_exec,
@@ -2369,7 +2478,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         gpu_executable->buffer_assignment()->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
     gpu_executable->set_debug_info(
-        gpu_executable->buffer_assignment()->GetStats().ToString());
+        gpu_executable->buffer_assignment()->StatsString(
+            /*report_total_fragmentation=*/true));
   }
 
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
@@ -2454,9 +2564,23 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
-    HloModule* module, se::StreamExecutor* stream_exec) {
+    HloModule* module, se::StreamExecutor* stream_exec,
+    const se::DeviceDescription& gpu_device_info) {
   HloPassPipeline pipeline("pre-scheduling-passes");
-  pipeline.AddPass<FusionWrapper>();
+  pipeline.AddPass<FusionWrapper>(gpu_device_info);
+  if (module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        ShapeSizeBytesFunction(),
+        /*per_second_rates=*/{},
+        /*min_latencies_seconds=*/{},
+        /*count_multiple_input_accesses=*/true};
+    // Cost model analysis for compute.
+    pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
+                                                  cost_analysis_options);
+    // Cost model analysis for collectives.
+    pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
+                                                     ShapeSizeBytesFunction());
+  }
   return pipeline.Run(module).status();
 }
 
@@ -2524,8 +2648,8 @@ HloRematerialization::Options CreateRematOpts(
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const se::DeviceDescription& gpu_device_info) const {
-  TF_RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
+  TF_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(
+      module, GetCanShareBuffer(gpu_device_info)));
   HloPassPipeline main_pipeline("post-scheduling-passes");
 
   // Pipeline for async -> sync conversion on for non-overlapped async ops.
@@ -2536,10 +2660,13 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("async-to-sync-converter");
 
-    if (module->config()
-            .debug_options()
-            .xla_gpu_enable_pipelined_collectives() ||
-        module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+    if (!module->config()
+             .debug_options()
+             .xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+        (module->config()
+             .debug_options()
+             .xla_gpu_enable_pipelined_collectives() ||
+         module->config().debug_options().xla_gpu_enable_pipelined_p2p())) {
       pipeline.AddPass<PipelinedP2PRewriter>();
     }
     pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
@@ -2559,7 +2686,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
         main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");
 
     pipeline.AddPass<HloRematerialization>(remat_opts, sizes);
-    pipeline.AddPass<StreamAttributeAnnotator>();
+    pipeline.AddPass<StreamAttributeAnnotator>(gpu_device_info);
     pipeline.AddPass<OptimizationBarrierExpander>();
   }
 
@@ -2569,7 +2696,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
-    pipeline.AddPass<FusionWrapper>();
+    pipeline.AddPass<FusionWrapper>(gpu_device_info);
   }
 
   // Pipeline with passes which wrap a scheduled module into command buffers.
@@ -2580,7 +2707,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<SanitizeConstantNames>();
   }
 
-  if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
+  if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==
+      DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
     AddHloVerifier(
         &main_pipeline,
         module->config().debug_options().xla_experimental_ignore_channel_id(),

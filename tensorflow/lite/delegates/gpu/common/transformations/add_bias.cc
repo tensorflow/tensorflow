@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <any>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/types/any.h"

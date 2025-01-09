@@ -27,6 +27,8 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
+        "//tensorflow/compiler/mlir/lite/tools/versioning:op_signature",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/c:c_api_types",
@@ -36,8 +38,6 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:runtime",
         "//tensorflow/lite/toco:toco_port",
-        "//tensorflow/lite/tools/versioning",
-        "//tensorflow/lite/tools/versioning:op_signature",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -114,6 +114,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:quantize_weights",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:schema_fbs_version",
@@ -123,7 +124,6 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
@@ -148,7 +148,7 @@ tf_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

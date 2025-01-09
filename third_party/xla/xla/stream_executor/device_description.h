@@ -59,7 +59,7 @@ struct CudaComputeCapability {
     this->minor = minor;
   }
   // cuda arch format "major.minor", example: "8.6".
-  explicit CudaComputeCapability(const std::string &cuda_arch_name) {
+  explicit CudaComputeCapability(std::string cuda_arch_name) {
     std::vector<std::string> split = absl::StrSplit(cuda_arch_name, '.');
     assert(split.size() == 2);
     this->major = std::stoi(split[0]);
@@ -123,6 +123,18 @@ struct CudaComputeCapability {
     return !(*this == other);
   }
 
+  bool operator>(const CudaComputeCapability &other) const {
+    return ToPair() > other.ToPair();
+  }
+
+  bool operator>=(const CudaComputeCapability &other) const {
+    return ToPair() >= other.ToPair();
+  }
+
+  bool operator<=(const CudaComputeCapability &other) const {
+    return ToPair() <= other.ToPair();
+  }
+
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
 
   std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
@@ -132,6 +144,11 @@ struct CudaComputeCapability {
     proto.set_major(major);
     proto.set_minor(minor);
     return proto;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H state, const CudaComputeCapability &cc) {
+    return H::combine(std::move(state), cc.major, cc.minor);
   }
 };
 
@@ -218,6 +235,8 @@ class RocmComputeCapability {
   bool has_hipblaslt() const { return gfx9_mi200_or_later(); }
 
   bool has_fp8_support() const { return gfx9_mi300(); }
+
+  std::string ToString() const { return gcn_arch_name(); }
 
   RocmComputeCapabilityProto ToProto() const {
     RocmComputeCapabilityProto proto;
@@ -325,7 +344,7 @@ class DeviceDescription {
   }
 
   // Returns the number of threads per warp/wavefront.
-  const int64_t &threads_per_warp() const { return threads_per_warp_; }
+  constexpr int64_t threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
   const int64_t &registers_per_core_limit() const {

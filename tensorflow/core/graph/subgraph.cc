@@ -43,7 +43,8 @@ namespace subgraph {
 
 namespace {
 
-typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
+typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
+    NameIndex;
 
 // Rewrite graph by replacing the output tensors specified in
 // "fed_outputs" with special feed nodes for each specified output
@@ -54,7 +55,7 @@ typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
 // Return true on success.  On error, return false and sets *error to
 // an appropriate error message (and *g is left in an indeterminate
 // state).
-Status FeedInputs(
+absl::Status FeedInputs(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
     NameIndex* name_index, DataTypeVector* out_feed_types) {
   out_feed_types->clear();
@@ -119,7 +120,7 @@ Status FeedInputs(
   return absl::OkStatus();
 }
 
-Status FetchOutputs(
+absl::Status FetchOutputs(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
     NameIndex* name_index, std::vector<Node*>* out_fetch_nodes,
     DataTypeVector* out_fetch_types) {
@@ -187,9 +188,9 @@ bool AddNodeToTargets(const string& node_or_tensor_name,
   return true;
 }
 
-Status PruneForTargets(Graph* g, const NameIndex& name_index,
-                       const std::vector<Node*>& fetch_nodes,
-                       const absl::Span<const string>& target_nodes) {
+absl::Status PruneForTargets(Graph* g, const NameIndex& name_index,
+                             const std::vector<Node*>& fetch_nodes,
+                             const absl::Span<const string>& target_nodes) {
   string not_found;
   std::unordered_set<const Node*> targets;
   for (Node* n : fetch_nodes) {
@@ -216,8 +217,8 @@ Status PruneForTargets(Graph* g, const NameIndex& name_index,
 
 }  // namespace
 
-Status ArgFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
-                               Node** out_node) {
+absl::Status ArgFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                                     Node** out_node) {
   // NOTE(mrry): We must include the index as part of the node
   // name, because _Arg is a "stateful" kernel and therefore
   // its name must uniquely identify a kernel instance across all
@@ -233,8 +234,9 @@ Status ArgFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
   return absl::OkStatus();
 }
 
-Status RecvFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
-                                Node** out_node) {
+absl::Status RecvFeedRewrite::AddNode(Graph* g,
+                                      NodeBuilder::NodeOut feed_tensor,
+                                      Node** out_node) {
   TF_RETURN_IF_ERROR(
       NodeBuilder(strings::StrCat("_recv_", feed_tensor.node->name(), "_",
                                   feed_tensor.index),
@@ -253,8 +255,9 @@ Status RecvFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
   return absl::OkStatus();
 }
 
-Status RetvalFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
-                                   Node** out_node) {
+absl::Status RetvalFetchRewrite::AddNode(Graph* g,
+                                         NodeBuilder::NodeOut fetch_tensor,
+                                         Node** out_node) {
   // NOTE(mrry): We must include the index as part of the node
   // name, because _Retval is a "stateful" kernel and therefore
   // its name must uniquely identify a kernel instance across all
@@ -272,8 +275,9 @@ Status RetvalFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
   return absl::OkStatus();
 }
 
-Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
-                                 Node** out_node) {
+absl::Status SendFetchRewrite::AddNode(Graph* g,
+                                       NodeBuilder::NodeOut fetch_tensor,
+                                       Node** out_node) {
   TF_RETURN_IF_ERROR(
       NodeBuilder(strings::StrCat("_send_", fetch_tensor.node->name(), "_",
                                   fetch_tensor.index),
@@ -290,7 +294,7 @@ Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
   return absl::OkStatus();
 }
 
-Status RewriteGraphForExecution(
+absl::Status RewriteGraphForExecution(
     Graph* g, const absl::Span<const string>& fed_outputs,
     const absl::Span<const string>& fetch_outputs,
     const absl::Span<const string>& target_node_names,
@@ -335,7 +339,7 @@ std::vector<string> ConvertToVector(StringContainer field) {
 }
 }  // namespace
 
-Status RewriteGraphForExecution(
+absl::Status RewriteGraphForExecution(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
     const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
     const absl::Span<const string>& target_node_names,

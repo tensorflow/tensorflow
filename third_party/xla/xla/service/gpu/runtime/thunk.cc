@@ -18,19 +18,23 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,12 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -53,12 +53,13 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(
-    NcclClique::AcquiredCliquesMap cliques_map)
-    : cliques_map_(std::move(cliques_map)) {}
+Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
+                                            int32_t num_transient_cliques)
+    : cliques_map_(std::move(cliques_map)),
+      num_transient_cliques_(num_transient_cliques) {}
 
-absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
-    const NcclCliqueKey& clique_key, int32_t rank) const {
+absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
+    const GpuCliqueKey& clique_key, RankId rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -69,16 +70,16 @@ absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
   // Check that clique has a communicator for our rank.
   auto communicator = (*clique->second)->comm(rank);
   if (!communicator.has_value()) {
-    return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
-                                            " not found in a NCCL clique ",
-                                            clique_key.ToString()));
+    return absl::InternalError(
+        absl::StrCat("Communicator for rank ", rank.value(),
+                     " not found in a NCCL clique ", clique_key.ToString()));
   }
 
   return *communicator;
 }
 
 absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
-    const NcclCliqueKey& clique_key) const {
+    const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -90,7 +91,7 @@ absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
 }
 
 absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
-    const NcclCliqueKey& clique_key) const {
+    const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -132,32 +133,38 @@ Thunk::CollectiveExecuteParams::Create(
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
 
+  auto* collectives = gpu_options && gpu_options->collectives()
+                          ? gpu_options->collectives()
+                          : GpuCollectives::Default();
+
   auto* device_id_map = gpu_options && gpu_options->gpu_global_device_ids()
                             ? &*gpu_options->gpu_global_device_ids()
                             : nullptr;
 
-  auto* nccl_callback = gpu_options && gpu_options->nccl_clique_id_callback()
-                            ? &gpu_options->nccl_clique_id_callback()
-                            : nullptr;
+  auto* clique_id_callback = gpu_options && gpu_options->clique_id_callback()
+                                 ? &gpu_options->clique_id_callback()
+                                 : nullptr;
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
   return CollectiveExecuteParams(
-      run_options.stream()->parent(), run_options.run_options().run_id(),
-      async_streams, local_device_ordinal, global_device_id,
-      run_options.run_options().device_assignment(), device_id_map,
-      nccl_callback, collective_max_nchannels, p2p_max_nchannels);
+      collectives, run_options.stream()->parent(),
+      run_options.run_options().run_id(), async_streams, local_device_ordinal,
+      global_device_id, run_options.run_options().device_assignment(),
+      device_id_map, clique_id_callback, collective_max_nchannels,
+      p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    se::StreamExecutor* executor, RunId run_id,
+    GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
     absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
-    const NcclCliqueIdCallback* nccl_clique_id_callback,
+    const CliqueIdCallback* nccl_clique_id_callback,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
-    : executor(executor),
+    : collectives(collectives),
+      executor(executor),
       run_id(run_id),
       async_streams(async_streams.begin(), async_streams.end()),
       local_device_ordinal(local_device_ordinal),
@@ -190,7 +197,12 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
-                                 ->enable_mock_nccl_collectives()
+                                 ->enable_mock_collectives()
+                           : false,
+                       run_options.run_options().gpu_executable_run_options()
+                           ? run_options.run_options()
+                                 .gpu_executable_run_options()
+                                 ->requires_exclusive_lock_on_gpu()
                            : false);
 }
 
@@ -214,7 +226,8 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives)
+    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    bool requires_exclusive_lock_on_gpu)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -226,7 +239,8 @@ Thunk::ExecuteParams::ExecuteParams(
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
-      mock_collectives(mock_collectives) {}
+      mock_collectives(mock_collectives),
+      requires_exclusive_lock_on_gpu(requires_exclusive_lock_on_gpu) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -259,6 +273,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclCollectivePermute);
     CASE(kNcclCollectivePermuteStart);
     CASE(kNcclCollectivePermuteDone);
+    CASE(kNcclGroupStart);
+    CASE(kNcclGroupDone);
     CASE(kNcclReduceScatter);
     CASE(kNcclReduceScatterStart);
     CASE(kNcclReduceScatterDone);
@@ -267,6 +283,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllToAllDone);
     CASE(kNcclSend);
     CASE(kNcclSendDone);
+    CASE(kNcclRaggedAllToAll);
+    CASE(kNcclRaggedAllToAllStart);
+    CASE(kNcclRaggedAllToAllDone);
     CASE(kNcclRecv);
     CASE(kNcclRecvDone);
     CASE(kFft);
@@ -351,10 +370,16 @@ bool Thunk::IsCollective() const {
     case kNcclSendDone:
     case kNcclRecv:
     case kNcclRecvDone:
+    case kNcclGroupStart:
+    case kNcclGroupDone:
       return true;
     default:
       return false;
   }
+}
+
+void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
 }
 
 }  // namespace gpu

@@ -130,7 +130,7 @@ namespace tensorflow {
 // heuristic because it reduces number of cut edges and tends to load balance.
 class ColocatePredecessorTreesPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

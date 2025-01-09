@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,7 +38,8 @@ GlooKeyValueStore::~GlooKeyValueStore() = default;
 
 void GlooKeyValueStore::set(const std::string& key,
                             const std::vector<char>& data) {
-  ThrowIfError(kv_store_->Set(key, std::string_view(data.data(), data.size())));
+  ThrowIfError(
+      kv_store_->Set(key, absl::string_view(data.data(), data.size())));
 }
 
 std::vector<char> GlooKeyValueStore::get(const std::string& key) {

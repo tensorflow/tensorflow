@@ -100,8 +100,6 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
     ON_CALL(*device, client).WillByDefault(ReturnPointee(&state->client));
     ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(addressable));
-    ON_CALL(*device, DebugString)
-        .WillByDefault(Return(absl::StrCat("device(", i + 10, ")")));
     ON_CALL(*device, DefaultMemory).WillByDefault(Return(state->memories[i]));
     // device_memories will be filled in at the end of the loop.
     ON_CALL(*device, Memories)
@@ -149,6 +147,12 @@ void DeviceTest::SetUp() {
 tsl::RCReference<DeviceList> DeviceTest::GetDevices(
     absl::Span<const int> device_indices) {
   return test_util::GetDevices(client_.get(), device_indices).value();
+}
+
+tsl::RCReference<DeviceList> DeviceTest::GetAddressableDevices(
+    absl::Span<const int> device_indices) {
+  return test_util::GetAddressableDevices(client_.get(), device_indices)
+      .value();
 }
 
 }  // namespace test_util

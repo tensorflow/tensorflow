@@ -99,9 +99,12 @@ third_party/nvtx/LICENSE:
 third_party/protobuf/BUILD:
 third_party/py/BUILD.tpl:
 third_party/py/BUILD:
+third_party/py/manylinux_compliance_test.py:
 third_party/py/ml_dtypes/BUILD:
 third_party/py/ml_dtypes/LICENSE:
 third_party/py/numpy/BUILD:
+third_party/py/py_import.bzl:
+third_party/py/py_manylinux_compliance_test.bzl:
 third_party/py/python_configure.bzl:
 third_party/py/python_init_pip.bzl:
 third_party/py/python_init_repositories.bzl:
@@ -129,14 +132,12 @@ third_party/systemlibs/boringssl.BUILD:
 third_party/systemlibs/build_defs.bzl.tpl:
 third_party/systemlibs/curl.BUILD:
 third_party/systemlibs/cython.BUILD:
-third_party/systemlibs/double_conversion.BUILD:
 third_party/systemlibs/gif.BUILD:
 third_party/systemlibs/google_cloud_cpp.BUILD:
 third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
 third_party/systemlibs/grpc.BUILD:
 third_party/systemlibs/jsoncpp.BUILD:
 third_party/systemlibs/lmdb.BUILD:
-third_party/systemlibs/nsync.BUILD:
 third_party/systemlibs/png.BUILD:
 third_party/systemlibs/protobuf.BUILD:
 third_party/systemlibs/protobuf.bzl:

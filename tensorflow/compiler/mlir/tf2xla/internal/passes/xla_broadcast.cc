@@ -302,11 +302,6 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
   if (!num_cores_per_replica_attr)
     return cluster.emitOpError(
         CreateMissingAttributeMsg(tensorflow::kNumCoresPerReplicaAttr));
-  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
-
-  // TODO(b/329483850): Support spmd ICI weight distribution so when num of core
-  // per replica > 1, it does not need to be skipped.
-  if (num_cores_per_replica != 1) return success();
 
   llvm::SetVector<Value> bcasts;
   cluster->walk([&](Operation* op) {

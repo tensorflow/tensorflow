@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -141,7 +140,7 @@ class CustomKernelThunk : public Thunk {
     return args_;
   }
 
-  std::string_view custom_kernel_name() const { return custom_kernel_.name(); }
+  absl::string_view custom_kernel_name() const { return custom_kernel_.name(); }
 
   const std::vector<bool>& written() const { return written_; }
 

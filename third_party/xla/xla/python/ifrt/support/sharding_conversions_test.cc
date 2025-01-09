@@ -77,6 +77,7 @@ std::shared_ptr<MockClient> MakeTestClient(int num_devices) {
   for (int i = 0; i < num_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
     ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i)));
+    ON_CALL(*device, IsAddressable).WillByDefault(Return(true));
     state->devices.push_back(device.get());
     state->device_map.insert({DeviceId(i), std::move(device)});
   }

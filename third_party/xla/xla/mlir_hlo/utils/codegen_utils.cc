@@ -61,10 +61,10 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   // dim_acc_mul_vec = [d, c*d, b*c*d]
   SmallVector<Value> dimAccMulVec;
   Value tmpAccMul = shape[rank - 1];
-  dimAccMulVec.emplace_back(tmpAccMul);
+  dimAccMulVec.push_back(tmpAccMul);
   for (int i = rank - 2; i > 0; --i) {
     tmpAccMul = b.create<arith::MulIOp>(loc, tmpAccMul, shape[i]);
-    dimAccMulVec.emplace_back(tmpAccMul);
+    dimAccMulVec.push_back(tmpAccMul);
   }
   Value blockIndex = linearIndex;
   for (int i = 0; i < rank; ++i) {

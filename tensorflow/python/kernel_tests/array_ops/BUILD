@@ -259,6 +259,7 @@ cuda_py_strict_test(
     ],
     deps = [
         "//tensorflow/python/client:device_lib",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -480,6 +481,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@pypi_packaging//:pkg",
     ],
 )
 

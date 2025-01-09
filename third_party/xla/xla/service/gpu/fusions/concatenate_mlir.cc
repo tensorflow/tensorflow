@@ -16,11 +16,11 @@ limitations under the License.
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 
 #include <cstdint>
-#include <iterator>
 #include <numeric>
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +33,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -40,14 +42,14 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -117,7 +119,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
   auto* ctx = entry_function.getContext();
@@ -151,25 +153,27 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](
-            ValueRange symbol_values, ValueRange output_indices,
+            ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+            ValueRange output_indices,
             ValueRange output_tensors) -> SmallVector<Value> {
       auto input_indices = mlir_converter::ApplyIndexing(
-          thread_id_to_input_map, thread_and_block_ids, symbol_values, builder);
+          thread_id_to_input_map, thread_and_block_ids, symbol_values,
+          nested_b);
 
       auto result_scalar = mlir_converter::ProvideParameter(
           root_computation, concat, operand_index, input_indices, call_targets,
-          entry_function, builder);
+          entry_function, nested_b);
       absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
           hero_value{{concat, result_scalar}};
       auto result_scalars = EmitEpilogue(
           /*epilogue_index=*/0, computations, entry_function, hero_value,
-          output_indices, builder)[&analysis_.fusion_root(0).instruction()];
+          output_indices, nested_b)[&analysis_.fusion_root(0).instruction()];
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());
       for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
         result_tensors.push_back(
-            builder
+            nested_b
                 .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
                 .getResult());
       }

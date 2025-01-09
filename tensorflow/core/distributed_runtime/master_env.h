@@ -19,12 +19,12 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {
 class Env;
@@ -99,8 +99,8 @@ struct MasterEnv {
       std::vector<string> filtered_worker_list)>
       master_session_factory;
 
-  std::function<Status(const WorkerCacheFactoryOptions&,
-                       WorkerCacheInterface**)>
+  std::function<absl::Status(const WorkerCacheFactoryOptions&,
+                             WorkerCacheInterface**)>
       worker_cache_factory;
 
   // Generates per-step CollectiveExecutors and has access to utilities

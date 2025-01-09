@@ -18,10 +18,10 @@ limitations under the License.
 #include <map>
 #include <stack>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace mlir {
 
-int FindId(std::string_view key, std::map<std::string_view, int> &index) {
+int FindId(absl::string_view key, std::map<absl::string_view, int> &index) {
   auto entry_iterator = index.find(key);
   if (entry_iterator == index.end()) {
     return 0;

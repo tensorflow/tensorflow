@@ -56,6 +56,8 @@ class HostStream : public StreamCommon {
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
 
+  absl::Status BlockHostUntilDone() override { return BlockUntilDone(); }
+
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
@@ -70,8 +72,6 @@ class HostStream : public StreamCommon {
                       uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
-  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
-                      const Kernel& kernel, const KernelArgs& args) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

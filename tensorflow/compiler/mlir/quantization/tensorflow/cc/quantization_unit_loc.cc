@@ -17,9 +17,9 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -32,12 +32,12 @@ namespace quant {
 namespace {
 
 // Prefix and suffix to the QuantizationUnit string representation.
-constexpr std::string_view kQuantizationUnitPrefix = "QuantizationUnit(";
-constexpr std::string_view kQuantizationUnitSuffix = ")";
+constexpr absl::string_view kQuantizationUnitPrefix = "QuantizationUnit(";
+constexpr absl::string_view kQuantizationUnitSuffix = ")";
 
 // Concatenates node name and func name with a "@" separator.
-std::string ConcatNodeAndFuncName(std::string_view node_name,
-                                  std::string_view func_name) {
+std::string ConcatNodeAndFuncName(absl::string_view node_name,
+                                  absl::string_view func_name) {
   return absl::StrCat(node_name, "@", func_name);
 }
 

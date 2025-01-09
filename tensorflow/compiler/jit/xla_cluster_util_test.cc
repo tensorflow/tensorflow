@@ -255,7 +255,7 @@ TEST(NodesRelatedToRefVariables, Basic) {
   EXPECT_EQ(names, expected);
 }
 
-Status MakeLoop(Scope s, Output init_value, absl::string_view loop_name) {
+absl::Status MakeLoop(Scope s, Output init_value, absl::string_view loop_name) {
   s = s.NewSubScope(std::string(loop_name));
   ops::internal::Enter enter(s.WithOpName("init_value"), init_value, loop_name);
   ops::Merge merge(s.WithOpName("merge"), {init_value, init_value});

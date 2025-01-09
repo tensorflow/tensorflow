@@ -44,9 +44,9 @@ const absl::string_view kErrorNoStepMarker =
     " for (2), you may try to profile longer.";
 
 const absl::string_view kNoDeviceTraceCollected =
-    "No device trace was collected. This might happen if your job hadn't been "
-    "run on the device when sampling was turned on. You could try the sampling"
-    " again later.";
+    "No TensorCore device trace was collected. This might happen if your job "
+    "hadn't been run on the device when sampling was turned on. You could try "
+    "the sampling again later.";
 
 const absl::string_view kStepsDropped =
     " steps dropped. This might happen when you profile many hosts and/or many "

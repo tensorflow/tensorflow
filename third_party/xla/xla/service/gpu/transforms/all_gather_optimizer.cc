@@ -48,8 +48,8 @@ absl::StatusOr<bool> AllGatherOptimizer::Run(
       HloInstruction* left_op = instruction->mutable_operand(0);
       HloInstruction* right_op = instruction->mutable_operand(1);
 
-      if (right_op->opcode() != HloOpcode::kAllGather ||
-          left_op->opcode() != HloOpcode::kAllGather) {
+      if (HloPredicateIsNotOp<HloOpcode::kAllGather>(right_op) ||
+          HloPredicateIsNotOp<HloOpcode::kAllGather>(left_op)) {
         VLOG(2) << "Binary op's operands are not all-gather deduced types.";
         continue;
       }

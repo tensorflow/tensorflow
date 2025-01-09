@@ -27,7 +27,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-static Status StatelessRandomPermuteShape(InferenceContext* c) {
+static absl::Status StatelessRandomPermuteShape(InferenceContext* c) {
   ShapeHandle index_shape, seed_shape, max_index_shape, rounds_shape;
 
   // Basic constraints but unknown ranks will not raise errors here.

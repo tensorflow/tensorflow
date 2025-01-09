@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
-#include <cmath>
+#include <functional>
+#include <tuple>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,11 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/dynamic_shaped_ops.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -113,7 +114,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, uniform);
       return;
@@ -280,7 +281,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, normal);
       return;

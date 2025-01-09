@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -49,18 +48,18 @@ class PyDevice {
 
   int id() const;
   int process_index() const;
-  std::string_view platform() const;
-  std::string_view device_kind() const;
+  absl::string_view platform() const;
+  absl::string_view device_kind() const;
   std::optional<int> local_hardware_id() const;
 
-  std::string_view Str() const;
-  std::string_view Repr() const;
+  absl::string_view Str() const;
+  absl::string_view Repr() const;
 
   absl::Status TransferToInfeed(LiteralSlice literal);
   absl::StatusOr<nanobind::object> TransferFromOutfeed(Shape shape);
 
   absl::StatusOr<nb_class_ptr<PyMemorySpace>> Memory(
-      std::string_view kind) const;
+      absl::string_view kind) const;
   absl::StatusOr<nb_class_ptr<PyMemorySpace>> DefaultMemory() const;
   nanobind::list AddressableMemories() const;
   absl::StatusOr<std::optional<nanobind::dict>> MemoryStats() const;

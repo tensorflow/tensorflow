@@ -39,7 +39,7 @@ class FunctionApiInfo {
     BACKWARD,
   };
 
-  Status Init(const FunctionDef& function_def);
+  absl::Status Init(const FunctionDef& function_def);
 
   const string& interface_name() const;
   const string& preferred_device() const;
@@ -75,9 +75,9 @@ class FunctionLibraryApiInfo {
   FunctionLibraryApiInfo();
   virtual ~FunctionLibraryApiInfo();
   // Populate the internal field for the functions within the function_library.
-  Status Init(const FunctionDefLibrary& function_library);
+  absl::Status Init(const FunctionDefLibrary& function_library);
 
-  Status GetEquivalentImplementations(
+  absl::Status GetEquivalentImplementations(
       const string& function_name, std::vector<string>* other_functions) const;
 
   const FunctionApiInfo* GetApiInfo(const string& function_name) const;

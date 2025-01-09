@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/spmd/canonicalize_all_gather_for_cse.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"

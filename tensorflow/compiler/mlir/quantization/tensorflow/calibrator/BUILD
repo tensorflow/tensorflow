@@ -110,7 +110,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "calibration_statistics_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":calibration_statistics_proto",
 #     ],

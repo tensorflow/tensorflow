@@ -110,6 +110,7 @@ class CollectionRegistry {
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
@@ -117,7 +118,6 @@ class CollectionRegistry {
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

@@ -152,73 +152,72 @@ def Ifrt_ArrayMappingAttrArrayAttr :
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
 
+def Ifrt_IoAliasesAttr : TypedArrayAttrBase<
+    ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<2>]>,
+    "Array of pairs of aliased input/output indices">;
+
 //===---------------------------------------------------------------------------
 // Types
 //===---------------------------------------------------------------------------
 
 def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let mnemonic = "array";
-  let summary = "An Ifrt array sharded on a set of devices.";
+  let summary = [{
+    An Ifrt array sharded on a set of devices.
+
+    Both memory_kind and layout are optional. When memory_kind is not specified,
+    the device default memory kind is used. The layout has the following
+    semantics:
+    - attribute is not set: the layout is inherited from the input arrays.
+    - set to "default": the device default layout is used.
+    - set to "auto": the layout will be determined by the compiler. It is only
+      allowed on arrays that are input of a `ifrt.Call`,
+      `ifrt.CallLoadedExecutable`, or `ifrt.LoadedExecutableOp` op.
+    - set to user-specified custom layout.
+  }];
 
   let parameters = (ins
     "::mlir::RankedTensorType":$shape,
     "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
     Ifrt_DevicesAttr:$devices_attr,
-    OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr);
+    OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr,
+    OptionalParameter<"::mlir::StringAttr">:$layout_attr);
 
   let builders = [
+    // Constructs an array with unspecified sharding.
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
-      "::llvm::ArrayRef<int>":$devices), [{
-        return Base::get(
-          $_ctxt, shape, sharding_attr,
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr,
+      "::mlir::StringAttr":$layout_attr), [{
         return Base::get(
           $_ctxt, shape, ::xla::ifrt::IfrtUnspecifiedShardingAttr::get($_ctxt),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
+          devices_attr, memory_kind_attr, layout_attr);
       }]>,
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtShardingParamAttr":$sharding_attr,
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr,
+      "::mlir::StringAttr":$layout_attr), [{
         return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices,
-      "::std::string":$memory_kind), [{
-        return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          ::mlir::StringAttr::get($_ctxt, memory_kind));
+          $_ctxt, shape, sharding_attr, devices_attr, memory_kind_attr,
+          layout_attr);
       }]>
   ];
 
-  let assemblyFormat = [{
-    `<` $shape`,` $sharding_attr `,` $devices_attr
-    (`,` `memory_kind` `=` $memory_kind_attr^)? `>`
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
     // Get logical device ids from `devices_attr`.
     ::llvm::ArrayRef<int> getDevices() const;
-    // Get the memory kind from `memory_kind`.
+    // Get the memory kind from `memory_kind_attr`.
     ::xla::ifrt::MemoryKind MemoryKind() const;
+    // Get the layout mode from `layout_attr`. Returns std::nullopt if the
+    // layout attribute is not set.
+    std::optional<::xla::LayoutMode> LayoutMode() const;
   }];
 }
 

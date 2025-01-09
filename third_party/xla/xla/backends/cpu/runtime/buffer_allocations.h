@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -35,6 +36,10 @@ namespace xla::cpu {
 // particular XLA execution. Buffers are indexed by the buffer allocation index.
 class BufferAllocations {
  public:
+  using Buffers = absl::InlinedVector<se::DeviceMemoryBase, 8>;
+
+  explicit BufferAllocations(Buffers buffers);
+  explicit BufferAllocations(absl::Span<const se::DeviceMemoryBase> buffers);
   explicit BufferAllocations(absl::Span<const MaybeOwningDeviceMemory> buffers);
 
   // Returns the device address of buffer at the given index. Returns an error
@@ -58,10 +63,21 @@ class BufferAllocations {
       BufferAllocation::Slice slice) const;
 
  private:
-  std::vector<se::DeviceMemoryBase> buffers_;
+  absl::InlinedVector<se::DeviceMemoryBase, 8> buffers_;
   se::DeviceMemoryBase* buffers_data_;  // buffers_.data()
   size_t num_buffers_;
 };
+
+inline BufferAllocations::BufferAllocations(Buffers buffers)
+    : buffers_(std::move(buffers)),
+      buffers_data_(buffers_.data()),
+      num_buffers_(buffers_.size()) {}
+
+inline BufferAllocations::BufferAllocations(
+    absl::Span<const se::DeviceMemoryBase> buffers)
+    : buffers_(buffers.begin(), buffers.end()),
+      buffers_data_(buffers_.data()),
+      num_buffers_(buffers_.size()) {}
 
 inline BufferAllocations::BufferAllocations(
     absl::Span<const MaybeOwningDeviceMemory> buffers)

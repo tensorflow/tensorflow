@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -193,6 +194,14 @@ mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
 mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
                                           mlir::Location loc,
                                           mlir::Operation* op, mlir::Type type);
+
+// Create a TupleOp using the results of 'op'.
+mlir::Operation* WrapVariadicResultsInTuple(mlir::OpBuilder* builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op);
+
+// Returns true if the type is a tuple with no elements.
+bool IsEmptyTuple(const mlir::Type& type);
 
 mlir::TypeRange Untuple(const mlir::Type& type);
 

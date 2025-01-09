@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
-#include <iostream>
+#include <cstddef>
 #include <queue>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -127,13 +130,13 @@ void GetReachableNodesAndVariables(
 }
 
 // Gets a map from variable name to variable value.
-Status GetVariableNameToTensorMap(
+absl::Status GetVariableNameToTensorMap(
     Session* session,
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     std::unordered_set<string> variable_names_set,
     std::unordered_map<string, Tensor>* variable_name_to_value_map) {
   if (variable_names_set.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<string> variable_names;
   variable_names.reserve(variable_names_set.size());
@@ -156,7 +159,7 @@ Status GetVariableNameToTensorMap(
   for (size_t i = 0; i < variable_names.size(); i++) {
     (*variable_name_to_value_map)[variable_names[i]] = outputs[i];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts a Variable NodeDef into a Constant NodeDef.
@@ -220,16 +223,16 @@ StatusOr<string> GetHandleNameIfNeedsToFreeze(
 }
 
 // Freezes the subgraph of all nodes needed by `outputs`.
-Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
-                      const std::unordered_set<string>& outputs,
-                      GraphDef* frozen_graph_def) {
+absl::Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
+                            const std::unordered_set<string>& outputs,
+                            GraphDef* frozen_graph_def) {
   GraphDef graph_def = saved_model_bundle.meta_graph_def.graph_def();
   // Copy versions and library as-is from original graph.
   *frozen_graph_def->mutable_versions() = graph_def.versions();
   *frozen_graph_def->mutable_library() = graph_def.library();
   // If the graph is empty there is nothing left to do.
   if (graph_def.node_size() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // name_to_node_map is needed to get the inputs from the NodeDef corresponding
   // the a string node name. These inputs are used when doing our backwards
@@ -277,19 +280,19 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
     // If the node isn't a variable, just copy the node as-is.
     *frozen_graph_def->add_node() = node;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
-                        GraphDef* frozen_graph_def,
-                        std::unordered_set<string>* inputs,
-                        std::unordered_set<string>* outputs) {
+absl::Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
+                              GraphDef* frozen_graph_def,
+                              std::unordered_set<string>* inputs,
+                              std::unordered_set<string>* outputs) {
   GetSignatureDefsInputsAndOutputs(saved_model_bundle, inputs, outputs);
   TF_RETURN_IF_ERROR(
       FreezeGraphDef(saved_model_bundle, *outputs, frozen_graph_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -403,6 +403,7 @@ cc_library(
 # For use with library targets that can't use relative paths.
 # LINT.IfChange(exported_headers)
 exports_files([
+    "builtin_op_data.h",
     "c_api.h",
     "c_api_experimental.h",
     "c_api_opaque.h",
@@ -413,6 +414,7 @@ exports_files([
 filegroup(
     name = "tensorflowlite_c_api_hdrs_filegroup",
     srcs = [
+        "builtin_op_data.h",
         "c_api.h",
         "c_api_types.h",
         "common.h",

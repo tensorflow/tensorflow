@@ -96,7 +96,8 @@ std::vector<std::reference_wrapper<const FullTypeDef>> input_types(
   return input_types;
 }
 
-Status update_inferred_type(Node* target, const FullTypeDef& t, bool& updated) {
+absl::Status update_inferred_type(Node* target, const FullTypeDef& t,
+                                  bool& updated) {
   if (t.type_id() == TFT_UNSET) {
     VLOG(3) << "  " << target->name() << " no inferred type";
     return absl::OkStatus();
@@ -110,7 +111,7 @@ Status update_inferred_type(Node* target, const FullTypeDef& t, bool& updated) {
     } else if (!full_type::IsSubtype(t, existing)) {
       // The only allowable type mismatches are those which would further
       // specialize the existing type.
-      return Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrCat("type mismatch for node '", target->name(),
                        "': expected a subtype of:\n", existing.DebugString(),
@@ -136,7 +137,7 @@ absl::StatusOr<FullTypeDef> run_inference(const string& fn_name,
 
 }  // namespace
 
-Status TypeInferencePass::Run(
+absl::Status TypeInferencePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "TypeInferencePass::Run";
 
@@ -331,7 +332,7 @@ Status TypeInferencePass::Run(
   return absl::OkStatus();
 }
 
-Status WeakTypeInferencePass::Run(
+absl::Status WeakTypeInferencePass::Run(
     const GraphOptimizationPassOptions& options) {
   TypeInferencePass pass;
   const auto& pass_status = pass.Run(options);

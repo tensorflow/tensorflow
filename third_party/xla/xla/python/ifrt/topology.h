@@ -42,10 +42,17 @@ class Topology : public llvm::RTTIExtends<Topology, llvm::RTTIRoot> {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // Returns an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
 
+  // Returns the topology description.
+  // TODO(hyeontaek): Consider introducing an IFRT-specific API here instead of
+  // delegating to PJRT.
+  virtual const std::shared_ptr<const xla::PjRtTopologyDescription>&
+  description() const = 0;
+
   // Returns an unordered list of descriptions for all devices in this topology.
-  // TODO(phawkins): consider introducing an IFRT-specific API here instead of
+  // TODO(hyeontaek): Consider introducing an IFRT-specific API here instead of
   // delegating to PJRT.
   virtual std::vector<std::unique_ptr<const PjRtDeviceDescription>>
   DeviceDescriptions() const = 0;

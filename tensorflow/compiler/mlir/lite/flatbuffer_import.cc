@@ -29,7 +29,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
@@ -49,8 +51,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -80,10 +82,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/debug_metadata_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -99,6 +102,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -130,6 +134,17 @@ using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::tflite::IsValidBufferOffset;
 
+struct DebugMetadata {
+  // Debug metadata locations.
+  std::vector<mlir::Location> debug_metadata_locations;
+
+  // Maps from operator (subgraph_debug_metadata_idx,
+  // operator_debug_metadata_idx) to its top-level location index in
+  // `debug_metadata_locations`, which is:
+  // <<subgraph_debug_metadata_idx, operator_debug_metadata_idx>, location_idx>.
+  absl::flat_hash_map<int, absl::flat_hash_map<int, int>> operator_location_map;
+};
+
 // Create the MLIR NamedLoc location corresponding to a given tensor
 Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
@@ -138,27 +153,223 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   return mlir::NameLoc::get(builder.getStringAttr(tensor.name), base);
 }
 
-// Create the MLIR Location corresponding to a given op. This is an
-// experimental/debugging feature and production code should not rely on names
-// of intermediate tensors since importer doesn't guarantee to preserve tensor
-// names except output tensors.
-Location OpLoc(const OperatorT& op,
-               const std::vector<std::unique_ptr<tflite::TensorT>>& tensors,
-               Builder builder, Location base) {
+// Build and return the MLIR location.
+StatusOr<mlir::Location> BuildLocation(
+    Builder builder, const debug_metadata::Location& location,
+    const std::vector<mlir::Location>& debug_metadata_locations,
+    const absl::flat_hash_map<unsigned int, unsigned int>&
+        attribute_location_idx_map) {
+  switch (location.location_type()) {
+    // FileLineColLoc.
+    case debug_metadata::LocationType_FileLineColLoc: {
+      auto file_line_col_loc =
+          static_cast<const debug_metadata::FileLineColLoc*>(
+              location.location());
+      return mlir::FileLineColLoc::get(
+          builder.getContext(),
+          builder.getStringAttr(file_line_col_loc->filename()->string_view()),
+          file_line_col_loc->line(), file_line_col_loc->column());
+    }
+    // CallSiteLoc.
+    case debug_metadata::LocationType_CallSiteLoc: {
+      auto callsite_loc =
+          static_cast<const debug_metadata::CallSiteLoc*>(location.location());
+      if (!attribute_location_idx_map.contains(callsite_loc->callee_index()) ||
+          !attribute_location_idx_map.contains(callsite_loc->caller_index())) {
+        return absl::InternalError(
+            "Invalid/corrupt DebugMetadata, expected invariant broken (callee "
+            "or caller index of a CallSiteLoc is not valid)");
+      }
+      return mlir::CallSiteLoc::get(
+          debug_metadata_locations[attribute_location_idx_map.at(
+              callsite_loc->callee_index())],
+          debug_metadata_locations[attribute_location_idx_map.at(
+              callsite_loc->caller_index())]);
+    }
+    // NameLoc.
+    case debug_metadata::LocationType_NameLoc: {
+      auto name_loc =
+          static_cast<const debug_metadata::NameLoc*>(location.location());
+      if (!attribute_location_idx_map.contains(name_loc->child_index())) {
+        return absl::InternalError(
+            "Invalid/corrupt DebugMetadata, expected invariant broken (child "
+            "index of a NameLoc is not valid)");
+      }
+      return mlir::NameLoc::get(
+          builder.getStringAttr(name_loc->name()->string_view()),
+          debug_metadata_locations[attribute_location_idx_map.at(
+              name_loc->child_index())]);
+    }
+    // FusedLoc.
+    case debug_metadata::LocationType_FusedLoc: {
+      auto fused_loc =
+          static_cast<const debug_metadata::FusedLoc*>(location.location());
+      auto fused_location_indexes = fused_loc->location_indexes();
+      std::vector<mlir::Location> fused_locations;
+      fused_locations.reserve(fused_location_indexes->size());
+      for (int fused_loc_idx = 0;
+           fused_loc_idx < fused_location_indexes->size(); ++fused_loc_idx) {
+        if (!attribute_location_idx_map.contains(
+                fused_location_indexes->Get(fused_loc_idx))) {
+          return absl::InternalError(
+              "Invalid/corrupt DebugMetadata, expected invariant broken "
+              "(location index of a FusedLoc is not valid)");
+        }
+        fused_locations.push_back(
+            debug_metadata_locations[attribute_location_idx_map.at(
+                fused_location_indexes->Get(fused_loc_idx))]);
+      }
+      return mlir::FusedLoc::get(
+          fused_locations, mlir::StringAttr::get(builder.getContext(), ""),
+          builder.getContext());
+    }
+    default: {
+      return mlir::UnknownLoc::get(builder.getContext());
+    }
+  }
+}
+
+// Parses all locations in ConversionDebugMetadata, build the mlir::location
+// counterparts, and put them inside debug_metadata_. Additionally, maintain a
+// map that maps the top location index of each operator.
+Status ParseAndBuildLocation(
+    Builder builder,
+    const debug_metadata::ConversionDebugMetadata* conversion_debug_metadata,
+    DebugMetadata& debug_metadata_var) {
+  auto attribute_types = conversion_debug_metadata->attributes_type();
+  auto attributes = conversion_debug_metadata->attributes();
+
+  auto& debug_metadata_locations = debug_metadata_var.debug_metadata_locations;
+  debug_metadata_locations.reserve(attribute_types->size());
+
+  // Map index in the attribute_vector to the index in the data structure we
+  // are building: DebugMetadata::debug_metadata_locations.
+  absl::flat_hash_map<unsigned int, unsigned int> attribute_location_idx_map;
+
+  for (int i = 0; i < attribute_types->size(); ++i) {
+    if (attribute_types->Get(i) == debug_metadata::Attribute_Location) {
+      auto location =
+          static_cast<const debug_metadata::Location*>(attributes->Get(i));
+      TF_ASSIGN_OR_RETURN(
+          auto mlir_location,
+          BuildLocation(builder, *location, debug_metadata_locations,
+                        attribute_location_idx_map));
+      debug_metadata_locations.push_back(mlir_location);
+
+      // Create index mapping.
+      attribute_location_idx_map[i] = debug_metadata_locations.size() - 1;
+    }
+  }
+
+  // Collect the top location idx of each operator.
+  auto subgraphs_debug_metadata =
+      conversion_debug_metadata->subgraphs_debug_metadata();
+  for (int subgraph_idx = 0; subgraph_idx < subgraphs_debug_metadata->size();
+       ++subgraph_idx) {
+    const auto* subgraph_debug_metadata =
+        subgraphs_debug_metadata->Get(subgraph_idx);
+    auto operators_debug_metadata =
+        subgraph_debug_metadata->operators_debug_metadata();
+    for (int operator_idx = 0; operator_idx < operators_debug_metadata->size();
+         ++operator_idx) {
+      const auto* operator_debug_metadata =
+          operators_debug_metadata->Get(operator_idx);
+      // Find the location attribute of the operator. Note that there should
+      // be at most one idx pointing to location attribute for each operator.
+      std::vector<unsigned int> location_attribute_idxs;
+      for (int i = 0;
+           i < operator_debug_metadata->attribute_metadata_indexes()->size();
+           ++i) {
+        auto attribute_idx =
+            operator_debug_metadata->attribute_metadata_indexes()->Get(i);
+        if (attribute_types->Get(attribute_idx) ==
+            debug_metadata::Attribute_Location) {
+          location_attribute_idxs.push_back(attribute_idx);
+        }
+      }
+      if (location_attribute_idxs.size() > 1) {
+        return absl::InternalError(
+            "Invalid/corrupt DebugMetadata, expected invariant broken (more "
+            "than one location attribute for an operator)");
+      }
+      if (location_attribute_idxs.empty()) {
+        continue;
+      }
+
+      if (!attribute_location_idx_map.contains(location_attribute_idxs[0])) {
+        return absl::InternalError(
+            "Invalid/corrupt DebugMetadata, expected invariant broken "
+            "(location attribute index of an operator is not valid)");
+      }
+      debug_metadata_var.operator_location_map[subgraph_idx][operator_idx] =
+          attribute_location_idx_map[location_attribute_idxs[0]];
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// Parse the DebugMetadata flatbuffer and store debug metadata in struct
+// `debug_metadata`.
+Status ParseDebugMetadata(Builder builder, const char* data, size_t size,
+                          DebugMetadata& debug_metadata_var) {
+  auto debug_metadata_fb = debug_metadata::GetDebugMetadata(data);
+
+  if (debug_metadata_fb->debug_metadata_type()->size() !=
+      debug_metadata_fb->debug_metadata()->size()) {
+    return absl::InternalError(
+        "Invalid/corrupt DebugMetadata, expected invariant broken (size of "
+        "debug_metadata_type and debug_metadata not equal)");
+  }
+
+  for (int i = 0; i < debug_metadata_fb->debug_metadata_type()->size(); ++i) {
+    if (debug_metadata_fb->debug_metadata_type()->Get(i) ==
+        debug_metadata::DebugMetadataType_ConversionDebugMetadata) {
+      auto conversion_debug_metadata =
+          static_cast<const debug_metadata::ConversionDebugMetadata*>(
+              debug_metadata_fb->debug_metadata()->Get(i));
+      TF_RETURN_IF_ERROR(ParseAndBuildLocation(
+          builder, conversion_debug_metadata, debug_metadata_var));
+    } else {
+      LOG(WARNING) << "Unsupported DebugMetadataType: "
+                   << debug_metadata_fb->debug_metadata_type()->Get(i);
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// Return MLIR location if it exists in the debug metadata. Otherwise, create a
+// MLIR location by fusing its output tensor names.
+Location OpLoc(const OperatorT& op, Builder builder,
+               DebugMetadata& debug_metadata, const tflite::SubGraphT& subgraph,
+               Location base) {
+  const int subgraph_debug_metadata_idx = subgraph.debug_metadata_index;
+  if (debug_metadata.operator_location_map.contains(
+          subgraph_debug_metadata_idx) &&
+      debug_metadata.operator_location_map[subgraph_debug_metadata_idx]
+          .contains(op.debug_metadata_index)) {
+    int location_idx =
+        debug_metadata.operator_location_map[subgraph_debug_metadata_idx]
+                                            [op.debug_metadata_index];
+    return debug_metadata.debug_metadata_locations[location_idx];
+  }
+
   if (op.outputs.empty()) return base;
 
   llvm::SmallVector<Location, 4> locations;
   locations.reserve(op.outputs.size());
   for (auto tensor_index : op.outputs) {
-    locations.push_back(TensorLoc(*tensors[tensor_index], builder, base));
+    locations.push_back(
+        TensorLoc(*subgraph.tensors[tensor_index], builder, base));
   }
   return mlir::FusedLoc::get(builder.getContext(), locations);
 }
 
 // Extract the min max information in the tensor and create the quant stats op.
-// If the input `tensor` has scale/zero_point, `res` should have quantized
-// type, thus none stats op is required and nullptr is returned.
-// If the min max information is invalid, nullptr is returned.
+// If the input `tensor` has scale/zero_point, `res` should have quantized type,
+// thus none stats op is required and nullptr is returned. If the min max
+// information is invalid, nullptr is returned.
 mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
                                         Value res) {
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
@@ -678,8 +889,8 @@ StatusOr<Operation*> ConvertOp(
   }
 
   // While the last several tensors could be optional tensors for an tfl op, the
-  // number of input operands could vary. Gets the min/max number of
-  // operands from tflite op name.
+  // number of input operands could vary. Gets the min/max number of operands
+  // from tflite op name.
   // Also, since the above code special-handles the `tfl.reshape` op and add an
   // additional input, we put these function block here.
   llvm::MinMax input_min_max = mlir::OperandNumbersMinMax(op_name);
@@ -1117,7 +1328,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SignatureDefT* signature,
     const tflite::ControlEdges& control_edges,
     const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr,
-    bool use_stablehlo_constant) {
+    bool use_stablehlo_constant, DebugMetadata& debug_metadata) {
   // Populate from metadata.
   ControlNodes control_nodes;
   for (const auto [from, to] : control_edges) {
@@ -1301,11 +1512,12 @@ StatusOr<FuncOp> ConvertSubgraph(
       TF_ASSIGN_OR_RETURN(
           mlir::TensorType type,
           tfl::GetTensorType(*subgraph.tensors[intermediate], builder,
-                             /*is_constant=*/false, /*is_intermediate=*/true));
+                             /*is_constant=*/false,
+                             /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
-    auto op_loc = OpLoc(*op, subgraph.tensors, builder, base_loc);
+    auto op_loc = OpLoc(*op, builder, debug_metadata, subgraph, base_loc);
 
     // If there's an optional argument, maybe_optional_arg_marker has been set
     // to a valid Value
@@ -1504,7 +1716,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const bool disable_vhlo_to_stablehlo) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::quant::QuantizationDialect,
+                  mlir::quant::QuantDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
                   mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
@@ -1513,7 +1725,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   context->loadDialect<
       mlir::arith::ArithDialect, mlir::func::FuncDialect,
-      mlir::quant::QuantizationDialect,
+      mlir::quant::QuantDialect,
       mlir::quantfork::QuantizationForkDialect,
       mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
       mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
@@ -1535,6 +1747,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   llvm::SmallVector<mlir::NamedAttribute> metadata_attrs;
   mlir::StringSet<> seen_attr;
+  DebugMetadata debug_metadata;
   for (const auto& metadata : model->metadata) {
     if (metadata->name == tflite::kModelControlDependenciesMetadataKey) {
       const std::vector<uint8_t>& data = model->buffers[metadata->buffer]->data;
@@ -1556,6 +1769,17 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
       use_stablehlo_constant = true;
       metadata_attrs.emplace_back(builder.getStringAttr(metadata->name),
                                   builder.getStringAttr("true"));
+      continue;
+    }
+
+    if (metadata->name == "debug_metadata") {
+      const std::vector<uint8_t>& data = model->buffers[metadata->buffer]->data;
+      auto status = ParseDebugMetadata(
+          builder, reinterpret_cast<const char*>(data.data()), data.size(),
+          debug_metadata);
+      if (!status.ok()) {
+        return emitError(base_loc, std::string(status.message())), nullptr;
+      }
       continue;
     }
 
@@ -1618,7 +1842,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
             ? subgraph_to_signature_map.at(subgraph_index)
             : nullptr,
         model_control_dependencies[subgraph_index], model_ptr,
-        use_stablehlo_constant);
+        use_stablehlo_constant, debug_metadata);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": " << func_or_error.status().message(),

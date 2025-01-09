@@ -51,8 +51,8 @@ class SimpleRendezvous : public RendezvousInterface {
  public:
   explicit SimpleRendezvous() {}
 
-  Status Send(const ParsedKey& parsed, const Args& send_args, const Tensor& val,
-              const bool is_dead) override {
+  absl::Status Send(const ParsedKey& parsed, const Args& send_args,
+                    const Tensor& val, const bool is_dead) override {
     if (is_dead) {
       return errors::Internal("Send of a dead tensor");
     }
@@ -69,7 +69,7 @@ class SimpleRendezvous : public RendezvousInterface {
   void RecvAsync(const ParsedKey& parsed, const Args& recv_args,
                  DoneCallback done) override {
     Tensor tensor;
-    Status status = absl::OkStatus();
+    absl::Status status = absl::OkStatus();
     {
       string key(parsed.edge_name);
       mutex_lock l(mu_);
@@ -82,7 +82,7 @@ class SimpleRendezvous : public RendezvousInterface {
     done(status, Args{}, recv_args, tensor, false);
   }
 
-  void StartAbort(const Status& status) override {}
+  void StartAbort(const absl::Status& status) override {}
 
  private:
   typedef std::unordered_map<string, Tensor> Table;
@@ -100,10 +100,11 @@ GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
 GraphRunner::~GraphRunner() {}
 
-Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
-                        const NamedTensorList& inputs,
-                        const std::vector<string>& output_names,
-                        std::vector<Tensor>* outputs) {
+absl::Status GraphRunner::Run(Graph* graph,
+                              FunctionLibraryRuntime* function_library,
+                              const NamedTensorList& inputs,
+                              const std::vector<string>& output_names,
+                              std::vector<Tensor>* outputs) {
   if (device_ == nullptr) {
     return errors::NotFound("Cannot find a device for GraphRunner.");
   }

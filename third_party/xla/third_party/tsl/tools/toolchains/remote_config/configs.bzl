@@ -1,6 +1,6 @@
 """Configurations of RBE builds used with remote config."""
 
-load("//tools/toolchains/remote_config:rbe_config.bzl", "sigbuild_tf_configs", "tensorflow_local_config", "tensorflow_rbe_config", "tensorflow_rbe_win_config")
+load("//tools/toolchains/remote_config:rbe_config.bzl", "ml_build_rbe_config", "sigbuild_tf_configs", "tensorflow_local_config", "tensorflow_rbe_config", "tensorflow_rbe_win_config")
 
 def initialize_rbe_configs():
     tensorflow_local_config(
@@ -46,6 +46,11 @@ def initialize_rbe_configs():
         name = "windows_py37",
         python_bin_path = "C:/Python37/python.exe",
     )
+
+    # The `ml-build-rbe` image is identical to the `ml-build` image except for the base image.
+    # The `ml-build`'s base image is a standard `ubuntu22.04` image.
+    # The `ml-build-rbe`'s base image is `nvidia/cuda:12.3.2-base-ubuntu22.04` which has nvidia driver installed.
+    ml_build_rbe_config("docker://us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-rbe@sha256:aaeb29799463729092c05f5ac8393113b3bb5d1ecf085f9f1f2016e3a1ece11c")
 
     # TF-Version-Specific SIG Build RBE Configs. The crosstool generated from these
     # configs are python-version-independent because they only care about the

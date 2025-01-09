@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
 #include "xla/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
+#include "xla/tsl/profiler/utils/session_manager.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/status.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/protobuf/profiler_analysis.pb.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
-#include "tsl/profiler/utils/session_manager.h"
 
 namespace tsl {
 namespace profiler {

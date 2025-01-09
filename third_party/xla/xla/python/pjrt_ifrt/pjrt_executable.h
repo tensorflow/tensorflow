@@ -86,8 +86,7 @@ class PjRtExecutable final
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
   static absl::StatusOr<std::unique_ptr<Executable>> Create(
-      std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-      std::unique_ptr<XlaCompileOptions> compile_options);
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
   // PjRtCompatibleExecutable implementation.
 
@@ -116,14 +115,14 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetParameterLayouts()
-      const override {
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetOutputLayouts()
-      const override {
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
   }
@@ -162,20 +161,13 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputMemoryKinds();
   }
 
-  const XlaCompileOptions* GetCompileOptions() const override {
-    return compile_options_.get();
-  }
-
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-                          std::unique_ptr<XlaCompileOptions> compile_options)
-      : pjrt_executable_(std::move(pjrt_executable)),
-        compile_options_(std::move(compile_options)) {}
+  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
+      : pjrt_executable_(std::move(pjrt_executable)) {}
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
-  std::unique_ptr<XlaCompileOptions> compile_options_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
@@ -242,14 +234,14 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetParameterLayouts()
-      const override {
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetOutputLayouts()
-      const override {
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputLayouts();
   }

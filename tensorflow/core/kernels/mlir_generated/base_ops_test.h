@@ -264,7 +264,6 @@ absl::InlinedVector<T, 10> ComplexInputFromValues(
     const absl::InlinedVector<typename T::value_type, 10>& real,
     const absl::InlinedVector<typename T::value_type, 10>& imag) {
   using ElementType = typename T::value_type;
-  auto input = test::DefaultInput<ElementType>();
   absl::InlinedVector<T, 10> complex_input;
   CHECK_EQ(real.size(), imag.size());
   for (size_t i = 0; i < real.size() && i < imag.size(); ++i) {

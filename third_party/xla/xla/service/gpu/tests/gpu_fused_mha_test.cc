@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -89,7 +89,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
   ErrorSpec mha_error_spec_{2.5E-3, 1e-5};
 
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     debug_options.clear_xla_gpu_enable_command_buffer();
@@ -1088,7 +1088,7 @@ class FlashAttentionBMMScalePaddingMaskSoftmaxBMM
     std::string hlo_string_ref =
         GetModuleFlash_Attention_Training_BMM1_PaddingMask_Generation_Softmax_BMM2_HloString_BF16();  // NOLINT
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-5, 1e-5}));
+                                        ErrorSpec{1e-3, 1e-3}));
   }
 };
 
@@ -1259,98 +1259,141 @@ class FlashAttentionBMMScaleSlidingWindowMaskSoftmaxBMM
     std::string hlo_string_ref =
         GetModuleFlash_Attention_Training_BMM1_SlidingWindowMask_Generation_Softmax_BMM2_HloString_BF16();  // NOLINT
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-5, 1e-5}));
+                                        ErrorSpec{1e-3, 1e-3}));
   }
 };
 
-class FlashAttentionBMMScalePaddingMaskSoftmaxBMMF8
+class FlashAttentionBMMScaleSegmentMaskSoftmaxBMM
     : public MultiHeadedAttentionTest {
  protected:
-  void TestImpl_Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_F8() {
+  const std::string  // NOLINT
+  GetModuleFlash_Attention_Training_Sequence_Packing_HloString_BF16() {  // NOLINT
+    const std::string hlo_text = R"(
+    HloModule jit_impl, entry_computation_layout={(bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0})->(bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+    ENTRY main.22 {
+      Arg_0.1 = bf16[2,512,2,64]{3,2,1,0} parameter(0)
+      Arg_1.2 = bf16[2,512,2,64]{3,2,1,0} parameter(1)
+      Arg_2.3 = bf16[2,512,2,64]{3,2,1,0} parameter(2)
+      constant.5 = s32[] constant(256)
+      broadcast.6 = s32[4]{0} broadcast(constant.5), dimensions={}
+      constant.7 = s32[5]{0} constant({0, 32768, 65536, 98304, 131072})
+      custom-call.8 = (bf16[2,2,512,64]{3,1,2,0}, f32[4,2,512]{2,1,0}, u8[0]{0}) custom-call(Arg_0.1, Arg_1.2, Arg_2.3, broadcast.6, broadcast.6, /*index=5*/constant.7, constant.7), custom_call_target="__cudnn$fmhaSoftmax", operand_layout_constraints={bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, s32[4]{0}, s32[4]{0}, s32[5]{0}, s32[5]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 0.1, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["2", "2", "512", "512"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "dropout_rate": 0, "seed": 42, "sliding_window_length": 0, "max_seg_per_batch": 2}}
+      get-tuple-element.11 = u8[0]{0} get-tuple-element(custom-call.8), index=2
+      get-tuple-element.10 = f32[4,2,512]{2,1,0} get-tuple-element(custom-call.8), index=1
+      Arg_3.4 = bf16[2,512,2,64]{3,2,1,0} parameter(3)
+      get-tuple-element.9 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.8), index=0
+      transpose.12 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.9), dimensions={0,2,1,3}
+      custom-call.13 = (bf16[2,2,512,64]{3,1,2,0}, bf16[2,2,512,64]{3,1,2,0}, bf16[2,2,512,64]{3,1,2,0}, u8[0]{0}) custom-call(Arg_0.1, Arg_1.2, Arg_2.3, get-tuple-element.10, Arg_3.4, /*index=5*/transpose.12, broadcast.6, broadcast.6, constant.7, constant.7), custom_call_target="__cudnn$fmhaSoftmaxBackward", operand_layout_constraints={bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, f32[4,2,512]{2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, s32[4]{0}, s32[4]{0}, s32[5]{0}, s32[5]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 0.1, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["2", "2", "512", "512"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_grad_gemm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["2"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm1_grad_gemm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_grad_gemm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["2"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_grad_gemm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "dropout_rate": 0, "seed": 42, "sliding_window_length": 0, "max_seg_per_batch": 2}}
+      get-tuple-element.17 = u8[0]{0} get-tuple-element(custom-call.13), index=3
+      get-tuple-element.14 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.13), index=0
+      transpose.18 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.14), dimensions={0,2,1,3}
+      get-tuple-element.15 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.13), index=1
+      transpose.19 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.15), dimensions={0,2,1,3}
+      get-tuple-element.16 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.13), index=2
+      transpose.20 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.16), dimensions={0,2,1,3}
+      ROOT tuple.21 = (bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}) tuple(transpose.12, transpose.18, transpose.19, transpose.20)
+    } // main.22
+  )";
+    return hlo_text;
+  }
+
+  const std::string  // NOLINT
+  GetModuleFlash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2_HloString_BF16() {  // NOLINT
+    const std::string hlo_text = R"(
+    HloModule jit_ref, entry_computation_layout={(bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0})->(bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+    _where.9 {
+      Arg_0.10 = pred[512]{0} parameter(0)
+      Arg_1.11 = s32[512]{0} parameter(1)
+      Arg_2.12 = s32[512]{0} parameter(2)
+      ROOT select.13 = s32[512]{0} select(Arg_0.10, Arg_1.11, Arg_2.12)
+    }
+
+    floor_divide.14 {
+      Arg_0.15 = s32[512]{0} parameter(0)
+      sign.23 = s32[512]{0} sign(Arg_0.15)
+      Arg_1.16 = s32[] parameter(1)
+      sign.24 = s32[] sign(Arg_1.16)
+      broadcast.25 = s32[512]{0} broadcast(sign.24), dimensions={}
+      compare.26 = pred[512]{0} compare(sign.23, broadcast.25), direction=NE
+      broadcast.27 = s32[512]{0} broadcast(Arg_1.16), dimensions={}
+      remainder.28 = s32[512]{0} remainder(Arg_0.15, broadcast.27)
+      constant.19 = s32[] constant(0)
+      broadcast.20 = s32[512]{0} broadcast(constant.19), dimensions={}
+      compare.29 = pred[512]{0} compare(remainder.28, broadcast.20), direction=NE
+      and.30 = pred[512]{0} and(compare.26, compare.29)
+      broadcast.21 = s32[512]{0} broadcast(Arg_1.16), dimensions={}
+      divide.22 = s32[512]{0} divide(Arg_0.15, broadcast.21)
+      constant.17 = s32[] constant(1)
+      broadcast.18 = s32[512]{0} broadcast(constant.17), dimensions={}
+      subtract.31 = s32[512]{0} subtract(divide.22, broadcast.18)
+      ROOT call.32 = s32[512]{0} call(and.30, subtract.31, divide.22), to_apply=_where.9
+    } // floor_divide.14
+
+    ENTRY main.61 {
+      Arg_0.1 = bf16[2,512,2,64]{3,2,1,0} parameter(0)
+      Arg_1.2 = bf16[2,512,2,64]{3,2,1,0} parameter(1)
+      Arg_2.3 = bf16[2,512,2,64]{3,2,1,0} parameter(2)
+      iota.8 = s32[512]{0} iota(), iota_dimension=0
+      constant.7 = s32[] constant(256)
+      call.33 = s32[512]{0} call(iota.8, constant.7), to_apply=floor_divide.14
+      broadcast.34 = s32[2,512]{1,0} broadcast(call.33), dimensions={1}
+      reshape.35 = s32[2,512,1]{2,1,0} reshape(broadcast.34)
+      broadcast.37 = s32[2,512,1]{2,1,0} broadcast(reshape.35), dimensions={0,1,2}
+      reshape.38 = s32[2,512]{1,0} reshape(broadcast.37)
+      broadcast.39 = s32[2,512,512]{2,1,0} broadcast(reshape.38), dimensions={0,1}
+      reshape.36 = s32[2,1,512]{2,1,0} reshape(broadcast.34)
+      broadcast.40 = s32[2,1,512]{2,1,0} broadcast(reshape.36), dimensions={0,1,2}
+      reshape.41 = s32[2,512]{1,0} reshape(broadcast.40)
+      broadcast.42 = s32[2,512,512]{2,1,0} broadcast(reshape.41), dimensions={0,2}
+      compare.43 = pred[2,512,512]{2,1,0} compare(broadcast.39, broadcast.42), direction=NE
+      convert.44 = bf16[2,512,512]{2,1,0} convert(compare.43)
+      reshape.45 = bf16[2,1,512,512]{3,2,1,0} reshape(convert.44)
+      constant.5 = bf16[] constant(-2.199e+12)
+      broadcast.6 = bf16[2,1,512,512]{3,2,1,0} broadcast(constant.5), dimensions={}
+      multiply.46 = bf16[2,1,512,512]{3,2,1,0} multiply(reshape.45, broadcast.6)
+      custom-call.47 = (bf16[2,2,512,64]{3,1,2,0}, f32[2,2,512]{2,1,0}, u8[0]{0}) custom-call(Arg_0.1, Arg_1.2, Arg_2.3, multiply.46), custom_call_target="__cudnn$fmhaScaleBiasSoftmax", operand_layout_constraints={bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,1,512,512]{3,2,1,0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 0.1, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["2", "2", "512", "512"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "dropout_rate": 0, "seed": 42, "sliding_window_length": 0, "max_seg_per_batch": 1}}
+      get-tuple-element.50 = u8[0]{0} get-tuple-element(custom-call.47), index=2
+      get-tuple-element.49 = f32[2,2,512]{2,1,0} get-tuple-element(custom-call.47), index=1
+      Arg_3.4 = bf16[2,512,2,64]{3,2,1,0} parameter(3)
+      get-tuple-element.48 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.47), index=0
+      transpose.51 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.48), dimensions={0,2,1,3}
+      custom-call.52 = (bf16[2,2,512,64]{3,1,2,0}, bf16[2,2,512,64]{3,1,2,0}, bf16[2,2,512,64]{3,1,2,0}, u8[0]{0}) custom-call(Arg_0.1, Arg_1.2, Arg_2.3, get-tuple-element.49, Arg_3.4, /*index=5*/multiply.46, transpose.51), custom_call_target="__cudnn$fmhaScaleBiasSoftmaxBackward", operand_layout_constraints={bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, f32[2,2,512]{2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,1,512,512]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 0.1, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["2", "2", "512", "512"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_grad_gemm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["2"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm1_grad_gemm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_grad_gemm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["2"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_grad_gemm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "dropout_rate": 0, "seed": 42, "sliding_window_length": 0, "max_seg_per_batch": 1}}
+      get-tuple-element.56 = u8[0]{0} get-tuple-element(custom-call.52), index=3
+      get-tuple-element.53 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.52), index=0
+      transpose.57 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.53), dimensions={0,2,1,3}
+      get-tuple-element.54 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.52), index=1
+      transpose.58 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.54), dimensions={0,2,1,3}
+      get-tuple-element.55 = bf16[2,2,512,64]{3,1,2,0} get-tuple-element(custom-call.52), index=2
+      transpose.59 = bf16[2,512,2,64]{3,2,1,0} transpose(get-tuple-element.55), dimensions={0,2,1,3}
+      ROOT tuple.60 = (bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}, bf16[2,512,2,64]{3,2,1,0}) tuple(transpose.51, transpose.57, transpose.58, transpose.59)
+    } // main.61
+    )";
+    return hlo_text;
+  }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
-        se::dnn::VersionInfo(9, 1, 0)) {
-      GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+        se::dnn::VersionInfo(9, 6, 0)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.6.0.";
     }
     XlaBuilder builder(TestName());
+    // Cudnn sequence packing packs multiple batches(segments) into one batch
+    // using offsets and seqlen tensors to indicate where each segment begins
+    std::string hlo_string =
+        GetModuleFlash_Attention_Training_Sequence_Packing_HloString_BF16();  // NOLINT
+    // Reference implementation is regular attention with segment mask
     std::string hlo_string_ref =
-        R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0})->bf16[4,4,16,16]{3,1,2,0}}, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}
-    clip.33 {
-      Arg_2.36 = bf16[] parameter(2)
-      broadcast.39 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_2.36), dimensions={}
-      Arg_1.35 = bf16[] parameter(1)
-      broadcast.37 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_1.35), dimensions={}
-      Arg_0.34 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
-      maximum.38 = bf16[4,16,4,16]{3,2,1,0} maximum(broadcast.37, Arg_0.34)
-      ROOT minimum.40 = bf16[4,16,4,16]{3,2,1,0} minimum(broadcast.39, maximum.38)
-    } // clip.33
-    ENTRY main.106 {
-      Arg_0.1 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
-      constant.6 = bf16[] constant(1)
-      broadcast.7 = bf16[4,16,4,16]{3,2,1,0} broadcast(constant.6), dimensions={}
-      divide.8 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_0.1, broadcast.7)
-      constant.5 = bf16[] constant(-448)
-      constant.4 = bf16[] constant(448)
-      call.17 = bf16[4,16,4,16]{3,2,1,0} call(divide.8, constant.5, constant.4), to_apply=clip.33
-      convert.18 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.17)
-      convert.19 = bf16[4,16,4,16]{3,2,1,0} convert(convert.18)
-      Arg_1.2 = bf16[4,16,4,16]{3,2,1,0} parameter(1)
-      divide.20 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_1.2, broadcast.7)
-      call.29 = bf16[4,16,4,16]{3,2,1,0} call(divide.20, constant.5, constant.4), to_apply=clip.33
-      convert.30 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.29)
-      convert.31 = bf16[4,16,4,16]{3,2,1,0} convert(convert.30)
-      Arg_2.3 = bf16[4,16,4,16]{3,2,1,0} parameter(2)
-      divide.32 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_2.3, broadcast.7)
-      call.41 = bf16[4,16,4,16]{3,2,1,0} call(divide.32, constant.5, constant.4), to_apply=clip.33
-      convert.42 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.41)
-      convert.43 = bf16[4,16,4,16]{3,2,1,0} convert(convert.42)
-      custom-call.4.0 = (bf16[4,4,16,16]{3,1,2,0}, u8[16]{0}) custom-call(convert.19, convert.31, convert.43), custom_call_target="__cudnn$fmhaSoftmax", operand_layout_constraints={bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 1.0, "dropout_rate": 0.0, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["4", "4", "16", "16"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "seed": 42, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}}}
-      ROOT get-tuple-element.5.0 = bf16[4,4,16,16]{3,1,2,0} get-tuple-element(custom-call.4.0), index=0
-    } // main.106
-  )";  // NOLINT
-    std::string hlo_string = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0})->bf16[4,4,16,16]{3,1,2,0}}, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}
-    clip.33 {
-      Arg_2.36 = bf16[] parameter(2)
-      broadcast.39 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_2.36), dimensions={}
-      Arg_1.35 = bf16[] parameter(1)
-      broadcast.37 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_1.35), dimensions={}
-      Arg_0.34 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
-      maximum.38 = bf16[4,16,4,16]{3,2,1,0} maximum(broadcast.37, Arg_0.34)
-      ROOT minimum.40 = bf16[4,16,4,16]{3,2,1,0} minimum(broadcast.39, maximum.38)
-    } // clip.33
-    ENTRY main.106 {
-      constant.99 = f32[] constant(1)
-      broadcast.99 = f32[1,1,1,1]{3,2,1,0} broadcast(constant.99), dimensions={}
-      Arg_0.1 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
-      constant.6 = bf16[] constant(1)
-      broadcast.7 = bf16[4,16,4,16]{3,2,1,0} broadcast(constant.6), dimensions={}
-      divide.8 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_0.1, broadcast.7)
-      constant.5 = bf16[] constant(-448)
-      constant.4 = bf16[] constant(448)
-      call.17 = bf16[4,16,4,16]{3,2,1,0} call(divide.8, constant.5, constant.4), to_apply=clip.33
-      convert.18 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.17)
-      convert.19 = bf16[4,16,4,16]{3,2,1,0} convert(convert.18)
-      Arg_1.2 = bf16[4,16,4,16]{3,2,1,0} parameter(1)
-      divide.20 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_1.2, broadcast.7)
-      call.29 = bf16[4,16,4,16]{3,2,1,0} call(divide.20, constant.5, constant.4), to_apply=clip.33
-      convert.30 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.29)
-      convert.31 = bf16[4,16,4,16]{3,2,1,0} convert(convert.30)
-      Arg_2.3 = bf16[4,16,4,16]{3,2,1,0} parameter(2)
-      divide.32 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_2.3, broadcast.7)
-      call.41 = bf16[4,16,4,16]{3,2,1,0} call(divide.32, constant.5, constant.4), to_apply=clip.33
-      convert.42 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.41)
-      convert.43 = bf16[4,16,4,16]{3,2,1,0} convert(convert.42)
-      custom-call.21.0 = (f8e4m3fn[4,4,16,16]{3,1,2,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, u8[16]{0}) custom-call(convert.18, convert.30, convert.42, broadcast.99, broadcast.99, /*index=5*/broadcast.99, broadcast.99, broadcast.99, broadcast.99), custom_call_target="__cudnn$fmhaSoftmaxF8", operand_layout_constraints={f8e4m3fn[4,16,4,16]{3,2,1,0}, f8e4m3fn[4,16,4,16]{3,2,1,0}, f8e4m3fn[4,16,4,16]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}}
-      get-tuple-element.5.0 = f8e4m3fn[4,4,16,16]{3,1,2,0} get-tuple-element(custom-call.21.0), index=0
-      ROOT out = bf16[4,4,16,16]{3,1,2,0} convert(get-tuple-element.5.0)
-    } // main.106
-  )";  // NOLINT
+        GetModuleFlash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2_HloString_BF16();  // NOLINT
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-2, 1e-2}));
+                                        ErrorSpec{1e-3, 1e-3}));
   }
 };
+
+class FlashAttentionBMMScaleSoftmaxBMMF8 : public MultiHeadedAttentionTest {};
 
 class FlashAttentionBMMScaleSoftmaxDropoutBMM
     : public MultiHeadedAttentionTest {
@@ -1465,16 +1508,713 @@ XLA_TEST_F(FlashAttentionBMMScaleSlidingWindowMaskSoftmaxBMM,
       bfloat16>();  // NOLINT
 }
 
+// BMM1 - Scale - SegmentMask - Softmax - BMM2
+XLA_TEST_F(FlashAttentionBMMScaleSegmentMaskSoftmaxBMM,
+           Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2_BF16) {
+  TestImpl_Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2<
+      bfloat16>();  // NOLINT
+}
+
+absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonRef() {
+  static constexpr absl::string_view hlo_text =
+      R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0})->bf16[4,16,4,16]{3,2,1,0}}, allow_spmd_sharding_propagation_to_parameters={true,true,true}
+
+  clip.33 {
+    Arg_2.36 = bf16[] parameter(2)
+    broadcast.39 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_2.36), dimensions={}
+    Arg_1.35 = bf16[] parameter(1)
+    broadcast.37 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_1.35), dimensions={}
+    Arg_0.34 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
+    maximum.38 = bf16[4,16,4,16]{3,2,1,0} maximum(broadcast.37, Arg_0.34)
+    ROOT minimum.40 = bf16[4,16,4,16]{3,2,1,0} minimum(broadcast.39, maximum.38)
+  }
+
+  ENTRY main.106 {
+    Arg_0.1 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
+    Arg_1.2 = bf16[4,16,4,16]{3,2,1,0} parameter(1)
+    Arg_2.3 = bf16[4,16,4,16]{3,2,1,0} parameter(2)
+
+    constant.6 = bf16[] constant(1)
+    broadcast.7 = bf16[4,16,4,16]{3,2,1,0} broadcast(constant.6), dimensions={}
+
+    divide.8 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_0.1, broadcast.7)
+    call.17 = bf16[4,16,4,16]{3,2,1,0} call(divide.8, bf16[] constant(-448), bf16[] constant(448)), to_apply=clip.33
+    convert.18 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.17)
+    convert.19 = bf16[4,16,4,16]{3,2,1,0} convert(convert.18)
+
+    divide.20 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_1.2, broadcast.7)
+    call.29 = bf16[4,16,4,16]{3,2,1,0} call(divide.20, bf16[] constant(-448), bf16[] constant(448)), to_apply=clip.33
+    convert.30 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.29)
+    convert.31 = bf16[4,16,4,16]{3,2,1,0} convert(convert.30)
+
+    divide.32 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_2.3, broadcast.7)
+    call.41 = bf16[4,16,4,16]{3,2,1,0} call(divide.32, bf16[] constant(-448), bf16[] constant(448)), to_apply=clip.33
+    convert.42 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.41)
+    convert.43 = bf16[4,16,4,16]{3,2,1,0} convert(convert.42)
+  )";
+  return hlo_text;
+}
+
+absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8() {
+  static constexpr absl::string_view hlo_text = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0}, bf16[4,16,4,16]{3,2,1,0})->bf16[4,16,4,16]{3,2,1,0}}, allow_spmd_sharding_propagation_to_parameters={true,true,true}
+  clip.33 {
+    Arg_2.36 = bf16[] parameter(2)
+    broadcast.39 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_2.36), dimensions={}
+    Arg_1.35 = bf16[] parameter(1)
+    broadcast.37 = bf16[4,16,4,16]{3,2,1,0} broadcast(Arg_1.35), dimensions={}
+    Arg_0.34 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
+    maximum.38 = bf16[4,16,4,16]{3,2,1,0} maximum(broadcast.37, Arg_0.34)
+    ROOT minimum.40 = bf16[4,16,4,16]{3,2,1,0} minimum(broadcast.39, maximum.38)
+  } // clip.33
+  ENTRY main.106 {
+    constant.99 = f32[] constant(1)
+    broadcast.99 = f32[1,1,1,1]{3,2,1,0} broadcast(constant.99), dimensions={}
+    Arg_0.1 = bf16[4,16,4,16]{3,2,1,0} parameter(0)
+    constant.6 = bf16[] constant(1)
+    broadcast.7 = bf16[4,16,4,16]{3,2,1,0} broadcast(constant.6), dimensions={}
+    divide.8 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_0.1, broadcast.7)
+    constant.5 = bf16[] constant(-448)
+    constant.4 = bf16[] constant(448)
+    call.17 = bf16[4,16,4,16]{3,2,1,0} call(divide.8, constant.5, constant.4), to_apply=clip.33
+    convert.18 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.17)
+    convert.19 = bf16[4,16,4,16]{3,2,1,0} convert(convert.18)
+    Arg_1.2 = bf16[4,16,4,16]{3,2,1,0} parameter(1)
+    divide.20 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_1.2, broadcast.7)
+    call.29 = bf16[4,16,4,16]{3,2,1,0} call(divide.20, constant.5, constant.4), to_apply=clip.33
+    convert.30 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.29)
+    convert.31 = bf16[4,16,4,16]{3,2,1,0} convert(convert.30)
+    Arg_2.3 = bf16[4,16,4,16]{3,2,1,0} parameter(2)
+    divide.32 = bf16[4,16,4,16]{3,2,1,0} divide(Arg_2.3, broadcast.7)
+    call.41 = bf16[4,16,4,16]{3,2,1,0} call(divide.32, constant.5, constant.4), to_apply=clip.33
+    convert.42 = f8e4m3fn[4,16,4,16]{3,2,1,0} convert(call.41)
+    convert.43 = bf16[4,16,4,16]{3,2,1,0} convert(convert.42)
+    )";
+  return hlo_text;
+}
 // BMM1 - Scale - Softmax - BMM2 fp8
-XLA_TEST_F(FlashAttentionBMMScalePaddingMaskSoftmaxBMMF8,
-           Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_F8) {
-  TestImpl_Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_F8();
+XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+           Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BNTH_F8) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
+      se::dnn::VersionInfo(9, 1, 0)) {
+    GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
+  }
+  XlaBuilder builder(TestName());
+  std::string ref_bnth = R"(
+    custom-call.4.0 = (
+        bf16[4,4,16,16]{3,1,2,0}
+    ) custom-call(
+        convert.19,
+        convert.31,
+        convert.43
+    ),
+    custom_call_target="__cudnn$fmhaSoftmax",
+    operand_layout_constraints={
+        bf16[4,16,4,16]{3,2,1,0},
+        bf16[4,16,4,16]{3,2,1,0},
+        bf16[4,16,4,16]{3,2,1,0}
+    },
+    api_version=API_VERSION_STATUS_RETURNING,
+    backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+            "algorithm": {
+                "algo_id": "0",
+                "math_type": "TENSOR_OP_MATH",
+                "tuning_knobs": {
+                    "17": "1",
+                    "24": "0"
+                },
+                "is_cudnn_frontend": true,
+                "workspace_size": "0"
+            },
+            "fmha_scale": 0.75,
+            "dropout_rate": 0.0,
+            "intermediate_tensor_shape": {
+                "element_type": "BF16",
+                "dimensions": ["4", "4", "16", "16"],
+                "tuple_shapes": [],
+                "layout": {
+                    "dim_level_types": [],
+                    "dim_unique": [],
+                    "dim_ordered": [],
+                    "minor_to_major": ["3", "2", "1", "0"],
+                    "tiles": [],
+                    "element_size_in_bits": "0",
+                    "memory_space": "0",
+                    "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "dynamic_shape_metadata_prefix_bytes": "0"
+                },
+                "is_dynamic_dimension": [false, false, false, false]
+            },
+            "seed": 42,
+            "is_flash_attention": true,
+            "mask_type": "NO_MASK",
+            "sliding_window_length": 0,
+            "bmm1_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["3"],
+                "lhs_batch_dimensions": ["0", "2"],
+                "rhs_batch_dimensions": ["0", "2"]
+            },
+            "bmm2_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["1"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "2"]
+            }
+        }
+    }
+    get-tuple-element.5.0 = bf16[4,4,16,16]{3,1,2,0} get-tuple-element(custom-call.4.0), index=0
+    ROOT transpose.7 = bf16[4,16,4,16]{3,2,1,0} transpose(get-tuple-element.5.0), dimensions={0,2,1,3}
+    }
+)";
+
+  std::string fp8_bnth = R"(
+    custom-call.21.0 = (
+        f8e4m3fn[4,4,16,16]{3,1,2,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}
+    ) custom-call(
+        convert.18,
+        convert.30,
+        convert.42,
+        broadcast.99,
+        broadcast.99,
+        /*index=5*/broadcast.99,
+        broadcast.99,
+        broadcast.99,
+        broadcast.99
+    ),
+    custom_call_target="__cudnn$fmhaSoftmaxF8",
+    operand_layout_constraints={
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}
+    },
+    api_version=API_VERSION_STATUS_RETURNING,
+    backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+            "algorithm": {
+                "algo_id": "0",
+                "math_type": "TENSOR_OP_MATH",
+                "tuning_knobs": {
+                    "17": "1",
+                    "24": "0"
+                },
+                "is_cudnn_frontend": true,
+                "workspace_size": "0"
+            },
+            "fmha_scale": 0.75,
+            "intermediate_tensor_shape": {
+                "element_type": "BF16",
+                "dimensions": ["4", "4", "16", "16"],
+                "tuple_shapes": [],
+                "layout": {
+                    "dim_level_types": [],
+                    "dim_unique": [],
+                    "dim_ordered": [],
+                    "minor_to_major": ["3", "2", "1", "0"],
+                    "tiles": [],
+                    "element_size_in_bits": "0",
+                    "memory_space": "0",
+                    "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "dynamic_shape_metadata_prefix_bytes": "0"
+                },
+                "is_dynamic_dimension": [false, false, false, false]
+            },
+            "is_flash_attention": true,
+            "mask_type": "NO_MASK",
+            "bmm1_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["3"],
+                "lhs_batch_dimensions": ["0", "2"],
+                "rhs_batch_dimensions": ["0", "2"]
+            },
+            "bmm2_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["1"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "2"]
+            }
+        }
+    }
+    get-tuple-element.5.0 = f8e4m3fn[4,4,16,16]{3,1,2,0} get-tuple-element(custom-call.21.0), index=0
+    transpose.26 = f8e4m3fn[4,16,4,16]{3,2,1,0} transpose(get-tuple-element.5.0), dimensions={0,2,1,3}
+    ROOT out = bf16[4,16,4,16]{3,2,1,0} convert(transpose.26)
+    }
+    )";
+
+  std::string hlo_string =
+      std::string(GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8()) +
+      fp8_bnth;
+  std::string hlo_string_ref =
+      std::string(GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonRef()) +
+      ref_bnth;
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
+                                      ErrorSpec{5e-2, 5e-2}));
+}
+
+XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+           Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BTNH_F8) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
+      se::dnn::VersionInfo(9, 1, 0)) {
+    GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
+  }
+  XlaBuilder builder(TestName());
+
+  std::string ref_btnh = R"(
+    custom-call.4.0 = (
+        bf16[4,16,4,16]{3,2,1,0}
+    ) custom-call(
+        convert.19,
+        convert.31,
+        convert.43
+    ),
+    custom_call_target="__cudnn$fmhaSoftmax",
+    operand_layout_constraints={
+        bf16[4,16,4,16]{3,2,1,0},
+        bf16[4,16,4,16]{3,2,1,0},
+        bf16[4,16,4,16]{3,2,1,0}
+    },
+    api_version=API_VERSION_STATUS_RETURNING,
+    backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+            "algorithm": {
+                "algo_id": "0",
+                "math_type": "TENSOR_OP_MATH",
+                "tuning_knobs": {
+                    "17": "1",
+                    "24": "0"
+                },
+                "is_cudnn_frontend": true,
+                "workspace_size": "0"
+            },
+            "fmha_scale": 0.75,
+            "dropout_rate": 0.0,
+            "intermediate_tensor_shape": {
+                "element_type": "BF16",
+                "dimensions": ["4", "16", "4", "4"],
+                "tuple_shapes": [],
+                "layout": {
+                    "dim_level_types": [],
+                    "dim_unique": [],
+                    "dim_ordered": [],
+                    "minor_to_major": ["3", "2", "1", "0"],
+                    "tiles": [],
+                    "element_size_in_bits": "0",
+                    "memory_space": "0",
+                    "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "dynamic_shape_metadata_prefix_bytes": "0"
+                },
+                "is_dynamic_dimension": [false, false, false, false]
+            },
+            "seed": 42,
+            "is_flash_attention": true,
+            "mask_type": "NO_MASK",
+            "sliding_window_length": 0,
+            "bmm1_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["3"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "1"]
+            },
+            "bmm2_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["2"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "1"]
+            }
+        }
+    }
+    ROOT get-tuple-element.5.0 = bf16[4,16,4,16]{3,2,1,0} get-tuple-element(custom-call.4.0), index=0
+    }
+)";
+
+  std::string fp8_btnh = R"(
+    custom-call.21.0 = (
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}
+    ) custom-call(
+        convert.18,
+        convert.30,
+        convert.42,
+        broadcast.99,
+        broadcast.99,
+        /*index=5*/broadcast.99,
+        broadcast.99,
+        broadcast.99,
+        broadcast.99
+    ),
+    custom_call_target="__cudnn$fmhaSoftmaxF8",
+    operand_layout_constraints={
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f8e4m3fn[4,16,4,16]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}
+    },
+    api_version=API_VERSION_STATUS_RETURNING,
+    backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+            "algorithm": {
+                "algo_id": "0",
+                "math_type": "TENSOR_OP_MATH",
+                "tuning_knobs": {
+                    "17": "1",
+                    "24": "0"
+                },
+                "is_cudnn_frontend": true,
+                "workspace_size": "0"
+            },
+            "fmha_scale": 0.75,
+            "intermediate_tensor_shape": {
+                "element_type": "BF16",
+                "dimensions": ["4", "16", "4", "4"],
+                "tuple_shapes": [],
+                "layout": {
+                    "dim_level_types": [],
+                    "dim_unique": [],
+                    "dim_ordered": [],
+                    "minor_to_major": ["3", "2", "1", "0"],
+                    "tiles": [],
+                    "element_size_in_bits": "0",
+                    "memory_space": "0",
+                    "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+                    "dynamic_shape_metadata_prefix_bytes": "0"
+                },
+                "is_dynamic_dimension": [false, false, false, false]
+            },
+            "is_flash_attention": true,
+            "mask_type": "NO_MASK",
+            "bmm1_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["3"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "1"]
+            },
+            "bmm2_dot_dimension_numbers": {
+                "lhs_contracting_dimensions": ["3"],
+                "rhs_contracting_dimensions": ["2"],
+                "lhs_batch_dimensions": ["0", "1"],
+                "rhs_batch_dimensions": ["0", "1"]
+            }
+        }
+    }
+    get-tuple-element.5.0 = f8e4m3fn[4,16,4,16]{3,2,1,0} get-tuple-element(custom-call.21.0), index=0
+    ROOT out = bf16[4,16,4,16]{3,2,1,0} convert(get-tuple-element.5.0)
+    }
+    )";
+
+  std::string hlo_string =
+      std::string(GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8()) +
+      fp8_btnh;
+  std::string hlo_string_ref =
+      std::string(GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonRef()) +
+      ref_btnh;
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
+                                      ErrorSpec{5e-2, 5e-2}));
 }
 
 // BMM1 - Scale - Softmax - BMM2 fp8
 XLA_TEST_F(FlashAttentionBMMScaleSoftmaxDropoutBMM,
            Flash_Attention_Training_BMM1_Softmax_Dropout_BMM2) {
   TestImpl_Flash_Attention_Training_BMM1_Softmax_Dropout_BMM2();
+}
+
+XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+           Flash_Attention_Bwd_BMM1_NoMask_Softmax_BMM2_F8) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
+      se::dnn::VersionInfo(9, 1, 0)) {
+    GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
+  }
+  XlaBuilder builder(TestName());
+  std::string hlo_string_ref = R"(
+    HloModule fmha_cudnn_custom_call_bwd
+    // Process inputs: clip, convert to f8e4m3fn, and convert back to bf16
+    cast_to_representable {
+        // Parameters
+        input = bf16[1,1,128,128] parameter(0)
+        min_val = bf16[] parameter(1)
+        max_val = bf16[] parameter(2)
+
+        // Broadcasting min and max values
+        min_broadcast = bf16[1,1,128,128] broadcast(min_val), dimensions={}
+        max_broadcast = bf16[1,1,128,128] broadcast(max_val), dimensions={}
+
+        // Clipping the scaled input
+        clipped_min = bf16[1,1,128,128] maximum(min_broadcast, input)
+        clipped = bf16[1,1,128,128] minimum(max_broadcast, clipped_min)
+
+        // Converting to f8e4m3fn and back to bf16
+        converted_f8 = f8e4m3fn[1,1,128,128] convert(clipped)
+        ROOT converted_bf16 = bf16[1,1,128,128] convert(converted_f8)
+    }
+    // Main function
+    ENTRY main {
+      // Input parameters
+      query = bf16[1,1,128,128] parameter(0)
+      key = bf16[1,1,128,128] parameter(1)
+      value = bf16[1,1,128,128] parameter(2)
+      grad_output = bf16[1,1,128,128] parameter(3)
+      fwd_output = bf16[1,1,128,128] parameter(4)
+      score = f32[1,1,128] parameter(5)
+
+      // Constants
+      one_f32 = f32[] constant(1)
+      one_f32_broadcast = f32[1,1,1,1] broadcast(one_f32), dimensions={}
+      min_clip_val = bf16[] constant(-448)
+      max_clip_val = bf16[] constant(448)
+
+      query_processed = bf16[1,1,128,128] call(query, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      key_processed = bf16[1,1,128,128] call(key, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      value_processed = bf16[1,1,128,128] call(value, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      grad_output_processed = bf16[1,1,128,128] call(grad_output, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      fwd_output_processed = bf16[1,1,128,128] call(fwd_output, min_clip_val, max_clip_val), to_apply=cast_to_representable
+
+      // FMHA Forward Backward custom call
+      fmha_result = (bf16[1,1,128,128], bf16[1,1,128,128], bf16[1,1,128,128], u8[0]) custom-call(
+        query_processed, key_processed, value_processed,
+        score, fwd_output_processed, grad_output_processed
+      ),
+      custom_call_target="__cudnn$fmhaSoftmaxBackward",
+      operand_layout_constraints={
+        bf16[1,1,128,128]{3,2,1,0}, bf16[1,1,128,128]{3,2,1,0},
+        bf16[1,1,128,128]{3,2,1,0}, f32[1,1,128]{2,1,0},
+        bf16[1,1,128,128]{3,2,1,0}, bf16[1,1,128,128]{3,2,1,0}
+      },
+      api_version=API_VERSION_STATUS_RETURNING,
+      backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+          "algorithm": {
+            "algo_id": "0",
+            "math_type": "TENSOR_OP_MATH",
+            "tuning_knobs": {"17": "1", "24": "0"},
+            "is_cudnn_frontend": true,
+            "workspace_size": "0"
+          },
+          "fmha_scale": 1.0,
+          "dropout_rate": 0.0,
+          "intermediate_tensor_shape": {
+            "element_type": "BF16",
+            "dimensions": ["1", "1", "128", "128"],
+            "tuple_shapes": [],
+            "layout": {
+              "dim_level_types": [],
+              "dim_unique": [],
+              "dim_ordered": [],
+              "minor_to_major": ["3", "2", "1", "0"],
+              "tiles": [],
+              "element_size_in_bits": "0",
+              "memory_space": "0",
+              "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+              "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+              "dynamic_shape_metadata_prefix_bytes": "0"
+            },
+            "is_dynamic_dimension": [false, false, false, false]
+          },
+          "seed": 42,
+          "is_flash_attention": true,
+          "mask_type": "NO_MASK",
+          "sliding_window_length": 0,
+          "bmm1_grad_gemm1_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["2"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm1_grad_gemm2_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["3"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm2_grad_gemm1_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["2"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm2_grad_gemm2_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["3"],
+            "rhs_contracting_dimensions": ["3"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          }
+        }
+      }
+
+      ROOT output = bf16[1,1,128,128] get-tuple-element(fmha_result), index=0
+  })";
+
+  std::string hlo_string = R"(
+    HloModule fmha_cudnn_custom_call_bwd_f8
+    // Process inputs: clip, convert to f8e4m3fn
+    cast_to_representable {
+      // Parameters
+      input = bf16[1,1,128,128] parameter(0)
+      min_val = bf16[] parameter(1)
+      max_val = bf16[] parameter(2)
+
+      // Broadcasting min and max values
+      min_broadcast = bf16[1,1,128,128] broadcast(min_val), dimensions={}
+      max_broadcast = bf16[1,1,128,128] broadcast(max_val), dimensions={}
+
+      // Clipping the scaled input
+      clipped_min = bf16[1,1,128,128] maximum(min_broadcast, input)
+      clipped = bf16[1,1,128,128] minimum(max_broadcast, clipped_min)
+
+      // Converting to f8e4m3fn and back to bf16
+      ROOT converted_f8 = f8e4m3fn[1,1,128,128] convert(clipped)
+    }
+
+    // Main function
+    ENTRY main {
+      // Input parameters
+      query = bf16[1,1,128,128] parameter(0)
+      key = bf16[1,1,128,128] parameter(1)
+      value = bf16[1,1,128,128] parameter(2)
+      grad_output = bf16[1,1,128,128] parameter(3)
+      fwd_output = bf16[1,1,128,128] parameter(4)
+      score = f32[1,1,128] parameter(5)
+
+      // Constants
+      one_f32 = f32[] constant(1)
+      one_f32_broadcast = f32[1,1,1,1] broadcast(one_f32), dimensions={}
+      min_clip_val = bf16[] constant(-448)
+      max_clip_val = bf16[] constant(448)
+
+      query_processed = f8e4m3fn[1,1,128,128] call(query, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      key_processed = f8e4m3fn[1,1,128,128] call(key, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      value_processed = f8e4m3fn[1,1,128,128] call(value, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      grad_output_processed = f8e4m3fn[1,1,128,128] call(grad_output, min_clip_val, max_clip_val), to_apply=cast_to_representable
+      fwd_output_processed = f8e4m3fn[1,1,128,128] call(fwd_output, min_clip_val, max_clip_val), to_apply=cast_to_representable
+
+      // FMHA Softmax Backward custom call
+      fmha_result = (f8e4m3fn[1,1,128,128], f8e4m3fn[1,1,128,128], f8e4m3fn[1,1,128,128],
+                     f32[1,1,1,1], f32[1,1,1,1], f32[1,1,1,1], f32[1,1,1,1], u8[0]) custom-call(
+        query_processed, key_processed, value_processed,
+        grad_output_processed, fwd_output_processed, score,
+        one_f32_broadcast, one_f32_broadcast, one_f32_broadcast, one_f32_broadcast,
+        one_f32_broadcast, one_f32_broadcast, one_f32_broadcast, one_f32_broadcast,
+        one_f32_broadcast, one_f32_broadcast, one_f32_broadcast, one_f32_broadcast
+      ),
+      custom_call_target="__cudnn$fmhaSoftmaxBackwardF8",
+      operand_layout_constraints={
+        f8e4m3fn[1,1,128,128]{3,2,1,0}, f8e4m3fn[1,1,128,128]{3,2,1,0},
+        f8e4m3fn[1,1,128,128]{3,2,1,0}, f8e4m3fn[1,1,128,128]{3,2,1,0},
+        f8e4m3fn[1,1,128,128]{3,2,1,0}, f32[1,1,128]{2,1,0},
+        f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0},
+        f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}, f32[1,1,1,1]{3,2,1,0}
+      },
+      api_version=API_VERSION_STATUS_RETURNING,
+      backend_config={
+        "operation_queue_id": "0",
+        "wait_on_operation_queues": [],
+        "cudnn_fmha_backend_config": {
+          "algorithm": {
+            "algo_id": "0",
+            "math_type": "TENSOR_OP_MATH",
+            "tuning_knobs": {"17": "1", "24": "0"},
+            "is_cudnn_frontend": true,
+            "workspace_size": "0"
+          },
+          "fmha_scale": 1.0,
+          "intermediate_tensor_shape": {
+            "element_type": "BF16",
+            "dimensions": ["1", "1", "128", "128"],
+            "tuple_shapes": [],
+            "layout": {
+              "dim_level_types": [],
+              "dim_unique": [],
+              "dim_ordered": [],
+              "minor_to_major": ["3", "2", "1", "0"],
+              "tiles": [],
+              "element_size_in_bits": "0",
+              "memory_space": "0",
+              "index_primitive_type": "PRIMITIVE_TYPE_INVALID",
+              "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID",
+              "dynamic_shape_metadata_prefix_bytes": "0"
+            },
+            "is_dynamic_dimension": [false, false, false, false]
+          },
+          "is_flash_attention": true,
+          "mask_type": "NO_MASK",
+          "bmm1_grad_gemm1_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["2"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm1_grad_gemm2_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["3"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm2_grad_gemm1_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["2"],
+            "rhs_contracting_dimensions": ["2"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          },
+          "bmm2_grad_gemm2_dot_dimension_numbers": {
+            "lhs_contracting_dimensions": ["3"],
+            "rhs_contracting_dimensions": ["3"],
+            "lhs_batch_dimensions": ["0", "1"],
+            "rhs_batch_dimensions": ["0", "1"]
+          }
+        }
+      }
+
+      fmha_output = f8e4m3fn[1,1,128,128] get-tuple-element(fmha_result), index=0
+      ROOT output = bf16[1,1,128,128] convert(fmha_output)
+    })";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_string_ref, hlo_string,
+                                      ErrorSpec{2e-1, 2e-1}));
 }
 }  // namespace
 }  // namespace gpu

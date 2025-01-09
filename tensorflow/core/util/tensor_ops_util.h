@@ -31,7 +31,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device>
-Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
+absl::Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x,
+                             Tensor* out) {
   AllocatorAttributes attr;
   if (x.dtype() == DT_VARIANT) {
     attr.set_on_host(true);
@@ -69,8 +70,8 @@ Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
 }
 
 template <typename Device>
-Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
-                        Tensor* out) {
+absl::Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a,
+                              const Tensor& b, Tensor* out) {
   if (a.dtype() == DT_INVALID) {
     *out = b;
     return absl::OkStatus();

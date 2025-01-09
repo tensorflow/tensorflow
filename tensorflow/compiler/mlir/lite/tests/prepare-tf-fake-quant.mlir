@@ -345,4 +345,43 @@ func.func @fakeQuantConcat(%arg0: tensor<1x6400x2xf32>, %arg1: tensor<1x1600x2xf
 // CHECK:  return %9
 }
 
+
+// CHECK-LABEL: populateFakeQuantOnMeanOutput
+func.func @populateFakeQuantOnMeanOutput(%arg0: tensor<f32>) -> (tensor<f32>) {
+  %cst = arith.constant dense<-1.0> : tensor<f32>
+  %cst_1 = arith.constant dense<1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<0> : tensor<1xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_1) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tf.Mean"(%0, %cst_2) <{keep_dims = false}> : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  return %1 : tensor<f32>
+
+// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0)
+// CHECK:  %1 = "tfl.quantize"(%0) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK:  %2 = "tfl.dequantize"(%1) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK:  %3 = "tf.Mean"(%2, %cst_1)
+// CHECK:  %4 = "tf.FakeQuantWithMinMaxVars"(%3, %cst, %cst_0)
+// CHECK:  %5 = "tfl.quantize"(%4) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK:  %6 = "tfl.dequantize"(%5) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK:  return %6
 }
+
+// CHECK-LABEL: populateFakeQuantOnMeanOutputNegativeCase
+func.func @populateFakeQuantOnMeanOutputNegativeCase(%arg0: tensor<f32>) -> (tensor<f32>) {
+  %cst = arith.constant dense<-1.0> : tensor<f32>
+  %cst_1 = arith.constant dense<1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<0> : tensor<1xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_1) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tf.Mean"(%0, %cst_2) <{keep_dims = false}> : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tf.FakeQuantWithMinMaxVars"(%1, %cst, %cst_1) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %2 : tensor<f32>
+
+// CHECK:      %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0)
+// CHECK:      %1 = "tfl.quantize"(%0)
+// CHECK:      %2 = "tfl.dequantize"(%1)
+// CHECK:      %3 = "tf.Mean"(%2, %cst_1)
+// CHECK:      %4 = "tf.FakeQuantWithMinMaxVars"(%3, %cst, %cst_0)
+// CHECK-NOT:  "tf.FakeQuantWithMinMaxVars"
+}
+
+}
+

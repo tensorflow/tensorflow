@@ -34,9 +34,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,11 +49,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -57,6 +67,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -509,6 +520,13 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
+
+  // If this instruction is a constant, clear the literal eagerly instead of
+  // waiting for the instruction to be deleted in Cleanup(). This greatly
+  // reduces the peak heap memory during constant folding.
+  if (auto constant = DynCast<HloConstantInstruction>(to_be_deleted_.back())) {
+    *constant->mutable_literal() = Literal();
+  }
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
@@ -680,6 +698,7 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kRaggedAllToAll:
       case HloOpcode::kReduceScatter: {
         HloInstruction* instruction = inst.inst();
         std::optional<int64_t> channel_id = instruction->channel_id();
@@ -1431,13 +1450,13 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
-  if (auto old_original_value = old_instruction->original_value()) {
-    // Fusions are handled separately. The original_value attribute of fused
-    // instructions is copied when they are added into the fused computation.
+  if (auto original_value = old_instruction->original_value()) {
+    // Fusions are handled separately. The original value of fused instructions
+    // is copied when they are added into the fused computation.
     if (new_instruction->opcode() != HloOpcode::kFusion) {
       if (ShapeUtil::Compatible(old_instruction->shape(),
                                 new_instruction->shape())) {
-        new_instruction->set_original_value(old_original_value);
+        new_instruction->set_original_value(original_value);
       } else {
         LOG(WARNING)
             << "Expect the new instruction to have the same shape with the old "
@@ -1709,7 +1728,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
       for (HloInstruction* operand : cur->operands()) {
         const HloInstruction* new_operand = replace(operand);
         if (new_operand) {
-          dfs_stack.emplace_back(new_operand);
+          dfs_stack.push_back(new_operand);
         }
       }
     }

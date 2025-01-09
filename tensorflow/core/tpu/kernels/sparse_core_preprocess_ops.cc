@@ -53,8 +53,9 @@ namespace tensorflow {
 
 bool IsPowerOfTwo(int32_t x) { return x > 0 && (x & (x - 1)) == 0; }
 
-Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
-                      const Tensor& weights, int sample_count) {
+absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
+                            const Tensor& values, const Tensor& weights,
+                            int sample_count) {
   if (values.dims() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat("Values input should have dimension 1. But got dimension ",
@@ -114,10 +115,10 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
   return absl::OkStatus();
 }
 
-Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
-                                  const int32 total_id_count,
-                                  const int32 sample_count,
-                                  int32* row_ids_before_padding) {
+absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
+                                        const int32 total_id_count,
+                                        const int32 sample_count,
+                                        int32* row_ids_before_padding) {
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
   if (indices_or_row_splits.NumElements() == 0) {

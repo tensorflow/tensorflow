@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
-#include "tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {

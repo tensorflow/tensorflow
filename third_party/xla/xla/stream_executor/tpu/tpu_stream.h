@@ -70,6 +70,13 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
+  absl::Status BlockHostUntilDone() override {
+    StatusHelper status;
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
+        se_executor_, stream_, status.c_status);
+    return status.status();
+  }
+
   absl::Status EnqueueTransferDeviceToHost(
       stream_executor::DeviceMemoryBase device_src, void* host_dst,
       uint64_t size) {

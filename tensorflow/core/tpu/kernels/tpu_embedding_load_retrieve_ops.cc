@@ -44,10 +44,9 @@ using tensorflow::tpu::TpuEmbeddingShapeUtil;
 namespace tensorflow {
 
 // Computes (and VLOGs) the expected shapes of the embedding table shards.
-Status ComputeExpectedTableShardShapes(const TPUEmbeddingConfiguration& config,
-                                       int shard_id, int num_shards,
-                                       const string& op_name,
-                                       std::vector<TensorShape>* table_shapes) {
+absl::Status ComputeExpectedTableShardShapes(
+    const TPUEmbeddingConfiguration& config, int shard_id, int num_shards,
+    const string& op_name, std::vector<TensorShape>* table_shapes) {
   std::vector<TensorShapeProto> shape_protos;
   const int num_tables = config.table_descriptor_size();
   TF_RETURN_IF_ERROR(TpuEmbeddingShapeUtil::ComputeTableShapes(
@@ -141,7 +140,7 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
   for (int table_id = 0; table_id < num_tables; ++table_id) {
     const auto& table_descriptor = config_.table_descriptor(table_id);
     std::vector<tpu::StateVariableSpecification> state_variable_specs;
-    Status status = tpu::GetOptimizationAlgorithmStateVariables(
+    absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
         table_descriptor.optimization_parameters(), &state_variable_specs);
     OP_REQUIRES(ctx, status.ok(),
                 errors::InvalidArgument(
@@ -290,7 +289,7 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
     const auto& table_descriptor = config_.table_descriptor(table_id);
 
     std::vector<tpu::StateVariableSpecification> state_variable_specs;
-    Status status = tpu::GetOptimizationAlgorithmStateVariables(
+    absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
         table_descriptor.optimization_parameters(), &state_variable_specs);
     OP_REQUIRES(
         ctx, status.ok(),

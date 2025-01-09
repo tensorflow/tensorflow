@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -52,7 +50,7 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
       /*new_pool_size*/ true,
       /*release_threshold*/ true);
   allocator1.SetStreamAndPreallocateMemory(
-      se::gpu::AsGpuStreamValue(stream1.get()));
+      stream1->platform_specific_handle().stream);
   TF_ASSERT_OK_AND_ASSIGN(auto stream2, executor->CreateStream());
   auto allocator2 = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
@@ -60,7 +58,7 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
       /*new_pool_size*/ true,
       /*release_threshold*/ true);
   allocator2.SetStreamAndPreallocateMemory(
-      se::gpu::AsGpuStreamValue(stream2.get()));
+      stream2->platform_specific_handle().stream);
   void* addr1 = allocator1.AllocateRaw(128, 127);
   void* addr2 = allocator2.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
@@ -80,7 +78,7 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
       /*new_pool_size*/ true,
       /*release_threshold*/ true);
   allocator.SetStreamAndPreallocateMemory(
-      se::gpu::AsGpuStreamValue(stream.get()));
+      stream->platform_specific_handle().stream);
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
@@ -102,7 +100,7 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
       /*sync_mode*/ false,
       /*compute_stats*/ false);
   allocator.SetStreamAndPreallocateMemory(
-      se::gpu::AsGpuStreamValue(stream.get()));
+      stream->platform_specific_handle().stream);
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
@@ -124,7 +122,7 @@ TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
       /*sync_mode*/ true,
       /*compute_stats*/ true);
   allocator.SetStreamAndPreallocateMemory(
-      se::gpu::AsGpuStreamValue(stream.get()));
+      stream->platform_specific_handle().stream);
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);

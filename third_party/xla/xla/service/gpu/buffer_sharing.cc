@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -40,9 +41,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
-                                             const HloInstruction* operand,
-                                             const ShapeIndex& user_index) {
+std::optional<bool> FusionCanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion == nullptr) {
     return std::nullopt;
@@ -66,10 +68,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
     }
     // The buffers needed for 'user_subshape' and 'operand_shape' need to have
     // the same size, otherwise they cannot be shared. We already checked that
-    // the number of elements are the same, so now we check the number of bytes
+    // the number of elements are the same, so now we check the number of bits
     // needed for the element types.
-    if (ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type()) !=
-        ShapeUtil::ByteSizeOfPrimitiveType(user_subshape.element_type())) {
+    if (primitive_util::BitWidth(operand_shape.element_type()) !=
+        primitive_util::BitWidth(user_subshape.element_type())) {
       return false;
     }
   }
@@ -77,8 +79,6 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // Allow multiple output users, if they end in reductions.
   // This only works for the reduction emitter, as it calculates the reduction
   // first, i.e. before processing other outputs (that may overwrite the input).
-  stream_executor::GpuDeviceInfoProto device_info;
-  stream_executor::DeviceDescription device_description(device_info);
   auto analysis = HloFusionAnalysis::Create(*user, device_description);
   bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
                               HloFusionAnalysis::EmitterFusionKind::kReduction;
@@ -219,9 +219,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   return found_path_to_output;
 }
 
-std::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                       const HloInstruction* operand,
-                                       const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectiveBroadcast:
@@ -243,7 +244,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     case HloOpcode::kFusion:
-      return FusionCanShareBufferHint(user, operand, user_index);
+      return FusionCanShareBufferHint(user, operand, user_index,
+                                      device_description);
     default:
       return std::nullopt;
   }

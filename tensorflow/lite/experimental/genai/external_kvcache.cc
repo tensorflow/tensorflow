@@ -109,13 +109,10 @@ TfLiteStatus ExternalKVCacheEval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kKeyTensor, &updated_k_cache));
   TF_LITE_ENSURE_OK(
       context, GetOutputSafe(context, node, kValueTensor, &updated_v_cache));
-  TF_LITE_ENSURE_EQ(context, k_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, v_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, updated_k_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, updated_v_cache->allocation_type, kTfLiteCustom);
 
-  // If input and output buffers are not the same, copy the input buffer to the
-  // output buffer before inserting the new slice.
+  // Note: For the best performance, the following memcpys should be avoided.
+  // The way to avoid that is to take advantage of CustomAllocation and use
+  // the same buffer for both input and output.
   if (k_cache->data.raw != updated_k_cache->data.raw) {
     memcpy(updated_k_cache->data.data, k_cache->data.data, k_cache->bytes);
   }

@@ -553,7 +553,7 @@ def _tf_core_packed_nest_with_indices(
     index: Index at which to start reading from flat.
     is_nested_fn: Function used to test if a value should be treated as a nested
       structure.
-    sequence_fn: Function used to generate a new strcuture instance.
+    sequence_fn: Function used to generate a new structure instance.
 
   Returns:
     The tuple (new_index, child), where:

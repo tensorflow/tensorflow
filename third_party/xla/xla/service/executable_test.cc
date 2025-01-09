@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -43,8 +42,7 @@ class TestExecutable : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override {
+      std::vector<ExecutionInput> arguments) override {
     return absl::UnimplementedError("Not needed for this test.");
   }
 };
@@ -57,7 +55,7 @@ TEST_F(ExecutableTest, HloProtoGetterIsThreadCompatible) {
   // thread-compatible way.
   // Note that this test needs to run with --config=tsan to reliably
   // detect any potential data races.
-  constexpr std::string_view kHloModule = R"(
+  constexpr absl::string_view kHloModule = R"(
     HloModule module
 
     ENTRY main {

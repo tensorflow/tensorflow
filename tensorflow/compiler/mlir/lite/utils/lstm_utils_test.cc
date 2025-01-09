@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 
+#include <cstdint>
 #include <memory>
-#include <ostream>
 #include <string>
 #include <vector>
 

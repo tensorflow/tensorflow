@@ -89,6 +89,9 @@ class HostKernel : public Kernel {
                       absl::Span<const DeviceMemoryBase> buffers) const;
   absl::Status Launch(const ThreadDim& thread_dims,
                       absl::Span<const SE_HOST_KernelArg> args) const;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      Stream* stream, const KernelArgs& args) override;
 
   // Launches the kernel by iterating over all threads in `thread_dims` and
   // calling `task_runner` to run individual task (implementation might decide

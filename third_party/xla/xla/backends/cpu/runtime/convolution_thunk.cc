@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
@@ -346,23 +345,23 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
         strides_.x, strides_.y, padding_before_.x, padding_after_.x,
         padding_before_.y, padding_after_.y, base_dilation_.x, base_dilation_.y,
         window_dilation_.x, window_dilation_.y, feature_group_count_,
-        std::move(done_callback));
+        std::move(done_callback), /*use_thunk_runtime=*/true);
   };
 
   if (options_.multi_threaded) {
-    auto state = std::make_shared<ExecuteState>(feature_group_count_);
-    auto done_callback = [state] { state->Notify(); };
+    tsl::CountDownAsyncValueRef<ExecuteEvent> state(feature_group_count_);
+    auto done_callback = [state]() mutable { state.CountDown(); };
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
+      dispatch(Eigen::half{}, *params.intra_op_threadpool, done_callback);
     } else {
       dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
-    return state->event;
+    return state.AsRef();
   } else {
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(Eigen::half{}, Eigen::DefaultDevice());
     } else {
-      dispatch(float(), Eigen::DefaultDevice());
+      dispatch(float{}, Eigen::DefaultDevice());
     }
     return OkExecuteEvent();
   }
@@ -391,19 +390,19 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
   };
 
   if (options_.multi_threaded) {
-    auto state = std::make_shared<ExecuteState>(feature_group_count_);
-    auto done_callback = [state] { state->Notify(); };
+    tsl::CountDownAsyncValueRef<ExecuteEvent> state(feature_group_count_);
+    auto done_callback = [state]() mutable { state.CountDown(); };
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
+      dispatch(Eigen::half{}, *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(float(), *params.intra_op_threadpool, done_callback);
+      dispatch(float{}, *params.intra_op_threadpool, done_callback);
     }
-    return state->event;
+    return state.AsRef();
   } else {
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(Eigen::half{}, Eigen::DefaultDevice());
     } else {
-      dispatch(float(), Eigen::DefaultDevice());
+      dispatch(float{}, Eigen::DefaultDevice());
     }
     return OkExecuteEvent();
   }

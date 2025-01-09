@@ -53,7 +53,6 @@ tf_proto_library(
 #
 # py_proto_library(
 #     name = "test_message_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":test_message_proto",
 #     ],

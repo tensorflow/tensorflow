@@ -1,6 +1,6 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -26,9 +26,14 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//xla/tsl/profiler/rpc/client:__pkg__",
         "//tensorflow_serving/model_servers:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     deps = [
         "//xla/tsl/profiler/rpc/client:save_profile",
+        "//xla/tsl/profiler/utils:file_system_utils",
+        "//xla/tsl/profiler/utils:math_utils",
+        "//xla/tsl/profiler/utils:time_utils",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -43,10 +48,6 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:file_system_utils",
-        "@local_tsl//tsl/profiler/utils:math_utils",
-        "@local_tsl//tsl/profiler/utils:time_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
     ] + tsl_grpc_cc_dependencies(),
 )
 

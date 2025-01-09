@@ -1,7 +1,7 @@
 diff --git a/BUILD.bazel b/BUILD.bazel
 --- a/BUILD.bazel	(revision 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66)
-+++ b/BUILD.bazel	(date 1670471682469)
-@@ -68,6 +68,7 @@
++++ b/BUILD.bazel	(date 1714620794503)
+@@ -68,6 +68,8 @@
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,

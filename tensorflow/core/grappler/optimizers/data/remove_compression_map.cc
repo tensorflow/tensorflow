@@ -62,10 +62,9 @@ absl::StatusOr<NodeDef> GetCompressionMapNode(const GraphDef& graph) {
 
 }  // namespace
 
-Status RemoveCompressionMap::OptimizeAndCollectStats(Cluster* cluster,
-                                                     const GrapplerItem& item,
-                                                     GraphDef* output,
-                                                     OptimizationStats* stats) {
+absl::Status RemoveCompressionMap::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   TF_ASSIGN_OR_RETURN(NodeDef compression_map_node,
                       GetCompressionMapNode(*output));

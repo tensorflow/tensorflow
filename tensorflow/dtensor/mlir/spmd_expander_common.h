@@ -72,9 +72,10 @@ StatusOr<mlir::TensorType> GlobalTypeFromLocalType(
 
 // Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
 // in 'split_dimension' dimension and returns the split values.
-Status CreateSplitOp(int num_split, int split_dimension,
-                     mlir::Location location, mlir::Value src_input,
-                     mlir::OpBuilder* builder, mlir::TF::SplitOp* split_op);
+absl::Status CreateSplitOp(int num_split, int split_dimension,
+                           mlir::Location location, mlir::Value src_input,
+                           mlir::OpBuilder* builder,
+                           mlir::TF::SplitOp* split_op);
 
 // Given layouts + shapes, determines if the two are broadcast compatible.
 // See source file for more documentation.
@@ -171,15 +172,15 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
 // argument, this checks that all users of the value are in the same cluster.
 // If not it errors out. If they are then it sets the inserition point to the
 // top of the cluster.
-Status SetBuilderInsertionAfterValue(mlir::Value value,
-                                     mlir::OpBuilder& builder);
+absl::Status SetBuilderInsertionAfterValue(mlir::Value value,
+                                           mlir::OpBuilder& builder);
 
 // Inserts a StringFormat and Print op, should only be used for debugging
 // on CPU.
-Status PrintTensor(mlir::Value value, const std::string& format_string);
+absl::Status PrintTensor(mlir::Value value, const std::string& format_string);
 
 // Extract a vector of string from mlir value.
-Status ExtractConstStringVectorFromValue(
+absl::Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector);
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value);

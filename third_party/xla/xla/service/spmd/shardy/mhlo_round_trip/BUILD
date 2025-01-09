@@ -1,7 +1,7 @@
 # Import/Export passes for going from `sdy.sharding`s to `mhlo.sharding`s and vice versa.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,6 +13,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/deepmind/partir/...",
+        "//learning/deepmind/partir/compiler/mpmd/export/...",
         "//third_party/openxla/shardy/tools/...",
         "//xla/service/spmd/shardy/...",
     ],
@@ -37,6 +38,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -54,6 +56,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -70,12 +73,13 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -87,6 +91,7 @@ cc_library(
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",
+        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
@@ -125,15 +130,14 @@ xla_cc_test(
     name = "mhlo_import_test",
     srcs = ["mhlo_import_test.cc"],
     deps = [
+        ":export_shardings",
         ":mhlo_import",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
@@ -146,7 +150,6 @@ cc_library(
     hdrs = ["shard_map_import.h"],
     deps = [
         "//xla:xla_data_proto_cc",
-        "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/algorithm:container",
@@ -162,5 +165,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

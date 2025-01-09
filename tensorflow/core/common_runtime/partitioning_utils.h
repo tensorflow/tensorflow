@@ -33,7 +33,7 @@ namespace tensorflow {
 // `get_tensor_name_attr` computes the "tensor_name" attr value of Send/Recv ops
 // inserted during partitioning. Use the default one if not set. It needs to be
 // thread safe if it's shared in multple threads.
-Status PartitionFunctionGraph(
+absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
     std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
     std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
@@ -78,7 +78,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
 //      host else not. This is needed because in certain special cases e.g.
 //      when graph is placed on TPU/XLA device or when the `Retval` is an output
 //      of an iterator, int32 tensors live on device.
-Status UpdateArgAndRetvalMetadata(
+absl::Status UpdateArgAndRetvalMetadata(
     Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,

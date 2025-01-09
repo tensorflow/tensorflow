@@ -59,14 +59,11 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-using stream_executor::gpu::ScopedActivateContext;
 
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-using stream_executor::gpu::ScopedActivateContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -76,18 +73,18 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace internal {
 
-Status ValidateSegmentReduction(OpKernelContext* c, const Tensor& input,
-                                const Tensor& segment_ids);
-Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
-                                        OpKernelContext* context,
-                                        const Tensor& data,
-                                        const Tensor& segment_ids,
-                                        const Tensor& num_segments);
-Status ValidateSparseSegmentReduction(OpKernelContext* context,
-                                      const Tensor& input,
-                                      const Tensor& indices,
-                                      const Tensor& segment_ids,
-                                      bool has_num_segments);
+absl::Status ValidateSegmentReduction(OpKernelContext* c, const Tensor& input,
+                                      const Tensor& segment_ids);
+absl::Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
+                                              OpKernelContext* context,
+                                              const Tensor& data,
+                                              const Tensor& segment_ids,
+                                              const Tensor& num_segments);
+absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
+                                            const Tensor& input,
+                                            const Tensor& indices,
+                                            const Tensor& segment_ids,
+                                            bool has_num_segments);
 }  // namespace internal
 
 // This operator handles reducing segments along the first dimension.
@@ -287,7 +284,8 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateContext scoped_activation{stream->parent()};
+      std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+          stream->parent()->Activate();
 
       Index output_rows = *output_rows_host.data();
       output_rows++;
@@ -920,7 +918,8 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateContext scoped_activation{stream->parent()};
+      std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+          stream->parent()->Activate();
 
       SegmentId last_segment_id = *last_segment_id_host.data();
       SegmentId output_rows = last_segment_id + 1;
@@ -1363,9 +1362,9 @@ class SparseSegmentSqrtNGradOp
 template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentGradV2OpCommon {
  public:
-  Status operator()(OpKernelContext* context,
-                    SparseSegmentReductionOperation operation,
-                    typename AsyncOpKernel::DoneCallback done = nullptr) {
+  absl::Status operator()(OpKernelContext* context,
+                          SparseSegmentReductionOperation operation,
+                          typename AsyncOpKernel::DoneCallback done = nullptr) {
     const Tensor& input = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);

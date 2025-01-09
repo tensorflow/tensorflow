@@ -221,7 +221,7 @@ class HashTable : public InitializableLookupTable {
  public:
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+  absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
     // We set use_node_name_sharing with a unique node name so that the resource
     // can outlive the HashTableV2 kernel. This means that the lifetime of the
     // HashTable resource will be tied to the lifetime of the resource manager
@@ -261,7 +261,7 @@ class HashTable : public InitializableLookupTable {
       return table_.size();
   }
 
-  Status ExportValues(OpKernelContext* context) override {
+  absl::Status ExportValues(OpKernelContext* context) override {
     if (!is_initialized()) {
       return errors::Aborted("HashTable is not initialized.");
     }
@@ -290,7 +290,7 @@ class HashTable : public InitializableLookupTable {
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
 
  protected:
-  Status DoPrepare(size_t size) override {
+  absl::Status DoPrepare(size_t size) override {
     if (is_initialized()) {
       return errors::Aborted("HashTable already initialized.");
     }
@@ -300,11 +300,11 @@ class HashTable : public InitializableLookupTable {
     return absl::OkStatus();
   };
 
-  Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
+  absl::Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
     return DoPrepare(size_fn());
   }
 
-  Status DoInsert(const Tensor& keys, const Tensor& values) override {
+  absl::Status DoInsert(const Tensor& keys, const Tensor& values) override {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int64_t i = 0; i < key_values.size(); ++i) {
@@ -320,8 +320,8 @@ class HashTable : public InitializableLookupTable {
     return absl::OkStatus();
   }
 
-  Status DoFind(const Tensor& key, Tensor* value,
-                const Tensor& default_value) override {
+  absl::Status DoFind(const Tensor& key, Tensor* value,
+                      const Tensor& default_value) override {
     const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();

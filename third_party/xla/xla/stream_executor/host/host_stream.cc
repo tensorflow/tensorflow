@@ -22,6 +22,7 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <utility>
 
@@ -193,22 +194,6 @@ absl::Status HostStream::BlockUntilDone() {
   });
   done.WaitForNotification();
   return status;
-}
-
-absl::Status HostStream::Launch(const ThreadDim& thread_dims,
-                                const BlockDim& block_dims,
-                                const Kernel& kernel, const KernelArgs& args) {
-  const HostKernel* host_kernel = AsHostKernel(&kernel);
-
-  const KernelArgsDeviceMemoryArray* device_mem =
-      DynCast<KernelArgsDeviceMemoryArray>(&args);
-
-  if (device_mem != nullptr) {
-    return host_kernel->Launch(thread_dims, device_mem->device_memory_args());
-  }
-  return absl::UnimplementedError(
-      "Host kernel implements Launch method only for DeviceMemoryArray "
-      "arguments.");
 }
 
 }  // namespace host

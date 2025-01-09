@@ -66,8 +66,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
-  absl::Status BlockHostUntilDone(Stream* stream) override;
-
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override;
 

@@ -40,6 +40,8 @@ default_visibility = [
     "//waymo/ml/deploy/benchmark:__subpackages__",
     # copybara:uncomment #internal tuning service,
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
+    #internal nexus library,
+    #internal nexus library tests,
 ]
 
 package(
@@ -539,7 +541,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -575,7 +577,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -612,7 +614,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -719,9 +721,10 @@ cc_library(
     visibility = default_visibility + [
         "//learning/brain/experimental/jax_pst/grpc/tf:__pkg__",
         "//learning/brain/google/data/core/kernels:__pkg__",
-        "//learning/deepmind/tensorflow/queues:__pkg__",
+        "//learning/brain/google/data/core/parse_proto:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
+        "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
@@ -842,6 +845,7 @@ tf_cuda_library(
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/util:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
@@ -1101,6 +1105,7 @@ cc_library(
     name = "op",
     srcs = ["op.cc"],
     hdrs = ["op.h"],
+    visibility = default_visibility + ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
         ":full_type_proto_cc",
         ":full_type_util",
@@ -1410,7 +1415,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -1569,6 +1574,7 @@ tf_proto_library(
         ":types_proto",
         ":versions_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -1692,6 +1698,7 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
         "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
@@ -1801,13 +1808,15 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ] + default_visibility,
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "function_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [
 #         ":function_proto",
 #     ],
@@ -1823,9 +1832,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
-        "@local_tsl//tsl/protobuf:histogram_proto",
+        "@local_xla//xla/tsl/protobuf:histogram_proto",
     ],
-    exports = ["@local_tsl//tsl/protobuf:histogram_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(

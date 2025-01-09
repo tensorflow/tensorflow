@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -49,7 +49,7 @@ class OpenWhileFreeVarsShardingPass
     FuncOp funcOp = getOperation();
     mlir::IRRewriter rewriter(funcOp);
 
-    funcOp.walk([&](mlir::mhlo::WhileOp op) {
+    funcOp.walk([&](mlir::stablehlo::WhileOp op) {
       llvm::SetVector<mlir::Value> freeVars;
       mlir::getUsedValuesDefinedAbove(op->getRegions(), freeVars);
       rewriter.setInsertionPoint(op);

@@ -272,6 +272,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "tfr_wrapper.pyi",
     ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",

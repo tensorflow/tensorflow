@@ -6,10 +6,10 @@ module {
     %0 = "mhlo.while"(%arg0) ({
     // CHECK: [[R0:%.+]] ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %add.4 = s64[] add(s64[] %[[A0]], s64[] %[[A0]])
+    // CHECK:   ROOT %add.{{.*}} = s64[] add(s64[] %[[A0]], s64[] %[[A0]])
     // CHECK: [[R1:%.+]] ([[A0:.+]]: s64[]) -> pred[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %compare.7 = pred[] compare(s64[] %[[A0]], s64[] %[[A0]]), direction=LT
+    // CHECK:   ROOT %compare.{{.*}} = pred[] compare(s64[] %[[A0]], s64[] %[[A0]]), direction=LT
     ^bb0(%arg1: tensor<i64>):
       %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
       "mhlo.return"(%1) : (tensor<i1>) -> ()
@@ -19,9 +19,9 @@ module {
       "mhlo.return"(%1) : (tensor<i64>) -> ()
     }) : (tensor<i64>) -> tensor<i64>
 
-    // CHECK: ENTRY %main.9 ([[A0:.+]]: s64[]) -> s64[] {
+    // CHECK: ENTRY %main.{{.*}} ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %while.8 = s64[] while(s64[] %[[A0]]), condition=[[R1]], body=[[R0]]
+    // CHECK:   ROOT %while.{{.*}} = s64[] while(s64[] %[[A0]]), condition=[[R1]], body=[[R0]]
     func.return %0 : tensor<i64>
   }
 }
@@ -103,7 +103,7 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:   %[[GTE_1:.*]] = f32[3] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=3
 // CHECK-NEXT:   %[[GTE_2:.*]] = s32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=0
 // CHECK-NEXT:   %[[CST_0:.*]] = s32[] constant(0)
-// CHECK-NEXT:   %[[RED_0:.*]] = s32[] reduce(s32[1] %[[GTE_2]], s32[] %constant.32), dimensions={0}, to_apply=
+// CHECK-NEXT:   %[[RED_0:.*]] = s32[] reduce(s32[1] %[[GTE_2]], s32[] %[[CST_0]]), dimensions={0}, to_apply=
 // CHECK-NEXT:   %[[GTE_3:.*]] = s32[2] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=1
 // CHECK-NEXT:   %[[RED_1:.*]] = s32[] reduce(s32[2] %[[GTE_3]], s32[] %[[CST_0]]), dimensions={0}, to_apply=
 // CHECK-NEXT:   ROOT %[[CMP:.*]] = pred[] compare(s32[] %[[RED_0]], s32[] %[[RED_1]]), direction=LT
@@ -111,8 +111,8 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
 
 // CHECK: ENTRY
 // CHECK-NEXT:  %[[CST_0:.*]] = s32[1] constant({0})
-// CHECK-NEXT:  %[[CST_1:.*]].3 = s32[] constant(100)
-// CHECK-NEXT:  %[[BDCAST_0:.*]] = s32[2] broadcast(s32[] %constant.3), dimensions={}
+// CHECK-NEXT:  %[[CST_1:.*]] = s32[] constant(100)
+// CHECK-NEXT:  %[[BDCAST_0:.*]] = s32[2] broadcast(s32[] %[[CST_1]]), dimensions={}
 // CHECK-NEXT:  %[[CST_2:.*]] = f32[1] constant({1})
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[3] parameter(0)
 // CHECK-NEXT:  %[[TUPLE:.*]] = (s32[1], s32[2], f32[1], f32[3]) tuple(s32[1] %[[CST_0]], s32[2] %[[BDCAST_0]], f32[1] %[[CST_2]], f32[3] %[[ARG_0]])
@@ -285,7 +285,7 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 // CHECK-NEXT:  %[[ARG_TUPLE:.*]] = (s32[], s32[]) parameter(0)
 // CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=0
 // CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=1
-// CHECK-NEXT:  ROOT %compare.17 = pred[] compare(s32[] %[[GTE_0]], s32[] %[[GTE_1]]), direction=LT
+// CHECK-NEXT:  ROOT %compare.{{.*}} = pred[] compare(s32[] %[[GTE_0]], s32[] %[[GTE_1]]), direction=LT
 // CHECK: }
 
 // CHECK: ENTRY

@@ -56,10 +56,12 @@ compare {
   ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
+
 ENTRY TestComputation {
   x = f32[3, 2]{1, 0} parameter(0)
-  x.copy = f32[3, 2]{0, 1} copy(x)
-  ROOT sort = f32[3, 2]{0, 1} sort(x.copy), dimensions={1}, to_apply=compare
+  tr = f32[2, 3]{1, 0} transpose(x), dimensions={1,0}
+  b = f32[3, 2]{0, 1} bitcast(tr)
+  ROOT sort = f32[3, 2]{0, 1} sort(b), dimensions={1}, to_apply=compare
 }
 
 )";
@@ -138,6 +140,18 @@ class CubSortPairsTest
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 
 TEST_P(CubSortPairsTest, SortPairs) {
+  // TODO(b/380814507): Remove the disabling part once fixed.
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (cc.IsAtLeastHopper() &&
+      std::get<0>(GetParam())->shape().element_type() == U16 &&
+      std::get<1>(GetParam()) == F64) {
+    GTEST_SKIP()
+        << "CUB sort does not work for pair sorting (U16, F64) on Hopper.";
+  }
+
   constexpr char kHloTemplate[] = R"(
 HloModule TestModule
 

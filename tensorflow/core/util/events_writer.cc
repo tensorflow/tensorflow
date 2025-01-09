@@ -42,14 +42,14 @@ EventsWriter::~EventsWriter() {
   Close().IgnoreError();  // Autoclose in destructor.
 }
 
-Status EventsWriter::Init() { return InitWithSuffix(""); }
+absl::Status EventsWriter::Init() { return InitWithSuffix(""); }
 
-Status EventsWriter::InitWithSuffix(const string& suffix) {
+absl::Status EventsWriter::InitWithSuffix(const string& suffix) {
   file_suffix_ = suffix;
   return InitIfNeeded();
 }
 
-Status EventsWriter::InitIfNeeded() {
+absl::Status EventsWriter::InitIfNeeded() {
   if (recordio_writer_ != nullptr) {
     CHECK(!filename_.empty());
     if (!FileStillExists().ok()) {
@@ -125,7 +125,7 @@ void EventsWriter::WriteEvent(const Event& event) {
   WriteSerializedEvent(record);
 }
 
-Status EventsWriter::Flush() {
+absl::Status EventsWriter::Flush() {
   if (num_outstanding_events_ == 0) return absl::OkStatus();
   CHECK(recordio_file_ != nullptr) << "Unexpected NULL file";
 
@@ -140,10 +140,10 @@ Status EventsWriter::Flush() {
   return absl::OkStatus();
 }
 
-Status EventsWriter::Close() {
-  Status status = Flush();
+absl::Status EventsWriter::Close() {
+  absl::Status status = Flush();
   if (recordio_file_ != nullptr) {
-    Status close_status = recordio_file_->Close();
+    absl::Status close_status = recordio_file_->Close();
     if (!close_status.ok()) {
       status = close_status;
     }
@@ -154,7 +154,7 @@ Status EventsWriter::Close() {
   return status;
 }
 
-Status EventsWriter::FileStillExists() {
+absl::Status EventsWriter::FileStillExists() {
   if (env_->FileExists(filename_).ok()) {
     return absl::OkStatus();
   }

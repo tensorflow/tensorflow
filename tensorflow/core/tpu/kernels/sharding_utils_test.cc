@@ -70,7 +70,7 @@ TEST(XlaNDSplitterTest, NoSplits) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -109,7 +109,7 @@ TEST(XlaNDSplitterTest, NoSplitsWithPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -151,7 +151,7 @@ TEST(XlaNDSplitterTest, SplitNoPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -201,7 +201,7 @@ TEST(XlaNDSplitterTest, SplitPartialPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -250,7 +250,7 @@ TEST(XlaNDSplitterTest, SplitCompletePadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -296,7 +296,7 @@ TEST(XlaNDConcatenatorTest, NoConcats) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -341,7 +341,7 @@ TEST(XlaNDConcatenatorTest, ConcatNoPadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -386,7 +386,7 @@ TEST(XlaNDConcatenatorTest, ConcatPartialPadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -431,7 +431,7 @@ TEST(XlaNDConcatenatorTest, ConcatCompletePadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };

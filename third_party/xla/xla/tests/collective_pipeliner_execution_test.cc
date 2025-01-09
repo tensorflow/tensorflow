@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 

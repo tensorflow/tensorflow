@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,10 +40,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/hlo_lexer.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
@@ -207,13 +208,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   XlaComputation comparator = CreateScalarComparisonComputation(
       "compare-value-and-index", {input->shape().element_type(), S32}, {Gt, Lt},
       &b);
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comparator.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module,
-                      HloModule::CreateFromProto(comparator.proto(), config));
-  HloCloneContext context(module_);
-  auto compare_computation =
-      module_->DeepCloneComputation(new_module->entry_computation(), &context);
+  TF_ASSIGN_OR_RETURN(HloComputation * compare_computation,
+                      XlaComputationToHloComputation(comparator, module_));
   // Each partition needs to do TopK separately, thus the base shape for sort
   // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
   const Shape sort_shape = ShapeUtil::MakeTupleShape(

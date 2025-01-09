@@ -60,10 +60,10 @@ struct ConstantFoldingOptions {
 // Sets `was_mutated` to true if and only if "graph" has been mutated.
 // The status is only set to a non-OK state if an unexpected error is hit
 // running the graph.
-Status ConstantFold(const ConstantFoldingOptions& opts,
-                    FunctionLibraryRuntime* function_library, Env* env,
-                    const Device* partition_device, Graph* graph,
-                    bool* was_mutated);
+absl::Status ConstantFold(const ConstantFoldingOptions& opts,
+                          FunctionLibraryRuntime* function_library, Env* env,
+                          const Device* partition_device, Graph* graph,
+                          bool* was_mutated);
 
 }  // namespace tensorflow
 

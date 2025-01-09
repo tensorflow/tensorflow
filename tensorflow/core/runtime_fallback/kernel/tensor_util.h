@@ -90,19 +90,19 @@ tfrt::AsyncValueRef<TensorWrapperType> TransferTensorToDevice(
         // the GPU. With that setup, Sync()ing across all 3 streams should be
         // sufficient but more than necessary (since it waits for operations
         // that might have nothing to do with this tensor to complete).
-        Status s = src_device->Sync();
+        absl::Status s = src_device->Sync();
         if (!s.ok()) {
           result.SetError(absl::InternalError(s.message()));
           return;
         }
         tensorflow::Notification n;
-        tensorflow::Status status;
+        absl::Status status;
         tensorflow::CopyTensor::ViaDMA(
             "copy", src_device_context, dst_device_context, src_device,
             dst_device, tensorflow::AllocatorAttributes(),
             tensorflow::AllocatorAttributes(), &src, &dst,
             0 /*dev_to_dev_stream_index*/,
-            [&status, &n](const tensorflow::Status& s) {
+            [&status, &n](const absl::Status& s) {
               status = s;
               n.Notify();
             });

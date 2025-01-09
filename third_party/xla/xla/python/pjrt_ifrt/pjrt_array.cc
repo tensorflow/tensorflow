@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/literal.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
@@ -59,6 +60,9 @@ namespace xla {
 namespace ifrt {
 
 namespace {
+
+static const xla::ifrt::MemoryKind kPinnedHostMemoryKind(
+    xla::PinnedHostMemorySpace::kKind);
 
 // Validates the sharding and PjRtBuffers have consistent device and memory
 // kind.
@@ -269,13 +273,31 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
 absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
+  return DisassembleIntoSingleDeviceArrays(
+      semantics, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+PjRtArray::DisassembleIntoSingleDeviceArrays(
+    ArrayCopySemantics semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  DCHECK(this);
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      !sharding_->devices()->IsFullyAddressable()) {
+    return InvalidArgument(
+        "All shards are requested but the sharding has non-addressable "
+        "devices: %v",
+        *sharding_->devices());
+  }
   std::vector<tsl::RCReference<Array>> result;
-  result.reserve(sharding_->devices()->size());
+  result.reserve(sharding_->devices()->AddressableDeviceList()->size());
   TF_RETURN_IF_ERROR(std::visit(
       [&](const auto& this_shape) {
-        TF_ASSIGN_OR_RETURN(auto shape_and_shardings,
-                            sharding_->Disassemble(this_shape));
-        for (int i = 0; i < sharding_->devices()->size(); ++i) {
+        TF_ASSIGN_OR_RETURN(
+            auto shape_and_shardings,
+            sharding_->Disassemble(
+                this_shape, SingleDeviceShardSemantics::kAddressableShards));
+        for (int i = 0; i < shape_and_shardings.size(); ++i) {
           PjRtBuffers buffers;
           buffers.reserve(1);
           buffers.push_back(GetPjRtBuffer(semantics, i));
@@ -415,9 +437,25 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
                           !memories_supported || memory_kind_equal)) {
       switch (semantics) {
         case ArrayCopySemantics::kAlwaysCopy:
-          // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
-          // API does not have efficient buffer cloning on the same device.
-          buffers.push_back(pjrt_buffers_[i]);
+          // HBM is the only thing that doesn't support same-device copy and
+          // both pinned_host and unpinned_host support it. But unpinned_host
+          // support is unimplemented.
+          if (canonicalized_sharding_memory_kind == kPinnedHostMemoryKind) {
+            TF_ASSIGN_OR_RETURN(auto memory,
+                                GetMemorySpaceFromMemoryKind(
+                                    new_sharding_devices[i],
+                                    canonicalized_sharding_memory_kind));
+            PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+            TF_ASSIGN_OR_RETURN(auto copied_buffer,
+                                pjrt_buffers_[i]->CopyToMemorySpace(
+                                    pjrt_memory->pjrt_memory()));
+            buffers.push_back(std::move(copied_buffer));
+          } else {
+            // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the
+            // PjRt API does not have efficient buffer cloning on the same
+            // device.
+            buffers.push_back(pjrt_buffers_[i]);
+          }
           break;
         case ArrayCopySemantics::kReuseInput:
           buffers.push_back(pjrt_buffers_[i]);
@@ -463,7 +501,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
           }
           pjrt_buffers_[i] = nullptr;
         }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
+        buffers.push_back(std::move(copied_buffer));
       } else {
         // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
         TF_ASSIGN_OR_RETURN(
@@ -472,7 +510,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
         if (semantics == ArrayCopySemantics::kDonateInput) {
           pjrt_buffers_[i] = nullptr;
         }
-        buffers.push_back(std::shared_ptr<PjRtBuffer>(copied_buffer.release()));
+        buffers.push_back(std::move(copied_buffer));
       }
     }
   }
@@ -515,7 +553,7 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout_ptr = layout();
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout_ptr = layout();
   std::string layout_str =
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
@@ -528,12 +566,12 @@ std::string PjRtArray::DebugString() const {
 
 // TODO(b/330198879): populate layout at construction instead of accessing PJRT
 // buffer directly for consistency with Pathways.
-absl::StatusOr<std::unique_ptr<PjRtLayout>> PjRtArray::layout() const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtArray::layout() const {
   CHECK(!pjrt_buffers_.empty());
-  std::unique_ptr<PjRtLayout> layout = pjrt_buffers_[0]->layout();
+  std::shared_ptr<const PjRtLayout> layout = pjrt_buffers_[0]->layout();
 #ifndef NDEBUG
   for (int i = 1; i < pjrt_buffers_.size(); ++i) {
-    std::unique_ptr<PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
+    std::shared_ptr<const PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
     DCHECK(*layout == *layout_i)
         << "PjRtArray has mismatched layouts across shards! "
         << "shard 0: " << layout->ToString() << ", shard " << i << ": "

@@ -43,7 +43,7 @@ def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-com
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
     "mlir::func::FuncDialect", "mlir::mhlo::MhloDialect",
-    "mlir::quant::QuantizationDialect", "mlir::chlo::ChloDialect",
+    "mlir::quant::QuantDialect", "mlir::chlo::ChloDialect",
     "mlir::vhlo::VhloDialect", "mlir::shape::ShapeDialect",
     "mlir::quantfork::QuantizationForkDialect",
   ];
@@ -56,7 +56,7 @@ def TestTFToStablehloPass : Pass<"stablehlo-test-tf-to-stablehlo", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
-    "mlir::chlo::ChloDialect", "mlir::quant::QuantizationDialect",
+    "mlir::chlo::ChloDialect", "mlir::quant::QuantDialect",
     "mlir::mhlo::MhloDialect", "mlir::shape::ShapeDialect",
     "mlir::sparse_tensor::SparseTensorDialect", "mlir::vhlo::VhloDialect",
   ];

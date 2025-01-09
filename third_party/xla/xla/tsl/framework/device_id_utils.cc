@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_utils.h"
 
+#include <cstdint>
 #include <numeric>
 #include <set>
 #include <string>
@@ -22,13 +23,39 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
+namespace {
+
+absl::StatusOr<int> ParsePlatformDeviceIdString(
+    absl::string_view platform_device_id_str, absl::string_view device_type) {
+  int32_t platform_device_id;
+  if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
+    // Pluggable device would have both device type and id in the string.
+    const std::vector<std::string> device_type_and_id =
+        tsl::str_util::Split(platform_device_id_str, ':');  // non-absl ok
+    if (device_type_and_id.size() != 2 ||
+        !absl::SimpleAtoi(device_type_and_id[1], &platform_device_id)) {
+      return tsl::errors::InvalidArgument(
+          "Could not parse entry in 'visible_device_list': '",
+          platform_device_id_str, "'.");
+    }
+    if (!device_type.empty() && device_type_and_id[0] != device_type) {
+      return -1;  // Return -1 to indicate that the device type doesn't match.
+    }
+  }
+  return platform_device_id;
+}
+
+}  // namespace
 
 void CheckValidTfDeviceId(const DeviceType& type,
                           const int visible_device_count,
@@ -45,7 +72,8 @@ void CheckValidTfDeviceId(const DeviceType& type,
 
 absl::Status ParseVisibleDeviceList(
     const std::string& visible_device_list, const int visible_device_count,
-    std::vector<PlatformDeviceId>* visible_device_order) {
+    std::vector<PlatformDeviceId>* visible_device_order,
+    absl::string_view device_type) {
   visible_device_order->clear();
 
   // If the user wants to remap the visible to virtual Device mapping,
@@ -59,11 +87,11 @@ absl::Status ParseVisibleDeviceList(
         tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
     for (const std::string& platform_device_id_str : order_str) {
       int32_t platform_device_id;
-      if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
-        return tsl::errors::InvalidArgument(
-            "Could not parse entry in 'visible_device_list': '",
-            platform_device_id_str,
-            "'. visible_device_list = ", visible_device_list);
+      TF_ASSIGN_OR_RETURN(
+          platform_device_id,
+          ParsePlatformDeviceIdString(platform_device_id_str, device_type));
+      if (platform_device_id == -1) {
+        continue;  // Skip the device if the device type doesn't match.
       }
       if (platform_device_id < 0 ||
           platform_device_id >= visible_device_count) {
@@ -102,9 +130,9 @@ absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
     return 0;
   }
   std::vector<PlatformDeviceId> visible_device_order;
-  TF_RETURN_IF_ERROR(ParseVisibleDeviceList(std::string(visible_device_list),
-                                            visible_device_count,
-                                            &visible_device_order));
+  TF_RETURN_IF_ERROR(ParseVisibleDeviceList(
+      std::string(visible_device_list), visible_device_count,
+      &visible_device_order, device_type));
   if (num_tf_devices > visible_device_order.size()) {
     num_tf_devices = visible_device_order.size();
   }

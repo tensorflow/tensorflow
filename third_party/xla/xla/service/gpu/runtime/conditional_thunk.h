@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -70,6 +71,8 @@ class ConditionalThunk : public Thunk {
   const BufferAllocation::Slice& branch_index_buffer() const {
     return branch_index_buffer_index_;
   }
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   const ConditionalThunkConfig config_;

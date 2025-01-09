@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
@@ -42,7 +43,7 @@ struct NvJitLinkInput {
 // Compiles and links the given inputs using libnvjitlink.
 // Compilation takes only place for inputs of type Type::kPtx.
 absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
-    int cc_major, int cc_minor, absl::Span<const NvJitLinkInput> inputs,
+    const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
     GpuAsmOpts options, bool cancel_if_reg_spill);
 
 }  // namespace stream_executor

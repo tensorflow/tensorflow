@@ -30,7 +30,7 @@ using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 TEST(ParseRocmVersionTest, Simple) {
-  EXPECT_THAT(stream_executor::ParseRocmVersion(60102),
+  EXPECT_THAT(stream_executor::ParseRocmVersion(60'100'002),
               IsOkAndHolds(SemanticVersion(6, 1, 2)));
 }
 

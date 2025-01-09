@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 
+#include <cstdint>
 #include <limits>
 
 #include "absl/status/status.h"
@@ -28,8 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status TensorShapeToConstant(const TensorShape& input_shape,
-                             Tensor* shape_constant) {
+absl::Status TensorShapeToConstant(const TensorShape& input_shape,
+                                   Tensor* shape_constant) {
   const int dims = input_shape.dims();
   if (shape_constant->dtype() == DT_INT32) {
     auto vec = shape_constant->vec<int32>();

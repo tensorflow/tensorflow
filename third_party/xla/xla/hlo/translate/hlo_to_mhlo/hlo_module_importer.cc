@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -46,7 +46,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
-  module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
+  module.getContext()->loadDialect<mlir::quant::QuantDialect>();
 }
 
 absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
@@ -83,7 +83,8 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                            flatten_computation_args_result_)
                            .status());
 
-  ImportEntryComputationLayoutAndTiles(hlo_module, module, builder_);
+  ImportEntryComputationLayoutAndTiles(
+      hlo_module, module, flatten_computation_args_result_, builder_);
   return absl::OkStatus();
 }
 

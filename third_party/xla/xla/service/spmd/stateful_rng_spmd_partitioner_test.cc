@@ -23,10 +23,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/rng_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -77,7 +77,8 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
         debug_options.xla_gpu_threshold_for_windowed_einsum_mib(),
         debug_options.xla_gpu_multi_streamed_windowed_einsum(),
         skip_checking_windowed_einsum_users,
-        disable_ag_rewrite_for_multiple_consumers);
+        disable_ag_rewrite_for_multiple_consumers,
+        debug_options.xla_gpu_operand_bytes_threshold_for_windowed_einsum());
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
@@ -262,6 +263,75 @@ ENTRY %test {
   rotate = op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
   EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
 }
+
+TEST_F(StatefulRngSpmdPartitionerTest,
+       TotalFlopsThresholdOverrideOperandThreshold) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,128,256]{2,1,0}, bf16[256,512]{1,0})->bf16[2,128,512]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,128,256]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[256,512]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  ROOT dot.5 = bf16[2,128,512]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+}
+
+)";
+  DebugOptions debug_options = GetDefaultDebugOptions();
+  debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  int64_t oper_bytes_threshold = 1 << 20;
+  debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
+      oper_bytes_threshold);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
+                           /*add_passes=*/nullptr,
+                           /*skip_checking_windowed_einsum_users=*/true,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+  // The operand threshold is set to 0 but flops threshold is set to be
+  // larger than the total flops of the gemm. So we don't expect any
+  // windowed einsum loop but rather an all-gather.
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            0);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      1);
+}
+
+TEST_F(StatefulRngSpmdPartitionerTest,
+       TotalFlopsThresholdShouldEnableWindowedEinsum) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,128,256]{2,1,0}, bf16[256,512]{1,0})->bf16[2,128,512]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,128,256]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[256,512]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  ROOT dot.5 = bf16[2,128,512]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+}
+
+)";
+  DebugOptions debug_options = GetDefaultDebugOptions();
+  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  int64_t oper_bytes_threshold = 1 << 8;
+  debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
+      oper_bytes_threshold);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
+                           /*add_passes=*/nullptr,
+                           /*skip_checking_windowed_einsum_users=*/true,
+                           /*disable_ag_rewrite_for_multiple_consumers=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+  // The operand threshold is not set which defaults to 1000000 MB.
+  // But the flops threshold is set, the windowed einsum should still kick in.
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            1);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      0);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

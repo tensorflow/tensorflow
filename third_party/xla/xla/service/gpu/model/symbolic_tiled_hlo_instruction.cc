@@ -49,7 +49,7 @@ std::string SymbolicTiledHloInstruction::ToString() const {
   std::stringstream ss;
   ss << "\thlo: " << hlo_->ToString() << "\n";
   ss << "\t" << symbolic_tile().ToString() << "\n";
-  ss << "\tindexing map: " << indexing_map_.ToString() << "\n";
+  ss << "\tindexing map: " << indexing_map_ << "\n";
   return ss.str();
 }
 

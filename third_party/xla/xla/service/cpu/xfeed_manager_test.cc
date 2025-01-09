@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/xfeed_manager.h"
 
-#include <memory>
+#include <cstdint>
+#include <string>
 
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape.h"

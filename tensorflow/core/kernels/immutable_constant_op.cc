@@ -26,7 +26,7 @@ class MemmappedTensorAllocator : public Allocator {
  public:
   MemmappedTensorAllocator() {}
 
-  Status InitializeFromRegion(const string& name, Env* env) {
+  absl::Status InitializeFromRegion(const string& name, Env* env) {
     const auto status =
         env->NewReadOnlyMemoryRegionFromFile(name, &memory_region_);
     if (!status.ok()) {
@@ -60,7 +60,7 @@ class MemmappedTensorAllocator : public Allocator {
       delete this;
     }
   }
-  const Status& allocation_status() const { return allocation_status_; }
+  const absl::Status& allocation_status() const { return allocation_status_; }
 
   void set_delete_on_deallocate() { delete_on_deallocate_ = true; }
 
@@ -73,7 +73,7 @@ class MemmappedTensorAllocator : public Allocator {
  private:
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region_;
   // If there is an error during allocation we keep it in this status.
-  Status allocation_status_;
+  absl::Status allocation_status_;
 
   // When the allocator is owned by TensorBuffer it will be deleted on
   // de-allocation.

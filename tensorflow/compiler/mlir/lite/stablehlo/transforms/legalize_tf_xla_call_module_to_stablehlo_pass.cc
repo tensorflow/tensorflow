@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 
+#include <cassert>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -49,8 +50,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-static constexpr std::string_view kStablehloModuleDefaultEntryFuncName = "main";
-static constexpr std::string_view kStablehloFuncNamePrefix = "XlaCallModule";
+static constexpr absl::string_view kStablehloModuleDefaultEntryFuncName =
+    "main";
+static constexpr absl::string_view kStablehloFuncNamePrefix = "XlaCallModule";
 static constexpr char kShardingAttr[] = "mhlo.sharding";
 static constexpr char kShardingName[] = "Sharding";
 
@@ -101,21 +103,6 @@ bool IsShloMainFuncOp(func::FuncOp func_op) {
 // https://github.com/tensorflow/tensorflow/blob/eba24f41ba9d661d2f58a515921720cf90708cd4/tensorflow/compiler/tf2xla/ops/xla_ops.cc#L1376-L1385
 bool ContainsPlatformIndexArg(TF::XlaCallModuleOp xla_call_module_op) {
   return xla_call_module_op.getPlatforms().size() > 1;
-}
-
-// Removes the platform index argument from the function. It is equivalent to
-// removing the first argument from `func_op` (see the comments at
-// `ContainsPlatformIndexArg`). This function assumes that `func_op` is a valid
-// function deserialized from XlaCallModule op.
-void RemovePlatformIndexArg(MLIRContext *ctx, func::FuncOp func_op) {
-  // If there are multiple platforms, the first argument is reserved for
-  // passing the platform index.
-  FunctionType function_type = func_op.getFunctionType();
-  ArrayRef<Type> new_input_types =
-      function_type.getInputs().take_back(func_op.getNumArguments() - 1);
-  func_op.setFunctionType(
-      FunctionType::get(ctx, new_input_types, function_type.getResults()));
-  func_op.getBody().eraseArgument(0);
 }
 
 }  // namespace
@@ -181,12 +168,20 @@ class ConvertTFXlaCallModuleOp : public OpRewritePattern<TF::XlaCallModuleOp> {
     }
 
     // When the `XlaCallModuleOp`'s callee accepts a platform index argument,
-    // remove it. This is because when converted to `CallOp` there will be a
-    // mismatch btw. the number of arguments passed and number of parameters
-    // accepted (the platform index argument is an extra argument that is not
-    // expressed by the operands of XlaCallModuleOp).
+    // add a dummy platform index argument in order to match the number of
+    // the arguments of the callee function.
+    //
+    // This is because `XlaCallModuleOp` doesn't explicitly take it as an
+    // operand. See:
+    // https://github.com/tensorflow/tensorflow/blob/eba24f41ba9d661d2f58a515921720cf90708cd4/tensorflow/compiler/tf2xla/ops/xla_ops.cc#L1376-L1385
+
+    SmallVector<Value, 4> call_op_operands(op.getOperands());
     if (ContainsPlatformIndexArg(op)) {
-      RemovePlatformIndexArg(getContext(), main_fn);
+      Value dummy_const = rewriter.create<TF::ConstOp>(
+          op.getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({}, rewriter.getIntegerType(32)), {0}));
+      call_op_operands.insert(call_op_operands.begin(), dummy_const);
     }
 
     // The stablehlo module main function's input tensor types might be
@@ -195,8 +190,9 @@ class ConvertTFXlaCallModuleOp : public OpRewritePattern<TF::XlaCallModuleOp> {
     // argument type is tensor<1x2f32>.
     SmallVector<Value, 4> casted_operands;
     casted_operands.reserve(main_fn.getNumArguments());
+    assert(call_op_operands.size() == main_fn.getNumArguments());
     for (const auto &operand_and_type :
-         zip(op.getOperands(), main_fn.getFunctionType().getInputs())) {
+         zip(call_op_operands, main_fn.getFunctionType().getInputs())) {
       Value operand = std::get<0>(operand_and_type);
       Type expected_type = std::get<1>(operand_and_type);
       if (operand.getType() != expected_type) {
@@ -244,7 +240,7 @@ class TFXlaCallModuleOpToStablehloPass
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<stablehlo::StablehloDialect, vhlo::VhloDialect,
-                    quant::QuantizationDialect, shape::ShapeDialect>();
+                    quant::QuantDialect, shape::ShapeDialect>();
   }
 
   void runOnOperation() override {

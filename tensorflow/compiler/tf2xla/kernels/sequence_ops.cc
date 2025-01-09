@@ -15,12 +15,15 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cstdint>
+#include <type_traits>
+
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"

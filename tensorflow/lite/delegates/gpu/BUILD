@@ -69,6 +69,11 @@ config_setting(
 
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
+    # copybara:uncomment_begin(google-only)
+    # constraint_values = [
+    # "//third_party/bazel_platforms/os:linux",
+    # ],
+    # copybara:uncomment_end
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
         "cpu": "k8",

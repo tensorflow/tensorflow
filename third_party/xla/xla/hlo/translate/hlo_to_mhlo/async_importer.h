@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_ASYNC_IMPORTER_H_
 
 #include <functional>
+#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace xla {
@@ -81,7 +83,8 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
     const HloInstruction* instruction, mlir::Location loc,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
-    mlir::Type result_type, mlir::OpBuilder* builder);
+    mlir::Type result_type, mlir::OpBuilder* builder,
+    std::optional<HloOpcode> consolidate_if_parent = std::nullopt);
 
 }  // namespace xla
 

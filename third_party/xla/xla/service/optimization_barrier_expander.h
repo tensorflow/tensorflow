@@ -16,23 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_
 #define XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// This pass removes the opt-barrier operation which is functionally a no-op.
-class OptimizationBarrierExpander : public HloModulePass {
- public:
-  OptimizationBarrierExpander() = default;
-
-  absl::string_view name() const override { return "cse_barrier_expander"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 
 #endif  // XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_

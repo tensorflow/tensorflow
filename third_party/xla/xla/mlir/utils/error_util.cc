@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/mlir/utils/error_util.h"
 
+#include <cstddef>
 #include <string>
-#include <string_view>
 
-#include "tsl/platform/errors.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/Support/LLVM.h"
+#include "tsl/platform/logging.h"
 
 namespace mlir {
 BaseScopedDiagnosticHandler::BaseScopedDiagnosticHandler(MLIRContext* context,

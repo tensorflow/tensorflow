@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -42,9 +44,11 @@ namespace gpu {
 namespace {
 
 // Gets the representative input shape of the multi-output fusion.
-Shape GetInputShapeForMultiOutputFusion(const HloInstruction& instr) {
+Shape GetInputShapeForMultiOutputFusion(
+    const HloInstruction& instr, const se::DeviceDescription& device_info) {
   // Get the HLO that determines the emitter used for lowering.
-  const HloInstruction* real_hero = GetRealHeroForMultiOutputFusion(instr);
+  const HloInstruction* real_hero =
+      GetRealHeroForMultiOutputFusion(instr, device_info);
   if (real_hero->operands().empty()) {
     // Simply return an empty shape if the representative node has no input
     // operands.
@@ -69,25 +73,8 @@ class HorizontalInputFusionImpl {
   const se::DeviceDescription& device_info_;
 };  // HorizontalInputFusionImpl
 
-// Compares one-by-one the dimensions of `shape_a` and `shape_b` from left to
-// right.
-bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
-                                     const Shape& shape_b) {
-  if (shape_a.rank() != shape_b.rank()) {
-    return shape_a.rank() < shape_b.rank();
-  }
-  auto dims_a = shape_a.dimensions();
-  auto dims_b = shape_b.dimensions();
-  for (size_t i = 0; i < dims_a.size(); ++i) {
-    if (dims_a[i] != dims_b[i]) {
-      return dims_a[i] < dims_b[i];
-    }
-  }
-  return true;
-}
-
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
-    HloInstruction* consumer) {
+    HloInstruction* consumer, const se::DeviceDescription& device_info) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
   std::vector<HloInstruction*> fusion_instrs;
   for (HloInstruction* opnd : consumer->operands()) {
@@ -95,7 +82,8 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
     // Find out the input fusion instructions whose only consumer is `consumer`.
     // This guarantees that fusing these candidates will never create cycles, as
     // there is no back edge.
-    if (IsInputFusibleReduction(*predecessor) &&
+    if (!predecessor->IsCustomFusion() &&
+        IsInputFusibleReduction(*predecessor, device_info) &&
         IsConsumerTheOnlyNonRootUser(*predecessor, *consumer)) {
       if (fusion_instr_set.insert(predecessor).second) {
         fusion_instrs.push_back(predecessor);
@@ -105,16 +93,20 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
 
   std::sort(fusion_instrs.begin(), fusion_instrs.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {
-              Shape shape_a = GetInputShapeForMultiOutputFusion(*a);
-              Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
-              if (!ShapeUtil::EqualIgnoringElementType(shape_a, shape_b)) {
+              Shape shape_a =
+                  GetInputShapeForMultiOutputFusion(*a, device_info);
+              Shape shape_b =
+                  GetInputShapeForMultiOutputFusion(*b, device_info);
+              auto tuple_for_op = [](const Shape& shape,
+                                     const HloInstruction* op) {
                 // Sort shapes according to dimensions, so that the same input
                 // shapes will be placed adjacent each other.
-                return CompareShapeDimsFromLeftToRight(shape_a, shape_b);
-              }
-              // Sort `fusion_instrs` according to instruction counts, because
-              // we'd like to fuse together computations of similar sizes.
-              return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
+                // Sort `fusion_instrs` according to instruction counts, because
+                // we'd like to fuse together computations of similar sizes.
+                return std::tuple{shape.rank(), shape.dimensions(),
+                                  GetInstrCountOfFusible(*op), op->unique_id()};
+              };
+              return tuple_for_op(shape_a, a) < tuple_for_op(shape_b, b);
             });
 
   return fusion_instrs;
@@ -128,7 +120,7 @@ absl::StatusOr<bool> HorizontalInputFusionImpl::Run() {
   std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
   for (HloInstruction* consumer : def_to_use_order) {
-    auto candidates = FindAndSortFusionCandidates(consumer);
+    auto candidates = FindAndSortFusionCandidates(consumer, device_info_);
     if (candidates.size() <= 1) {
       continue;
     }
@@ -149,7 +141,8 @@ absl::StatusOr<bool> HorizontalInputFusionImpl::Run() {
     for (size_t j = 1; j < candidates.size(); ++j) {
       HloInstruction* fusion_anchor = candidates[fusion_anchor_id];
       HloInstruction* fused = candidates[j];
-      if (ShapesCompatibleForMultiOutputFusion(*fusion_anchor, *fused) &&
+      if (ShapesCompatibleForMultiOutputFusion(*fusion_anchor, *fused,
+                                               device_info_) &&
           FusionFitsInBudget(*fusion_anchor, *fused, device_info_)) {
         VLOG(3) << "Fuse " << fused->ToString() << " into "
                 << fusion_anchor->ToString();
@@ -178,14 +171,15 @@ absl::StatusOr<bool> HorizontalInputFusion::RunOnComputation(
 absl::StatusOr<bool> HorizontalInputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
+  bool any_changed = false;
   VLOG(2) << "Run horizontal input fusion.";
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(changed, RunOnComputation(comp));
+    TF_ASSIGN_OR_RETURN(bool changed, RunOnComputation(comp));
+    any_changed |= changed;
   }
 
-  return changed;
+  return any_changed;
 }
 
 }  // namespace gpu

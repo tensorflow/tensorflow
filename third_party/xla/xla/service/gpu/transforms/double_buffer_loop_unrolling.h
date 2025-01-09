@@ -47,7 +47,7 @@ namespace gpu {
 // unrolled.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
-  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll };
+  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll, kAuto };
 
   explicit DoubleBufferLoopUnrolling(
       UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)

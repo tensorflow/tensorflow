@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,19 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/host_memory_allocation.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
 
 namespace stream_executor {
-
-class StreamExecutor;
 
 namespace gpu {
 
@@ -49,25 +40,9 @@ class GpuStream;
 class GpuExecutor : public StreamExecutorCommon {
  public:
   GpuExecutor(Platform* platform, int device_ordinal)
-      : StreamExecutorCommon(platform),
-        context_(nullptr),
-        device_ordinal_(device_ordinal) {}
+      : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   int device_ordinal() const override { return device_ordinal_; };
-
-  // Releases any state associated with the previously loaded kernel.
-  virtual void UnloadKernel(const Kernel* kernel) = 0;
-  // Creates an EventBasedTimer for the given stream.
-  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-  CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) = 0;
-  static absl::StatusOr<std::unique_ptr<DeviceDescription>>
-  CreateDeviceDescription(int device_ordinal);
-
-  // Frees unused memory cached on the device for use with graphs back to the
-  // OS.
-  virtual absl::Status TrimGraphMemory() = 0;
-
-  Context* gpu_context() const { return context_; }
 
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
     absl::MutexLock lock(&logger_mu_);
@@ -91,14 +66,7 @@ class GpuExecutor : public StreamExecutorCommon {
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
- protected:
-  // Sets the context.
-  void set_context(Context* context) { context_ = context; }
-
  private:
-  // Handle for session with the library/driver. Immutable post-initialization.
-  Context* context_;
-
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
@@ -112,10 +80,6 @@ class GpuExecutor : public StreamExecutorCommon {
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;
 };
-
-inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec);
-}
 
 }  // namespace gpu
 }  // namespace stream_executor

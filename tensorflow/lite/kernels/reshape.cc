@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -37,6 +38,7 @@ struct OpData {
   // This is to prevent incorrect results when mischievous users overwrite
   // output pointers with their own.
   const void* output_ptr;
+  bool output_shape_known = true;
 };
 
 TfLiteIntArray* GetOutputShape(TfLiteContext*, TfLiteNode*);
@@ -96,7 +98,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
 inline TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,
                                                 TfLiteNode* node) {
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
-  if (shape == nullptr) return nullptr;
+  if (shape == nullptr) {
+    return nullptr;
+  }
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(shape->dims->data[0]);
   for (int i = 0; i < output_shape->size; ++i) {
@@ -159,19 +163,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
     const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
     if (NumInputs(node) == 1 || IsConstantOrPersistentTensor(shape)) {
+      op_data->output_shape_known = true;
       if (IsConstantOrPersistentTensor(input)) {
         SetTensorToPersistentRo(output);
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
         op_data->output_ptr = output->data.data;
         memcpy(output->data.data, input->data.data, input->bytes);
-        return kTfLiteOk;
       } else {
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
       }
+      return kTfLiteOk;
     } else {
-      SetTensorToDynamic(output);
+      op_data->output_shape_known = false;
+      // We know the output bytes size is the same as the input. Setting this
+      // enables tensor sharing in the ArenaPlanner.
+      if (output->allocation_type == kTfLiteArenaRw) {
+        output->bytes = input->bytes;
+      }
+      return kTfLiteOutputShapeNotKnown;
     }
   }
+  op_data->output_shape_known = true;
   return kTfLiteOk;
 }
 
@@ -186,8 +198,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // There are two ways in which the 'output' can be made dynamic: it could be
   // a string tensor, or its shape cannot be calculated during Prepare(). In
   // either case, we now have all the information to calculate its shape.
-  if (IsDynamicTensor(output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+  if (output->type != kTfLiteString) {
+    if (!op_data->output_shape_known) {
+      if (output->data.data != input->data.data) {
+        // If the otuput cannot overwrite the input, then we have to set the
+        // tensor to dyanmic.
+        SetTensorToDynamic(output);
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+      } else {
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+        // The output pointer was set to zero during the call to ResizeTensor.
+        // Since the output aliases the input, set it back.
+        output->data.data = input->data.data;
+      }
+    }
   }
 
   // Note that string tensors are always "dynamic" in the sense that their size
@@ -197,6 +221,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // reshape doesn't change the data, the output tensor needs exactly as many
   // bytes as the input tensor.
   if (output->type == kTfLiteString) {
+    SetTensorToDynamic(output);
+    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
     auto bytes_required = input->bytes;
     TfLiteTensorRealloc(bytes_required, output);
     output->bytes = bytes_required;
@@ -235,7 +261,8 @@ TfLiteRegistration* Register_RESHAPE() {
       /*version=*/0,
       /*registration_external=*/nullptr,
       /*async_kernel=*/nullptr,
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
+      /*inplace_operator=*/kTfLiteInplaceOpInput0Shared |
+          kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 

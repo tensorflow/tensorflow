@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"

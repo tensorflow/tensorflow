@@ -15,18 +15,21 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 #include <algorithm>
-#include <cctype>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -59,13 +62,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
-#include "xla/client/lib/conv_grad_size_util.h"
-#include "xla/client/padding.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/lib/conv_grad_size_util.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/mlir_hlo/utils/hlo_utils.h"
-#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -1839,7 +1842,7 @@ class ConvertMatrixDiagPartV3Op
     // Boradcasted constants, of the same shape as iotaM and iotaN.
     Value b_zero = BroadcastConstant(loc, indices_shape, 0, 32, rewriter);
     Value b_false = BroadcastConstant(loc, indices_shape, 0, 1, rewriter);
-    Value b_true = BroadcastConstant(loc, indices_shape, 1, 1, rewriter);
+    Value b_true = BroadcastConstant(loc, indices_shape, -1, 1, rewriter);
     Value b_k1 = BroadcastConstant(loc, indices_shape, k[1], 32, rewriter);
     Value b_rows = BroadcastConstant(loc, indices_shape, rows, 32, rewriter);
     Value b_cols = BroadcastConstant(loc, indices_shape, cols, 32, rewriter);

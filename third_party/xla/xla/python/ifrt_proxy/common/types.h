@@ -24,6 +24,7 @@
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 
@@ -44,12 +45,19 @@ absl::StatusOr<ArrayCopySemantics> FromArrayCopySemanticsProto(
     proto::ArrayCopySemantics s);
 proto::ArrayCopySemantics ToArrayCopySemanticsProto(ArrayCopySemantics s);
 
+absl::StatusOr<SingleDeviceShardSemantics> FromSingleDeviceShardSemanticsProto(
+    proto::SingleDeviceShardSemantics s);
+proto::SingleDeviceShardSemantics ToSingleDeviceShardSemanticsProto(
+    SingleDeviceShardSemantics s);
+
 absl::StatusOr<xla::PjRtValueType> FromVariantProto(
     const proto::Variant& variant_proto);
 absl::StatusOr<proto::Variant> ToVariantProto(const xla::PjRtValueType& value);
 
 std::vector<int64_t> FromByteStridesProto(const proto::ByteStrides& strides);
 proto::ByteStrides ToByteStridesProto(absl::Span<const int64_t> strides);
+
+constexpr uint64_t kServerGeneratedHandlesMinValue = 1ULL << 48;
 
 }  // namespace proxy
 }  // namespace ifrt

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_IR_ARRAY_H_
 #define XLA_SERVICE_LLVM_IR_IR_ARRAY_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <vector>
 
@@ -66,19 +68,19 @@ class IrArray {
     // index.
     //
     // Precondition: "shape" has a layout.
-    Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
+    Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilderBase* b);
 
     // As before, but also take a multidim to reuse.  multidim.size()
     // == shape.rank() must be true.  If some of the multidim element
     // are null we will use the value that would be used if
     // deliearized from linear.
     Index(llvm::Value* linear, absl::Span<llvm::Value* const> multidim,
-          const Shape& shape, llvm::IRBuilder<>* b);
+          const Shape& shape, llvm::IRBuilderBase* b);
 
     // Similar to the above constructor except using "dynamic_dims" instead of
     // shape's static dimension to constructs the index.
     Index(llvm::Value* linear, const Shape& shape,
-          absl::Span<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+          absl::Span<llvm::Value*> dynamic_dims, llvm::IRBuilderBase* b);
 
     // Constructs an index from a multi-dimensional index. 'shape' is the shape
     // for which the multi-dimensional index is used. 'index_type' is the type
@@ -96,7 +98,7 @@ class IrArray {
 
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64_t dim,
-                         llvm::IRBuilder<>* b) const {
+                         llvm::IRBuilderBase* b) const {
       Index with_offset = *this;
       with_offset.linear_ = nullptr;
       with_offset.multidim_[dim] =
@@ -105,7 +107,7 @@ class IrArray {
     }
 
     Index AddOffset(absl::Span<llvm::Value* const> offsets,
-                    llvm::IRBuilder<>* b) const {
+                    llvm::IRBuilderBase* b) const {
       CHECK_EQ(multidim_.size(), offsets.size());
       Index with_offset = *this;
       with_offset.linear_ = nullptr;
@@ -145,7 +147,7 @@ class IrArray {
     // to `output_shape`, returns the source index.
     Index SourceIndexOfReshape(const Shape& output_shape,
                                const Shape& input_shape,
-                               llvm::IRBuilder<>* builder) const;
+                               llvm::IRBuilderBase* builder) const;
 
     // Returns the index into the source operand from which a slice operation
     // selects a value to be placed into index "this". The slice is described
@@ -156,7 +158,7 @@ class IrArray {
     Index SourceIndexOfSlice(const Shape& operand_shape,
                              absl::Span<const int64_t> starts,
                              absl::Span<const int64_t> strides,
-                             llvm::IRBuilder<>* builder) const;
+                             llvm::IRBuilderBase* builder) const;
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
@@ -167,25 +169,25 @@ class IrArray {
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
     Index SourceIndexOfBitcast(const Shape& shape, const Shape& operand_shape,
-                               llvm::IRBuilder<>* builder) const;
+                               llvm::IRBuilderBase* builder) const;
     // Same as above, but for bitcasts from `operand_shape` to `this->dims`.
     Index SourceIndexOfBitcast(const Shape& operand_shape,
-                               llvm::IRBuilder<>* builder) const;
+                               llvm::IRBuilderBase* builder) const;
 
     // Given that "this" is the target index of a broadcast from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfBroadcast(const Shape& shape, const Shape& operand_shape,
                                  absl::Span<const int64_t> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+                                 llvm::IRBuilderBase* builder) const;
 
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
     llvm::Value* Linearize(absl::Span<const int64_t> dimensions,
-                           llvm::IRBuilder<>* builder) const;
+                           llvm::IRBuilderBase* builder) const;
 
     // Linearizes the index into the given dynamic dimensions.
     llvm::Value* Linearize(const std::vector<llvm::Value*>& dynamic_dims,
-                           llvm::IRBuilder<>* builder) const;
+                           llvm::IRBuilderBase* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }
 
@@ -206,12 +208,12 @@ class IrArray {
           const Shape& shape, llvm::Type* index_type);
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
-                     const Shape& shape, llvm::IRBuilder<>* b) const;
+                     const Shape& shape, llvm::IRBuilderBase* b) const;
 
     // Delinearize the linear index with the dynamic dimensions.
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
                      const Shape& shape, absl::Span<llvm::Value*> dynamic_dims,
-                     llvm::IRBuilder<>* b) const;
+                     llvm::IRBuilderBase* b) const;
 
     std::vector<llvm::Value*> multidim_;
 
@@ -270,7 +272,7 @@ class IrArray {
   //
   // `bit_offset` contains the offset of the element inside the address.
   llvm::Value* EmitArrayElementAddress(
-      const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
+      const Index& index, llvm::IRBuilderBase* b, absl::string_view name = "",
       bool use_linear_index = true, llvm::Value** bit_offset = nullptr) const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
@@ -286,7 +288,7 @@ class IrArray {
   // the emitted LLVM IR.
   // 'use_linear_index' can be used to specify whether the linear index (if
   // available) or the multi-dimensional index should be used.
-  llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
+  llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilderBase* b,
                                     absl::string_view name = "",
                                     bool use_linear_index = true) const;
 
@@ -299,14 +301,14 @@ class IrArray {
   // modified and written back. To avoid race conditions, the caller must ensure
   // that the different values within a byte are not written to in parallel.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                             llvm::IRBuilder<>* b,
+                             llvm::IRBuilderBase* b,
                              bool use_linear_index = true) const;
 
   // Returns a new IrArray whose shape is "new_shape" and base pointer is a
   // bitcast of the base pointer of "this" IrArray.
   // 'use_linear_index' can be used to specify whether the linear index (if
   // available) or the multi-dimensional index should be used.
-  IrArray CastToShape(const Shape& new_shape, llvm::IRBuilder<>* b) const;
+  IrArray CastToShape(const Shape& new_shape, llvm::IRBuilderBase* b) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
     CHECK_NE(alias_scope, nullptr);
@@ -358,7 +360,7 @@ class IrArray {
 
   // Like EmitArrayElementAddress, but always uses a linear index.
   llvm::Value* EmitLinearArrayElementAddress(
-      const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
+      const Index& index, llvm::IRBuilderBase* b, absl::string_view name = "",
       llvm::Value** bit_offset = nullptr) const;
 
   // Address of the base of the array as an LLVM Value.

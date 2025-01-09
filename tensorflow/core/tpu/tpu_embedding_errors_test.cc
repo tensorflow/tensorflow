@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow::tpu {
 namespace {

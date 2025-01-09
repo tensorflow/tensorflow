@@ -23,6 +23,7 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
@@ -36,11 +37,6 @@ def FloatElementsAttr : ElementsAttrBase<
 
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
-
-// Checks if the value has rank at most 'n'.
-class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
@@ -57,13 +53,6 @@ class IsBoolAttrEqual<string true_or_false> : Constraint<CPred<
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
-
-def HasSameStaticShapes : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
-          "$1.getType().cast<ShapedType>().hasStaticShape() && "
-          "$0.getType().cast<ShapedType>().getShape() =="
-          "$1.getType().cast<ShapedType>().getShape()">,
-    "have the same static shape">;
 
 def IsPermutationNCHW : Constraint<CPred<"IsPermutationNCHW($0)">>;
 
@@ -366,6 +355,23 @@ def MatchHardSwishPattern5 : Pat<
     (FloatValueEquals<"6"> $cst_6),
   ]>;
 
+def MatchHardSwishPattern6 : Pat<
+  (TFL_MulOp
+     $arg,
+     (TFL_MulOp
+      (TFL_AddOp
+        $arg,
+        (Arith_ConstantOp F32ElementsAttr:$cst_3),
+        TFL_AF_Relu6),
+      (Arith_ConstantOp F32ElementsAttr:$cst_one_sixth),
+      TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $arg),
+  [
+    (FloatValueEquals<"3"> $cst_3),
+    (FloatValueEquals<"0.166666672"> $cst_one_sixth),
+  ]>;
+
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
   CPred<"$0.isa<DenseElementsAttr>() && "
@@ -445,19 +451,11 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
 def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
-def OperandsBroadcastToOutputType : Constraint<CPred<
-  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
-                                     "$2.getType())">>;
-
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
 def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
-
-def IsRankLessThanEqualTo : Constraint<CPred<
-  "$0.getType().cast<ShapedType>().getRank() <= "
-  "$1.getType().cast<ShapedType>().getRank()">>;
 
 def Flatten : NativeCodeCall<
   "$0.cast<DenseElementsAttr>()"
@@ -511,6 +509,12 @@ multiclass FusedBinaryActivationFuncOpPat<Op BinaryOp> {
   }
 }
 
+// Returns true if the supplied values both have one use each
+// or are reused by the same user.
+def HasOneUseOrReusedBySameOp : Constraint<CPred<
+  "((std::distance($0.getUses().begin(), $0.getUses().end()) == 2) && ($0 == $1))"
+    "|| ($0.hasOneUse() && $1.hasOneUse())">>;
+
 foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   defm : FuseTileBroadcastIntoFollowingBinary<BinaryOp>;
 
@@ -556,10 +560,11 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
               $act_fn),
     (TFL_ReshapeOp (BinaryOp $input1, $input2, $act_fn), $shape1),
     [(IsTailOfShape $rhs, $lhs),
-      (IsTailOfShape $lhs, $rhs),
-      (IsTailOfShape $input1, $input2),
-      (IsTailOfShape $input2, $input1),
-      (SameElementType $input1, $input2)]>;
+     (IsTailOfShape $lhs, $rhs),
+     (IsTailOfShape $input1, $input2),
+     (IsTailOfShape $input2, $input1),
+     (SameElementType $input1, $input2),
+     (HasOneUseOrReusedBySameOp $lhs, $rhs)]>;
 
   // Move binary op batched RHS before reshape:
   // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
@@ -1111,23 +1116,6 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   def Optimize#SelectOp#Not : Pat<
     (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
     (SelectOp $condition, $input2, $input1)>;
-
-  // Fuse select(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
-  // Also, fuse selectv2(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
-  // It is safe to perform this transform here because-
-  // the shapes of `pre_broadcast` and `dim` must be broadcast
-  // compatible for the `broadcast_to` op to be valid.
-  // And considering, `shape(post_broadcast)` == `shape(%input1)`,
-  // `post_broadcast` is broadcast compatible with `input1`.
-  def FuseBroadcastInto#SelectOp : Pat<
-    (SelectOp
-      (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
-      AnyStaticShapeTensor:$input1, AnyStaticShapeTensor:$input2),
-    (TFL_SelectV2Op $pre_broadcast, $input1, $input2),
-    [(HasSameStaticShapes $post_broadcast, $input1),
-     (HasRankAtMost<4> $post_broadcast),
-     (HasRankAtMost<4> $input1),
-     (HasRankAtMost<4> $input2)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<
@@ -1441,6 +1429,23 @@ def MatchGelu : Pat<
    (HasOneUse $mul_out1),
   ]>;
 
+// For Gelu, replaces
+//   0.5 * x * ( erfc( -x * sqrt_1_2 ) )
+def MatchGeluWithErfc : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TF_ErfcOp:$erfc_out
+    (TFL_MulOp:$mul_out1
+     (TFL_NegOp $arg0),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
+   (HasOneUse $mul_out),
+   (HasOneUse $erfc_out),
+   (HasOneUse $mul_out1),
+  ]>;
+
 // Fetches the output of FC op, from the provided arguments.
 def GetFcOutput : NativeCodeCall<
   "GetFcOutput(&$_builder, $0, $1, $2, $3, $4, $5, $6, $7)">;
@@ -1577,7 +1582,9 @@ def FuseReshapesAroundBatchMatMulLHS: Pat<
       $rhs, $adj_x, $adj_y, $bool_attr),
     (Arith_ConstantOp $s1)),
   (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
-  [(HasRank<2> $rhs),
+  [(HasRankAtLeast<2> $input),
+   (HasRankAtLeast<2> $final_shape_change),
+   (HasRank<2> $rhs),
    (HasRank<2> $initial_shape_change),
    (AnyStaticShapeTensor $input),
    (AnyStaticShapeTensor $initial_shape_change),
@@ -1595,6 +1602,7 @@ def FuseReshapesAroundBatchMatMulLHS: Pat<
 // 1. The rank of rhs is 2
 // 2. The original input reshape has a) reduction in leading broadcast dim and
 //    b) flattening of the contracting dims.
+// 3. non-broadcasting, non-contracting dims of the rhs are not flattened.
 def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
   (TFL_ReshapeOp:$final_shape_change
     (TFL_BatchMatMulOp:$bmm_tmp_output
@@ -1614,6 +1622,7 @@ def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
    (AnyStaticShapeTensor $final_shape_change),
    (IsBroadcastDimEqualToOne $input),
    (IsBroadcastDimEqualToOne $final_shape_change),
+   (TrailingDimValuesEqual $bmm_tmp_output, $final_shape_change),
    (ContractingDimsProductEqual<2> $input, $initial_shape_change),
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $final_shape_change, $bmm_tmp_output)]>;
@@ -1922,3 +1931,14 @@ def ReorderGatherAndCast : Pat<
   (TFL_GatherOp (TFL_CastOp:$cast $params), $indices, $axis, $batch_dims),
   (TFL_CastOp (TFL_GatherOp $params, $indices, $axis, $batch_dims)),
   [(HasOneUse $cast)]>;
+
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division can be ~10x more expensive than a
+// multiplication.
+def RealDivWithF32ConstDivisor : Pat<
+  (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
+  (TFL_MulOp:$dest1 $arg0,
+    (TFL_DivOp (Arith_ConstantOp
+      (GetScalarOfType<1> (Arith_ConstantOp $value))),
+      (Arith_ConstantOp $value),  TFL_AF_None),
+    $activation)>;

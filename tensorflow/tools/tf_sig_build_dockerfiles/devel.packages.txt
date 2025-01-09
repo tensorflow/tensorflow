@@ -61,6 +61,7 @@ mlocate
 moreutils
 openjdk-21-jdk
 openjdk-21-jre-headless
+parallel
 pkg-config
 python3-dev
 python3-setuptools

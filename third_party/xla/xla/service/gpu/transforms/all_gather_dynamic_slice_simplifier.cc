@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 
+#include <optional>
+
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
     HloInstruction* instruction) {
-  if (instruction->opcode() != HloOpcode::kDynamicSlice) {
+  if (HloPredicateIsNotOp<HloOpcode::kDynamicSlice>(instruction)) {
     return false;
   }
 
@@ -30,8 +37,8 @@ bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
   HloInstruction* operand = dynamic_slice->mutable_operand(0);
 
   // Check if the operand is a reshape or all-gather instruction
-  bool is_reshape = operand->opcode() == HloOpcode::kReshape;
-  bool is_all_gather = operand->opcode() == HloOpcode::kAllGather;
+  bool is_reshape = HloPredicateIsOp<HloOpcode::kReshape>(operand);
+  bool is_all_gather = HloPredicateIsOp<HloOpcode::kAllGather>(operand);
 
   if (!is_reshape && !is_all_gather) {
     return false;
@@ -46,25 +53,25 @@ bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
       is_reshape ? Cast<HloAllGatherInstruction>(operand->mutable_operand(0))
                  : Cast<HloAllGatherInstruction>(operand);
 
-  bool match = AllGatherDynamicSliceCancellation(
+  std::optional<ReduceScatterSpec> spec = AllGatherDynamicSliceCancellation(
       all_gather, config.num_partitions(), config.replica_count(),
-      /*allow_multiple_split_dims=*/true,
-      /*allow_intervening_reshape=*/true, /*min_rank=*/1,
-      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      config_.allow_multiple_split_dims, config_.allow_intervening_reshape,
+      config_.min_rank, HloPredicateIsOp<HloOpcode::kPartitionId>,
       HloPredicateIsOp<HloOpcode::kReplicaId>,
-      /*allow_intervening_bitcast=*/false,
-      /*allow_multiple_users=*/true);
+      config_.allow_intervening_bitcast, config_.allow_multiple_users);
 
-  return match;
+  return spec.has_value() &&
+         spec->split_dim == all_gather->all_gather_dimension();
 }
 
-StatusOr<HloInstruction*> AllGatherDynamicSliceSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*>
+AllGatherDynamicSliceSimplifier::ExpandInstruction(
     HloInstruction* instruction) {
   HloDynamicSliceInstruction* dynamic_slice =
       Cast<HloDynamicSliceInstruction>(instruction);
   HloInstruction* operand = dynamic_slice->mutable_operand(0);
 
-  if (operand->opcode() != HloOpcode::kReshape) {
+  if (HloPredicateIsNotOp<HloOpcode::kReshape>(operand)) {
     // dynamic-slice(all-gather) case
     return operand->mutable_operand(0);
   }

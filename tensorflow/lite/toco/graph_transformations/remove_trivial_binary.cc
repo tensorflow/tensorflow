@@ -49,9 +49,9 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
 // For example, an Add operator is trivial if
 // one of its operands is constant 0, a Mul operator is trivial
 // if one of its operands is constant 1, etc.
-::tensorflow::Status RemoveTrivialBinaryOperator::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status RemoveTrivialBinaryOperator::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

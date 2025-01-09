@@ -50,12 +50,12 @@ BuildAotXlaComputationInstance(
 bool IsTpuCompilationEnabled();
 
 // Converts an int64 host memory `tensor` to a `shape`.
-Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape);
+absl::Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape);
 
-Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
-                                   std::vector<TensorShape>* shapes);
-Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
-                                   std::vector<TensorShape>* shapes);
+absl::Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
+                                         std::vector<TensorShape>* shapes);
+absl::Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
+                                         std::vector<TensorShape>* shapes);
 
 // Creates gRPC ServerBuilder.
 absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(

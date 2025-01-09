@@ -9,16 +9,14 @@ package(
     licenses = ["notice"],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate
-# instead.
 alias(
     name = "xla-translate",
     actual = "//xla/hlo/translate:xla-translate",
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate instead.",
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate-opt
-# instead.
 alias(
     name = "xla-translate-opt",
     actual = "//xla/hlo/translate:xla-translate-opt",
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate-opt instead.",
 )

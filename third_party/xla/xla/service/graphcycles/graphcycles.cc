@@ -33,12 +33,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/service/graphcycles/ordered_set.h"
@@ -122,7 +125,7 @@ int32_t GraphCycles::NewNode() {
     Node n;
     n.visited = false;
     n.rank = rep_->nodes_.size();
-    rep_->nodes_.emplace_back(n);
+    rep_->nodes_.push_back(n);
     rep_->node_io_.emplace_back();
     rep_->node_data_.push_back(nullptr);
     return n.rank;

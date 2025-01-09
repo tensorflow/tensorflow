@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"

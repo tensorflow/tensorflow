@@ -17,17 +17,22 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
@@ -36,8 +41,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -47,10 +52,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -86,38 +91,44 @@ static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
 
 absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
-    bool is_stable, LessThan less_than) {
+    bool is_stable, LessThan less_than,
+    std::optional<SortDirection> direction) {
   TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
-                                        is_stable, std::move(less_than)));
+                                        is_stable, std::move(less_than),
+                                        direction));
 }
 
 absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
-    bool is_stable, std::string comparator_name) {
+    bool is_stable, std::string comparator_name,
+    std::optional<SortDirection> direction) {
   TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
-                                        is_stable, std::move(comparator_name)));
+                                        is_stable, std::move(comparator_name),
+                                        direction));
 }
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
-                     int64_t dimension, bool is_stable, LessThan less_than)
+                     int64_t dimension, bool is_stable, LessThan less_than,
+                     std::optional<SortDirection> direction)
     : Thunk(Kind::kSort, std::move(info)),
       inputs_(inputs.begin(), inputs.end()),
       dimension_(dimension),
       is_stable_(is_stable),
-      less_than_(std::move(less_than)),
-      less_than_ptr_(&*less_than_) {}
+      direction_(direction),
+      less_than_(std::move(less_than)) {}
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
                      int64_t dimension, bool is_stable,
-                     std::string comparator_name)
+                     std::string comparator_name,
+                     std::optional<SortDirection> direction)
     : Thunk(Kind::kSort, std::move(info)),
       inputs_(inputs.begin(), inputs.end()),
       dimension_(dimension),
       is_stable_(is_stable),
-      comparator_name_(std::move(comparator_name)),
-      less_than_ptr_(nullptr) {}
+      direction_(direction),
+      comparator_name_(std::move(comparator_name)) {}
 
 namespace {
 
@@ -128,71 +139,292 @@ namespace {
 // The size of the largest element we support (std::complex<double>).
 static constexpr size_t kMaxElementSize = 16;
 
+// Type erased storage suitable for storing any primitive type.
+using ValueStorage = std::array<std::byte, kMaxElementSize>;
+
+// Pointers to the input arrays together with their primitive sizes.
+template <size_t n>
+class Inputs {
+ public:
+  Inputs(std::array<std::byte*, n> ptrs,
+         std::array<size_t, n> primitive_sizes) {
+    for (size_t i = 0; i < n; ++i) {
+      ptrs_and_primitive_sizes_[i] = {ptrs[i], primitive_sizes[i]};
+    }
+  }
+
+  // Accessing arrays with `operator[]` has zero overheads, so we don't need to
+  // use pointers to data in contrast to `DInputs` below.
+
+  std::byte* ptr(size_t i, size_t offset) const {
+    DCHECK_LT(i, n) << "Input index out of bounds";
+    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_[i];
+    return ptr + offset * primitive_size;
+  }
+
+  size_t primitive_size(size_t i) const {
+    return ptrs_and_primitive_sizes_[i].second;
+  }
+
+ private:
+  // Pointers into the input buffers and each input's primitive size. Keep
+  // pointers and primitives sizes next to each other to avoid cache misses
+  // on a hot path.
+  std::array<std::pair<std::byte*, size_t>, n> ptrs_and_primitive_sizes_;
+};
+
+class DInputs {
+ public:
+  DInputs(std::vector<std::byte*> ptrs, std::vector<size_t> primitive_sizes)
+      : n_(ptrs.size()), ptrs_and_primitive_sizes_(ptrs.size()) {
+    DCHECK_EQ(ptrs.size(), primitive_sizes.size());
+    for (size_t i = 0; i < ptrs.size(); ++i) {
+      ptrs_and_primitive_sizes_[i] = {ptrs[i], primitive_sizes[i]};
+    }
+  }
+
+  size_t n() const { return n_; }
+
+  // Accessing vectors with `operator[]` is significantly slower than using a
+  // pointer to data because of libc++ hardening which checks for OOB access on
+  // every call. We know that we are not going to access out of bounds, so we
+  // use a pointer to data instead.
+
+  std::byte* ptr(size_t i, size_t offset) const {
+    DCHECK_LT(i, n_) << "Input index out of bounds";
+    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_.data()[i];
+    return ptr + offset * primitive_size;
+  }
+
+  size_t primitive_size(size_t i) const {
+    return ptrs_and_primitive_sizes_.data()[i].second;
+  }
+
+ private:
+  size_t n_;  // number of sorted inputs
+
+  // Pointers into the input buffers and each input's primitive size. Keep
+  // pointers and primitives sizes next to each other to avoid cache misses
+  // on a hot path.
+  std::vector<std::pair<std::byte*, size_t>> ptrs_and_primitive_sizes_;
+};
+
 // Forward declare reference type defined below.
 template <size_t n>
 struct Ref;
+struct DRef;
 
 // Value type to store values loaded from the input buffers.
 template <size_t n>
 struct Value {
   Value(const Ref<n>& ref);  // NOLINT
 
-  const void* compared_value(size_t i) const { return value[i].data(); }
+  void FillComparedValues(const void** __restrict compared_values) const;
 
-  // Use properly aligned byte array to store primitive values.
-  using ValueStorage = std::array<std::byte, kMaxElementSize>;
-  alignas(alignof(std::max_align_t)) std::array<ValueStorage, n> value;
-  std::array<uint8_t, n> value_sizes;
+  std::array<ValueStorage, n> values;
+};
+
+struct DValue {
+  DValue(const DRef& ref);  // NOLINT
+
+  void FillComparedValues(const void** __restrict compared_values) const;
+
+  std::vector<ValueStorage> values;
 };
 
 // Reference to values stored in the input buffers.
 template <size_t n>
 struct Ref {
-  Ref(std::array<std::byte*, n> ptr, std::array<uint8_t, n> ptr_sizes)
-      : ptr(ptr), ptr_sizes(ptr_sizes) {}
+  Ref(const Inputs<n>* inputs, size_t offset)
+      : inputs(inputs), offset(offset) {}
 
   Ref& operator=(const Value<n>& value);
   Ref& operator=(const Ref<n>& other);
 
-  const void* compared_value(size_t i) const { return ptr[i]; }
+  void FillComparedValues(const void** __restrict compared_values) const;
 
-  std::array<std::byte*, n> ptr;
-  std::array<uint8_t, n> ptr_sizes;
+  std::byte* ptr(size_t i) const { return inputs->ptr(i, offset); }
+  size_t primitive_size(size_t i) const { return inputs->primitive_size(i); }
+
+  const Inputs<n>* inputs;
+  size_t offset;
 };
 
-template <size_t n>
-Value<n>::Value(const Ref<n>& ref) : value_sizes(ref.ptr_sizes) {
-  for (size_t i = 0; i < n; ++i) {
-    std::memcpy(value[i].data(), ref.ptr[i], ref.ptr_sizes[i]);
+struct DRef {
+  DRef(const DInputs* inputs, size_t offset) : inputs(inputs), offset(offset) {}
+
+  DRef& operator=(const DValue& value);
+  DRef& operator=(const DRef& other);
+
+  void FillComparedValues(const void** __restrict compared_values) const;
+
+  size_t n() const { return inputs->n(); }
+  std::byte* ptr(size_t i) const { return inputs->ptr(i, offset); }
+  size_t primitive_size(size_t i) const { return inputs->primitive_size(i); }
+
+  const DInputs* inputs;
+  size_t offset;
+};
+
+// We know that we can only copy up to 16 bytes for the largest element type
+// and can specialize `std::memcpy` to allow LLVM to inline it with statically
+// known sizes.
+static ABSL_ATTRIBUTE_ALWAYS_INLINE void Memcpy(void* __restrict dest,
+                                                const void* __restrict src,
+                                                size_t n) {
+  switch (n) {
+    case 1:
+      std::memcpy(dest, src, 1);
+      break;
+    case 2:
+      std::memcpy(dest, src, 2);
+      break;
+    case 4:
+      std::memcpy(dest, src, 4);
+      break;
+    case 8:
+      std::memcpy(dest, src, 8);
+      break;
+    case 16:
+      std::memcpy(dest, src, 16);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported memcpy size: " << n;
+  }
+}
+
+// Specialize swap for statically known sizes to avoid going through the same
+// switch statement multiple times.
+static ABSL_ATTRIBUTE_ALWAYS_INLINE void Swap(void* __restrict a,
+                                              void* __restrict b, size_t n) {
+  std::array<std::byte, kMaxElementSize> tmp;
+  switch (n) {
+    case 1:
+      std::memcpy(tmp.data(), a, 1);
+      std::memcpy(a, b, 1);
+      std::memcpy(b, tmp.data(), 1);
+      break;
+    case 2:
+      std::memcpy(tmp.data(), a, 2);
+      std::memcpy(a, b, 2);
+      std::memcpy(b, tmp.data(), 2);
+      break;
+    case 4:
+      std::memcpy(tmp.data(), a, 4);
+      std::memcpy(a, b, 4);
+      std::memcpy(b, tmp.data(), 4);
+      break;
+    case 8:
+      std::memcpy(tmp.data(), a, 8);
+      std::memcpy(a, b, 8);
+      std::memcpy(b, tmp.data(), 8);
+      break;
+    case 16:
+      std::memcpy(tmp.data(), a, 16);
+      std::memcpy(a, b, 16);
+      std::memcpy(b, tmp.data(), 16);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported swap size: " << n;
   }
 }
 
 template <size_t n>
-Ref<n>& Ref<n>::operator=(const Value<n>& value) {
-  DCHECK(ptr_sizes == value.value_sizes);
+ABSL_ATTRIBUTE_ALWAYS_INLINE Value<n>::Value(const Ref<n>& ref) {
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], value.value[i].data(), value.value_sizes[i]);
+    Memcpy(values[i].data(), ref.ptr(i), ref.primitive_size(i));
+  }
+}
+
+template <size_t n>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void Value<n>::FillComparedValues(
+    const void** __restrict compared_values) const {
+  for (const ValueStorage& value : values) {
+    *compared_values = value.data();
+    compared_values += 2;
+  }
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE DValue::DValue(const DRef& ref) : values(ref.n()) {
+  for (size_t i = 0, end = ref.n(); i < end; ++i) {
+    Memcpy(values.data()[i].data(), ref.ptr(i), ref.primitive_size(i));
+  }
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE void DValue::FillComparedValues(
+    const void** __restrict compared_values) const {
+#pragma unroll 8
+  for (const ValueStorage& value : values) {
+    *compared_values = value.data();
+    compared_values += 2;
+  }
+}
+
+template <size_t n>
+ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Value<n>& value) {
+  for (size_t i = 0; i < n; ++i) {
+    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
   }
   return *this;
 }
 
 template <size_t n>
-Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
-  DCHECK(ptr_sizes == other.ptr_sizes);
+ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Ref<n>& other) {
   for (size_t i = 0; i < n; ++i) {
-    std::memcpy(ptr[i], other.ptr[i], other.ptr_sizes[i]);
+    DCHECK_EQ(primitive_size(i), other.primitive_size(i));
+    Memcpy(ptr(i), other.ptr(i), primitive_size(i));
   }
   return *this;
+}
+
+template <size_t n>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void Ref<n>::FillComparedValues(
+    const void** __restrict compared_values) const {
+  for (size_t i = 0; i < n; ++i) {
+    *compared_values = ptr(i);
+    compared_values += 2;
+  }
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DValue& value) {
+  for (size_t i = 0, end = n(); i < end; ++i) {
+    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
+  }
+  return *this;
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DRef& other) {
+  for (size_t i = 0, end = n(); i < end; ++i) {
+    DCHECK_EQ(primitive_size(i), other.primitive_size(i));
+    Memcpy(ptr(i), other.ptr(i), primitive_size(i));
+  }
+  return *this;
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE void DRef::FillComparedValues(
+    const void** __restrict compared_values) const {
+#pragma unroll 8
+  for (size_t i = 0, end = n(); i < end; ++i) {
+    *compared_values = ptr(i);
+    compared_values += 2;
+  }
 }
 
 // Swap function required by `std::sort` and `std::stable_sort` implementations.
 template <size_t n>
-void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const Ref<n>& lhs, const Ref<n>& rhs) {
   for (size_t i = 0; i < n; ++i) {
-    std::array<std::byte, kMaxElementSize> tmp;
-    std::memcpy(tmp.data(), lhs.ptr[i], lhs.ptr_sizes[i]);
-    std::memcpy(lhs.ptr[i], rhs.ptr[i], rhs.ptr_sizes[i]);
-    std::memcpy(rhs.ptr[i], tmp.data(), lhs.ptr_sizes[i]);
+    DCHECK_EQ(lhs.primitive_size(i), rhs.primitive_size(i));
+    size_t primitive_size = lhs.primitive_size(i);
+    Swap(lhs.ptr(i), rhs.ptr(i), primitive_size);
+  }
+}
+
+ABSL_ATTRIBUTE_ALWAYS_INLINE void swap(const DRef& lhs, const DRef& rhs) {
+  for (size_t i = 0, end = lhs.n(); i < end; ++i) {
+    DCHECK_EQ(lhs.primitive_size(i), rhs.primitive_size(i));
+    size_t primitive_size = lhs.primitive_size(i);
+    Swap(lhs.ptr(i), rhs.ptr(i), primitive_size);
   }
 }
 
@@ -203,70 +435,104 @@ struct Ptr {
 
   Ptr() = default;
 
-  Ptr(std::array<std::byte*, n> ptr, std::array<uint8_t, n> ptr_sizes)
-      : ptr(ptr), ptr_sizes(ptr_sizes) {}
+  explicit Ptr(const Inputs<n>* inputs, size_t offset = 0)
+      : inputs(inputs), offset(offset) {}
 
-  Ref<n> operator*() const { return Ref<n>{ptr, ptr_sizes}; }
+  Ref<n> operator*() const { return Ref<n>{inputs, offset}; }
 
   Ptr& operator+=(difference_type diff) {
-    for (size_t i = 0; i < n; ++i) ptr[i] += diff * ptr_sizes[i];
+    offset += diff;
     return *this;
   }
 
   Ptr& operator-=(difference_type diff) {
-    for (size_t i = 0; i < n; ++i) ptr[i] -= diff * ptr_sizes[i];
+    offset -= diff;
     return *this;
   }
 
   Ptr operator+(difference_type diff) const {
-    std::array<std::byte*, n> upd;
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] + diff * ptr_sizes[i];
-    return Ptr{upd, ptr_sizes};
+    return Ptr(inputs, offset + diff);
   }
 
   Ptr operator-(difference_type diff) const {
-    std::array<std::byte*, n> upd;
-    for (size_t i = 0; i < n; ++i) upd[i] = ptr[i] - diff * ptr_sizes[i];
-    return Ptr{upd, ptr_sizes};
+    return Ptr(inputs, offset - diff);
   }
-
-  // In all comparison operators defined below we use only the ptr at index 0,
-  // because we know that all pointers change together and this is an
-  // implementation detail of sort iterator.
 
   difference_type operator-(const Ptr& rhs) const {
-    DCHECK(ptr_sizes == rhs.ptr_sizes);
-    return (ptr[0] - rhs.ptr[0]) / ptr_sizes[0];
+    return offset - rhs.offset;
   }
 
-  bool operator==(const Ptr& rhs) const { return ptr[0] == rhs.ptr[0]; }
-  bool operator!=(const Ptr& rhs) const { return ptr[0] != rhs.ptr[0]; }
-  bool operator>(const Ptr& rhs) const { return ptr[0] > rhs.ptr[0]; }
-  bool operator<(const Ptr& rhs) const { return ptr[0] < rhs.ptr[0]; }
-  bool operator>=(const Ptr& rhs) const { return ptr[0] >= rhs.ptr[0]; }
-  bool operator<=(const Ptr& rhs) const { return ptr[0] <= rhs.ptr[0]; }
+  bool operator==(const Ptr& rhs) const { return offset == rhs.offset; }
+  bool operator!=(const Ptr& rhs) const { return offset != rhs.offset; }
+  bool operator>(const Ptr& rhs) const { return offset > rhs.offset; }
+  bool operator<(const Ptr& rhs) const { return offset < rhs.offset; }
+  bool operator>=(const Ptr& rhs) const { return offset >= rhs.offset; }
+  bool operator<=(const Ptr& rhs) const { return offset <= rhs.offset; }
 
-  std::array<std::byte*, n> ptr;     // pointers into the input buffers
-  std::array<uint8_t, n> ptr_sizes;  // pointers sizes in bytes
+  const Inputs<n>* inputs;  // pointer to the input arrays
+  size_t offset;            // offset into the inputs arrays
+};
+
+struct DPtr {
+  using difference_type = std::ptrdiff_t;
+
+  DPtr() = default;
+
+  explicit DPtr(const DInputs* inputs, size_t offset = 0)
+      : inputs(inputs), offset(offset) {}
+
+  DRef operator*() const { return DRef{inputs, offset}; }
+
+  DPtr& operator+=(difference_type diff) {
+    offset += diff;
+    return *this;
+  }
+
+  DPtr& operator-=(difference_type diff) {
+    offset -= diff;
+    return *this;
+  }
+
+  DPtr operator+(difference_type diff) const {
+    return DPtr(inputs, offset + diff);
+  }
+
+  DPtr operator-(difference_type diff) const {
+    return DPtr(inputs, offset - diff);
+  }
+
+  difference_type operator-(const DPtr& rhs) const {
+    return offset - rhs.offset;
+  }
+
+  bool operator==(const DPtr& rhs) const { return offset == rhs.offset; }
+  bool operator!=(const DPtr& rhs) const { return offset != rhs.offset; }
+  bool operator>(const DPtr& rhs) const { return offset > rhs.offset; }
+  bool operator<(const DPtr& rhs) const { return offset < rhs.offset; }
+  bool operator>=(const DPtr& rhs) const { return offset >= rhs.offset; }
+  bool operator<=(const DPtr& rhs) const { return offset <= rhs.offset; }
+
+  const DInputs* inputs;  // pointer to the input arrays
+  size_t offset;          // offset into the inputs arrays
 };
 
 // We rely on `std::sort` and `std::stable_sort` to sort the raw data. We sort
 // multiple input buffers together using the same comparator function, so we
 // need to provide a custom iterator that can access the data of all input
 // buffers at the same time and swap elements in them.
-template <size_t n>
+template <class Value, class Ref, class Ptr>
 class SortIterator {
  public:
   using iterator_category = std::random_access_iterator_tag;
   using difference_type = std::ptrdiff_t;
 
-  using value_type = Value<n>;
-  using reference = Ref<n>;
-  using pointer = Ptr<n>;
+  using value_type = Value;
+  using reference = Ref;
+  using pointer = Ptr;
 
   SortIterator() = default;
   SortIterator(pointer ptr, difference_type stride)
-      : ptr_(ptr), stride_(stride) {}
+      : ptr_(std::move(ptr)), stride_(stride) {}
 
   SortIterator(const SortIterator& other) = default;
   SortIterator& operator=(const SortIterator& other) = default;
@@ -364,32 +630,107 @@ static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
                   num_iterations};
 }
 
+template <class Iterator, class NativeT>
+static void Sort1DArrInplace(int64_t sort_dims_size, int64_t offset,
+                             Iterator begin, bool is_stable,
+                             SortThunk::SortDirection direction) {
+  if (direction == SortThunk::SortDirection::kAscending) {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    }
+  } else {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    }
+  };
+}
+
+// The most efficient way to sort a single buffer is to use the builtin
+// comparator functions.
+template <PrimitiveType Type>
+static void Sort1DArrInplace(const SortDims& sort_dims, int64_t offset,
+                             absl::Span<se::DeviceMemoryBase> data,
+                             bool is_stable,
+                             SortThunk::SortDirection direction) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<Type>::type;
+  DCHECK_EQ(data.size(), 1);
+  NativeT* begin = reinterpret_cast<NativeT*>(data[0].opaque()) + offset;
+
+  if (sort_dims.inner_dim_size == 1) {
+    Sort1DArrInplace<NativeT*, NativeT>(sort_dims.sort_dim_size, offset, begin,
+                                        is_stable, direction);
+  } else {
+    using Iterator = SortIterator<NativeT, NativeT&, NativeT*>;
+    Iterator begin_iter(begin, /*stride=*/sort_dims.inner_dim_size);
+    Sort1DArrInplace<Iterator, NativeT>(sort_dims.sort_dim_size, offset,
+                                        begin_iter, is_stable, direction);
+  }
+}
+
 // Sorts `n` buffers in place.
 template <size_t n>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
                         absl::Span<se::DeviceMemoryBase> data,
                         absl::Span<const Shape> shapes, bool is_stable,
                         SortThunk::LessThan* less_than) {
-  std::array<std::byte*, n> ptr;
-  std::array<uint8_t, n> ptr_sizes;
+  std::array<std::byte*, n> ptrs;
+  std::array<size_t, n> primitive_sizes;
 
   for (size_t i = 0; i < n; ++i) {
     std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
-    ptr_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
-    ptr[i] = base + offset * ptr_sizes[i];
+    primitive_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
+    ptrs[i] = base + offset * primitive_sizes[i];
   }
 
+  Inputs<n> inputs(ptrs, primitive_sizes);
+
   auto compare = [&](const auto& a, const auto& b) {
-    std::array<const void*, 2 * n> data;
-    for (size_t i = 0, j = 0; i < n; i += 1, j += 2) {
-      data[j] = a.compared_value(i);
-      data[j + 1] = b.compared_value(i);
-    }
-    return (*less_than)(data.data());
+    std::array<const void*, 2 * n> values;
+    a.FillComparedValues(&values[0]);
+    b.FillComparedValues(&values[1]);
+    return (*less_than)(values.data());
   };
 
-  SortIterator<n> begin(Ptr<n>(ptr, ptr_sizes),
-                        /*stride=*/sort_dims.inner_dim_size);
+  SortIterator<Value<n>, Ref<n>, Ptr<n>> begin(
+      Ptr<n>(&inputs), /*stride=*/sort_dims.inner_dim_size);
+  if (is_stable) {
+    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
+  } else {
+    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
+  }
+}
+
+static void DSortInplace(const SortDims& sort_dims, int64_t offset,
+                         absl::Span<se::DeviceMemoryBase> data,
+                         absl::Span<const Shape> shapes, bool is_stable,
+                         SortThunk::LessThan* less_than, size_t n) {
+  std::vector<std::byte*> ptrs(n);
+  std::vector<size_t> primitive_sizes(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    std::byte* base = reinterpret_cast<std::byte*>(data[i].opaque());
+    primitive_sizes[i] = primitive_util::ByteWidth(shapes[i].element_type());
+    ptrs[i] = base + offset * primitive_sizes[i];
+  }
+
+  DInputs inputs(std::move(ptrs), std::move(primitive_sizes));
+
+  // Allocate scratch space for sorted values outside of the lambda to avoid
+  // allocating it on every call to `compare`.
+  std::vector<const void*> values(2 * n);
+
+  auto compare = [&, values = values.data()](const auto& a, const auto& b) {
+    a.FillComparedValues(&values[0]);
+    b.FillComparedValues(&values[1]);
+    return (*less_than)(values);
+  };
+
+  SortIterator<DValue, DRef, DPtr> begin(DPtr(&inputs),
+                                         /*stride=*/sort_dims.inner_dim_size);
   if (is_stable) {
     std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
   } else {
@@ -398,10 +739,10 @@ static void SortInplace(const SortDims& sort_dims, int64_t offset,
 }
 
 // Sorts `data` of the given `shape` along the `dimension` inplace.
-static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
-                                absl::Span<const Shape> shapes,
-                                int64_t dimension, bool is_stable,
-                                SortThunk::LessThan* less_than) {
+static absl::Status SortInplace(
+    absl::Span<se::DeviceMemoryBase> data, absl::Span<const Shape> shapes,
+    int64_t dimension, bool is_stable, SortThunk::LessThan* less_than,
+    std::optional<SortThunk::SortDirection> direction) {
   // All inputs have the same dimensions and layout, so we can use the first
   // shape to get the sort dimensions.
   SortDims sort_dims = GetSortDims(shapes[0], dimension);
@@ -416,12 +757,38 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
                                                is_stable, less_than);
     };
 
-    // TODO(ezhulenev): We can replace statically known number of sorted inputs
-    // with a dynamic value, however statically known number of inputs allows
-    // compiler to generate better code. Benchmark if it really matters.
+    auto dsort = [&](size_t num_inputs) {
+      DSortInplace(sort_dims, offset, data, shapes, is_stable, less_than,
+                   num_inputs);
+    };
+
+    // Sorts array using builtin comparator functor
+    auto builtin_sort = [&](PrimitiveType type,
+                            SortThunk::SortDirection direction) {
+      primitive_util::ArrayTypeSwitch<void>(
+          [&](auto cst_type) {
+            if constexpr ((primitive_util::IsFloatingPointType(cst_type) ||
+                           primitive_util::IsIntegralType(cst_type)) &&
+                          primitive_util::BitWidth(cst_type) >= 8) {
+              Sort1DArrInplace<cst_type>(sort_dims, offset, data, is_stable,
+                                         direction);
+            } else {
+              sort(std::integral_constant<size_t, 1>{});
+            }
+          },
+          type);
+    };
+
+    // Use "sort" for statically known number of sorted inputs (expected to be
+    // faster) and "dsort" for dynamically known number of sorted inputs.
     switch (data.size()) {
       case 1:
-        sort(std::integral_constant<size_t, 1>{});
+        DCHECK_EQ(shapes.size(), 1);
+        if (direction.has_value()) {
+          builtin_sort(shapes[0].element_type(), *direction);
+        } else {
+          sort(std::integral_constant<size_t, 1>{});
+        }
         break;
       case 2:
         sort(std::integral_constant<size_t, 2>{});
@@ -468,38 +835,9 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
       case 16:
         sort(std::integral_constant<size_t, 16>{});
         break;
-      case 17:
-        sort(std::integral_constant<size_t, 17>{});
-        break;
-      case 18:
-        sort(std::integral_constant<size_t, 18>{});
-        break;
-      case 19:
-        sort(std::integral_constant<size_t, 19>{});
-        break;
-      case 20:
-        sort(std::integral_constant<size_t, 20>{});
-        break;
-      case 21:
-        sort(std::integral_constant<size_t, 21>{});
-        break;
-      case 22:
-        sort(std::integral_constant<size_t, 22>{});
-        break;
-      case 23:
-        sort(std::integral_constant<size_t, 23>{});
-        break;
-      case 24:
-        sort(std::integral_constant<size_t, 24>{});
-        break;
-      case 25:
-        sort(std::integral_constant<size_t, 25>{});
-        break;
-      case 29:
-        sort(std::integral_constant<size_t, 29>{});
-        break;
       default:
-        return Internal("Unsupported number of sorted inputs: %d", data.size());
+        dsort(data.size());
+        break;
     }
   }
 
@@ -536,28 +874,35 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
                                   input.slice.ToString(), data.back().opaque());
   }
 
-  LessThan* less_than = less_than_ptr_.load();
-
   // Because thunks are owned by a parent CpuExecutable, we can safely assume
   // that comparator pointer will not change after we find it the first time,
   // and we can create a comparator adaptor to a LessThan function.
-  if (ABSL_PREDICT_FALSE(less_than == nullptr)) {
-    TF_ASSIGN_OR_RETURN(
-        FunctionRegistry::Comparator comparator,
-        params.function_registry->FindComparator(comparator_name_));
+  absl::call_once(less_than_init_flag_, [&]() {
+    if (less_than_.ok()) {
+      // `less_than_` may already be initialized in the constructor.
+      return;
+    }
+    absl::StatusOr<FunctionLibrary::Comparator*> comparator =
+        params.function_library->ResolveFunction<FunctionLibrary::Comparator>(
+            comparator_name_);
 
-    absl::MutexLock lock(&mutex_);
-    less_than_ = [comparator](const void** data) {
-      bool result;
-      comparator(&result, nullptr, data, nullptr, nullptr, nullptr);
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
-      return result;
-    };
-    less_than_ptr_.store(less_than = &*less_than_);
-  }
+    if (ABSL_PREDICT_TRUE(comparator.ok())) {
+      less_than_ = [comparator](const void** data) {
+        bool result;
+        (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
+        ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
+        return result;
+      };
+    } else {
+      less_than_ = std::move(comparator.status());
+    }
+  });
+
+  TF_RETURN_IF_ERROR(less_than_.status());
+  LessThan* less_than = &less_than_.value();
 
   TF_RETURN_IF_ERROR(SortInplace(absl::MakeSpan(data), shapes, dimension_,
-                                 is_stable_, less_than));
+                                 is_stable_, less_than, direction_));
 
   return OkExecuteEvent();
 }

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 
 #include "fuzztest/fuzztest.h"

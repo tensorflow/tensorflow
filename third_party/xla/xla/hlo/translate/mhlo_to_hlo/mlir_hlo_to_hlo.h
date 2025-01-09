@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/service/hlo.pb.h"
@@ -75,6 +75,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
                                  ::xla::HloProto* hlo_proto,
                                  bool use_tuple_args, bool return_tuple,
                                  MlirToHloConversionOptions options = {});
+
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 ::xla::HloProto* hlo_proto,
+                                 MlirToHloConversionOptions options);
 
 // Converts a MLIR module in HLO dialect into a HloModule with HloModuleConfig.
 // This method preserves config data stored in MHLO module attributes.

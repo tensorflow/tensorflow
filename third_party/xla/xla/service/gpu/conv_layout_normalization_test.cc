@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <variant>
+
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
@@ -30,6 +33,13 @@ class ConvolutionLayoutNormalizationTest : public HloTestBase {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+  bool IsRocm() {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
   }
 };
 
@@ -50,9 +60,15 @@ HloModule TestModule
 }
 )";
 
-  MatchOptimizedHlo(hlo, R"(
+  if (!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo, R"(
+// CHECK: (f32[1,23,136]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=b0f_o0i->b0f, custom_call_target="__cudnn$convBackwardInput"
+    )");
+  } else {
+    MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[1,136,23]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=bf0_oi0->bf0, custom_call_target="__cudnn$convBackwardInput"
   )");
+  }
 }
 
 TEST_F(ConvolutionLayoutNormalizationTest, Forward) {
@@ -66,13 +82,21 @@ ENTRY %TestComputation {
 }
 )";
 
-  MatchOptimizedHlo(hlo, R"(
+  if (!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo, R"(
+// CHECK: (f32[2,1,378,128]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+    )");
+  } else {
+    MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[2,128,1,378]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
-  )");
+    )");
+  }
 }
 
-// TODO(rocm): No Conv3D
-TEST_F(ConvolutionLayoutNormalizationTest, DISABLED_ON_GPU_ROCM(FusedConv3D)) {
+TEST_F(ConvolutionLayoutNormalizationTest, FusedConv3D) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Conv3D is not supported on ROCm.";
+  }
   const char* hlo = R"(
 HloModule TestModule
 

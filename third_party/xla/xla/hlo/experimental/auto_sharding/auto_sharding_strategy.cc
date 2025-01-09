@@ -145,26 +145,27 @@ void GenerateScatterShardingFromOperands(
                            const HloSharding& update_sharding,
                            const HloSharding& scatter_sharding)>
         yield_sharding) {
-  absl::flat_hash_set<HloSharding> scatter_shardings;
+  std::vector<HloSharding> scatter_shardings;
+  auto scatter_shardings_insert = [&](const HloSharding& sharding) {
+    const auto it =
+        std::find(scatter_shardings.begin(), scatter_shardings.end(), sharding);
+    if (it == scatter_shardings.end()) scatter_shardings.push_back(sharding);
+  };
   CHECK_EQ(scatter->scatter_operand_count(), 1);
-  const HloInstruction* scatter_data = scatter->scatter_operands()[0];
-  const HloInstruction* scatter_indices = scatter->scatter_indices();
-  const HloInstruction* scatter_update = scatter->scatter_updates()[0];
 
-  const HloSharding& indices_sharding = hlo_sharding_util::
-      ScatterIndexShardingFromUpdateIndexPassthroughDimensions(update_sharding,
-                                                               scatter);
+  const HloSharding& indices_sharding =
+      hlo_sharding_util::ScatterIndexShardingFromUpdate(update_sharding,
+                                                        scatter);
 
-  scatter_shardings.insert(data_sharding);
+  scatter_shardings_insert(data_sharding);
   if (std::optional<HloSharding> maybe_from_update =
           hlo_sharding_util::ScatterOutputShardingFromUpdate(update_sharding,
                                                              *scatter)) {
-    scatter_shardings.insert(*maybe_from_update);
+    scatter_shardings_insert(*maybe_from_update);
   }
 
-  std::optional<hlo_sharding_util::GatherScatterParallelDims>
-      scatter_parallel_dims =
-          hlo_sharding_util::GetScatterParallelBatchDims(*scatter, call_graph);
+  std::optional<hlo_sharding_util::GatherScatterDims> scatter_parallel_dims =
+      hlo_sharding_util::GetScatterParallelBatchDims(*scatter, call_graph);
   if (!scatter_parallel_dims) {
     for (const HloSharding& sharding : scatter_shardings) {
       yield_sharding(data_sharding, indices_sharding, update_sharding,
@@ -173,34 +174,27 @@ void GenerateScatterShardingFromOperands(
     return;
   }
 
-  absl::InlinedVector<int64_t, 1> aligned_operand_parallel_dims =
-      scatter_parallel_dims->operand_parallel_dims;
-  absl::InlinedVector<int64_t, 1> update_parallel_dims =
-      hlo_sharding_util::GetScatterParallelUpdateDims(*scatter,
-                                                      *scatter_parallel_dims);
-  const absl::InlinedVector<int64_t, 1>& output_parallel_dims =
-      aligned_operand_parallel_dims;
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          data_sharding, scatter_data->shape(), shape,
-          absl::MakeConstSpan(aligned_operand_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          data_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims),
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter indices sharding.
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          indices_sharding, scatter_indices->shape(), shape,
-          absl::MakeConstSpan(scatter_parallel_dims->indices_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          indices_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->indices_dims),
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter update sharding.
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          update_sharding, scatter_update->shape(), shape,
-          absl::MakeConstSpan(update_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          update_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->output_dims),
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   for (const HloSharding& scatter_sharding : scatter_shardings) {
     yield_sharding(data_sharding, indices_sharding, update_sharding,
@@ -270,7 +264,7 @@ BuildStrategyAndCost(
       // usually "follows" other instruction's sharding. If the instruction it
       // follows is an intermediate instruction, it may be able to choose
       // unevenly sharded strategiyes. Usually if we constraint input's sharding
-      // strategies, outputs would be constrained as welll, but if outputs are
+      // strategies, outputs would be constrained as well, but if outputs are
       // still unevely sharded in some cases, we need to fix the implementation
       // in auto sharding.
       only_allow_divisible = option.only_allow_divisible_input_output;
@@ -292,7 +286,7 @@ BuildStrategyAndCost(
           // We use this following relationship to ensure that the input tuple
           // of the while loop, and the parameter of the body of that while
           // loop. Therefore, this followinf relationship is necessary for
-          // correctness, and is not merely an optmization.
+          // correctness, and is not merely an optimization.
           is_follow_necessary_for_correctness = true;
           for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =
@@ -345,14 +339,14 @@ BuildStrategyAndCost(
               ByteSizeOfShapeWithSharding(ins->shape(), scatter_sharding);
 
           InputShardings input_shardings_optional(
-              {data_sharding, indices_sharding, update_sharding});
+              {name, {data_sharding, indices_sharding, update_sharding}});
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, scatter_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
           strategy_group->AddStrategy(
-              ShardingStrategy({name, scatter_sharding, compute_cost,
+              ShardingStrategy({scatter_sharding, compute_cost,
                                 communication_cost, memory_cost,
                                 std::move(resharding_costs.first),
                                 std::move(resharding_costs.second)}),
@@ -396,15 +390,14 @@ BuildStrategyAndCost(
           double memory_cost =
               ByteSizeOfShapeWithSharding(gather_shape, output_sharding);
           InputShardings input_shardings_optional(
-              {data_sharding, indices_sharding});
+              {output_sharding.ToString(), {data_sharding, indices_sharding}});
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, output_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
           strategy_group->AddStrategy(
-              ShardingStrategy({std::string(output_sharding.ToString()),
-                                output_sharding, compute_cost,
+              ShardingStrategy({output_sharding, compute_cost,
                                 communication_cost, memory_cost,
                                 std::move(resharding_costs.first),
                                 std::move(resharding_costs.second)}),
@@ -414,9 +407,9 @@ BuildStrategyAndCost(
         for (const ShardingStrategy& indices_strategy :
              indices_strategy_group->GetStrategies()) {
           const HloSharding& indices_spec = indices_strategy.output_sharding;
-          const HloSharding& indices_to_combine_spec = hlo_sharding_util::
-              GatherOutputShardingFromIndexIndexPassthroughDimensions(
-                  indices_spec, ins);
+          const HloSharding& indices_to_combine_spec =
+              hlo_sharding_util::GatherOutputShardingFromIndex(indices_spec,
+                                                               ins);
           if (std::optional<HloSharding> data_spec =
                   hlo_sharding_util::GatherOperandShardingFromOutput(
                       indices_to_combine_spec, *ins, call_graph)) {
@@ -434,54 +427,44 @@ BuildStrategyAndCost(
                 hlo_sharding_util::GetGatherParallelBatchDims(*ins, call_graph);
             HloSharding output_spec = indices_to_combine_spec;
             if (gather_parallel_dims) {
-              auto aligned_operand_parallel_dims =
-                  gather_parallel_dims->operand_parallel_dims;
-              auto output_parallel_dims =
-                  hlo_sharding_util::GetGatherParallelOutputDims(
-                      *ins, *gather_parallel_dims);
               // Infer output sharding from scatter operand sharding.
               if (hlo_sharding_util::IsSpatiallyPartitioned(data_spec)) {
                 const HloSharding to_merge = hlo_sharding_util::
                     InferGatherScatterParallelShardingFromOperandSharding(
-                        data_spec, data->shape(), gather_shape,
-                        absl::MakeConstSpan(aligned_operand_parallel_dims),
-                        absl::MakeConstSpan(output_parallel_dims));
+                        data_spec, gather_shape,
+                        absl::MakeConstSpan(gather_parallel_dims->operand_dims),
+                        absl::MakeConstSpan(gather_parallel_dims->output_dims));
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,
-                            /* may_combine_partial_sharding */ true,
-                            /* allow_aggressive_resharding */ false)) {
+                            /*may_combine_partial_sharding=*/true,
+                            /*allow_aggressive_resharding=*/false)) {
                   output_spec = *improved_spec;
                   add_sharding_strategy(data_spec, indices_spec, output_spec);
-                } else {
-                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
               // Infer output sharding from scatter indices sharding.
               if (hlo_sharding_util::IsSpatiallyPartitioned(indices_spec)) {
                 const HloSharding to_merge = hlo_sharding_util::
                     InferGatherScatterParallelShardingFromOperandSharding(
-                        indices_spec, indices->shape(), gather_shape,
-                        absl::MakeConstSpan(
-                            gather_parallel_dims->indices_parallel_dims),
-                        absl::MakeConstSpan(output_parallel_dims));
+                        indices_spec, gather_shape,
+                        absl::MakeConstSpan(gather_parallel_dims->indices_dims),
+                        absl::MakeConstSpan(gather_parallel_dims->output_dims));
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,
-                            /* may_combine_partial_sharding */ true,
-                            /* allow_aggressive_resharding */ false)) {
+                            /*may_combine_partial_sharding=*/true,
+                            /*allow_aggressive_resharding=*/false)) {
                   output_spec = *improved_spec;
                   add_sharding_strategy(data_spec, indices_spec, output_spec);
-                } else {
-                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
             }
 
             absl::Span<const int64_t> operand_parallel_dims;
             if (gather_parallel_dims) {
-              operand_parallel_dims = absl::MakeConstSpan(
-                  gather_parallel_dims->operand_parallel_dims);
+              operand_parallel_dims =
+                  absl::MakeConstSpan(gather_parallel_dims->operand_dims);
             }
             HloSharding filtered_operand_sharding =
                 hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
@@ -497,17 +480,15 @@ BuildStrategyAndCost(
             if (std::optional<HloSharding> improved_spec =
                     ConstructImprovedSharding(
                         *maybe_from_data, output_spec, gather_shape,
-                        /* may_combine_partial_sharding */ true,
-                        /* allow_aggressive_resharding */ false)) {
+                        /*may_combine_partial_sharding=*/true,
+                        /*allow_aggressive_resharding=*/false)) {
               output_spec = *improved_spec;
               add_sharding_strategy(data_spec, indices_spec, output_spec);
-            } else {
-              add_sharding_strategy(data_spec, indices_spec, *maybe_from_data);
             }
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map, 0,
-                              /* operands_to_consider_all_strategies_for */ {0},
+                              /*operands_to_consider_all_strategies_for=*/{},
                               *strategy_group);
         break;
       }
@@ -564,14 +545,13 @@ BuildStrategyAndCost(
               MemoryReshardingCostVector(src_strategy_group, operand->shape(),
                                          input_spec, cluster_env);
           strategy_group->AddStrategy(
-              ShardingStrategy({name,
-                                output_spec,
+              ShardingStrategy({output_spec,
                                 compute_cost,
                                 communication_cost,
                                 memory_cost,
                                 {communication_resharding_costs},
                                 {memory_resharding_costs}}),
-              {input_spec});
+              {name, {input_spec}});
         }
         break;
       }
@@ -684,9 +664,9 @@ BuildStrategyAndCost(
             if (k == follow_idx ||
                 ToString(ins->operand(k)->shape().dimensions()) ==
                     ToString(operand->shape().dimensions())) {
-              input_shardings.push_back(input_spec);
+              input_shardings.shardings.push_back(input_spec);
             } else {
-              input_shardings.push_back(std::nullopt);
+              input_shardings.shardings.push_back(std::nullopt);
             }
           }
           if (!output_spec.has_value()) {
@@ -702,11 +682,10 @@ BuildStrategyAndCost(
                   input_shardings);
 
           strategy_group->AddStrategy(
-              ShardingStrategy({name, *output_spec, compute_cost,
-                                communication_cost, memory_cost,
-                                std::move(resharding_costs.first),
+              ShardingStrategy({*output_spec, compute_cost, communication_cost,
+                                memory_cost, std::move(resharding_costs.first),
                                 std::move(resharding_costs.second)}),
-              {input_spec});
+              {name, {input_spec}});
         }
 
         if (strategy_group->GetStrategies().empty()) {
@@ -1028,11 +1007,6 @@ BuildStrategyAndCost(
     }
     CHECK(strategy_group != nullptr);
     RemoveDuplicatedStrategy(*strategy_group);
-    if (!option.allow_shardings_small_dims_across_many_devices) {
-      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
-          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
-          *strategy_group);
-    }
     if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
@@ -1040,6 +1014,11 @@ BuildStrategyAndCost(
           ins->shape(), strategy_map, instructions, ins->sharding(),
           cluster_env, pretrimmed_strategy_map, call_graph,
           option.nd_sharding_iteratively_strict_search_space, *strategy_group);
+    }
+    if (!option.allow_shardings_small_dims_across_many_devices) {
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
+          *strategy_group);
     }
     if (!strategy_group->is_tuple && strategy_group->following) {
       if (!LeafVectorsAreConsistent(
@@ -1093,7 +1072,7 @@ BuildStrategyAndCost(
           const InputShardings& input_shardings = strategy_input_shardings[iid];
           const ShardingStrategy& strategy =
               strategy_group->GetStrategyForInputShardings(iid);
-          if (strategy.name == stra_names[idx]) {
+          if (input_shardings.name == stra_names[idx]) {
             new_strategies.push_back({strategy, input_shardings});
           }
         }

@@ -22,12 +22,13 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <new>
 #include <numeric>
 #include <optional>
 #include <string>
-#include <string_view>
+#include <thread>  // NOLINT
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -82,7 +85,6 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/shape.h"
@@ -310,6 +312,35 @@ extern "C" int PyArray_tp_traverse(PyObject* self, visitproc visit, void* arg) {
 
 // dynamic_attr: Allow the GC to clear the dictionary.
 extern "C" int PyArray_tp_clear(PyObject* self) {
+  switch (auto guard_level = jax::GetGarbageCollectArrayGuard(); guard_level) {
+    case jax::GarbageCollectionGuardLevel::kAllow:
+      break;
+    case jax::GarbageCollectionGuardLevel::kLog:
+    case jax::GarbageCollectionGuardLevel::kFatal: {
+      auto* obj = reinterpret_cast<PyArrayObject*>(self);
+      std::string traceback_str;
+      if (obj->initialized) {
+        auto traceback = GetPyArrayStorageFromObject(obj)->traceback;
+        if (traceback.has_value()) {
+          traceback_str = traceback.value()->ToString();
+        }
+      }
+      auto error_msg = absl::StrCat(
+          "`jax.Array` was deleted by the Python garbage collector "
+          "instead of reference counting. Break the reference cycle "
+          "that delays the deletion of this `jax.Array` to avoid hogging "
+          "memory. Traceback: \n",
+          traceback_str.empty() ? "not available" : traceback_str);
+      if (guard_level == jax::GarbageCollectionGuardLevel::kFatal) {
+        Py_FatalError(error_msg.c_str());
+      } else {
+        PyErr_SetString(PyExc_RuntimeError, error_msg.c_str());
+        PyErr_Print();
+        PyErr_Clear();
+      }
+      break;
+    }
+  }
 #if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
@@ -348,6 +379,7 @@ struct ShapedArrayCacheKey {
 nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
   using CacheT =
       LRUCache<ShapedArrayCacheKey, std::shared_ptr<std::optional<nb::object>>>;
+  static nb::ft_mutex mu;
   static auto* lru_list = new CacheT::LRUList(4096);
   static auto* cache = new CacheT(lru_list);
 
@@ -364,6 +396,7 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
     return nb::none();
   }
 
+  nb::ft_lock_guard lock(mu);
   auto value =
       cache->GetOrCreateIfAbsent(key, [](const ShapedArrayCacheKey& key) {
         return std::make_shared<std::optional<nb::object>>();
@@ -391,18 +424,21 @@ struct BatchedCopyToDeviceWithShardingKey {
   ifrt::MemoryKind src_memory_kind;
   tsl::RCReference<ifrt::DeviceList> dst_devices;
   ifrt::MemoryKind dst_memory_kind;
+  ifrt::ArrayCopySemantics array_copy_semantics;
 
   bool operator==(const BatchedCopyToDeviceWithShardingKey& other) const {
     return *src_devices == *other.src_devices &&
            src_memory_kind == other.src_memory_kind &&
            *dst_devices == *other.dst_devices &&
-           dst_memory_kind == other.dst_memory_kind;
+           dst_memory_kind == other.dst_memory_kind &&
+           array_copy_semantics == other.array_copy_semantics;
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const BatchedCopyToDeviceWithShardingKey& key) {
     return H::combine(std::move(h), key.src_devices, key.src_memory_kind,
-                      key.dst_devices, key.dst_memory_kind);
+                      key.dst_devices, key.dst_memory_kind,
+                      key.array_copy_semantics);
   }
 };
 
@@ -423,8 +459,15 @@ PyArray_Storage::PyArray_Storage(
       traceback(std::move(traceback)),
       ifrt_array(std::move(ifrt_array)),
       result_status(std::move(result_status)) {
-  next = this->py_client->arrays_;
-  this->py_client->arrays_ = this;
+  static_assert(PyClient::kNumArraysShards <
+                std::numeric_limits<uint8_t>::max());
+  thread_id_bucket = std::hash<std::thread::id>()(std::this_thread::get_id()) %
+                     PyClient::kNumArraysShards;
+
+  PyClient::ArraysShard& shard = this->py_client->arrays_[thread_id_bucket];
+  nanobind::ft_lock_guard lock(shard.mutex);
+  next = shard.arrays;
+  shard.arrays = this;
   if (next) {
     next->prev = this;
   }
@@ -469,7 +512,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto dtype = IfrtDtypeToDtypeWithTokenCanonicalization(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   nb::object py_memory_kind =
-      (jax::GetEnableMemories() && memory_kind.memory_kind().has_value())
+      (memory_kind.memory_kind().has_value())
           ? nb::object(nb::str(memory_kind.memory_kind()->data(),
                                memory_kind.memory_kind()->size()))
           : nb::none();
@@ -613,7 +656,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
 
   if (!nb::isinstance<nb::list>(obj)) {
     return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                           nb::cast<std::string_view>(nb::str(obj.type())));
+                           nb::cast<absl::string_view>(nb::str(obj.type())));
   }
 
   nb::list list(obj);
@@ -644,7 +687,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
       shapes.push_back(ifrt_arrays.back()->shape());
     } else {
       return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                             nb::cast<std::string_view>(nb::str(obj.type())));
+                             nb::cast<absl::string_view>(nb::str(obj.type())));
     }
   }
   const ifrt::MemoryKind first_memory_kind =
@@ -754,7 +797,7 @@ absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
-absl::StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
+absl::StatusOr<PyArray> PyArray::AssertUnsharded(absl::string_view api) {
   if (ifrt_array() == nullptr) {
     return InvalidArgument("%s( called on deleted or donated buffer", api);
   }
@@ -1023,14 +1066,18 @@ nb::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
-  if (py_client && py_client->arrays_ == this) {
-    py_client->arrays_ = next;
-  }
-  if (prev) {
-    prev->next = next;
-  }
-  if (next) {
-    next->prev = prev;
+  if (py_client) {
+    PyClient::ArraysShard& shard = py_client->arrays_[thread_id_bucket];
+    nanobind::ft_lock_guard lock(shard.mutex);
+    if (shard.arrays == this) {
+      shard.arrays = next;
+    }
+    if (prev) {
+      prev->next = next;
+    }
+    if (next) {
+      next->prev = prev;
+    }
   }
   // Release GIL and then explicitly destroy `ifrt_array` to prevent deadlock on
   // CPU backend caused by interactions between argument donations and host
@@ -1042,7 +1089,8 @@ PyArray::Storage::~PyArray_Storage() {
 absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     absl::Span<const PyArray> py_arrays,
     absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
-    absl::Span<const nb::object> dst_shardings) {
+    absl::Span<const nb::object> dst_shardings,
+    absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics) {
   if (py_arrays.empty()) {
     return std::vector<PyArray>();
   }
@@ -1064,6 +1112,7 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
   for (int i = 0; i < py_arrays.size(); ++i) {
     const auto& py_array = py_arrays[i];
     const auto& dst_sharding = dst_shardings[i];
+    const auto& array_cs = array_copy_semantics[i];
 
     auto* ifrt_array_ptr = py_array.ifrt_array();
     const tsl::RCReference<ifrt::DeviceList>& src_devices =
@@ -1077,24 +1126,25 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
         CreateIfRtMemoryKindFromSharding(dst_sharding),
         dst_devices->devices().front());
 
-    if (*src_devices == *dst_devices && src_memory_kind == dst_memory_kind) {
+    if (*src_devices == *dst_devices && src_memory_kind == dst_memory_kind &&
+        array_cs == ifrt::ArrayCopySemantics::kReuseInput) {
       results[i] = py_arrays[i];
       continue;
     }
 
     auto transfer_guard_formatter = [&py_array, &dst_sharding] {
       return absl::StrCat(
-          "aval=", nb::cast<std::string_view>(nb::repr(py_array.aval())),
+          "aval=", nb::cast<absl::string_view>(nb::repr(py_array.aval())),
           ", sharding=",
-          nb::cast<std::string_view>(nb::repr(py_array.sharding())),
+          nb::cast<absl::string_view>(nb::repr(py_array.sharding())),
           ", dst_sharding=",
-          nb::cast<std::string_view>(nb::repr(dst_sharding)));
+          nb::cast<absl::string_view>(nb::repr(dst_sharding)));
     };
     TF_RETURN_IF_ERROR(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
 
     Batch& batch = batches[BatchedCopyToDeviceWithShardingKey{
-        src_devices, src_memory_kind, dst_devices, dst_memory_kind}];
+        src_devices, src_memory_kind, dst_devices, dst_memory_kind, array_cs}];
     batch.indexes.push_back(i);
     batch.ifrt_arrays.push_back(tsl::FormRef(ifrt_array_ptr));
   }
@@ -1111,8 +1161,7 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
               absl::MakeSpan(batch.ifrt_arrays),
               // All arrays in `batch` have the same `key.dst_devices` and
               // `key.dst_memory_kind` due to the grouping above.
-              key.dst_devices, key.dst_memory_kind,
-              ifrt::ArrayCopySemantics::kReuseInput));
+              key.dst_devices, key.dst_memory_kind, key.array_copy_semantics));
       for (int i = 0; i < batch.indexes.size(); ++i) {
         ifrt_arrays.push_back(
             std::make_pair(batch.indexes[i], std::move(copied[i])));
@@ -1153,8 +1202,8 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   }
   auto transfer_guard_formatter = [&aval, &sharding] {
     return absl::StrCat(
-        "aval=", nb::cast<std::string_view>(nb::repr(aval)),
-        ", dst_sharding=", nb::cast<std::string_view>(nb::repr(sharding)));
+        "aval=", nb::cast<absl::string_view>(nb::repr(aval)),
+        ", dst_sharding=", nb::cast<absl::string_view>(nb::repr(sharding)));
   };
 
   GlobalPyRefManager()->CollectGarbage();
@@ -1263,13 +1312,16 @@ absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
   return AwaitBuffersReady(absl::MakeConstSpan(ifrt_arrays));
 }
 
-std::vector<nb::object> PyClient::LiveArrays() const {
-  std::vector<nb::object> result;
-  for (PyArray::Storage* array = arrays_; array; array = array->next) {
-    bool all_deleted =
-        (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
-    if (!all_deleted) {
-      result.push_back(nb::borrow(array->AsHandle()));
+std::vector<PyArray> PyClient::LiveArrays() const {
+  std::vector<PyArray> result;
+  for (auto& shard : arrays_) {
+    nb::ft_lock_guard lock(shard.mutex);
+    for (PyArray::Storage* array = shard.arrays; array; array = array->next) {
+      bool all_deleted =
+          (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
+      if (!all_deleted) {
+        result.push_back(nb::borrow<PyArray>(array->AsHandle()));
+      }
     }
   }
   return result;
@@ -1668,7 +1720,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
           throw nb::type_error(
               absl::StrCat(
                   "Unsupported type for elements in `arrays`: ",
-                  nb::cast<std::string_view>(nb::str(arrays[0].type())))
+                  nb::cast<absl::string_view>(nb::str(arrays[0].type())))
                   .c_str());
         }
       },
@@ -1738,7 +1790,8 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
   m.attr("batched_copy_array_to_devices_with_sharding") = nb::cpp_function(
       [](absl::Span<const PyArray> arrays,
          absl::Span<const std::vector<const PyDevice*>> dst_device_lists,
-         absl::Span<const nb::object> shardings) {
+         absl::Span<const nb::object> shardings,
+         absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics) {
         std::vector<tsl::RCReference<ifrt::DeviceList>> device_lists;
         device_lists.reserve(dst_device_lists.size());
         for (const auto& dst_devices : dst_device_lists) {
@@ -1751,7 +1804,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
               ifrt::BasicDeviceList::Create(std::move(devices)));
         }
         return xla::ValueOrThrow(PyArray::BatchedCopyToDeviceWithSharding(
-            arrays, device_lists, shardings));
+            arrays, device_lists, shardings, array_copy_semantics));
       });
   m.attr("array_result_handler") = nb::cpp_function(
       [](nb::object aval, nb::object sharding, bool committed,

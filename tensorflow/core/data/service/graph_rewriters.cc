@@ -182,7 +182,7 @@ AutoShardRewriter::GetRewriteConfig() const {
   return config;
 }
 
-Status WorkerIndexResolver::ValidateWorker(
+absl::Status WorkerIndexResolver::ValidateWorker(
     absl::string_view worker_address) const {
   if (worker_addresses_.empty()) {
     return absl::OkStatus();

@@ -15,36 +15,32 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 
-#include <cstddef>
-#include <vector>
-
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
 
 TEST(CopyThunkTest, CopyEmptyShape) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
-  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+  auto src = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto dst = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  BufferAllocations allocations(buffers);
+  BufferAllocations allocations = CreateBufferAllocations(src, dst);
+  auto [src_alloc, dst_alloc] = CreateBufferAllocation(src, dst);
 
-  BufferAllocation src_alloc(/*index=*/0, /*size=*/100, /*color=*/0);
-  BufferAllocation dst_alloc(/*index=*/1, /*size=*/100, /*color=*/0);
-
-  BufferAllocation::Slice src_slice(&src_alloc, 0, 0);
-  BufferAllocation::Slice dst_slice(&dst_alloc, 0, 0);
+  BufferAllocation::Slice src_slice =
+      CreateBufferAllocationSlice(src_alloc, 0, 0);
+  BufferAllocation::Slice dst_slice =
+      CreateBufferAllocationSlice(src_alloc, 0, 0);
 
   Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
 
@@ -60,27 +56,18 @@ TEST(CopyThunkTest, CopyEmptyShape) {
 }
 
 TEST(CopyThunkTest, CopySameShape) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> src = {1.0, 2.0, 3.0, 4.0};
-  std::vector<float> dst(4, 0.0);
+  auto src = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto dst = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  size_t size_in_bytes = src.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(src.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(dst.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(src, dst);
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation src_alloc(/*index=*/0, size_in_bytes, /*color=*/0);
-  BufferAllocation dst_alloc(/*index=*/1, size_in_bytes, /*color=*/0);
-
-  BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
-
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto [src_alloc, dst_alloc] = CreateBufferAllocation(src, dst);
+  auto [src_slice, dst_slice] =
+      CreateBufferAllocationSlice(src_alloc, dst_alloc);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      CopyThunk::Create({"copy"}, src_slice, shape, dst_slice, shape));
+      auto thunk, CopyThunk::Create({"copy"}, src_slice, src.shape(), dst_slice,
+                                    dst.shape()));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
@@ -92,29 +79,21 @@ TEST(CopyThunkTest, CopySameShape) {
 }
 
 TEST(CopyThunkTest, CopyTransposed) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> src = {1.0, 2.0, 3.0, 4.0};
-  std::vector<float> dst(4, 0.0);
+  auto src = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto dst = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  size_t size_in_bytes = src.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(src.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(dst.data(), size_in_bytes));
+  BufferAllocations allocations = CreateBufferAllocations(src, dst);
 
-  BufferAllocations allocations(buffers);
+  auto [src_alloc, dst_alloc] = CreateBufferAllocation(src, dst);
+  auto [src_slice, dst_slice] =
+      CreateBufferAllocationSlice(src_alloc, dst_alloc);
 
-  BufferAllocation src_alloc(/*index=*/0, size_in_bytes, /*color=*/0);
-  BufferAllocation dst_alloc(/*index=*/1, size_in_bytes, /*color=*/0);
-
-  BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
-
-  Shape src_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  Shape dst_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape transposed_shape = src.shape();
+  *transposed_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      CopyThunk::Create({"copy"}, src_slice, src_shape, dst_slice, dst_shape));
+      auto thunk, CopyThunk::Create({"copy"}, src_slice, transposed_shape,
+                                    dst_slice, dst.shape()));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
@@ -122,30 +101,29 @@ TEST(CopyThunkTest, CopyTransposed) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  std::vector<float> expected = {1.0, 3.0, 2.0, 4.0};
-  EXPECT_EQ(expected, dst);
+  EXPECT_EQ(dst, LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}));
 }
 
 TEST(CopyThunkTest, CopyTransposedEmptyShape) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
-  buffers.emplace_back(se::DeviceMemoryBase(nullptr, 0));
+  auto src = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto dst = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
 
-  BufferAllocations allocations(buffers);
+  BufferAllocations allocations = CreateBufferAllocations(src, dst);
+  auto [src_alloc, dst_alloc] = CreateBufferAllocation(src, dst);
 
-  BufferAllocation src_alloc(/*index=*/0, /*size=*/100, /*color=*/0);
-  BufferAllocation dst_alloc(/*index=*/1, /*size=*/100, /*color=*/0);
+  BufferAllocation::Slice src_slice =
+      CreateBufferAllocationSlice(src_alloc, 0, 0);
+  BufferAllocation::Slice dst_slice =
+      CreateBufferAllocationSlice(src_alloc, 0, 0);
 
-  BufferAllocation::Slice src_slice(&src_alloc, 0, 0);
-  BufferAllocation::Slice dst_slice(&dst_alloc, 0, 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
 
-  Shape src_shape = ShapeUtil::MakeShape(F32, {0, 2});
-  *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  Shape dst_shape = ShapeUtil::MakeShape(F32, {0, 2});
+  Shape transposed_shape = shape;
+  *transposed_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      CopyThunk::Create({"copy"}, src_slice, src_shape, dst_slice, dst_shape));
+      auto thunk, CopyThunk::Create({"copy"}, src_slice, transposed_shape,
+                                    dst_slice, shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 

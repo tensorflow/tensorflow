@@ -31,51 +31,51 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
-Status AddModel(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status AddModel(AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs) {
   return ops::AddV2(ctx, inputs[0], inputs[1], &outputs[0], "Add");
 }
 
-Status ExpModel(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status ExpModel(AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Exp(ctx, inputs[0], &outputs[0], "Exp");
 }
 
-Status SqrtModel(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> inputs,
-                 absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status SqrtModel(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Sqrt(ctx, inputs[0], &outputs[0], "Sqrt");
 }
 
-Status NegModel(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status NegModel(AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Neg(ctx, inputs[0], &outputs[0], "Neg");
 }
 
-Status SubModel(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status SubModel(AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Sub(ctx, inputs[0], inputs[1], &outputs[0], "Sub");
 }
 
-Status MulModel(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status MulModel(AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Mul(ctx, inputs[0], inputs[1], &outputs[0], "Mul");
 }
 
-Status Log1pModel(AbstractContext* ctx,
-                  absl::Span<AbstractTensorHandle* const> inputs,
-                  absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status Log1pModel(AbstractContext* ctx,
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Log1p(ctx, inputs[0], &outputs[0], "Log1p");
 }
 
-Status DivNoNanModel(AbstractContext* ctx,
-                     absl::Span<AbstractTensorHandle* const> inputs,
-                     absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status DivNoNanModel(AbstractContext* ctx,
+                           absl::Span<AbstractTensorHandle* const> inputs,
+                           absl::Span<AbstractTensorHandle*> outputs) {
   return ops::DivNoNan(ctx, inputs[0], inputs[1], &outputs[0], "DivNoNan");
 }
 
@@ -104,7 +104,7 @@ class CppGradients
 
   AbstractContextPtr immediate_execution_ctx_;
   GradientRegistry registry_;
-  Status status_;
+  absl::Status status_;
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }
@@ -195,7 +195,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
           [transpose_a, transpose_b](
               AbstractContext* ctx,
               absl::Span<AbstractTensorHandle* const> inputs,
-              absl::Span<AbstractTensorHandle*> outputs) -> Status {
+              absl::Span<AbstractTensorHandle*> outputs) -> absl::Status {
         return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
                            transpose_b, "MatMul");
       };
@@ -250,7 +250,7 @@ TEST_P(CppGradients, TestMatMulGradManual) {
         [transpose_a, transpose_b](
             AbstractContext* ctx,
             absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs) -> Status {
+            absl::Span<AbstractTensorHandle*> outputs) -> absl::Status {
       return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
                          transpose_b, "MatMul");
     };

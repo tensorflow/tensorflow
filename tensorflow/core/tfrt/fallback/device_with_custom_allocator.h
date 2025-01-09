@@ -70,9 +70,9 @@ class DeviceWithCustomAllocator : public tensorflow::Device {
     return device_->has_eigen_cpu_device();
   }
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override {
     return device_->MakeTensorFromProto(tensor_proto, alloc_attrs, tensor);
   }
 
@@ -83,7 +83,7 @@ class DeviceWithCustomAllocator : public tensorflow::Device {
                                     std::move(done));
   }
 
-  Status Sync() override { return device_->Sync(); }
+  absl::Status Sync() override { return device_->Sync(); }
 
   // Returns the resource manager associated w/ this device.
   ResourceMgr* resource_manager() override {

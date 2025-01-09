@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -186,6 +187,18 @@ mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
       arrayref(dnums.rhs_batch_dimensions()),
       arrayref(dnums.lhs_contracting_dimensions()),
       arrayref(dnums.rhs_contracting_dimensions()));
+}
+
+mlir::mhlo::RaggedDotDimensionNumbersAttr ConvertRaggedDotDimensionNumbers(
+    const RaggedDotDimensionNumbers& dnums, mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  return mlir::mhlo::RaggedDotDimensionNumbersAttr::get(
+      builder->getContext(),
+      ConvertDotDimensionNumbers(dnums.dot_dimension_numbers(), builder),
+      arrayref(dnums.lhs_ragged_dimensions()),
+      arrayref(dnums.rhs_group_dimensions()));
 }
 
 mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(

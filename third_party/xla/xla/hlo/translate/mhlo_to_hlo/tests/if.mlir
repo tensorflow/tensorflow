@@ -279,7 +279,7 @@ func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> te
 // CHECK-DAG:   %[[CST2:.+]] = f32[] constant(10)
 // CHECK-DAG: %[[TUPLE2:.+]] = () tuple()
 // CHECK:  %[[COND2:.+]] = f32[] conditional(pred[] %{{.+}}, f32[] %[[CST2]], () %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
-// CHECK:  ROOT %tuple.18 = (f32[], f32[]) tuple
+// CHECK:  ROOT %tuple.{{[0-9]+}} = (f32[], f32[]) tuple
 // CHECK-NEXT: }
 
 // CHECK: [[R3:%.+]] ([[A3_TUPLE:.+]]: (f32[], f32[])) -> (f32[], f32[]) {

@@ -128,6 +128,7 @@ filegroup(
         ":tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/core/api:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/schema:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core:macros.h",
         "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
@@ -153,6 +154,8 @@ filegroup(
         ":minimal_logging_android.cc",
         ":mutable_op_resolver.cc",
         ":mutable_op_resolver.h",
+        ":mutable_op_resolver_utils.cc",
+        ":mutable_op_resolver_utils.h",
         ":op_resolver.h",
         ":portable_type_to_tflitetype.h",
         ":stderr_reporter.cc",
@@ -199,7 +202,9 @@ STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
 
 exports_files(
     [hdr for hdr in FRAMEWORK_LIB_HDRS if hdr[0] != "/"],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite/core/shims:__subpackages__",
+    ] + tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist(),
 )
 
 cc_library(
@@ -276,6 +281,9 @@ cc_test(
         "tflite_not_portable_android",
     ],
     deps = [
+        ":cc_api_stable",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -305,6 +313,8 @@ cc_test(
         ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1226,6 +1236,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )

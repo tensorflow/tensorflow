@@ -13,54 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"
-#include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"  // IWYU pragma: keep, exhaustive_binary_test_f32_instantiation.inc
+#include "xla/tests/exhaustive/exhaustive_op_test_utils.h"  // IWYU pragma: keep, exhaustive_binary_test_f32_instantiation.inc
+#include "tsl/platform/test.h"  // IWYU pragma: keep, exhaustive_binary_test_f32_instantiation.inc
 
 namespace xla {
 namespace exhaustive_op_test {
 namespace {
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveBF16BinaryTest);
-
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF16BinaryTest);
-
-INSTANTIATE_TEST_SUITE_P(
-    SpecialValues, ExhaustiveF32BinaryTest,
-    ::testing::Combine(
-        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>()),
-        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>())));
-
-INSTANTIATE_TEST_SUITE_P(
-    SpecialAndNormalValues, ExhaustiveF32BinaryTest,
-    ::testing::Combine(
-        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>()),
-        ::testing::Values(GetNormals<float>(2000))));
-
-INSTANTIATE_TEST_SUITE_P(
-    NormalAndSpecialValues, ExhaustiveF32BinaryTest,
-    ::testing::Combine(
-        ::testing::Values(GetNormals<float>(2000)),
-        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>())));
-
-INSTANTIATE_TEST_SUITE_P(
-    NormalAndNormalValues, ExhaustiveF32BinaryTest,
-    ::testing::Combine(::testing::Values(GetNormals<float>(2000)),
-                       ::testing::Values(GetNormals<float>(2000))));
-
-// Tests a total of 40000 ^ 2 inputs, with 2000 ^ 2 inputs in each sub-test.
-// Comparing with the unary tests, the binary tests use a smaller set of inputs
-// for each sub-test to avoid timeout because the implementation of ExpectNear
-// more than 2x slower for binary test.
-INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnitudeNormalValues, ExhaustiveF32BinaryTest,
-    ::testing::Combine(
-        ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
-                                                                         2000)),
-        ::testing::ValuesIn(
-            GetFpValuesForMagnitudeExtremeNormals<float>(40000, 2000))));
-
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF64BinaryTest);
+#include "xla/tests/exhaustive/exhaustive_binary_test_f32_instantiation.inc"
 
 }  // namespace
 }  // namespace exhaustive_op_test

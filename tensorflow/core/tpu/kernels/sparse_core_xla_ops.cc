@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -211,7 +211,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     // Get and save quantization config params, if they were configured.
     // num_buckets == 0 indicate no quantization configs were provided.
     int check_num_buckets;
-    Status status =
+    absl::Status status =
         ctx->GetAttr("quantization_config_num_buckets", &check_num_buckets);
     if (status.ok() && check_num_buckets > 0) {
       quantization_config_num_buckets_ = check_num_buckets;

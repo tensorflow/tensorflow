@@ -600,6 +600,12 @@ func.func @main() {
   // CHECK: f8e5m2fnuz[4] constant({1, 2, 3, 4})
   %cst_15 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2FNUZ>
 
+  // CHECK: f8e4m3[4] constant({1, 2, 3, 4})
+  %cst_16 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3>
+
+  // CHECK: f8e3m4[4] constant({1, 2, 3, 4})
+  %cst_17 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E3M4>
+
   func.return
 }
 
@@ -729,7 +735,11 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %5 = "mhlo.convert"(%4) : (tensor<2xf8E4M3FNUZ>) -> tensor<2xf32>
   %6 = "mhlo.convert"(%5) : (tensor<2xf32>) -> tensor<2xf8E5M2FNUZ>
   %7 = "mhlo.convert"(%6) : (tensor<2xf8E5M2FNUZ>) -> tensor<2xf32>
-  func.return %7 : tensor<2xf32>
+  %8 = "mhlo.convert"(%7) : (tensor<2xf32>) -> tensor<2xf8E4M3>
+  %9 = "mhlo.convert"(%8) : (tensor<2xf8E4M3>) -> tensor<2xf32>
+  %10 = "mhlo.convert"(%9) : (tensor<2xf32>) -> tensor<2xf8E3M4>
+  %11 = "mhlo.convert"(%10) : (tensor<2xf8E3M4>) -> tensor<2xf32>
+  func.return %11 : tensor<2xf32>
 }
 
 // CHECK:  ENTRY
@@ -741,7 +751,11 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:  %[[E4M3FNUZ_VAL:.*]] = f8e4m3fnuz[2] convert(f32[2] %[[F32_VAL2]])
 // CHECK:  %[[F32_VAL3:.*]] = f32[2] convert(f8e4m3fnuz[2] %[[E4M3FNUZ_VAL]])
 // CHECK:  %[[E5M2FNUZ_VAL:.*]] = f8e5m2fnuz[2] convert(f32[2] %[[F32_VAL3]])
-// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e5m2fnuz[2] %[[E5M2FNUZ_VAL]])
+// CHECK:  %[[F32_VAL4:.*]] = f32[2] convert(f8e5m2fnuz[2] %[[E5M2FNUZ_VAL]])
+// CHECK:  %[[E4M3_VAL:.*]] = f8e4m3[2] convert(f32[2] %[[F32_VAL4]])
+// CHECK:  %[[F32_VAL5:.*]] = f32[2] convert(f8e4m3[2] %[[E4M3_VAL]])
+// CHECK:  %[[E3M4_VAL:.*]] = f8e3m4[2] convert(f32[2] %[[F32_VAL5]])
+// CHECK:  ROOT %[[F32_VAL6:.*]] = f32[2] convert(f8e3m4[2] %[[E3M4_VAL]])
 
 // -----
 
@@ -800,6 +814,26 @@ func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 // CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
 // CHECK-SAME:  custom_call_target="SetBound"
 // CHECK-SAME:  literal=s32[] 1
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<6xf32>, %arg1: tensor<6xf32>, %arg2: tensor<3xi32>, %arg3: tensor<3xi32>, %arg4: tensor<3xi32>, %arg5: tensor<3xi32>) -> (tensor<6xf32>) {
+  %0 = mhlo.custom_call @ragged_all_to_all(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) {api_version = 4 : i32, backend_config = {replica_groups = dense<[[0, 1, 2]]> : tensor<1x3xi64>}} : (tensor<6xf32>, tensor<6xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<6xf32>
+  return %0 : tensor<6xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: [[ARG_0:%.*]] = f32[6] parameter(0)
+// CHECK: [[ARG_1:%.*]] = f32[6] parameter(1)
+// CHECK: [[ARG_2:%.*]] = s32[3] parameter(2)
+// CHECK: [[ARG_3:%.*]] = s32[3] parameter(3)
+// CHECK: [[ARG_4:%.*]] = s32[3] parameter(4)
+// CHECK: [[ARG_5:%.*]] = s32[3] parameter(5)
+// CHECK: ROOT
+// CHECK-SAME: f32[6] ragged-all-to-all(f32[6] [[ARG_0]], f32[6] [[ARG_1]], s32[3] [[ARG_2]], s32[3] [[ARG_3]], s32[3] [[ARG_4]], /*index=5*/s32[3] [[ARG_5]])
+// CHECK-SAME{LITERAL}: replica_groups={{0,1,2}}
+
 // -----
 
 // CHECK:  HloModule
@@ -2442,7 +2476,7 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[], {{.*}}: s32[], {{.*}}: s32[]) -> pred[] {
-// CHECK:   ROOT %compare.8 = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
+// CHECK:   ROOT %compare.{{[0-9+]}} = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
 
 // CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(f32[16,16] %Arg_0.1, s32[16,16] %Arg_1.2), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0

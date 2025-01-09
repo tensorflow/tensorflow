@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -32,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
-
-using stream_executor::gpu::ScopedActivateContext;
 
 namespace tensorflow {
 
@@ -203,7 +200,8 @@ struct SparseSliceFunctor<GPUDevice, T> {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      std::optional<ScopedActivateContext> scoped_activation{stream->parent()};
+      std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+          stream->parent()->Activate();
       int64_t output_nnz = *output_nnz_host.data();
 
       Tensor* output_indices = nullptr;
@@ -220,7 +218,7 @@ struct SparseSliceFunctor<GPUDevice, T> {
       T* output_values_ptr = output_values->vec<T>().data();
 
       if (output_nnz == 0) {
-        // Release ScopedActivateContext to prevent deadlock when done
+        // Release ActivateContext to prevent deadlock when done
         // inlines another Op kernel, which may assume the original cuda
         // Context.
         scoped_activation.reset();
@@ -241,7 +239,7 @@ struct SparseSliceFunctor<GPUDevice, T> {
                           selected_nonzeros_ptr, output_indices_ptr,
                           output_values_ptr),
           done);
-      // Release ScopedActivateContext to prevent deadlock when done
+      // Release ActivateContext to prevent deadlock when done
       // inlines another Op kernel, which may assume the original cuda
       // Context.
       scoped_activation.reset();

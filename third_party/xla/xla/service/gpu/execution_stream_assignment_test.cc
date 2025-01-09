@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 
 #include <memory>
-#include <string_view>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -107,21 +106,21 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   // to `2`.
   ExpectExecutionStreamForSyncInstructions(
       assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
-  for (std::string_view instruction : {"start1", "update1", "done1"}) {
+  for (absl::string_view instruction : {"start1", "update1", "done1"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
-  for (std::string_view instruction : {"start2", "update2", "done2"}) {
+  for (absl::string_view instruction : {"start2", "update2", "done2"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(2)}));
   }
-  for (std::string_view instruction : {"start3", "update3", "done3"}) {
+  for (absl::string_view instruction : {"start3", "update3", "done3"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 IsOkAndHolds(AsyncExecutionStreamIds{
@@ -158,7 +157,7 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
 
   ExecutionStreamAssignment assignment(module.get());
 
-  for (std::string_view instruction : {"copy-start"}) {
+  for (absl::string_view instruction : {"copy-start"}) {
     EXPECT_THAT(
         assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
             FindInstruction(module.get(), instruction))),
@@ -200,7 +199,7 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
 
   // Computations only reachable through fusion nodes should have no assigned
   // `ExecutionStreamId`.
-  for (std::string_view computation : {"reduce", "fusion"}) {
+  for (absl::string_view computation : {"reduce", "fusion"}) {
     for (const HloInstruction* instruction :
          FindComputation(module.get(), computation)->instructions()) {
       EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),

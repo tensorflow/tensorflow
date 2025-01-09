@@ -28,7 +28,7 @@ namespace graph_transforms {
 // This is a thin wrapper with the standard TransformFunc interface to the
 // underlying utility function. The only difference is that we don't use the
 // input or output name arguments.
-Status SortByExecutionOrderWithUnusedContext(
+absl::Status SortByExecutionOrderWithUnusedContext(
     const GraphDef& input_graph_def, const TransformFuncContext& unused_context,
     GraphDef* output_graph_def) {
   return SortByExecutionOrder(input_graph_def, output_graph_def);

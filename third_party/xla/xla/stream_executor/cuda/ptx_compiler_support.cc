@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 
-#include "absl/strings/match.h"
-
 namespace stream_executor {
-bool IsLibNvPtxCompilerSupported() { return LIBNVPTXCOMPILER_SUPPORT; }
-
-bool IsPtxRegisterAllocationError(absl::string_view str) {
-  return absl::StrContains(str, "ptxas fatal") &&
-         (absl::StrContains(str, "Register allocation failed") ||
-          absl::StrContains(str, "Insufficient registers"));
+bool IsLibNvPtxCompilerSupported() {
+  // Libnvptxcompiler as a precompiled library is not compatible with MSan, so
+  // we disable its support so that we at least can run some larger tests under
+  // MSAN. This is not ideal because it means these tests will take different
+  // code paths but the alternative would be not running them at all.
+#ifdef MEMORY_SANITIZER
+  return false;
+#else
+  return LIBNVPTXCOMPILER_SUPPORT;
+#endif
 }
 }  // namespace stream_executor

@@ -25,8 +25,7 @@ limitations under the License.
 
 #include "rocm/include/rocblas/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/platform.h"
 
@@ -44,7 +43,7 @@ namespace wrap {
   } __name;
 
 #else
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
 #define ROCBLAS_API_WRAPPER(__name)                                      \
   static struct DynLoadShim__##__name {                                  \
@@ -274,23 +273,13 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_destroy_handle)                        \
   __macro(rocblas_get_stream)                            \
   __macro(rocblas_set_stream)                            \
-  __macro(rocblas_set_atomics_mode)
+  __macro(rocblas_set_atomics_mode)                      \
+  __macro(rocblas_get_version_string_size)               \
+  __macro(rocblas_get_version_string)
 
 // clang-format on
 
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
-
-#if TF_ROCM_VERSION >= 60200
-
-// clang-format off
-#define FOREACH_ROCBLAS_API_62(__macro)            \
-  __macro(rocblas_get_version_string_size)         \
-  __macro(rocblas_get_version_string)
-// clang-format on
-
-FOREACH_ROCBLAS_API_62(ROCBLAS_API_WRAPPER)
-
-#endif  // TF_ROCM_VERSION >= 60200
 
 }  // namespace wrap
 }  // namespace stream_executor

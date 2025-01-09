@@ -42,6 +42,7 @@ RUN C:\TEMP\vs_community.exe \
         --add Microsoft.VisualStudio.Workload.NativeDesktop \
         --add Microsoft.VisualStudio.Component.VC.14.39.17.9.x86.64 \
         --add Microsoft.VisualStudio.Component.Windows11SDK.22621 \
+        --add Microsoft.VisualStudio.Component.VC.ATL \
  || IF "%ERRORLEVEL%"=="3010" EXIT 0
 
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", \
@@ -151,5 +152,19 @@ RUN (New-Object Net.WebClient).DownloadFile( \
          'C:\tools\bazel\bazel.exe'); \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\bazel'; \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
+
+ENV CLOUDSDK_CORE_DISABLE_PROMPTS 1
+RUN (New-Object Net.WebClient).DownloadFile('https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.zip', 'C:\Temp\google-cloud-sdk.zip'); \
+    Expand-Archive -Path 'C:\Temp\google-cloud-sdk.zip' -DestinationPath $env:ProgramFiles -Verbose:$false
+RUN & \"$env:ProgramFiles\\google-cloud-sdk\\install.bat\" --path-update false
+RUN $env:Path += \";$env:ProgramFiles\\google-cloud-sdk\\bin\"; \
+    [Environment]::SetEnvironmentVariable('Path', $env:Path, [EnvironmentVariableTarget]::Machine);
+# Re-enable prompts for interactive use.
+ENV CLOUDSDK_CORE_DISABLE_PROMPTS=""
+
+# MSYS attempts to use non-cmd versions, which aren't meant for Windows
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gcloud=gcloud.cmd'
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gsutil=gsutil.cmd'
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias bq=bq.cmd'
 
 SHELL ["cmd.exe", "/s", "/c"]

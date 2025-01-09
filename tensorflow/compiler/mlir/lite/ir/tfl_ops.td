@@ -23,7 +23,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -1135,7 +1135,7 @@ in the batch dimensions and broadcasting.
       `inputs[0]`: required: input LHS
       `inputs[1]`: required: input RHS
       `adjoint_lhs`: optional: Transpose LHS (default false)
-      `adjoint_lhs`: optional: Transpose LHS (default false)
+      `adjoint_rhs`: optional: Transpose RHS (default false)
   }];
 
   let arguments = (ins
@@ -3284,7 +3284,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let description = [{
     Computes element-wise softmax activations with the following formula
 
-      exp(input) / tf.reduce_sum(exp(input * beta), dim)
+      exp(input * beta) / tf.reduce_sum(exp(input * beta), dim)
   }];
 
   let arguments = (
@@ -3981,7 +3981,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      SameOperandsAndResultsScale,
@@ -4090,13 +4090,13 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
-    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
+    TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$operand,
+    TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$update,
     TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (
-    outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
+    outs TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$output);
 
   let hasFolder = 1;
 }

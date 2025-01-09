@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>

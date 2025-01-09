@@ -32,23 +32,28 @@ namespace spmd {
 struct AutoShardingSolverOutput {
   std::vector<NodeStrategyIdx> s_val;
   double cost = -1.0;
+  bool is_optimal = true;
   absl::flat_hash_set<LivenessIdx> peak_times;
 
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-struct AutoShardingSolverResult {
- public:
-  AutoShardingSolverResult(absl::StatusOr<AutoShardingSolverOutput> status,
-                           bool skip_auto_sharding)
-      : status(status), skip_auto_sharding(skip_auto_sharding) {}
-  bool operator==(const AutoShardingSolverResult& other) const;
-  absl::StatusOr<AutoShardingSolverOutput> status;
-  bool skip_auto_sharding;
-};
-
-AutoShardingSolverResult CallORToolsSolver(
+// Scales down values to reduce the range of costs & coefficients in the solver.
+AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request);
+
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
+    const AutoShardingSolverRequest& request);
+
+// TODO(fahrbach): Create AutoShardingHeuristicOptions proto with a oneof field.
+// Runs a heuristic specified by one of the following values of `algorithm`:
+// - "trivial"
+// - "random"
+// - "greedy-node-cost"
+// - "greedy-node-memory"
+// - "brkga"
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const AutoShardingSolverRequest& request, const std::string& algorithm);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
@@ -86,13 +91,25 @@ struct AutoShardingEvaluation {
   // The (raw) total makespan, i.e., not scaled by the makespan coefficient.
   double total_makespan = 0.0;
 
+  // The maximum total memory over all time steps.
+  double max_total_memory = 0.0;
+
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverResult& result);
+                                const AutoShardingSolverOutput& result);
+
+// Computes the objective value of the sharding strategy. If the objective value
+// is infinite or the sharding is infeasible (e.g., violates the peak-memory
+// constraint), then a negated `AutoShardingViolationCode` value is returned.
+// This function is used instead of `Evaluate` for faster iteration loops in the
+// heuristic solver library.
+double ComputeShardingStrategyCost(
+    const AutoShardingSolverRequest& request,
+    const std::vector<NodeStrategyIdx>& node_strategies);
 
 // Creates and returns a variable for makespan.
 operations_research::MPVariable* CreateMakespanVar(
@@ -101,12 +118,8 @@ operations_research::MPVariable* CreateMakespanVar(
     operations_research::MPSolver& solver);
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverResult& result,
+                        const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation);
-
-// Scale down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).
@@ -137,6 +150,10 @@ class StrategyShaver {
 // Check fail if `request` is invalid (e.g., because of negative node costs).
 // Note: This does not include checks for valid variable aliasing yet.
 absl::Status ValidateRequest(const AutoShardingSolverRequest& request);
+
+void SolverRequestCallback(const AutoShardingSolverRequest& request);
+
+AutoShardingSolverOutput SolveBrkga(const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

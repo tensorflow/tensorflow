@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
                        "other than flags. See --help.\n\n";
-  tensorflow::Status status = tensorflow::tfcompile::Main(flags);
+  absl::Status status = tensorflow::tfcompile::Main(flags);
   if (status.code() == absl::StatusCode::kInvalidArgument) {
     std::cerr << "INVALID ARGUMENTS: " << status.message() << "\n\n";
     return 1;

@@ -34,14 +34,14 @@ namespace data {
 FileSystemDatasetStore::FileSystemDatasetStore(const std::string& datasets_dir)
     : datasets_dir_(datasets_dir) {}
 
-Status FileSystemDatasetStore::Put(const std::string& key,
-                                   const DatasetDef& dataset) {
+absl::Status FileSystemDatasetStore::Put(const std::string& key,
+                                         const DatasetDef& dataset) {
   std::string path_to_write = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
   return absl::OkStatus();
 }
 
-Status FileSystemDatasetStore::Get(
+absl::Status FileSystemDatasetStore::Get(
     const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
   std::string path = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(path));
@@ -51,15 +51,15 @@ Status FileSystemDatasetStore::Get(
   return absl::OkStatus();
 }
 
-Status MemoryDatasetStore::Put(const std::string& key,
-                               const DatasetDef& dataset) {
+absl::Status MemoryDatasetStore::Put(const std::string& key,
+                                     const DatasetDef& dataset) {
   auto& stored_dataset = datasets_[key];
   stored_dataset = std::make_shared<const DatasetDef>(dataset);
   return absl::OkStatus();
 }
 
-Status MemoryDatasetStore::Get(const std::string& key,
-                               std::shared_ptr<const DatasetDef>& dataset_def) {
+absl::Status MemoryDatasetStore::Get(
+    const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
   auto& stored_dataset = datasets_[key];
   if (!stored_dataset) {
     return errors::NotFound("Dataset with key ", key, " not found");

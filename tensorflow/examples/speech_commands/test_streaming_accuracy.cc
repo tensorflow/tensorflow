@@ -63,9 +63,12 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 
  */
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
-#include <iomanip>
-#include <unordered_set>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -79,13 +82,13 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/examples/speech_commands/accuracy_utils.h"
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.

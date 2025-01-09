@@ -146,7 +146,7 @@ TEST_F(TensorScatterUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [99] does not index into shape [5,3]"))
       << s;
@@ -174,7 +174,7 @@ TEST_F(TensorScatterUpdateOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [99] does not index into shape [5,3]"))
       << s;
@@ -361,7 +361,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [99] does not index into shape [5,3]"))
       << s;
@@ -375,7 +375,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_WrongDimsIndices) {
   AddInputFromArray<int32>(TensorShape({1, 3, 1}), {0, 4, 99});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
       "Dimensions [0,1) of indices[shape=[1,3,1]] = 1 must match dimensions "
@@ -393,7 +393,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
   AddInputFromArray<float>(
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
       "Dimensions [1,2) of input[shape=[5,3]] must match dimensions [1,2) of "
@@ -410,7 +410,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
       "Dimensions [0,1) of indices[shape=[3,1]] = 3 must match dimensions [0,1)"
@@ -440,7 +440,7 @@ TEST_F(ScatterNdUpdateOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [99] does not index into shape [5,3]"))
       << s;
@@ -533,7 +533,7 @@ TEST_F(ScatterNdOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
   AddInputFromArray<int32>(TensorShape({2}), {5, 1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   // The valid index range is [0,5). Expect "5" to raise error.
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [5] does not index into shape [5,1]"))
@@ -564,7 +564,7 @@ TEST_F(ScatterNdOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
   AddInputFromArray<int32>(TensorShape({2}), {5, 1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   // The valid index range is [0,5). Expect "5" to raise error.
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[1] = [5] does not index into shape [5,1]"))
@@ -658,7 +658,7 @@ void BM_ScatterNdHelper(::testing::benchmark::State& state, int embedding_size,
   bm.AddInputFromArray<float>(TensorShape({kNumUpdates, embedding_size}),
                               updates);
   for (auto i : state) {
-    Status s = bm.RunOpKernel();
+    absl::Status s = bm.RunOpKernel();
   }
   state.SetItemsProcessed((static_cast<int64_t>(kNumUpdates) * embedding_size) *
                           state.iterations());

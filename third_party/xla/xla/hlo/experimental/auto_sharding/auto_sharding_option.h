@@ -17,15 +17,21 @@ limitations under the License.
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_OPTION_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 
-static constexpr double kDeviceMeshAlpha = 1.0;
-static constexpr double kDeviceMeshBeta = 1.0;
+static constexpr double kIciDeviceMeshAlpha = 1.0;
+static constexpr double kIciDeviceMeshBeta = 1.0;
+// By default, assume that DCN communication is 10 times slower than ICI
+// communication
+static constexpr double kDcnDeviceMeshAlpha = 10.0;
+static constexpr double kDcnDeviceMeshBeta = 10.0;
 static constexpr double kOverbudgetCoeff = 1e6;
 
 // Options for the autosharding pass
@@ -36,7 +42,7 @@ struct AutoShardingOption {
   enum class PreserveShardingsType {
     // AutoSharding constrains the search space using all user shardings.
     kKeepAllShardings,
-    // AutoSharding constains the search space using input and output shardings
+    // AutoSharding constrains the search space using input and output shardings
     // of HloModule's entry computations and remove shardings of all
     // intermediate tensors.
     kKeepInputOutputShardings,
@@ -160,7 +166,7 @@ struct AutoShardingOption {
   // Static estimate for iteration count of a while loop, used in the cost
   // model. This estimate is used when we cannot infer an upper bound on the
   // number of iterations in the loop (as implemented in
-  // third_party/tensorflow/compiler/xla/service/while_loop_analysis.h)
+  // third_party/tensorflow/compiler/xla/hlo/analysis/while_loop_analysis.h)
   int64_t loop_iteration_count_estimate = 100;
 
   // Allows the conversion of aliases to followers if their pairwise strategy
@@ -202,6 +208,9 @@ struct AutoShardingOption {
   // ops in a principled manner.
   bool insert_resharding_reshapes_for_non_dot_ops = false;
 
+  // The number of slices used
+  std::optional<int64_t> num_dcn_slices = std::nullopt;
+
   // Prints a debug string.
   std::string ToString() const;
 
@@ -209,6 +218,9 @@ struct AutoShardingOption {
   // consistency of different options.
   absl::Status CheckAndSetup();
 };
+
+AutoShardingOption DefaultAutoShardingOptionFromModuleConfig(
+    const HloModuleConfig& config);
 
 }  // namespace xla
 

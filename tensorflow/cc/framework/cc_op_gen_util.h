@@ -40,30 +40,30 @@ absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
 // Converts:
 //   bazel-out/.../(bin|genfiles)/(external/YYY/)?XX
 // to: XX.
-string GetPath(StringPiece dot_h_fname);
+string GetPath(absl::string_view dot_h_fname);
 
 // Converts: some/path/to/file.xx
 // to: file
 // (note that suffix is removed)
-string GetFilename(StringPiece path);
+string GetFilename(absl::string_view path);
 
 // Converts:
 //   cc/ops/gen_foo_ops.h
 // to:
 //   CC_OPS_GEN_FOO_OPS_H_
-string ToGuard(StringPiece path);
+string ToGuard(absl::string_view path);
 
 // Converts: some_name_xyz
 // to: Some Name Xyz
-string ToTitle(StringPiece name);
+string ToTitle(absl::string_view name);
 
 // Change:     Into:
 //   ABC         /// ABC
 //               ///
 //   DEF         /// DEF
-string MakeComment(StringPiece text, StringPiece indent);
+string MakeComment(absl::string_view text, absl::string_view indent);
 
-string PrintString(StringPiece str);
+string PrintString(absl::string_view str);
 
 string PrintTensorShape(const TensorShapeProto& shape_proto);
 
@@ -81,25 +81,25 @@ string PrintTensor(const TensorProto& tensor_proto);
 
 string PrintTensorProto(const TensorProto& proto);
 
-string PrintAttrValue(StringPiece, const AttrValue& attr_value);
+string PrintAttrValue(absl::string_view, const AttrValue& attr_value);
 
 bool IsEmptyList(const AttrValue::ListValue& list);
 
-string ToCamelCase(StringPiece str);
+string ToCamelCase(absl::string_view str);
 
-string SeparateNamespaces(StringPiece str);
+string SeparateNamespaces(absl::string_view str);
 
 // Returns a <string, bool> pair. The string is the C++ type name to be used for
 // attr_type when defining an object of that type. The bool is a flag to
 // indicate whether to treat the type as const when accepting the C++ type as an
 // argument to a function.
-std::pair<StringPiece, bool> AttrTypeName(StringPiece attr_type);
+std::pair<absl::string_view, bool> AttrTypeName(absl::string_view attr_type);
 
-StringPiece ListElementTypeName(StringPiece attr_type);
+absl::string_view ListElementTypeName(absl::string_view attr_type);
 
-bool IsCPPKeyword(StringPiece name);
+bool IsCPPKeyword(absl::string_view name);
 
-string AvoidCPPKeywords(StringPiece name);
+string AvoidCPPKeywords(absl::string_view name);
 
 void InferArgAttributes(const OpDef::ArgDef& arg,
                         std::unordered_map<string, string>* inferred_attrs);
@@ -123,7 +123,7 @@ struct OpInfo {
          const std::vector<string>& aliases);
   OpInfo(const OpDef& graph_op_def, const ApiDef& api_def);
   string GetOpAttrStruct() const;
-  string GetConstructorDecl(StringPiece op_name_prefix,
+  string GetConstructorDecl(absl::string_view op_name_prefix,
                             bool include_attr) const;
 
   string op_name;

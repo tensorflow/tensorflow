@@ -57,7 +57,7 @@ static Device* CreateDevice(const char* type, const char* name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, bool is_local)
         : Device(nullptr, attr), is_local_(is_local) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
     bool IsLocal() const override { return is_local_; }
 
@@ -211,7 +211,7 @@ TEST(PlacementUtilsTest, MaybePinToResourceDevice_OtherDevice) {
 
   Device* device1 = remote_device_mgr->ListDevices().at(0);
 
-  Status s;
+  absl::Status s;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice({device0->name(), device1->name()},
                                   /*unique_device_id=*/0,

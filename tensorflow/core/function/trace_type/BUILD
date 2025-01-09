@@ -186,21 +186,18 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "serialization_py_pb2",
-#     api_version = 2,
 #     visibility = ["//tensorflow:internal"],
 #     deps = [":serialization_proto"],
 # )
 #
 # py_proto_library(
 #     name = "serialization_test_py_pb2",
-#     api_version = 2,
 #     visibility = ["//tensorflow:internal"],
 #     deps = [":serialization_test_proto"],
 # )
 #
 # py_proto_library(
 #     name = "default_types_py_pb2",
-#     api_version = 2,
 #     visibility = ["//tensorflow:internal"],
 #     deps = [":default_types_proto"],
 # )

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status_to_from_proto.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

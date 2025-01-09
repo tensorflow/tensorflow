@@ -29,7 +29,7 @@ namespace sdy {
 // shardings, while other shardings are processed in `ExportMhloShardingsPass`.
 std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapExportPass();
 
-// Registers the xla-mhlo-round-trip-shard-map-export pass.
+// Registers the xla-sdy-mhlo-round-trip-shard-map-export pass.
 void registerMhloRoundTripShardMapExportPass();
 
 }  // namespace sdy

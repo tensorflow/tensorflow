@@ -1,15 +1,87 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 19931f2..509398d 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,67 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/spirv-openmp-toolchain.c b/clang/test/Driver/spirv-openmp-toolchain.c
+---- a/clang/test/Driver/spirv-openmp-toolchain.c
+-+++ b/clang/test/Driver/spirv-openmp-toolchain.c
+-@@ -1,4 +1,4 @@
+--// RUN: %clang -### --target=x86_64-unknown-linux-gnu -fopenmp -fopenmp-targets=spirv64-intel \
+-+// RUN: %clang -### --target=x86_64-unknown-linux-gnu -fopenmp=libomp -fopenmp-targets=spirv64-intel \
+- // RUN:        --libomptarget-spirv-bc-path=%t/ -nogpulib %s 2>&1 \
+- // RUN: | FileCheck %s
+- 
+-diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
+---- a/libc/src/stdlib/qsort_pivot.h
+-+++ b/libc/src/stdlib/qsort_pivot.h
+-@@ -9,7 +9,7 @@
+- #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+- #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+- 
+--#include <stdint.h>
+-+#include <stddef.h>  // For size_t
+- 
+- namespace LIBC_NAMESPACE_DECL {
+- namespace internal {
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-@@ -3481,11 +3481,13 @@
+-     hdrs = [
+-         "src/stdlib/heap_sort.h",
+-         "src/stdlib/qsort_data.h",
+-+        "src/stdlib/qsort_pivot.h",
+-         "src/stdlib/qsort_util.h",
+-         "src/stdlib/quick_sort.h",
+-     ],
+-     deps = [
+-         ":__support_common",
+-+        ":__support_cpp_bit",
+-         ":__support_cpp_cstddef",
+-         ":__support_macros_attributes",
+-     ],
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+-@@ -115,7 +115,7 @@
+-     hdrs = ["SortingTest.h"],
+-     deps = [
+-         "//libc:__support_macros_config",
+--        "//libc:qsort_util",
+-+        "//libc:qsort",
+-         "//libc/test/UnitTest:LibcUnitTest",
+-     ],
+- )
+-@@ -126,6 +126,7 @@
+-     libc_function_deps = ["//libc:qsort"],
+-     deps = [
+-         ":qsort_test_helper",
+-+        "//libc:qsort_util",
+-         "//libc:types_size_t",
+-     ],
+- )
+-@@ -136,6 +137,7 @@
+-     libc_function_deps = ["//libc:qsort"],
+-     deps = [
+-         ":qsort_test_helper",
+-+        "//libc:qsort_util",
+-         "//libc:types_size_t",
+-     ],
+- )
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c011aab..55290bf 100644
+index d9f463e..b6db01e 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "94c024adedcb53059c29d7c2d62982053b60e86a"
--    LLVM_SHA256 = "204cedeaab86f065ef64cb3889dd2e92ddd4a8f5d5b6bc1cb4b276694fb6a798"
-+    LLVM_COMMIT = "42b696d7b9942fdf07d65267da40ab178464adaa"
-+    LLVM_SHA256 = "4f0d2053b381d3f074c64b2e460792cab11a02333f1c88bbc22b01686cf2fcb0"
+-    LLVM_COMMIT = "743aee4951d452c7795e4e829a6cbf704340cd1c"
+-    LLVM_SHA256 = "f329a4573217959086f25791acc788f35b72a5cd86f396d29579b3cbdac53faf"
++    LLVM_COMMIT = "faa3f752896903c2d09d389970d3d0ebf50a1073"
++    LLVM_SHA256 = "2c8b76b370dca2a70dac1036244598d357867071217074c5cdf15c43295b0042"
  
      tf_http_archive(
          name = name,

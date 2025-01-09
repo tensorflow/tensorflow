@@ -114,9 +114,10 @@ StatusOr<mlir::TensorType> GlobalTypeFromLocalType(
   return new_output_type;
 }
 
-Status CreateSplitOp(const int num_split, const int split_dimension,
-                     const mlir::Location location, mlir::Value src_input,
-                     mlir::OpBuilder* builder, mlir::TF::SplitOp* split_op) {
+absl::Status CreateSplitOp(const int num_split, const int split_dimension,
+                           const mlir::Location location, mlir::Value src_input,
+                           mlir::OpBuilder* builder,
+                           mlir::TF::SplitOp* split_op) {
   // Creates a const op to hold split dimension value.
   auto split_dim_type =
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
@@ -693,8 +694,8 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
       absl::StrCat(prefix, "_dtensor_function_", unique_id));
 }
 
-Status SetBuilderInsertionAfterValue(mlir::Value value,
-                                     mlir::OpBuilder& builder) {
+absl::Status SetBuilderInsertionAfterValue(mlir::Value value,
+                                           mlir::OpBuilder& builder) {
   if (mlir::isa<mlir::OpResult>(value)) {
     builder.setInsertionPointAfterValue(value);
     return absl::OkStatus();
@@ -714,7 +715,8 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   return absl::OkStatus();
 }
 
-Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
+absl::Status PrintTensor(mlir::Value value,
+                         const std::string& format_string = "%s") {
   mlir::OpBuilder builder(value.getContext());
   builder.setInsertionPointAfterValue(value);
   TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(value));
@@ -731,7 +733,7 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
   return absl::OkStatus();
 }
 
-Status ExtractConstStringVectorFromValue(
+absl::Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))

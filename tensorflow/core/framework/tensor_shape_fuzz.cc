@@ -28,7 +28,7 @@ namespace {
 
 void FuzzTensorShape(const std::vector<int64_t>& dim_sizes) {
   TensorShape out;
-  Status status = TensorShape::BuildTensorShape(dim_sizes, &out);
+  absl::Status status = TensorShape::BuildTensorShape(dim_sizes, &out);
   if (!dim_sizes.empty() && dim_sizes.size() < 5) {
     const auto [min, max] =
         std::minmax_element(dim_sizes.begin(), dim_sizes.end());
@@ -42,7 +42,8 @@ FUZZ_TEST(TensorShapeFuzz, FuzzTensorShape);
 
 void FuzzPartialTensorShape(const std::vector<int64_t>& dim_sizes) {
   PartialTensorShape out;
-  Status status = PartialTensorShape::BuildPartialTensorShape(dim_sizes, &out);
+  absl::Status status =
+      PartialTensorShape::BuildPartialTensorShape(dim_sizes, &out);
   if (!dim_sizes.empty() && dim_sizes.size() < 5) {
     const auto [min, max] =
         std::minmax_element(dim_sizes.begin(), dim_sizes.end());
@@ -58,7 +59,7 @@ void FuzzSetDimWithStatus(TensorShape shape, int dim, int64_t value) {
   int initial_rank = shape.dims();
   bool should_be_ok = shape.dims() == 2 && shape.dim_size(0) <= 100 &&
                       shape.dim_size(1) <= 100 && dim < 2 && value < 100;
-  Status status = shape.SetDimWithStatus(dim, value);
+  absl::Status status = shape.SetDimWithStatus(dim, value);
   if (status.ok()) {
     EXPECT_EQ(initial_rank, shape.dims());
     EXPECT_EQ(value, shape.dim_size(dim));
@@ -74,7 +75,7 @@ void FuzzRemoveDimWithStatus(TensorShape shape, int dim) {
   auto initial_rank = shape.dims();
   bool should_be_ok = shape.dims() == 2 && shape.dim_size(0) <= 100 &&
                       shape.dim_size(1) <= 100 && dim >= 0 && dim < 2;
-  Status status = shape.RemoveDimWithStatus(dim);
+  absl::Status status = shape.RemoveDimWithStatus(dim);
   if (status.ok()) {
     EXPECT_EQ(shape.dims(), initial_rank - 1);
   } else {

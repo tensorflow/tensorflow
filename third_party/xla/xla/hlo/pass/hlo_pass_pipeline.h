@@ -21,8 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/compilation_stats.h"
@@ -87,7 +91,7 @@ class HloPassPipeline : public HloPassInterface {
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  bool IsPassPipeline() override { return true; }
+  bool IsPassPipeline() const override { return true; }
 
   // Return size of passes_.
   int PassesSize() { return passes_.size(); }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -121,14 +122,7 @@ CodegenDecision IsInstructionSupportsDataTypes(
     const auto operand_type = operand->shape().element_type();
     switch (instr.opcode()) {
       case HloOpcode::kConvert:
-        // TODO(b/358580281): remove DebugOptions from this function after
-        // enabling int4 in Triton GEMM.
-        if (operand_type == S4 && instr.GetModule()
-                                      ->config()
-                                      .debug_options()
-                                      .xla_gpu_enable_triton_gemm_int4()) {
-          continue;
-        }
+        if (operand_type == S4) continue;
         [[fallthrough]];
       default:
         if (!IsTritonSupportedDataType(operand_type, gpu_version)) {
@@ -150,6 +144,7 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
   ret.push_back(HloOpcode::kNegate);
   if (element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
     absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
                                         HloOpcode::kExpm1, HloOpcode::kFloor,
@@ -174,10 +169,13 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
                                 HloOpcode::kMultiply, HloOpcode::kSubtract};
   if (element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
     ret.push_back(HloOpcode::kAtan2);
-    ret.push_back(HloOpcode::kDivide);
     ret.push_back(HloOpcode::kPower);
+    if (element_type != PrimitiveType::F16) {
+      ret.push_back(HloOpcode::kDivide);
+    }
   }
   return ret;
 }
@@ -227,6 +225,8 @@ bool IsDotAlgorithmSupportedByTriton(
       std::get_if<se::RocmComputeCapability>(&gpu_version);
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
       if (cuda_compute_capability) {
         return true;
       }
@@ -245,9 +245,6 @@ bool IsDotAlgorithmSupportedByTriton(
     // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
     // here.
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    // TODO(b/311331155): Triton F32 is about 3x slower than Triton TF32 and is
-    // slow to compile. Disable it for now.
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
     default:
       return false;
   }
@@ -274,8 +271,9 @@ CodegenDecision CanTritonHandleGEMM(
   } else {
     if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
                                          gpu_version)) {
-      return CodegenDecision::Forbid(
-          "Unsupported algorithm on the current device(s).");
+      return CodegenDecision::Forbid(absl::StrFormat(
+          "Unsupported algorithm on the current device(s): %s",
+          PrecisionConfig::Algorithm_Name(dot.precision_config().algorithm())));
     }
   }
 

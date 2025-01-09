@@ -15,7 +15,7 @@ test --test_size_filters small,medium
 build --copt -Wno-sign-compare
 build --copt -Wno-error=unused-command-line-argument
 build --copt -Wno-gnu-offsetof-extensions
-build --build_tag_filters -no_oss
-build --test_tag_filters -no_oss
-test --build_tag_filters -no_oss
-test --test_tag_filters -no_oss
+build --build_tag_filters -no_oss,-rocm-only,-sycl-only
+build --test_tag_filters -no_oss,-rocm-only,-sycl-only
+test --build_tag_filters -no_oss,-rocm-only,-sycl-only
+test --test_tag_filters -no_oss,-rocm-only,-sycl-only

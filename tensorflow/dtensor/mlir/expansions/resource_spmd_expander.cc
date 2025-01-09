@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -105,10 +104,9 @@ StatusOr<mlir::Operation*> ExpandSummaryWriterOp(mlir::Operation* op) {
   return InferSPMDExpandedLocalShape(op);
 }
 
-Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
-                                            const std::string& layout_string,
-                                            const int resource_arg_index,
-                                            mlir::OpBuilder* builder) {
+absl::Status ValidateAndAssignResourceInputLayout(
+    mlir::tf_device::ClusterOp op, const std::string& layout_string,
+    const int resource_arg_index, mlir::OpBuilder* builder) {
   const auto add_layout_as_attributes =
       [&](std::vector<mlir::StringRef> new_resource_layouts,
           std::vector<int> new_resource_indices, int resource_arg_index,

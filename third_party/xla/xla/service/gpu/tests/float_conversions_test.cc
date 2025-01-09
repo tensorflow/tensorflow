@@ -23,131 +23,53 @@ namespace gpu {
 
 class FloatConversionTest : public GpuCodegenTest {};
 
-TEST_F(FloatConversionTest, F8E5M2ToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f8e5m2[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
+class FloatConversionParamTest
+    : public GpuCodegenTest,
+      public ::testing::WithParamInterface<std::string> {};
+
+INSTANTIATE_TEST_SUITE_P(FloatConversionParamSuite, FloatConversionParamTest,
+                         ::testing::Values("f64", "f32", "f16", "bf16",
+                                           "f8e5m2", "f8e5m2fnuz", "f8e4m3",
+                                           "f8e4m3fn", "f8e4m3fnuz",
+                                           "f8e4m3b11fnuz", "f8e3m4"));
+
+TEST_P(FloatConversionParamTest, FloatToF16) {
+  auto type_name = GetParam();
+  EXPECT_TRUE(RunAndCompare(absl::StrFormat(R"(ENTRY m {
+                                 p0 = %s[] parameter(0)
+                                 ROOT c1 = f16[] convert(p0)
                                })",
+                                            type_name),
                             ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(FloatConversionTest, F8E4M3FNToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f8e4m3fn[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
+TEST_P(FloatConversionParamTest, F16ToFloat) {
+  auto type_name = GetParam();
+  EXPECT_TRUE(RunAndCompare(absl::StrFormat(R"(ENTRY m {
+                                 p0 = f16[] parameter(0)
+                                 ROOT c1 = %s[] convert(p0)
                                })",
+                                            type_name),
                             ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(FloatConversionTest, F8E4M3B11FNUZToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f8e4m3b11fnuz[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
+TEST_P(FloatConversionParamTest, FloatToF32) {
+  auto type_name = GetParam();
+  EXPECT_TRUE(RunAndCompare(absl::StrFormat(R"(ENTRY m {
+                                 p0 = %s[] parameter(0)
+                                 ROOT c1 = f32[] convert(p0)
                                })",
+                                            type_name),
                             ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(FloatConversionTest, F8E5M2FNUZToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f8e5m2fnuz[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
+TEST_P(FloatConversionParamTest, F32ToFloat) {
+  auto type_name = GetParam();
+  EXPECT_TRUE(RunAndCompare(absl::StrFormat(R"(ENTRY m {
+                                 p0 = f32[] parameter(0)
+                                 ROOT c1 = %s[] convert(p0)
                                })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F8E4M3FNUZToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f8e4m3fnuz[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, BF16ToF32) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = bf16[] parameter(0)
-                                 ROOT %c = f32[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF32) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f32[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F64ToF32) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f64[] parameter(0)
-                                 ROOT %c = f32[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF8E5M2) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f8e5m2[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF8E4M3FN) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f8e4m3fn[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF8E4M3B11FNUZ) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f8e4m3b11fnuz[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF8E5M2FNUZ) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f8e5m2fnuz[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F16ToF8E4M3FNUZ) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f16[] parameter(0)
-                                 ROOT %c = f8e4m3fnuz[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F32ToBF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f32[] parameter(0)
-                                 ROOT %c = bf16[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F32ToF16) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f32[] parameter(0)
-                                 ROOT %c = f16[] convert(%p)
-                               })",
-                            ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(FloatConversionTest, F32ToF64) {
-  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
-                                 %p = f32[] parameter(0)
-                                 ROOT %c = f64[] convert(%p)
-                               })",
+                                            type_name),
                             ErrorSpec{1e-5, 1e-5}));
 }
 

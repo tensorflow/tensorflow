@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,7 +34,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -49,11 +51,9 @@
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -79,15 +79,7 @@ class MockArrayTest : public testing::Test {
                             CreateClient(absl::StrCat("grpc://", address)));
   }
 
-  struct ArrayPair {
-    // IFRT array exposed to the proxy's user. Not a mock.
-    tsl::RCReference<xla::ifrt::Array> proxy_client_array;
-    // IFRT array owned by the proxy server whose behavior should be
-    // reflected by proxy_client_array. Mock but delegated.
-    tsl::RCReference<MockArray> backend_array;
-  };
-
-  absl::StatusOr<ArrayPair> NewArray() {
+  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> NewArray() {
     DType dtype(DType::kF32);
     Shape shape({2, 3});
     auto data = std::make_unique<std::vector<float>>(6);
@@ -104,29 +96,22 @@ class MockArrayTest : public testing::Test {
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
 
-    // When the above `MakeArrayFromHostBuffer` results in the server issuing a
-    // `MakeArrayFromHostBuffer()` to the underlying mock backend, the mock
-    // backend enqueues the returned mock array onto `mock_arrays_` (this code
-    // is in `CreateMockBackend()`).
-    absl::MutexLock l(&mu_);
-    CHECK_EQ(mock_arrays_.size(), 1);
-    auto mock = mock_arrays_.back();
-    mock_arrays_.pop_back();
-    return ArrayPair{client_arr, mock};
+    return client_arr;
   }
 
   std::unique_ptr<GrpcServer> server_;
   std::unique_ptr<xla::ifrt::Client> client_;
 
- private:
+ protected:
   absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateMockBackend() {
     // TODO(b/292339723): Use reference backend as the delegate while mocking.
-    CpuClientOptions options;
+    xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
-    TF_ASSIGN_OR_RETURN(auto tfrt_cpu_client, xla::GetTfrtCpuClient(options));
+    TF_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
+                        xla::GetXlaPjrtCpuClient(std::move(options)));
     auto mock_backend = std::make_unique<MockClient>(
-        /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(tfrt_cpu_client)));
+        /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
 
     ON_CALL(*mock_backend, MakeArrayFromHostBuffer)
         .WillByDefault(
@@ -143,9 +128,26 @@ class MockArrayTest : public testing::Test {
                       data, dtype, shape, byte_strides, sharding, semantics,
                       on_done_with_host_buffer));
               auto result = tsl::MakeRef<MockArray>(delegated);
-
-              absl::MutexLock l(&mu_);
-              mock_arrays_.push_back(result);
+              ON_CALL(*result, GetReadyFuture)
+                  .WillByDefault([this, delegated]() {
+                    absl::MutexLock l(&mu_);
+                    if (get_ready_hook_) {
+                      absl::Status s = get_ready_hook_();
+                      if (!s.ok()) return Future<>(s);
+                    }
+                    return delegated->GetReadyFuture();
+                  });
+              ON_CALL(*result, CopyToHostBuffer)
+                  .WillByDefault([this, delegated](auto data, auto byte_strides,
+                                                   auto semantics) {
+                    absl::MutexLock l(&mu_);
+                    if (copy_host_hook_) {
+                      absl::Status s = copy_host_hook_();
+                      if (!s.ok()) return Future<>(s);
+                    }
+                    return delegated->CopyToHostBuffer(data, byte_strides,
+                                                       semantics);
+                  });
               return result;
             });
 
@@ -163,20 +165,24 @@ class MockArrayTest : public testing::Test {
   }
 
   absl::Mutex mu_;
-  std::vector<tsl::RCReference<MockArray>> mock_arrays_ ABSL_GUARDED_BY(mu_);
+  absl::AnyInvocable<absl::Status()> get_ready_hook_ ABSL_GUARDED_BY(mu_);
+  absl::AnyInvocable<absl::Status()> copy_host_hook_ ABSL_GUARDED_BY(mu_);
 };
 
 TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
+  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
-  EXPECT_CALL(*arr.backend_array, GetReadyFuture).WillOnce([&] {
-    wait_ready.WaitForNotification();
-    return arr.backend_array->delegated()->GetReadyFuture();
-  });
+  {
+    absl::MutexLock l(&mu_);
+    get_ready_hook_ = [&]() {
+      wait_ready.WaitForNotification();
+      return absl::OkStatus();
+    };
+  }
 
-  auto ready = arr.proxy_client_array->GetReadyFuture();
+  auto ready = arr->GetReadyFuture();
 
   absl::SleepFor(kSomeTime);
   EXPECT_FALSE(ready.IsReady());
@@ -186,74 +192,34 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
 }
 
 TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
+  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
-  EXPECT_CALL(*arr.backend_array, GetReadyFuture).WillOnce([&] {
-    return Future<>(absl::InternalError("testing"));
-  });
-
-  EXPECT_THAT(arr.proxy_client_array->GetReadyFuture().Await(),
-              StatusIs(kInternal));
-}
-
-TEST_F(MockArrayTest, DeletionFutureWaitsUntilDeleted) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
-
-  tsl::thread::ThreadPool threads(tsl::Env::Default(), "t", /*num_threads=*/1);
   absl::Notification wait_ready;
 
-  EXPECT_CALL(*arr.backend_array, Delete).WillOnce([&] {
-    // TODO(b/266635130): Write a version of this testcase where the Delete()
-    // call of the MockArray blocks on `wait_ready`, instead of the Future it
-    // returns being blocked on `wait_ready`. That version of the testcase does
-    // not currently work since both the client and the server synchronously
-    // block until the MockArray's Delete() returns.
-    auto promise = Future<>::CreatePromise();
-    threads.Schedule([&, promise]() mutable {
-      wait_ready.WaitForNotification();
-      promise.Set(arr.backend_array->delegated()->Delete().Await());
-    });
-    return Future<>(promise);
-  });
+  {
+    absl::MutexLock l(&mu_);
+    get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
+  }
 
-  EXPECT_FALSE(arr.proxy_client_array->IsDeleted());
-  auto deleted_future = arr.proxy_client_array->Delete();
-
-  absl::SleepFor(kSomeTime);
-  EXPECT_FALSE(deleted_future.IsReady());
-  EXPECT_FALSE(arr.proxy_client_array->IsDeleted());
-
-  wait_ready.Notify();
-  EXPECT_THAT(deleted_future.Await(), IsOk());
-  EXPECT_TRUE(arr.proxy_client_array->IsDeleted());
-}
-
-TEST_F(MockArrayTest, DeletionPropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
-
-  EXPECT_CALL(*arr.backend_array, Delete).WillOnce([&] {
-    return Future<>(absl::InternalError("testing"));
-  });
-
-  EXPECT_FALSE(arr.proxy_client_array->IsDeleted());
-  EXPECT_THAT(arr.proxy_client_array->Delete().Await(), StatusIs(kInternal));
+  EXPECT_THAT(arr->GetReadyFuture().Await(), StatusIs(kInternal));
 }
 
 TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
+  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
-  EXPECT_CALL(*arr.backend_array, CopyToHostBuffer)
-      .WillOnce([&](auto data, auto byte_strides, auto semantics) {
-        wait_ready.WaitForNotification();
-        return arr.backend_array->delegated()->CopyToHostBuffer(
-            data, byte_strides, semantics);
-      });
+  {
+    absl::MutexLock l(&mu_);
+    copy_host_hook_ = [&]() {
+      wait_ready.WaitForNotification();
+      return absl::OkStatus();
+    };
+  }
 
   char data[1000];
-  auto copied = arr.proxy_client_array->CopyToHostBuffer(
-      data, /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+  auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
+                                      ArrayCopySemantics::kAlwaysCopy);
 
   absl::SleepFor(kSomeTime);
   EXPECT_FALSE(copied.IsReady());
@@ -263,17 +229,18 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
 }
 
 TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
+  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
-  EXPECT_CALL(*arr.backend_array, CopyToHostBuffer).WillOnce([&] {
-    return Future<>(absl::InternalError("testing"));
-  });
+  {
+    absl::MutexLock l(&mu_);
+    copy_host_hook_ = [&]() { return absl::InternalError("testing"); };
+  }
 
   char data[1000];
-  auto copied = arr.proxy_client_array->CopyToHostBuffer(
-      data, /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+  auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
+                                      ArrayCopySemantics::kAlwaysCopy);
 
   EXPECT_THAT(copied.Await(), StatusIs(kInternal));
 }

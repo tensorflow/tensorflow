@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
@@ -411,13 +412,13 @@ std::optional<HloSharding> PropagateReduceWindowSharding(
 // For every tile dimension, the device id sequence along that dimension has to
 // be an arithmetic sequence.
 // e.g., we don't allow specs like sharding={devices=[8,1] 0,4,1,5,2,7,3,8}
-bool IsValidTileAssignment(const HloSharding& spec);
+bool IsValidTileAssignment(const HloSharding& sharding);
 
-// Get number of tile dimensions that are not 1. For example, for sharding spec
+// Get number of tile dimensions that are not 1. For example, for sharding
 // {devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
-// spec.tile_assignment.num_dimensions() = [2,1,1,4]. This function returns 2.
-// -1 means the tensor is replicated on the whole the mesh.
-int64_t NumTileDimensions(const HloSharding& spec);
+// sharding.tile_assignment.num_dimensions() = [2,1,1,4]. This function
+// returns 2. -1 means the tensor is replicated on the whole the mesh.
+int64_t NumTileDimensions(const HloSharding& sharding);
 
 // When fixing mixed mesh resharding (see below), compute the correct
 // intermediate shape in order to insert copies.
@@ -470,7 +471,17 @@ absl::StatusOr<int64_t> CheckArithmeticSequence(
 
 // Checks if the number of sharded dimensions in the tile assignment matches the
 // device mesh.
-bool TileAssignmentMatchesMesh(const HloSharding& spec, const DeviceMesh& mesh);
+bool TileAssignmentMatchesMesh(const HloSharding& sharding,
+                               const DeviceMesh& mesh);
+
+absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
+    const HloSharding& spec, const Array<int64_t>& device_mesh,
+    bool consider_reverse_device_meshes);
+
+absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+GetTensorDimToMeshDimMixedMeshSharding(
+    int64_t tensor_shape_rank, const HloSharding& sharding,
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes = false);
 
 // Get the mapped mesh dimension for every tensor dimension.
 // The returned value maps ith tensor dim to one mesh dim. -1 means the tensor

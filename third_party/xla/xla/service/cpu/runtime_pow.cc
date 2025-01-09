@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_pow.h"
 
+#include <cstdint>
+
 #include "absl/base/attributes.h"
 
 template <typename T>

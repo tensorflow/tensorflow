@@ -16,19 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_MODEL_CONTEXT_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_MODEL_CONTEXT_H_
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tsl/platform/protobuf.h"
@@ -68,7 +72,8 @@ class IfrtModelContext {
       tsl::thread::ThreadPool* thread_pool, tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       std::unique_ptr<tsl::protobuf::Message> compilation_environment_proto,
-      std::shared_ptr<const void> topology)
+      std::shared_ptr<const void> topology, TfToHloCompiler* tf_to_hlo_compiler,
+      IfrtPersistentCompilationCache* persistent_compilation_cache = nullptr)
       : client_(std::move(client)),
         topology_(topology),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
@@ -76,7 +81,9 @@ class IfrtModelContext {
         device_mgr_(device_mgr),
         shape_representation_fn_(shape_representation_fn),
         compilation_environment_proto_(
-            std::move(compilation_environment_proto)) {}
+            std::move(compilation_environment_proto)),
+        tf_to_hlo_compiler_(tf_to_hlo_compiler),
+        persistent_compilation_cache_(persistent_compilation_cache) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
     handles_.push_back(std::move(handle));
@@ -105,6 +112,10 @@ class IfrtModelContext {
     return restore_tensor_registry_;
   }
 
+  IfrtPersistentCompilationCache* GetPersistentCompilationCache() const {
+    return persistent_compilation_cache_;
+  }
+
   tensorflow::DeviceMgr* GetDeviceMgr() const { return device_mgr_; }
   IfrtServingCoreSelector* GetIfrtServingCoreSelector() const {
     return ifrt_serving_core_selector_;
@@ -120,6 +131,8 @@ class IfrtModelContext {
   tsl::protobuf::Message* GetCompilationEnvironmentProto() const {
     return compilation_environment_proto_.get();
   }
+
+  TfToHloCompiler* GetTfToHloCompiler() const { return tf_to_hlo_compiler_; }
 
   // Freeze the model: release the resources such as host tensors that are used
   // by the device only. The caller guarantees all resources released in this
@@ -153,6 +166,8 @@ class IfrtModelContext {
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
   IfrtRestoreTensorRegistry restore_tensor_registry_;
+  TfToHloCompiler* tf_to_hlo_compiler_ = nullptr;
+  IfrtPersistentCompilationCache* persistent_compilation_cache_ = nullptr;
   bool frozen_ = false;
 };
 

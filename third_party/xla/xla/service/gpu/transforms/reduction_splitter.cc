@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -42,14 +43,16 @@ namespace gpu {
 
 class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionSplitterVisitor(bool ignore_small_dims)
-      : ignore_small_dims_(ignore_small_dims) {}
+  ReductionSplitterVisitor(const se::DeviceDescription &device_description,
+                           bool ignore_small_dims)
+      : device_description_(device_description),
+        ignore_small_dims_(ignore_small_dims) {}
   absl::Status HandleReduce(HloInstruction *reduce) override {
     VLOG(4) << "Input: " << reduce->ToString();
 
     // Reductions with contiguous dimensions are lowered to efficient code. No
     // need to split such ops.
-    if (IsReductionFromOrToContiguousDimensions(*reduce)) {
+    if (IsReductionFromOrToContiguousDimensions(*reduce, device_description_)) {
       VLOG(4) << "Reduction with contiguous dimensions. Return.";
       return absl::OkStatus();
     }
@@ -124,15 +127,17 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  bool ignore_small_dims_;
+  const se::DeviceDescription &device_description_;
+  const bool ignore_small_dims_;
 };
 
 absl::StatusOr<bool> ReductionSplitter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReductionSplitterVisitor(ignore_small_dims_)
-                          .RunOnModule(module, execution_threads));
+  TF_ASSIGN_OR_RETURN(
+      bool changed,
+      ReductionSplitterVisitor(device_description_, ignore_small_dims_)
+          .RunOnModule(module, execution_threads));
   return changed;
 }
 

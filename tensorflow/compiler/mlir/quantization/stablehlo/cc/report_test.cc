@@ -178,7 +178,7 @@ TEST_F(QuantizationReportTest, InitializeWithModuleOpWithNonQuantizedOp) {
   constexpr absl::string_view kNonQuantizedDotGeneral = R"mlir(
     func.func @main(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> {
       %0 = stablehlo.constant dense<3.000000e+0> : tensor<2x3xf32>
-      %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn, _original_entry_function = "composite_dot_general_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+      %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn, _stablehlo_version = "1.0.0", _original_entry_function = "composite_dot_general_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
       return %1 : tensor<1x3xf32>
     }
 
@@ -212,7 +212,7 @@ TEST_F(QuantizationReportTest,
     func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x3xf32> {
       // Non-quantized dot_general.
       %0 = stablehlo.constant dense<3.000000e+0> : tensor<2x3xf32>
-      %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+      %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _stablehlo_verison = "1.0.0", _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
       // Quantized dot_general.
       %2 = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {1.000000e+0,2.000000e+0,3.000000e+0}>>
       %3 = stablehlo.uniform_quantize %arg1 : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+0>>

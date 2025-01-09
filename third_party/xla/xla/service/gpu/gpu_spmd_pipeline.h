@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 
 namespace xla {
 namespace gpu {

@@ -16,23 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ADD_ORIGINAL_VALUE_H_
 #define XLA_SERVICE_ADD_ORIGINAL_VALUE_H_
 
-#include "absl/status/statusor.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// This pass adds to each op in the HLO graph the original_value attribute,
-// which is used for HLO value tracking. See go/hlo-value-tracking for more
-// details.
-class AddOriginalValue : public HloModulePass {
- public:
-  absl::string_view name() const override { return "add-original-value"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/add_original_value.h"
 
 #endif  // XLA_SERVICE_ADD_ORIGINAL_VALUE_H_

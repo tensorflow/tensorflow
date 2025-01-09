@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "nanobind/nanobind.h"  // from @nanobind
 #include "stablehlo/integrations/python/StablehloApi.h"  // from @stablehlo
 
 namespace mlir {
 namespace stablehlo {
 
-PYBIND11_MODULE(stablehlo_extension, m) { mlir::stablehlo::AddPortableApi(m); }
+NB_MODULE(stablehlo_extension, m) { mlir::stablehlo::AddPortableApi(m); }
 
 }  // namespace stablehlo
 }  // namespace mlir

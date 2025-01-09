@@ -28,7 +28,9 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/test.h"
@@ -51,6 +53,15 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   // Loads mlir from file.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromFile(
       absl::string_view file_path);
+
+  // Serializes the program with the requested compatibility requirement, and
+  // deserializes it back. Returns the deserialized program.
+  // This helper method should be used in tests that verify program results
+  // after the IFRT -> VIFRT -> IFRT round trip.
+  absl::StatusOr<std::unique_ptr<IfrtIRProgram>> SerDeRoundTrip(
+      std::unique_ptr<IfrtIRProgram> program,
+      Version::CompatibilityRequirement compatibility_requirement,
+      bool propagate_shardings = false);
 
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it

@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/sharding_builder.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
@@ -67,10 +67,10 @@ namespace {
 static const char* const kSendFromHostOp = "_XlaSendFromHost";
 static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
-Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
-                     absl::Span<const DataType> dtypes,
-                     std::vector<xla::Shape>* xla_shapes,
-                     xla::Shape* xla_shape) {
+absl::Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
+                           absl::Span<const DataType> dtypes,
+                           std::vector<xla::Shape>* xla_shapes,
+                           xla::Shape* xla_shape) {
   for (int i = 0; i < shapes.size(); i++) {
     xla::Shape single_xla_shape;
     TF_RETURN_IF_ERROR(
@@ -271,8 +271,8 @@ class HostComputeOp : public XlaOpKernel {
   }
 
  private:
-  Status LowerFunctionalOps(Graph* g,
-                            const FunctionLibraryDefinition& flib_def) {
+  absl::Status LowerFunctionalOps(Graph* g,
+                                  const FunctionLibraryDefinition& flib_def) {
     bool modified;
     do {
       modified = false;
@@ -314,9 +314,9 @@ class HostComputeOp : public XlaOpKernel {
     return absl::OkStatus();
   }
 
-  Status InferOutputShapes(XlaOpKernelContext* ctx,
-                           const FunctionLibraryDefinition* flib_def,
-                           std::vector<TensorShape>* output_shapes) {
+  absl::Status InferOutputShapes(XlaOpKernelContext* ctx,
+                                 const FunctionLibraryDefinition* flib_def,
+                                 std::vector<TensorShape>* output_shapes) {
     // First unpack the inference graphdef from the attr into graph. Don't do
     // any shape inference at this point.
     Graph* graph = shape_inference_graph_function_->graph;

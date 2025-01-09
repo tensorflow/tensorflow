@@ -41,7 +41,7 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::Run(
 
       GpuPerformanceModel::RecordEstimatedRunTime(
           fusion_instr, device_info_, &cost_analysis_,
-          GpuPerformanceModelOptions::ForModule(module));
+          GpuPerformanceModelOptions::Default());
     }
   }
   return false;

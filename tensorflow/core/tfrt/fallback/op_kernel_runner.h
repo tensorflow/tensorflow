@@ -18,13 +18,21 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/device.h"
@@ -44,7 +52,8 @@ class OpKernelRunner {
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name,
       absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
@@ -52,7 +61,8 @@ class OpKernelRunner {
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime) {
@@ -63,7 +73,8 @@ class OpKernelRunner {
 
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device);
@@ -71,7 +82,8 @@ class OpKernelRunner {
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device) {

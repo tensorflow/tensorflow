@@ -133,9 +133,9 @@ class XlaNDSplitter {
   // `assign_or_copy_value_fn`.
   absl::Status Split(
       const Tensor* input, absl::string_view input_name,
-      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
-      const std::function<Status(int index, const TensorShape& shape,
-                                 Tensor** tensor)>& allocate_output_fn,
+      const std::function<absl::Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<absl::Status(int index, const TensorShape& shape,
+                                       Tensor** tensor)>& allocate_output_fn,
       const Device& device) {
     if (num_splits_.size() != paddings_.size()) {
       return absl::InvalidArgumentError(
@@ -333,7 +333,7 @@ class XlaNDConcatenator {
   }
   absl::Status ComputeInternal(
       absl::Span<const Tensor> inputs,
-      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<absl::Status(const Tensor&)>& assign_or_copy_value_fn,
       const std::function<absl::StatusOr<Tensor*>()>& get_output_fn,
       const Device& device) {
     const int rank = inputs[0].shape().dims();

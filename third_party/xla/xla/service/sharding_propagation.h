@@ -16,16 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_PROPAGATION_H_
 #define XLA_SERVICE_SHARDING_PROPAGATION_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
@@ -36,15 +43,16 @@ namespace xla {
 // Infers the shardings for a dot HLO op from the shardings on its operands,
 // which are expected to have sharding annotations.
 bool InferDotShardingFromOperands(
-    HloInstruction* instruction,
+    HloInstruction* instruction, const CallGraph& call_graph,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    int64_t aggressiveness, bool may_combine_partial_sharding);
+    bool may_combine_partial_sharding, bool is_spmd);
 
 // Infers the shardings for a convolution HLO op from the shardings on its
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
-                                          int64_t aggressiveness,
-                                          bool may_combine_partial_sharding);
+                                          const CallGraph& call_graph,
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -71,7 +79,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group = nullptr,
     const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr,
+    bool remove_unknown_shardings = false);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 

@@ -41,13 +41,13 @@ TFRTOpKernelConstruction::TFRTOpKernelConstruction(
     const tfrt::OpAttrsRef& attributes)
     : attributes_(std::move(attributes)) {}
 
-Status MissingAttributeError(StringPiece attr_name) {
+absl::Status MissingAttributeError(StringPiece attr_name) {
   return errors::InvalidArgument("Missing attribute: ", attr_name);
 }
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         std::string* value) const {
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               std::string* value) const {
   tfrt::string_view view;
   bool success = attributes_.GetString(
       llvm::StringRef(attr_name.data(), attr_name.size()), &view);
@@ -59,8 +59,8 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
 }
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         DataType* value) const {
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               DataType* value) const {
   tfrt::OpAttrType attrtype;
   bool success = attributes_.Get<tfrt::OpAttrType>(
       llvm::StringRef(attr_name.data(), attr_name.size()), &attrtype);
@@ -72,16 +72,16 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
 }
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         Padding* value) const {
+absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+                                               Padding* value) const {
   std::string padding_str;
   TF_RETURN_IF_ERROR(GetAttr<std::string>(attr_name, &padding_str));
   return GetPaddingFromString(padding_str, value);
 }
 
 template <>
-Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
-                                         std::vector<int32>* value) const {
+absl::Status TFRTOpKernelConstruction::GetAttr(
+    StringPiece attr_name, std::vector<int32>* value) const {
   llvm::ArrayRef<int32> arrayref;
   bool success = attributes_.GetArray<int32>(
       llvm::StringRef(attr_name.data(), attr_name.size()), &arrayref);
@@ -92,16 +92,17 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
   return absl::OkStatus();
 }
 
-void TFRTOpKernelConstruction::CtxFailure(const Status& s) {
+void TFRTOpKernelConstruction::CtxFailure(const absl::Status& s) {
   error_ = tfrt::MakeStatusString(s);
 }
 
-void TFRTOpKernelConstruction::CtxFailureWithWarning(const Status& s) {
+void TFRTOpKernelConstruction::CtxFailureWithWarning(const absl::Status& s) {
   CtxFailure(s);
 }
 
 namespace {
-std::string FillFailureMessage(const char* file, int line, const Status& s) {
+std::string FillFailureMessage(const char* file, int line,
+                               const absl::Status& s) {
   std::string error;
   llvm::raw_string_ostream sstr(error);
   sstr << "OP_REQUIRES failed at " << file << ":" << line << " : "
@@ -112,12 +113,12 @@ std::string FillFailureMessage(const char* file, int line, const Status& s) {
 }  // namespace
 
 void TFRTOpKernelConstruction::CtxFailure(const char* file, int line,
-                                          const Status& s) {
+                                          const absl::Status& s) {
   error_ = FillFailureMessage(file, line, s);
 }
 
 void TFRTOpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
-                                                     const Status& s) {
+                                                     const absl::Status& s) {
   CtxFailure(file, line, s);
 }
 
@@ -156,15 +157,16 @@ void TFRTOpKernelContext::set_output(int index, const Tensor& tensor) {
   outputs_[index] = tensor;
 }
 
-Status TFRTOpKernelContext::allocate_temp(DataType type,
-                                          const TensorShape& shape,
-                                          Tensor* out_temp) {
+absl::Status TFRTOpKernelContext::allocate_temp(DataType type,
+                                                const TensorShape& shape,
+                                                Tensor* out_temp) {
   *out_temp = Tensor(type, shape);
   return absl::OkStatus();
 }
 
-Status TFRTOpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                            Tensor** tensor) {
+absl::Status TFRTOpKernelContext::allocate_output(int index,
+                                                  const TensorShape& shape,
+                                                  Tensor** tensor) {
   // Fetch output DataType from the op's TFRTOpMeta.
   DataType output_type = op_meta_->output_type(index);
   outputs_[index] = Tensor(output_type, shape);
@@ -176,16 +178,18 @@ DataType TFRTOpKernelContext::expected_output_dtype(int i) const {
   return op_meta_->output_type(i);
 }
 
-void TFRTOpKernelContext::CtxFailure(const Status& s) { error_ = s.message(); }
-void TFRTOpKernelContext::CtxFailureWithWarning(const Status& s) {
+void TFRTOpKernelContext::CtxFailure(const absl::Status& s) {
+  error_ = s.message();
+}
+void TFRTOpKernelContext::CtxFailureWithWarning(const absl::Status& s) {
   CtxFailure(s);
 }
 void TFRTOpKernelContext::CtxFailure(const char* file, int line,
-                                     const Status& s) {
+                                     const absl::Status& s) {
   error_ = FillFailureMessage(file, line, s);
 }
 void TFRTOpKernelContext::CtxFailureWithWarning(const char* file, int line,
-                                                const Status& s) {
+                                                const absl::Status& s) {
   CtxFailure(file, line, s);
 }
 
@@ -276,13 +280,13 @@ void TFRTOpKernelFactories::RegisterFactory(StringPiece kernel_class_name,
 }
 
 // Returns true if kernel attributes match given type constraints.
-Status ValidKernelAttr(StringPiece kernel_class_name,
-                       TFRTOpKernelConstruction* construction,
-                       const llvm::StringMap<DataType>& constraints) {
+absl::Status ValidKernelAttr(StringPiece kernel_class_name,
+                             TFRTOpKernelConstruction* construction,
+                             const llvm::StringMap<DataType>& constraints) {
   for (const auto& constraint : constraints) {
     auto attr_name = std::string(constraint.first());
     DataType type;
-    Status s = construction->GetAttr(attr_name, &type);
+    absl::Status s = construction->GetAttr(attr_name, &type);
     if (!s.ok()) {
       return errors::InvalidArgument(
           "Kernel ", kernel_class_name,
@@ -308,10 +312,10 @@ std::unique_ptr<TFRTOpKernel> TFRTOpKernelFactories::CreateKernel(
         "Could not find kernel ", kernel_class_name, " in the registry."));
     return std::unique_ptr<TFRTOpKernel>(nullptr);
   }
-  Status status;
+  absl::Status status;
   for (const auto& kernel_info : it->second) {
-    Status s = ValidKernelAttr(kernel_class_name, op_kernel_construction,
-                               kernel_info.type_constraints);
+    absl::Status s = ValidKernelAttr(kernel_class_name, op_kernel_construction,
+                                     kernel_info.type_constraints);
     if (s.ok()) {
       return kernel_info.callback(op_kernel_construction);
     }

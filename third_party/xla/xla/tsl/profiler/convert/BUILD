@@ -1,10 +1,10 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_alias", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,6 +21,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
     ],
     deps = [
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
@@ -28,13 +29,17 @@ cc_library(
 
 cc_library(
     name = "xla_op_utils",
+    srcs = [tf_profiler_alias("//xla/tsl/profiler/convert/", "xla_op_utils.cc")],
     hdrs = ["xla_op_utils.h"],
     visibility = internal_visibility([
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//xla/python:__pkg__",
     ]),
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:macros",
+    ],
 )
 
 tsl_cc_test(
@@ -55,11 +60,11 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility(["//xla/tsl/profiler:internal"]),
     deps = [
+        "//xla/tsl/profiler/utils:timestamp_utils",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:timestamp_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -73,14 +78,14 @@ cc_library(
     ]),
     deps = [
         ":trace_container",
+        "//xla/tsl/profiler/utils:format_utils",
+        "//xla/tsl/profiler/utils:math_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
-        "@local_tsl//tsl/profiler/utils:format_utils",
-        "@local_tsl//tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -92,7 +97,6 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
 )
 
@@ -120,16 +124,16 @@ cc_library(
     ]),
     deps = [
         ":trace_container",
+        "//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "//xla/tsl/profiler/utils:trace_utils",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "//xla/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
-        "@local_tsl//tsl/profiler/utils:trace_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -139,12 +143,12 @@ tsl_cc_test(
     srcs = ["xplane_to_trace_events_test.cc"],
     deps = [
         ":xplane_to_trace_events",
+        "//xla/tsl/profiler/utils:trace_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:trace_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_builder",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ],
 )

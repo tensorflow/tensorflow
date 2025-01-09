@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/table.h"
 #include "xla/tsl/lib/io/table_builder.h"
 #include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

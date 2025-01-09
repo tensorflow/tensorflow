@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Intrinsics.h"
 #include "xla/primitive_util.h"
@@ -39,6 +40,10 @@ namespace {
 absl::StatusOr<const llvm::fltSemantics*> PrimitiveTypeToAPFloatSemantics(
     PrimitiveType type) {
   switch (type) {
+    case F8E3M4:
+      return &llvm::APFloat::Float8E3M4();
+    case F8E4M3:
+      return &llvm::APFloat::Float8E4M3();
     case F8E4M3B11FNUZ:
       return &llvm::APFloat::Float8E4M3B11FNUZ();
     case F8E4M3FN:
@@ -64,9 +69,11 @@ absl::StatusOr<const llvm::fltSemantics*> PrimitiveTypeToAPFloatSemantics(
   }
 }
 
-absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilder<>* b,
+absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilderBase* b,
                                                     PrimitiveType type) {
   switch (type) {
+    case F8E3M4:
+    case F8E4M3:
     case F8E4M3B11FNUZ:
     case F8E4M3FN:
     case F8E4M3FNUZ:
@@ -96,7 +103,7 @@ absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilder<>* b,
 // maximum value.
 absl::StatusOr<uint64_t> ComputeMaximumValue(PrimitiveType input_type,
                                              PrimitiveType output_type,
-                                             llvm::IRBuilder<>* b) {
+                                             llvm::IRBuilderBase* b) {
   // Sanity check inputs.
   TF_RET_CHECK(primitive_util::IsFloatingPointType(input_type));
   TF_RET_CHECK(primitive_util::IsFloatingPointType(output_type));
@@ -139,7 +146,7 @@ absl::StatusOr<uint64_t> ComputeMaximumValue(PrimitiveType input_type,
 // finite value. This takes into account rounding.
 absl::StatusOr<llvm::Value*> IsInputOutsideOutputRange(
     PrimitiveType input_type, llvm::Value* value, PrimitiveType output_type,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilderBase* b) {
   const uint64_t shift = BitWidth(input_type) - 1;
   const uint64_t bit_mask = (0x1ull << shift) - 1;
 
@@ -156,7 +163,7 @@ absl::StatusOr<llvm::Value*> IsInputOutsideOutputRange(
 }
 
 llvm::Value* IsZero(PrimitiveType type, llvm::Value* value,
-                    llvm::IRBuilder<>* b) {
+                    llvm::IRBuilderBase* b) {
   const uint64_t shift = BitWidth(type) - 1;
   const uint64_t bit_mask = (0x1ull << shift) - 1;
 
@@ -169,7 +176,7 @@ llvm::Value* IsZero(PrimitiveType type, llvm::Value* value,
 }
 
 llvm::Value* IsNormalNumber(PrimitiveType type, llvm::Value* value,
-                            llvm::IRBuilder<>* b) {
+                            llvm::IRBuilderBase* b) {
   const uint64_t width = ExponentWidth(type);
   const uint64_t position = SignificandWidth(type) - 1;
   const uint64_t exponent_bit_mask = ((0x1ull << width) - 0x1ull) << position;
@@ -181,7 +188,7 @@ llvm::Value* IsNormalNumber(PrimitiveType type, llvm::Value* value,
 }
 
 llvm::Value* IsOutputNormal(PrimitiveType input_type, llvm::Value* exponent,
-                            PrimitiveType output_type, llvm::IRBuilder<>* b) {
+                            PrimitiveType output_type, llvm::IRBuilderBase* b) {
   const uint64_t denorm_exponent = UnderflowExponent(output_type) - 1;
 
   llvm::Type* uint_type = b->getIntNTy(BitWidth(input_type));
@@ -190,13 +197,13 @@ llvm::Value* IsOutputNormal(PrimitiveType input_type, llvm::Value* exponent,
 }
 
 llvm::Value* Max(llvm::Type* type, llvm::Value* x, uint64_t y,
-                 llvm::IRBuilder<>* b) {
+                 llvm::IRBuilderBase* b) {
   return b->CreateBinaryIntrinsic(llvm::Intrinsic::smax, x,
                                   llvm::ConstantInt::get(type, y));
 }
 
 llvm::Value* Min(llvm::Type* type, llvm::Value* x, uint64_t y,
-                 llvm::IRBuilder<>* b) {
+                 llvm::IRBuilderBase* b) {
   return b->CreateBinaryIntrinsic(llvm::Intrinsic::smin, x,
                                   llvm::ConstantInt::get(type, y));
 }
@@ -204,7 +211,7 @@ llvm::Value* Min(llvm::Type* type, llvm::Value* x, uint64_t y,
 // Returns the sign bit of the input value shifted down to the least
 // significant bit.
 llvm::Value* ExtractSign(PrimitiveType type, llvm::Value* value,
-                         bool preserve_signed_zero, llvm::IRBuilder<>* b) {
+                         bool preserve_signed_zero, llvm::IRBuilderBase* b) {
   const uint64_t shift = BitWidth(type) - 1;
   const uint64_t sign_bit_mask = 0x1ull << shift;
 
@@ -225,7 +232,7 @@ llvm::Value* ExtractSign(PrimitiveType type, llvm::Value* value,
 // Returns the exponent of the input value shifted down to the least
 // significant bits and without any bias.
 llvm::Value* ExtractExponent(PrimitiveType type, llvm::Value* value,
-                             llvm::IRBuilder<>* b) {
+                             llvm::IRBuilderBase* b) {
   const uint64_t shift = BitWidth(type) - 1;
   const uint64_t bit_mask = (0x1ull << shift) - 0x1ull;
   llvm::Type* uint_type = b->getIntNTy(BitWidth(type));
@@ -252,7 +259,7 @@ llvm::Value* ExtractExponent(PrimitiveType type, llvm::Value* value,
 // represented. For normal numbers, the implicit leading 1 is in the
 // returned value.
 llvm::Value* ExtractMantissa(PrimitiveType type, llvm::Value* value,
-                             llvm::IRBuilder<>* b) {
+                             llvm::IRBuilderBase* b) {
   const uint64_t shift = SignificandWidth(type) - 1;
   const uint64_t mantissa_bit_mask = (0x1ull << shift) - 0x1ull;
 
@@ -299,7 +306,7 @@ llvm::Value* ExtractMantissa(PrimitiveType type, llvm::Value* value,
 absl::StatusOr<llvm::Value*> LastMantissaBit(PrimitiveType input_type,
                                              llvm::Value* value,
                                              PrimitiveType output_type,
-                                             llvm::IRBuilder<>* b) {
+                                             llvm::IRBuilderBase* b) {
   const int src_mantissa_bits = SignificandWidth(input_type) - 1;
   const int dest_mantissa_bits = SignificandWidth(output_type) - 1;
   llvm::Type* int_type = b->getIntNTy(BitWidth(input_type));
@@ -371,7 +378,7 @@ absl::StatusOr<llvm::Value*> LastMantissaBit(PrimitiveType input_type,
 absl::StatusOr<llvm::Value*> DynamicRoundingBias(PrimitiveType input_type,
                                                  llvm::Value* value,
                                                  PrimitiveType output_type,
-                                                 llvm::IRBuilder<>* b) {
+                                                 llvm::IRBuilderBase* b) {
   llvm::Type* int_type = b->getIntNTy(BitWidth(input_type));
 
   // Find the bit position of the last mantissa bit.
@@ -403,7 +410,7 @@ absl::StatusOr<llvm::Value*> DynamicRoundingBias(PrimitiveType input_type,
 llvm::Value* BuildOutputMantissa(PrimitiveType input_type,
                                  llvm::Value* exponent, llvm::Value* mantissa,
                                  PrimitiveType output_type,
-                                 llvm::IRBuilder<>* b) {
+                                 llvm::IRBuilderBase* b) {
   llvm::Type* input_int_type = b->getIntNTy(BitWidth(input_type));
 
   // Count the number of leading zeros, excluding the bits that would contain
@@ -455,7 +462,7 @@ llvm::Value* BuildOutputMantissa(PrimitiveType input_type,
 llvm::Value* BuildOutputExponent(PrimitiveType input_type,
                                  llvm::Value* exponent, llvm::Value* mantissa,
                                  PrimitiveType output_type,
-                                 llvm::IRBuilder<>* b) {
+                                 llvm::IRBuilderBase* b) {
   llvm::Type* input_int_type = b->getIntNTy(BitWidth(input_type));
 
   // Count the number of leading zeros, excluding the bits that would contain
@@ -491,7 +498,7 @@ llvm::Value* BuildOutputExponent(PrimitiveType input_type,
 // Returns the sign for the output type. The result is shifted into the correct
 // position.
 llvm::Value* BuildOutputSign(llvm::Value* sign, PrimitiveType output_type,
-                             llvm::IRBuilder<>* b) {
+                             llvm::IRBuilderBase* b) {
   // Shift the sign bit into the msb.
   return b->CreateShl(sign, BitWidth(output_type) - 1);
 }
@@ -506,7 +513,7 @@ absl::StatusOr<uint64_t> GetQNaN(PrimitiveType type) {
 absl::StatusOr<llvm::Value*> EmitFloatingToF8fnuz(PrimitiveType input_type,
                                                   llvm::Value* input_value,
                                                   PrimitiveType output_type,
-                                                  llvm::IRBuilder<>* b) {
+                                                  llvm::IRBuilderBase* b) {
   // Sanity check for supported types.
   TF_RET_CHECK(input_type == BF16 || input_type == F16 || input_type == F32 ||
                input_type == F64);
@@ -570,7 +577,7 @@ absl::StatusOr<llvm::Value*> EmitFloatingToF8fnuz(PrimitiveType input_type,
 absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
                                                   llvm::Value* f8_value,
                                                   PrimitiveType output_type,
-                                                  llvm::IRBuilder<>* b,
+                                                  llvm::IRBuilderBase* b,
                                                   llvm::Module* module) {
   // Sanity check for supported types.
   TF_RET_CHECK(input_type == F8E4M3FNUZ || input_type == F8E5M2FNUZ);

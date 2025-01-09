@@ -119,7 +119,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   LaunchDimensions launch_dimensions;
   std::optional<se::ClusterDim> cluster_dim;
-  const se::Kernel* kernel = nullptr;
+  se::Kernel* kernel = nullptr;
 
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
@@ -198,7 +198,7 @@ absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
 absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  const se::Kernel* kernel = [&] {
+  se::Kernel* kernel = [&] {
     absl::MutexLock lock(&mutex_);
     return kernel_cache_[executor].get();
   }();
@@ -222,12 +222,12 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
                                        custom_kernel_.shared_memory_bytes());
 
   if (auto cluster = custom_kernel_.cluster_dims(); cluster.has_value()) {
-    return params.stream->Launch(custom_kernel_.thread_dims(),
-                                 custom_kernel_.block_dims(), *cluster, *kernel,
-                                 args);
+    return kernel->Launch(custom_kernel_.thread_dims(),
+                          custom_kernel_.block_dims(), *cluster, params.stream,
+                          args);
   } else {
-    return params.stream->Launch(custom_kernel_.thread_dims(),
-                                 custom_kernel_.block_dims(), *kernel, args);
+    return kernel->Launch(custom_kernel_.thread_dims(),
+                          custom_kernel_.block_dims(), params.stream, args);
   }
 }
 

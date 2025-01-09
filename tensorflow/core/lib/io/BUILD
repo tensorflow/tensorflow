@@ -8,7 +8,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
-        "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "@local_xla//xla/tsl/lib/io/snappy:__pkg__",
         "//third_party/py/tensorflow_io:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**

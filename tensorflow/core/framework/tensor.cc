@@ -179,8 +179,8 @@ struct Helper {
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
-    port::AssignRefCounted(StringPiece(in->base<const char>(), in->size()), in,
-                           out);
+    port::AssignRefCounted(
+        absl::string_view(in->base<const char>(), in->size()), in, out);
   }
 
   // Decoder of simple type T. Copy the bytes from "in" into the
@@ -685,8 +685,8 @@ TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
     // the remaining elements up to n to be the default ResourceHandle() value.
     const int64_t real_n = n < in_n ? n : in_n;
     for (int64_t i = 0; i < real_n; ++i) {
-      Status s = ResourceHandle::BuildResourceHandle(in.resource_handle_val(i),
-                                                     &data[i]);
+      absl::Status s = ResourceHandle::BuildResourceHandle(
+          in.resource_handle_val(i), &data[i]);
       if (!s.ok()) {
         LOG(ERROR) << "Could not decode resource handle from proto \""
                    << in.resource_handle_val(i).ShortDebugString()
@@ -861,8 +861,8 @@ std::ostream& operator<<(std::ostream& out, const Tensor& tensor) {
   return out;
 }
 
-Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
-                           const TensorShape& shape) {
+absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
+                                 const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
   if (in_size == 0) {
@@ -992,8 +992,8 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   }
 }
 
-Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
-                           Tensor* out_tensor) {
+absl::Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
+                                 Tensor* out_tensor) {
   // Avoid crashes due to invalid or unsupported types.
   CASES_WITH_DEFAULT(
       type, {}, return errors::InvalidArgument("Type not set"),
@@ -1509,9 +1509,10 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
   }
 }
 
-StringPiece Tensor::tensor_data() const {
-  if (buf_ == nullptr) return StringPiece();  // Don't die for empty tensors
-  return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
+absl::string_view Tensor::tensor_data() const {
+  if (buf_ == nullptr)
+    return absl::string_view();  // Don't die for empty tensors
+  return absl::string_view(static_cast<char*>(buf_->data()), TotalBytes());
 }
 
 void* Tensor::data() const {

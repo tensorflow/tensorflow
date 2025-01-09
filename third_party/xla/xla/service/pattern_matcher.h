@@ -46,10 +46,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -2436,7 +2436,7 @@ class HloInstructionPattern {
   }
 
   // Because we only specify the shape's element type and dims, this is
-  // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
+  // effectively checking shape-compatible-to, not shape-equal-to.  Perhaps this
   // function should be called WithShapeCompatibleTo, but the short name is
   // nice, and there's no ambiguity because there's no layout in the args!
   constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims) {
@@ -2678,7 +2678,6 @@ XLA_NULLOP_PATTERN(ReplicaId)
         .WithOperand(0, std::forward<Arg>(arg));                     \
   }
 XLA_UNOP_PATTERN(Abs)
-XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(BitcastConvert)
 XLA_UNOP_PATTERN(Broadcast)
@@ -2690,6 +2689,7 @@ XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduceStart)
 XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(AllToAll)
+XLA_UNOP_PATTERN(RaggedAllToAll)
 XLA_UNOP_PATTERN(AsyncDone)
 XLA_UNOP_PATTERN(CollectiveBroadcast)
 XLA_UNOP_PATTERN(CollectivePermute)
@@ -2716,6 +2716,8 @@ XLA_UNOP_PATTERN(RecvDone)
 XLA_UNOP_PATTERN(ReducePrecision)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
+XLA_UNOP_PATTERN(RoundNearestAfz)
+XLA_UNOP_PATTERN(RoundNearestEven)
 XLA_UNOP_PATTERN(Rsqrt)
 XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
@@ -2814,6 +2816,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(RaggedDot);
 XLA_TERNOP_PATTERN(Select);
 XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN

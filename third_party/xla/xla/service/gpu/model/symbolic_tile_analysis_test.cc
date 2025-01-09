@@ -31,18 +31,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -77,6 +78,12 @@ Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
     absl::string_view tile_offsets_indexing) {
   return MatchTiledHloInstructionImpl(tile_sizes, tile_strides,
                                       tile_offsets_indexing);
+}
+
+MATCHER_P(MatchConstraintExpressionString, constraint_expression_string, "") {
+  return ExplainMatchResult(
+      true, ApproximateMatch(constraint_expression_string, arg.ToString()),
+      result_listener);
 }
 
 // Fake emitter-specific constraints for testing. Requires that the tile size
@@ -168,8 +175,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1 * 10),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -182,8 +188,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1 * 10),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
@@ -193,8 +198,7 @@ ENTRY main {
     (d0, d1) -> (d0, 0),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 }
 
@@ -286,8 +290,7 @@ ENTRY main {
     (d0, d1) -> (d0, 0),
     domain:
     d0 in [0, 1],
-    d1 in [0, 0],
-    is_simplified: true
+    d1 in [0, 0]
   )"));
 }
 
@@ -321,8 +324,7 @@ ENTRY main {
     domain:
     d0 in [0, 1],
     d1 in [0, 1],
-    d2 in [0, 7],
-    is_simplified: true
+    d2 in [0, 7]
   )"));
 
   EXPECT_THAT(*root->operand(0),
@@ -333,8 +335,7 @@ ENTRY main {
     domain:
     d0 in [0, 1],
     d1 in [0, 1],
-    d2 in [0, 7],
-    is_simplified: true
+    d2 in [0, 7]
   )"));
 }
 
@@ -371,8 +372,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, d1 * 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
@@ -382,8 +382,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, d1 * 2 + 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
@@ -393,28 +392,63 @@ ENTRY main {
     (d0, d1) -> (d0 * 2 + 3, d1 * 2 + 4),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 }
 
-TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedDot) {
+TEST_F(SymbolicTileAnalysisTest, DotOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 fusion {
-  p0 = f32[1,2]{1,0} parameter(0)
-  p1 = f32[2,3]{1,0} parameter(1)
-  ROOT dot = f32[1,3]{1,0} dot(p0, p1),
-    lhs_batch_dims={}, rhs_batch_dims={},
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  ROOT dot = f32[4,16] dot(p0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY main {
-  p0 = f32[1,2]{1,0} parameter(0)
-  p1 = f32[2,3]{1,0} parameter(1)
-  ROOT fusion = f32[1,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  ROOT fusion = f32[4,16] fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{2, 2},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoot();
+  EXPECT_THAT(*dot, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0 * 2, d1 * 2),
+    domain:
+    d0 in [0, 1],
+    d1 in [0, 7]
+  )"));
+
+  const TiledHloInstruction* lhs = dot->operand(0);
+  EXPECT_THAT(*lhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{2, 8}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0 * 2, 0),
+    domain:
+    d0 in [0, 1],
+    d1 in [0, 7]
+  )"));
+
+  const TiledHloInstruction* rhs = dot->operand(1);
+  EXPECT_THAT(*rhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{8, 2}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (0, d1 * 2),
+    domain:
+    d0 in [0, 1],
+    d1 in [0, 7]
+  )"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedReshape) {
@@ -432,8 +466,8 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(2));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedBitcast) {
@@ -451,8 +485,8 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(2));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
@@ -506,10 +540,11 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(4));
-  for (const ConstraintExpression::ConjointConstraints& conjunction :
-       constraints.DisjointConjointConstraints())
-    EXPECT_THAT(conjunction, SizeIs(2));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
+                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
+                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
+                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
 
   // We expect the constraints here to be
   //    6 mod d0 in [0, 0] && 8 mod s1 in [0, 0] ||
@@ -597,8 +632,11 @@ ENTRY main {
   // Each bitcast in the above module introduces one disjoint constraint. Once
   // they are aggregated, we have four disjoint constraints!
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(4));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(2));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
+                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
+                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
+                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
 }
 
 bool AlwaysValid(absl::Span<const int64_t>) { return true; }
@@ -871,8 +909,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1),
     domain:
     d0 in [0, 65537],
-    d1 in [0, 32767],
-    is_simplified: true
+    d1 in [0, 32767]
   )"));
 }
 
@@ -927,25 +964,19 @@ ENTRY main {
     (d0, d1) -> (0, d1, 0),
     domain:
     d0 in [0, 0],
-    d1 in [0, 1],
-    is_simplified: true
+    d1 in [0, 1]
   )"));
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
                                  /*tile_sizes=*/{1, 1, 32},
                                  /*tile_strides=*/{0, 1, 1},
                                  /*tile_offsets_indexing=*/R"(
-    (d0, d1)[s0, s1] -> (s0, d1, s1),
+    (d0, d1){rt0, rt1} -> (rt0, d1, rt1),
     domain:
     d0 in [0, 0],
     d1 in [0, 1],
-    s0 in [0, 1],
-      hlo: %of1 = s32[] parameter(1),
-      (d0, d1, d2) -> (),
-    s1 in [0, 226],
-      hlo: %of3 = s32[] parameter(3),
-      (d0, d1, d2) -> (),
-    is_simplified: true
+    rt0 in [0, 1],
+    rt1 in [0, 226]
   )"));
 }
 
@@ -1018,6 +1049,29 @@ ENTRY main {
 
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   EXPECT_TRUE(analysis.has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest, IotaAlwaysHasTileOffsetsIndexingSet) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  ROOT iota = s32[100] iota(), iota_dimension=0
+}
+
+ENTRY main {
+  ROOT fusion = s32[100] fusion(), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{4},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/false));
+
+  const TiledHloInstruction* iota = tiled_hlo_computation.GetRoot();
+  EXPECT_THAT(iota->tile_offsets_indexing().status(), ::tsl::testing::IsOk());
 }
 
 }  // namespace

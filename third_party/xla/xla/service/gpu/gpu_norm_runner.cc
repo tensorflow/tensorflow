@@ -50,9 +50,9 @@ absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
                       lazy_runner->GetOrCreateRunner(ln_config, stream));
 
   std::vector<se::DeviceMemoryBase> operands;
-  operands.emplace_back(x_buffer);
-  operands.emplace_back(scale_buffer);
-  operands.emplace_back(y_or_dx_buffer);
+  operands.push_back(x_buffer);
+  operands.push_back(scale_buffer);
+  operands.push_back(y_or_dx_buffer);
 
   // The remaining operands are composed of inputs followed by outputs of the
   // library call. The expectation and norm factor are outputs of the forward

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
-#include "tsl/platform/windows/intrinsics_port.h"
+#include "xla/tsl/platform/windows/intrinsics_port.h"
 #endif
 
 namespace Eigen {

@@ -57,6 +57,9 @@ class SortRewriter : public HloModulePass {
   static inline int sort_size_threshold_ = 16385;
 };
 
+// Verify that the sort tensor shape is supported by CUB.
+bool IsCubCompatibleSort(const HloSortInstruction* sort_op);
+
 }  // namespace gpu
 }  // namespace xla
 

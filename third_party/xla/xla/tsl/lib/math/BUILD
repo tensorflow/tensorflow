@@ -1,9 +1,9 @@
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,11 +17,7 @@ cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([
-        "//platforms/performance/tf_sim/utils:__subpackages__",
-        "//platforms/xla/service:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ]),
+    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/base:core_headers"],
 )
 

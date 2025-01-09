@@ -53,6 +53,10 @@ mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);
 
+// Converts ragged dot dimensions to attributes.
+mlir::mhlo::RaggedDotDimensionNumbersAttr ConvertRaggedDotDimensionNumbers(
+    const RaggedDotDimensionNumbers& dnums, mlir::Builder* builder);
+
 // Converts the conv dimensions to attributes.
 mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);

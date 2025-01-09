@@ -21,14 +21,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/tracing.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/time_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tsl {
 namespace profiler {

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 #define XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/Metadata.h"

@@ -44,8 +44,10 @@ namespace xla {
 // a += e
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
-  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false)
-      : enable_reduce_scatter_(enable_reduce_scatter) {}
+  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,
+                                        bool run_setup_passes = false)
+      : enable_reduce_scatter_(enable_reduce_scatter),
+        run_setup_passes_(run_setup_passes) {}
   ~WhileLoopAllReduceCodeMotion() override = default;
 
   absl::string_view name() const override {
@@ -58,6 +60,10 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
 
  private:
   const bool enable_reduce_scatter_;
+
+  // Whether to run passes that may setup the add(all-reduce/reduce-scatter,
+  // accumulation_buffer) pattern.
+  const bool run_setup_passes_;
 };
 }  // namespace xla
 

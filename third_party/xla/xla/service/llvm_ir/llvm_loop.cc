@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_loop.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -51,7 +55,7 @@ ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
 
 /* static */ std::unique_ptr<ForLoop> ForLoop::EmitForLoop(
     absl::string_view prefix, llvm::Value* start_index, llvm::Value* end_index,
-    llvm::Value* step, llvm::IRBuilder<>* b, UnrollMode unroll_mode,
+    llvm::Value* step, llvm::IRBuilderBase* b, UnrollMode unroll_mode,
     bool prevent_vectorization) {
   std::unique_ptr<ForLoop> loop(new ForLoop(prefix, /*suffix=*/"", start_index,
                                             end_index, step, unroll_mode,
@@ -60,7 +64,7 @@ ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
   return loop;
 }
 
-void ForLoop::Emit(llvm::IRBuilder<>* b) {
+void ForLoop::Emit(llvm::IRBuilderBase* b) {
   // The preheader block is the block the builder is currently emitting
   // code into.
   preheader_bb_ = b->GetInsertBlock();
@@ -146,7 +150,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   b->SetInsertPoint(exit_bb_);
 }
 
-std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
+std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
   const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
   const char* const kLlvmLoopUnrollFullMDName = "llvm.loop.unroll.full";
   const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.enable";
@@ -176,7 +180,7 @@ std::string ForLoop::GetQualifiedName(absl::string_view name) {
 }
 
 llvm::BasicBlock* ForLoop::CreateLoopBB(absl::string_view name,
-                                        llvm::IRBuilder<>* b) {
+                                        llvm::IRBuilderBase* b) {
   return CreateBasicBlock(insert_before_bb_, GetQualifiedName(name), b);
 }
 

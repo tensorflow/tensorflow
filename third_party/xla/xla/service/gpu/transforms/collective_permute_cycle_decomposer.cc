@@ -32,11 +32,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -46,8 +46,10 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
+
 enum class CycleType { kUnknown, kForward, kBackward };
 
 // Returns true if the CollectivePermute instruction has a cycle in its
@@ -59,8 +61,8 @@ CycleType ShouldDecomposeWithCycleType(
     return CycleType::kUnknown;
   }
 
-  const Shape& result_shape = collective_permute.shape();
   // Skip the transformation if there is any context data.
+  const Shape& result_shape = collective_permute.shape();
   if (result_shape.IsTuple()) {
     return CycleType::kUnknown;
   }
@@ -225,7 +227,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
   int64_t next_channel_id;
   for (auto comp : module->computations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
-      if (hlo->opcode() != HloOpcode::kCollectivePermute) {
+      if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute>(hlo)) {
         continue;
       }
       auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);

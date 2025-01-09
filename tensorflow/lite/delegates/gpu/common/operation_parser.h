@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATION_PARSER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATION_PARSER_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"

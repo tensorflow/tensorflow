@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_CPU_HOST_TRACER_H_
 #define XLA_BACKENDS_PROFILER_CPU_HOST_TRACER_H_
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -32,6 +34,7 @@ struct HostTracerOptions {
   // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
   //           (low-level) program execution details (cheap TF ops, etc).
   int trace_level = 2;
+  uint64_t filter_mask = std::numeric_limits<uint64_t>::max();
 };
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(

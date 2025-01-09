@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/array4d.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <numeric>
 #include <vector>

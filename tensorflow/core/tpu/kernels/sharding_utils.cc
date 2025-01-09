@@ -40,7 +40,7 @@ absl::Status ValidateShapesForSlice(absl::string_view input_name,
                                     const std::vector<int32_t>& paddings) {
   const auto& ishape = input->shape();
 
-  Status s;
+  absl::Status s;
 
   const int rank = ishape.dims();
   const auto& input_shape = ishape.dim_sizes();

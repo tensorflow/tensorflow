@@ -16,24 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_FUSION_CONSTANT_SINKING_H_
 #define XLA_SERVICE_FUSION_CONSTANT_SINKING_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass which sinks constants into fusion computations.
-class FusionConstantSinking : public HloModulePass {
- public:
-  absl::string_view name() const override { return "fusion_constant_sinking"; }
-
-  // Run fusion constant sinking operations on the given module. Returns whether
-  // the module was changed (constant expressions folded).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/fusion_constant_sinking.h"
 
 #endif  // XLA_SERVICE_FUSION_CONSTANT_SINKING_H_
