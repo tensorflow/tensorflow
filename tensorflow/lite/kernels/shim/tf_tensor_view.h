@@ -26,7 +26,7 @@ namespace tflite {
 namespace shim {
 
 // A view over TF Tensor without taking ownership. It can be either mutable or
-// immutable.
+// immutable. THIS IS A TEST
 class TfTensorView : public TensorView {
  public:
   // Move constructor
