@@ -161,6 +161,14 @@ absl::Status ByteSwapTensor(Tensor* t) {
                         t->NumElements());
 }
 
+absl::Status ByteSwapTensorProto(TensorProto* tp) {
+  std::string content_str = std::string(tp->tensor_content());
+  char* buff = const_cast<char*>(content_str.data());
+  TF_RETURN_IF_ERROR(ByteSwapBuffer(buff, content_str.size(), tp->dtype(), -1));
+  tp->set_tensor_content(content_str);
+  return absl::OkStatus();
+}
+
 absl::Status ByteSwapTensorContentInNode(NodeDef& node) {
   if (node.op() == "Const") {
     auto node_iterator = node.mutable_attr()->find("value");
