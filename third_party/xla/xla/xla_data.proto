@@ -433,6 +433,8 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
+  reserved 11;
+
   // Deduplicated HLO name for this op. In some cases, we can have multiple
   // instructions (e.g. fusions) that are considered duplicates. We want to
   // group them together under the same name so that we can group them together
@@ -441,8 +443,7 @@ message OpMetadata {
   // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
   string deduplicated_name = 12;
 
-  // Whether to preserve the layout of the HLO op.
-  bool preserve_layout = 13;
+  reserved 13;
 
   // 1-based position of the frame in frames flat array.
   // Ids are 1-based to keep 0 value as representation of non-set property.

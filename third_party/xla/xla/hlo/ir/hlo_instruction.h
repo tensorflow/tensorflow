@@ -2228,8 +2228,6 @@ class HloInstruction {
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
 
-  bool preserve_layout() const { return metadata_->preserve_layout(); }
-
   bool has_backend_config() const { return !backend_config_.empty(); }
 
   void clear_backend_config() { backend_config_ = BackendConfigWrapper(); }
@@ -2380,9 +2378,6 @@ class HloInstruction {
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
     metadata_->set_deduplicated_name(std::move(deduplicated_name));
-  }
-  void set_metadata_preserve_layout(bool preserve_layout) {
-    metadata_->set_preserve_layout(preserve_layout);
   }
   void set_metadata_scheduling_name(absl::string_view name) {
     metadata_->set_scheduling_name(std::string(name));

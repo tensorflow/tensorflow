@@ -6529,7 +6529,6 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
-  optional<bool> preserve_layout;
   optional<std::string> scheduling_name;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
@@ -6539,8 +6538,6 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
                                 &deduplicated_name};
-  attrs["preserve_layout"] = {/*required=*/false, AttrTy::kBool,
-                              &preserve_layout};
   attrs["scheduling_name"] = {/*required=*/false, AttrTy::kString,
                               &scheduling_name};
   if (!ParseSubAttributes(attrs)) {
@@ -6568,11 +6565,6 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (deduplicated_name) {
     metadata.set_deduplicated_name(*deduplicated_name);
-  }
-  if (preserve_layout) {
-    metadata.set_preserve_layout(*preserve_layout);
-  } else {
-    metadata.set_preserve_layout(false);
   }
   if (scheduling_name) {
     metadata.set_scheduling_name(*scheduling_name);

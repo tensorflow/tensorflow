@@ -1531,18 +1531,6 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 },
 
 {
-"MetadataPreserveLayout",
-R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
-
-ENTRY %test (p: f32[100]) -> u32[100] {
-  %p = f32[100]{0} parameter(0)
-  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" preserve_layout=true}
-}
-
-)"
-},
-
-{
 "OriginalValue",
 R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
 
