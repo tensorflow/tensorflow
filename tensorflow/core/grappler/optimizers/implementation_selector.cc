@@ -287,7 +287,6 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
 
   auto select_device = [&](const string& function_name,
                            const std::vector<string>& equiv_func_names) {
-    StringPiece device_type;
     if (parsed_name.has_type) {
       return StringPiece(parsed_name.type);
     }
