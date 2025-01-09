@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/spmd/shardy/mhlo_round_trip/export_callback_custom_calls.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_export.h"
@@ -36,6 +37,7 @@ void addMhloExportPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createMhloRoundTripShardMapExportPass());
   pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createExportMhloShardingsPass());
+  pm.addPass(createMhloRoundTripExportCallbackCustomCallsPass());
 }
 
 void registerMhloExportPipeline() {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/service/spmd/shardy/mhlo_round_trip/export_callback_custom_calls.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_export.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/import_callback_custom_calls.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
@@ -66,12 +68,14 @@ int main(int argc, char** argv) {
 
   xla::sdy::registerMhloExportPipeline();
   xla::sdy::registerMhloExportShardingsPass();
+  xla::sdy::registerMhloRoundTripExportCallbackCustomCallsPass();
   xla::sdy::registerMhloRoundTripShardMapExportPass();
   xla::sdy::registerExportNamedComputationsPass();
   xla::sdy::registerExportOpsPass();
 
   xla::sdy::registerSdyRoundTripMhloToHloToMhloPass();
   xla::sdy::registerSdyRoundTripExportShardyAttrsPass();
+  xla::sdy::registerSdyRoundTripImportCallbackCustomCallsPass();
   xla::sdy::registerSdyRoundTripImportShardyAttrsPass();
   xla::sdy::registerSdyRoundTripRemoveSizeOneAxesPass();
   xla::sdy::registerSdyRoundTripExportOpsPass();

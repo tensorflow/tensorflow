@@ -246,6 +246,74 @@ func.func @custom_call_erf_topk(
   return %1#0 : tensor<16x2xf32>
 }
 
+// CHECK-LABEL: @callback_transform_to_tuple
+func.func @callback_transform_to_tuple(%arg0: tensor<2xf64> {sdy.sharding = #sdy.sharding<@mesh_5, [{"i"}]>}) -> (tensor<2xf64> {sdy.sharding = #sdy.sharding<@mesh_5, [{"i"}]>}) {
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {{{.*}} : (tensor<i64>, tensor<2xf64>) -> tuple<tensor<2xf64>>
+  // CHECK-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
+  // CHECK-NEXT: return %[[GET_TUPLE]] : tensor<2xf64>
+  %1 = stablehlo.constant dense<56560393354880> : tensor<i64>
+  %2 = stablehlo.custom_call @xla_python_cpu_callback(%1, %arg0) {api_version = 2 : i32, backend_config = "56560393354880", operand_layouts = [dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>], sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_0, [{}]>]>, xla_shape = "(f64[2]{0})"} : (tensor<i64>, tensor<2xf64>) -> tensor<2xf64>
+  return %2 : tensor<2xf64>
+}
+
+// CHECK-LABEL: @callback_no_result
+func.func private @callback_no_result(%arg0: tensor<f64>) {
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {
+  // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
+  // CHECK-SAME:   has_side_effect = true,  mhlo.sharding = "{maximal device=0}",
+  // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>],
+  // CHECK-SAME:   result_layouts = []
+  // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> ()
+  %c = stablehlo.constant dense<56238273106176> : tensor<i64>
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = [], sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<i64>, tensor<f64>) -> tuple<>
+  return
+}
+
+// CHECK-LABEL: @callback_result_unused
+func.func private @callback_result_unused(%arg0: tensor<f64>) {
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {
+  // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
+  // CHECK-SAME:   has_side_effect = true, mhlo.sharding = "{maximal device=0}",
+  // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>],
+  // CHECK-SAME:   result_layouts = []
+  // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> ()
+  %c = stablehlo.constant dense<56238273106176> : tensor<i64>
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = [dense<> : tensor<0xindex>], sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<i64>, tensor<f64>) -> tensor<i64>
+  return
+}
+
+// CHECK-LABEL: @callback_tuple_result_token_used
+func.func public @callback_tuple_result_token_used(%arg0: !stablehlo.token, %arg1: tensor<2xi64>) -> !stablehlo.token {
+  %c = stablehlo.constant dense<56238119409280> : tensor<i64>
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0, %arg1) {
+  // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238119409280",
+  // CHECK-SAME:   has_side_effect = true, mhlo.sharding = "{maximal device=0}",
+  // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>],
+  // CHECK-SAME:   result_layouts = [dense<> : tensor<0xindex>]
+  // CHECK-SAME: } : (tensor<i64>, !stablehlo.token, tensor<2xi64>) -> tuple<!stablehlo.token>
+  // CHECK-NEXT: %[[TOKEN:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] : (tuple<!stablehlo.token>) -> !stablehlo.token
+  // CHECK-NEXT: return %[[TOKEN]] : !stablehlo.token
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0, %arg1) {api_version = 2 : i32, backend_config = "56238119409280", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<> : tensor<0xindex>], sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<i64>, !stablehlo.token, tensor<2xi64>) -> tuple<!stablehlo.token>
+  %1 = stablehlo.get_tuple_element %0[0] : (tuple<!stablehlo.token>) -> !stablehlo.token
+  return %1 : !stablehlo.token
+}
+
+// CHECK-LABEL: @callback_no_tuple_result_used
+func.func @callback_no_tuple_result_used(%arg0: tensor<2xf64>) -> tensor<2xf64> {
+  // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
+  // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {{{.*}} : (tensor<i64>, tensor<2xf64>) -> tuple<tensor<2xf64>>
+  // CHECK-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
+  // CHECK-NEXT: return %[[GET_TUPLE]] : tensor<2xf64>
+  %c = stablehlo.constant dense<18990036333952> : tensor<i64>
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "18990036333952", operand_layouts = [dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>], sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_0, [{?}]>]>, xla_shape = "(f64[2]{0})"} : (tensor<i64>, tensor<2xf64>) -> tensor<2xf64>
+  return %0 : tensor<2xf64>
+}
+
+
 // CHECK-LABEL: func private @foo
 // CHECK-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}
 // CHECK-SAME:    -> (tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}) {
