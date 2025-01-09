@@ -59,8 +59,8 @@ absl::Status ReadOpListFromFile(const string& filename,
     // The parser assumes that the op name is the first string on each
     // line with no preceding whitespace, and ignores lines that do
     // not start with an op name as a comment.
-    strings::Scanner scanner{StringPiece(line_contents)};
-    StringPiece op_name;
+    strings::Scanner scanner{absl::string_view(line_contents)};
+    absl::string_view op_name;
     if (scanner.One(strings::Scanner::LETTER_DIGIT_DOT)
             .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
             .GetResult(nullptr, &op_name)) {

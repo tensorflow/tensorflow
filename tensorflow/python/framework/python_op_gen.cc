@@ -326,7 +326,7 @@ class GenPythonOp {
   // with defaults, except "name"
   std::vector<ParamNames> param_names_;
 
-  StringPiece op_name_;
+  absl::string_view op_name_;
   typedef std::unordered_map<string, std::vector<int>> AttrToArgMap;
   AttrToArgMap attr_to_args_;
   std::unordered_map<string, string> attr_expressions_;
@@ -411,7 +411,7 @@ string AvoidPythonReserved(const string& s) {
 
 // Indent the first line by "initial" spaces and all following lines
 // by "rest" spaces.
-string Indent(int initial, int rest, StringPiece in) {
+string Indent(int initial, int rest, absl::string_view in) {
   // TODO(josh11b): Also word-wrapping?
   string copy(in.data(), in.size());
   absl::StripTrailingAsciiWhitespace(&copy);
@@ -436,7 +436,7 @@ string Indent(int initial, int rest, StringPiece in) {
 
 // Adds append to *dest, with a space if the first line will be <= width,
 // or a newline otherwise.
-void AppendWithinWidth(string* dest, StringPiece append, int width) {
+void AppendWithinWidth(string* dest, absl::string_view append, int width) {
   auto first_line = append.find('\n');
   if (first_line == string::npos) first_line = append.size();
   if (dest->size() + first_line + 1 /* space */ > static_cast<size_t>(width)) {
@@ -585,7 +585,7 @@ string GetReturns(const OpDef& op_def,
     strings::StrAppend(&result, "    The created Operation.\n");
   } else {
     if (num_outs == 1) {
-      StringPiece description = op_def.output_arg(0).description();
+      absl::string_view description = op_def.output_arg(0).description();
       if (ConsumeEquals(&description)) {  // Skip the generated type info.
         strings::StrAppend(&result, Indent(4, 4, description));
       } else {
@@ -621,7 +621,7 @@ string GetReturns(const OpDef& op_def,
                          absl::StrJoin(out_names, ", "), ").\n\n");
       for (int i = 0; i < num_outs; ++i) {
         string desc = strings::StrCat(out_names[i], ": ");
-        StringPiece description = op_def.output_arg(i).description();
+        absl::string_view description = op_def.output_arg(i).description();
         if (ConsumeEquals(&description)) {  // Skip the generated type info.
           strings::StrAppend(&desc, description);
         } else {
@@ -798,7 +798,7 @@ static void AddDelimiter(string* append_to, const string& delim) {
   if (!append_to->empty()) strings::StrAppend(append_to, delim);
 }
 
-const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
+const ApiDef::Attr* FindAttr(absl::string_view name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.attr_size(); ++i) {
     if (api_def.attr(i).name() == name) {
       return &api_def.attr(i);
@@ -889,7 +889,7 @@ void GenPythonOp::AddDocStringInputs() {
   for (int i = 0; i < api_def_.arg_order_size(); ++i) {
     const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
     const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
-    StringPiece description = api_def_arg.description();
+    absl::string_view description = api_def_arg.description();
     string desc;
     if (ConsumeEquals(&description)) {  // Skip the generated type info.
       desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ");
@@ -1512,7 +1512,7 @@ bool GenPythonOp::GetEagerFunctionSetup(const string& indentation,
     const auto& param = param_names_[i + op_def_.input_arg_size()];
     const auto& attr = *FindAttr(attr_name, op_def_);
     const string& attr_api_name = param.GetRenameTo();
-    StringPiece attr_type = attr.type();
+    absl::string_view attr_type = attr.type();
     attr_expressions_[attr_name] = attr_api_name;
     const int default_index = i - (attrs_.size() - params_with_default_.size());
     if (default_index >= 0) {
