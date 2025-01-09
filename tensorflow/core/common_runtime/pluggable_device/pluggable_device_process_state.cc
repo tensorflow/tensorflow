@@ -124,7 +124,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
         platform_device_id,
         use_unified_memory ? stream_executor::MemoryType::kUnified
                            : stream_executor::MemoryType::kDevice,
-        pluggable_device_visitors_[bus_id], {});
+        pluggable_device_visitors_[bus_id]);
 
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
