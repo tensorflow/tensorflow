@@ -225,7 +225,8 @@ SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
                                   const std::unordered_set<std::string>& tags,
                                   absl::Span<std::string> exported_names,
                                   mlir::MLIRContext* context,
-                                  bool unconditionally_use_set_output_shapes) {
+                                  bool unconditionally_use_set_output_shapes,
+                                  bool import_variables_as_dense_resources) {
   tensorflow::SavedModelV2Bundle bundle;
   auto load_status = tensorflow::SavedModelV2Bundle::Load(
       std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
@@ -239,6 +240,8 @@ SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
   options.add_default_attributes = true;
   options.unconditionally_use_set_output_shapes =
       unconditionally_use_set_output_shapes;
+  options.import_variables_as_dense_resources =
+      import_variables_as_dense_resources;
 
   auto module_or =
       ConvertSavedModelToMlir(&bundle, context, exported_names, options);

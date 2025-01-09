@@ -108,7 +108,8 @@ SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool unconditionally_use_set_output_shapes = false);
+    bool unconditionally_use_set_output_shapes = false,
+    bool import_variables_as_dense_resources = false);
 
 // Converts a TensorFlow V1 SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the

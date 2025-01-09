@@ -923,7 +923,11 @@ absl::Status CreateSavedModelIR(
             saved_model->variable_reader()->Lookup(checkpoint_key, &value),
             "Could not read checkpoint key from variables bundle: ",
             checkpoint_key);
-        TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
+        TF_ASSIGN_OR_RETURN(
+            auto value_attr,
+            ConvertTensor(value, &builder,
+                          /*convert_to_dense_resource=*/
+                          import_options.import_variables_as_dense_resources));
         // A variable can have a partially known type, such as
         // tensor<?x27x?xf32>, even if the initializer is a specific static
         // shape.
@@ -1610,7 +1614,8 @@ class SavedModelSignatureDefImporter {
                        builder.getUnitAttr());
     TF_RETURN_IF_ERROR(
         LiftVariables(bundle, *module, options.lift_variables,
-                      options.include_variables_in_initializers));
+                      options.include_variables_in_initializers,
+                      options.import_variables_as_dense_resources));
     (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
@@ -1626,13 +1631,15 @@ class SavedModelSignatureDefImporter {
   static absl::Status LiftVariables(const SavedModelBundle& bundle,
                                     mlir::ModuleOp module,
                                     bool lift_varhandle_ops_to_args,
-                                    bool include_variables_in_initializers);
+                                    bool include_variables_in_initializers,
+                                    bool import_variables_as_dense_resources);
 };
 
 absl::Status SavedModelSignatureDefImporter::LiftVariables(
     const SavedModelBundle& bundle, mlir::ModuleOp module,
     const bool lift_varhandle_ops_to_args,
-    const bool include_variables_in_initializers) {
+    const bool include_variables_in_initializers,
+    const bool import_variables_as_dense_resources) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   mlir::PassManager pm(module.getContext());
@@ -1662,8 +1669,8 @@ absl::Status SavedModelSignatureDefImporter::LiftVariables(
     if (mlir::failed(pm.run(module)))
       return diag_handler.Combine(
           errors::Internal("Failed to promote var handles to args."));
-    if (failed(
-            mlir::tf_saved_model::LiftVariables(module, bundle.GetSession())))
+    if (failed(mlir::tf_saved_model::LiftVariables(
+            module, bundle.GetSession(), import_variables_as_dense_resources)))
       return diag_handler.Combine(
           errors::Internal("Failed to lift variables."));
   } else {
