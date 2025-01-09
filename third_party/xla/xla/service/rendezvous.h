@@ -27,12 +27,13 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -67,11 +68,19 @@ struct RendezvousResult<absl::StatusOr<R>> {
   static Type Empty() { return {std::shared_ptr<R>()}; }
 };
 
+template <>
+struct RendezvousResult<absl::Status> {
+  using Type = absl::Status;
+
+  static Type Wrap(absl::Status result) { return result; }
+  static Type Empty() { return absl::OkStatus(); }
+};
+
 template <typename R>
 using RendezvousResultType = typename RendezvousResult<R>::Type;
 
 // The group of threads identifies itself with a key that must be unique to
-// the the group. When all threads have arrived at the rendezvous, one thread
+// the group. When all threads have arrived at the rendezvous, one thread
 // executes the given function with the values supplied by each thread, and
 // all threads receive the result. Rendezvous must have a human readable name to
 // make easy to debug stuck and timed out attempts.
@@ -198,7 +207,7 @@ struct RendezvousState : public RendezvousStateSynchronization {
   explicit RendezvousState(size_t n_threads)
       : RendezvousStateSynchronization(n_threads),
         values(n_threads, nullptr),
-        result(nullptr) {}
+        result(RendezvousResult<R>::Empty()) {}
 
   std::vector<const V*> values;
   RendezvousResultType<R> result;

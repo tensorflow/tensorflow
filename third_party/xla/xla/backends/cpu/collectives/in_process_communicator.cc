@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/refcounting_hash_map.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/statusor.h"
@@ -48,8 +51,43 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
+template <typename Participant>
+static bool ByRank(const Participant* a, const Participant* b) {
+  return a->rank < b->rank;
+}
+
 void FormatGlobalId(std::string* out, const GlobalDeviceId& device) {
   absl::StrAppend(out, device.value());
+}
+
+//===----------------------------------------------------------------------===//
+// CollectivePermute
+//===----------------------------------------------------------------------===//
+
+struct CollectivePermuteParticipant {
+  size_t rank;
+  std::optional<RankId> src_rank;
+
+  se::DeviceMemoryBase src;
+  se::DeviceMemoryBase dest;
+};
+
+static absl::Status CollectivePermuteOp(
+    size_t num_bytes,
+    absl::Span<const CollectivePermuteParticipant*> participants) {
+  absl::c_sort(participants, ByRank<CollectivePermuteParticipant>);
+
+  for (const CollectivePermuteParticipant* participant : participants) {
+    void* dest = participant->dest.opaque();
+
+    if (participant->src_rank) {
+      size_t src_rank = participant->src_rank->value();
+      std::memcpy(dest, participants.at(src_rank)->src.opaque(), num_bytes);
+    } else {
+      std::memset(dest, 0, num_bytes);
+    }
+  }
+  return absl::OkStatus();
 }
 
 struct AllReduceParticipantData : ParticipantData {
@@ -232,50 +270,6 @@ class CpuAllReduceRendezvous
   }
 };
 
-struct CollectivePermuteParticipantData : ParticipantData {
-  CollectivePermuteParticipantData(const RendezvousKey& rendezvous_key_p,
-                                   int rank)
-      : ParticipantData(rendezvous_key_p, rank) {}
-  const void* source_buffer;
-  void* destination_buffer;
-  size_t num_bytes;
-
-  // From which rank is this participant receiving its data? Optional; if
-  // absent fill with zeros.
-  std::optional<int> source_rank;
-
-  std::string ToString() const override {
-    return absl::StrFormat(
-        "CollectivePermuteParticipantData{rank=%d, "
-        "source_buffer=%p, destination_buffer=%p, num_bytes=%d, "
-        "source_replica_id=%d, "
-        "devices=[%s]}",
-        local_rank, source_buffer, destination_buffer, num_bytes,
-        source_rank.value_or(-1),
-        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId));
-  }
-};
-
-class CpuCollectivePermuteRendezvous
-    : public Rendezvous<CollectivePermuteParticipantData, std::nullptr_t> {
- public:
-  explicit CpuCollectivePermuteRendezvous(const RendezvousKey& k)
-      : Rendezvous<CollectivePermuteParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
-      const CollectivePermuteParticipantData& p) override {
-    VLOG(3) << p.ToString();
-    if (p.source_rank) {
-      std::memcpy(p.destination_buffer,
-                  participants_[*p.source_rank]->source_buffer, p.num_bytes);
-    } else {
-      std::memset(p.destination_buffer, 0, p.num_bytes);
-    }
-    return nullptr;
-  }
-};
-
 struct AllToAllParticipantData : ParticipantData {
   AllToAllParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
       : ParticipantData(rendezvous_key_p, rank) {}
@@ -416,8 +410,6 @@ class CpuReduceScatterRendezvous
 struct InProcessCommunicator::State {
   RefcountingHashMap<RendezvousKey, CpuAllReduceRendezvous>
       all_reduce_rendezvous_map;
-  RefcountingHashMap<RendezvousKey, CpuCollectivePermuteRendezvous>
-      collective_permute_rendezvous_map;
   RefcountingHashMap<RendezvousKey, CpuAllToAllRendezvous>
       all_to_all_rendezvous_map;
   RefcountingHashMap<RendezvousKey, CpuAllGatherRendezvous>
@@ -472,24 +464,14 @@ absl::Status InProcessCommunicator::CollectivePermute(
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
-  CollectivePermuteParticipantData participant(key, rank_);
-  participant.source_buffer = send_buffer.opaque();
-  participant.destination_buffer = recv_buffer.opaque();
-  participant.num_bytes = count * primitive_util::ByteWidth(dtype);
-  participant.source_rank = std::nullopt;
-  if (source_rank) {
-    participant.source_rank = source_rank->value();
-  }
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuCollectivePermuteRendezvous>(k);
-  };
-  return CpuCollectivePermuteRendezvous::SubmitParticipant(
-             [&] {
-               return state_->collective_permute_rendezvous_map
-                   .GetOrCreateIfAbsent(key, make_cpu_rendezvous);
-             },
-             participant)
-      .status();
+  std::string name = absl::StrCat("collective permute ", key.ToString());
+  CollectivePermuteParticipant partiticipant{rank_, source_rank, send_buffer,
+                                             recv_buffer};
+
+  size_t num_bytes = count * primitive_util::ByteWidth(dtype);
+  return RendezvousSingle<absl::Status>(
+      name, key, partiticipant, key.num_local_participants,
+      std::bind(CollectivePermuteOp, num_bytes, std::placeholders::_1));
 }
 
 absl::Status InProcessCommunicator::AllToAll(
