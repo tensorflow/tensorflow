@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_LOCKING_H_
-#define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_LOCKING_H_
+#ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUES_H_
+#define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUES_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -70,4 +70,4 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_LOCKING_H_
+#endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUES_H_

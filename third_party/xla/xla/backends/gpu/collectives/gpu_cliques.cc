@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 
 #include <cstdint>
 #include <cstdlib>

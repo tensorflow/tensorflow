@@ -578,7 +578,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_clique_locking",
+        "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",

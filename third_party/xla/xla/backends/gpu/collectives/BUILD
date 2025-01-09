@@ -86,9 +86,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "gpu_clique_locking",
-    srcs = ["gpu_clique_locking.cc"],
-    hdrs = ["gpu_clique_locking.h"],
+    name = "gpu_cliques",
+    srcs = ["gpu_cliques.cc"],
+    hdrs = ["gpu_cliques.h"],
     deps = [
         ":gpu_clique",
         ":gpu_clique_key",
