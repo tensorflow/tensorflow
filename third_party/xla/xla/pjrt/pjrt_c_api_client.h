@@ -567,7 +567,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
-  mutable std::shared_ptr<const PjRtXlaLayout> layout_;
+  mutable std::shared_ptr<const PjRtLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
   mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
       is_dynamic_dimension_;

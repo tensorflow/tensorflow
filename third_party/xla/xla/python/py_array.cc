@@ -131,7 +131,7 @@ absl::StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
     }
     Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
     // TODO(b/327524065): fix this
-    *shape.mutable_layout() = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+    *shape.mutable_layout() = pjrt_buffer->layout()->xla_layout();
     scratch = std::move(shape);
   }
   return &scratch.value();
@@ -869,7 +869,7 @@ nb::dict PyArray::CudaArrayInterface() {
       ValueOrThrow(TypeDescriptorForPrimitiveType(pjrt_buffer->element_type()));
 
   // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  Layout xla_layout = pjrt_buffer->layout()->xla_layout();
   if (!LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
     throw nb::attribute_error(
         "__cuda_array_interface__ is only currently supported for "
@@ -1418,7 +1418,7 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
 
     // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-    Layout xla_layout = GetXlaLayoutUnsafe(buffer.layout());
+    Layout xla_layout = buffer.layout()->xla_layout();
 
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
@@ -1513,8 +1513,8 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
   // to unpack the array. This could happen for the host buffer
   // pre-mapped to the TPU device, a.k.a., pinned host buffers for the
   // device.
-  bool has_default_layout = buf->layout() == nullptr ||
-                            HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
+  bool has_default_layout =
+      buf->layout() == nullptr || HasDefaultLayout(buf->layout()->xla_layout());
   // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
   // For sub-byte values, we must copy in order to unpack the array.
   return buf->IsOnCpu() &&

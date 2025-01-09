@@ -1244,15 +1244,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
-    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
-    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
-    output_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    output_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));

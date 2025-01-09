@@ -260,7 +260,7 @@ TEST_P(RemapPlanTest, InvalidLayout) {
                                    /*shape=*/Shape({2, 3}),
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
-      std::make_shared<xla::PjRtXlaLayout>(
+      std::make_shared<xla::PjRtLayout>(
           xla::LayoutUtil::MakeDescendingLayout(2)),
   });
   plan.output_specs.push_back(ArraySpec{
@@ -271,7 +271,7 @@ TEST_P(RemapPlanTest, InvalidLayout) {
                                    /*shape=*/Shape({2, 3}),
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
-      std::make_shared<xla::PjRtXlaLayout>(
+      std::make_shared<xla::PjRtLayout>(
           xla::LayoutUtil::MakeAscendingLayout(2)),  // layout differs
   });
   plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();

@@ -503,7 +503,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       TF_ASSIGN_OR_RETURN(auto arr_layout, py_array.ifrt_array()->layout());
       xla::Layout in_xc_layout = nb::cast<xla::Layout>(
           in_device_local_layout.attr("_to_xla_layout")(py_array.dtype()));
-      if (in_xc_layout != GetXlaLayoutUnsafe(arr_layout)) {
+      if (in_xc_layout != arr_layout->xla_layout()) {
         CallShardArgFallback(arg, in_shardings[dce_index],
                              in_device_local_layout, shard_arg_fallback,
                              num_args_arrays, keep_alive_objects);

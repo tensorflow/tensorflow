@@ -1829,10 +1829,7 @@ PJRT_Error* PJRT_Buffer_GetMemoryLayout(
       // TODO(skyewm): change PJRT C API to also use opaque layout type
       std::shared_ptr<const xla::PjRtLayout> pjrt_layout =
           args->buffer->buffer->layout();
-      const xla::PjRtXlaLayout* pjrt_xla_layout =
-          tensorflow::down_cast<const xla::PjRtXlaLayout*>(pjrt_layout.get());
-      CHECK(pjrt_xla_layout != nullptr) << "Got unexpected layout type";
-      const xla::Layout& xla_layout = pjrt_xla_layout->xla_layout();
+      const xla::Layout& xla_layout = pjrt_layout->xla_layout();
 
       PJRT_ASSIGN_OR_RETURN(BufferMemoryLayoutData data,
                             ConvertToBufferMemoryLayoutData(xla_layout));
@@ -2313,7 +2310,7 @@ PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
                         args->client->client->GetDefaultLayout(
                             pjrt::ConvertFromPjRtBufferType(args->type),
                             {args->dims, args->num_dims}));
-  auto pjrt_xla_layout = std::make_shared<xla::PjRtXlaLayout>(xla_layout);
+  auto pjrt_xla_layout = std::make_shared<xla::PjRtLayout>(xla_layout);
   args->layout = new PJRT_Layouts_MemoryLayout{std::move(pjrt_xla_layout)};
   return nullptr;
 }

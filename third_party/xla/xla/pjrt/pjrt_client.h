@@ -1113,7 +1113,7 @@ class PjRtBuffer {
   // be easily copied.
   virtual std::shared_ptr<const PjRtLayout> layout() const {
     CHECK(on_device_shape().has_layout());
-    return std::make_shared<PjRtXlaLayout>(on_device_shape().layout());
+    return std::make_shared<PjRtLayout>(on_device_shape().layout());
   }
 
   // PjRtBuffers can either represent a single array buffer or a tuple of array
@@ -1236,7 +1236,7 @@ class PjRtBuffer {
       } else {
         device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
         // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-        *device_shape.mutable_layout() = GetXlaLayoutUnsafe(layout());
+        *device_shape.mutable_layout() = layout()->xla_layout();
       }
     } else {
       // TODO(skyewm): does anything need to create tuple literals? The PJRT C

@@ -1290,12 +1290,7 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
       for (const std::shared_ptr<const xla::PjRtLayout>& parameter_layout :
            *parameter_layouts) {
         // TODO(b/329165105): use PjRtLayout::Serialize instead
-        const xla::PjRtXlaLayout* layout =
-            dynamic_cast<const xla::PjRtXlaLayout*>(parameter_layout.get());
-        TF_RET_CHECK(layout != nullptr)
-            << "IFRT proxy only supports PjRtXlaLayout, got a different "
-               "subclass";
-        layouts->Add(layout->xla_layout().ToProto());
+        layouts->Add(parameter_layout->xla_layout().ToProto());
       }
     } else {
       *metadata_resp->mutable_parameter_layouts_error() =
@@ -1308,12 +1303,7 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
       for (const std::shared_ptr<const xla::PjRtLayout>& output_layout :
            *output_layouts) {
         // TODO(b/329165105): use PjRtLayout::Serialize instead
-        const xla::PjRtXlaLayout* layout =
-            dynamic_cast<const xla::PjRtXlaLayout*>(output_layout.get());
-        TF_RET_CHECK(layout != nullptr)
-            << "IFRT proxy only supports PjRtXlaLayout, got a different "
-               "subclass";
-        layouts->Add(layout->xla_layout().ToProto());
+        layouts->Add(output_layout->xla_layout().ToProto());
       }
     } else {
       *metadata_resp->mutable_output_layouts_error() =

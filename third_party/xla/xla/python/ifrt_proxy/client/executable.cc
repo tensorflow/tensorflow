@@ -313,7 +313,7 @@ LoadedExecutable::LoadedExecutable(
               std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
               layouts.reserve(list.layouts_size());
               for (const auto& layout : list.layouts()) {
-                layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+                layouts.push_back(std::make_shared<xla::PjRtLayout>(
                     xla::Layout::CreateFromProto(layout)));
               }
               return layouts;

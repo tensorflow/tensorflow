@@ -239,27 +239,22 @@ NB_MODULE(xla_extension, m) {
       .def("__eq__", [](const PjRtLayout& layout,
                         const PjRtLayout& other) { return layout == other; })
       .def("__hash__",
-           [](const PjRtLayout& layout) { return absl::HashOf(layout); });
-
-  nb::class_<PjRtXlaLayout, PjRtLayout>(m, "PjRtXlaLayout")
-      .def("_xla_layout", &PjRtXlaLayout::xla_layout)
+           [](const PjRtLayout& layout) { return absl::HashOf(layout); })
+      .def("_xla_layout", &PjRtLayout::xla_layout)
       .def("__getstate__",
-           [](const PjRtXlaLayout& layout) -> nb::tuple {
+           [](const PjRtLayout& layout) -> nb::tuple {
              absl::StatusOr<std::string> serialized = layout.Serialize();
              ThrowIfError(serialized.status());
              return nb::make_tuple(
                  nb::bytes(serialized->data(), serialized->size()));
            })
-      .def("__setstate__", [](PjRtXlaLayout* self, nb::tuple t) {
-        // TODO(b/328671718): don't assume PjRtXlaLayout. We probably want a
-        // generic method on PjRtCompiler instead, although we'll have
-        // somehow have to attach a compiler to this PjRtLayout (something
-        // like ClientAndPtr).
+      .def("__setstate__", [](PjRtLayout* self, nb::tuple t) {
         nb::bytes serialized = nb::cast<nb::bytes>(t[0]);
-        absl::StatusOr<PjRtXlaLayout> layout = PjRtXlaLayout::Deserialize(
-            absl::string_view(serialized.c_str(), serialized.size()));
+        absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout =
+            PjRtLayout::Deserialize(
+                absl::string_view(serialized.c_str(), serialized.size()));
         ThrowIfError(layout.status());
-        new (self) PjRtXlaLayout(std::move(*layout));
+        new (self) PjRtLayout((*layout)->xla_layout());
       });
 
   jax::BuildWeakrefLRUCacheAPI(m);
