@@ -241,3 +241,18 @@ func.func @import_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   stablehlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> ()
   return %arg0 : tensor<8x8xf32>
 }
+
+// -----
+
+func.func @callback_no_result(%arg0: tensor<f64>) {
+  // CHECK:      %[[C:.*]] = sdy.constant
+  // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {
+  // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
+  // CHECK-SAME:   has_side_effect = true,
+  // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>],
+  // CHECK-SAME:   result_layouts = [dense<> : tensor<0xindex>]
+  // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> tensor<i64>
+  %c = stablehlo.constant dense<56238273106176> : tensor<i64>
+  stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = []} : (tensor<i64>, tensor<f64>) -> ()
+  return
+}

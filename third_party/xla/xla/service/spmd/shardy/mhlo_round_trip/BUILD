@@ -84,10 +84,27 @@ cc_library(
 )
 
 cc_library(
+    name = "export_callback_custom_calls",
+    srcs = ["export_callback_custom_calls.cc"],
+    hdrs = ["export_callback_custom_calls.h"],
+    deps = [
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "mhlo_export",
     srcs = ["mhlo_export.cc"],
     hdrs = ["mhlo_export.h"],
     deps = [
+        ":export_callback_custom_calls",
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",

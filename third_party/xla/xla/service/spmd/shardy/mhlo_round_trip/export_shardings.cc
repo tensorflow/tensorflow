@@ -86,6 +86,8 @@ using ::mlir::success;
 using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
 
+using ::mlir::stablehlo::CustomCallOp;
+
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
@@ -197,6 +199,7 @@ class ExportMhloShardingsPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
+
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
 
@@ -208,10 +211,10 @@ class ExportMhloShardingsPass
       }
     }
 
-    // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
-    // If they have a sharding annotation, we need to move it into
-    // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
-    moduleOp.walk([&](mlir::stablehlo::CustomCallOp customCall) {
+    moduleOp.walk([&](CustomCallOp customCall) {
+      // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
+      // If they have a sharding annotation, we need to move it into
+      // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
       StringRef callTargetName = customCall.getCallTargetName();
       if (callTargetName != "mhlo.erf" && callTargetName != "mhlo.topk") {
         return;
