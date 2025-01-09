@@ -77,14 +77,15 @@ HloRunnerInterface::ReadModuleFromBinaryProtoFile(
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromHloTextFile(
-    const std::string& filename, const DebugOptions& debug_options) {
+HloRunnerInterface::ReadModuleFromHloTextFile(const std::string& filename,
+                                              const DebugOptions& debug_options,
+                                              const HloParserOptions& options) {
   std::string hlo_string;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config, options);
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
