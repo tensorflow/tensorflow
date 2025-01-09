@@ -167,6 +167,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":function_api_info",
         ":graph_optimizer",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core:core_cpu_base",

@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/function_api_info.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -762,6 +763,10 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
   specialized_func.mutable_signature()->set_name(specialized_func_name);
   auto* specialized_attr = specialized_func.mutable_attr();
   (*specialized_attr)[kGrapplerSpecializedFuncAttr].set_b(true);
+  // Specialization doesn't implements API of original function since its
+  // signature changes.
+  specialized_attr->erase("api_implements");
+  specialized_attr->erase("api_preferred_device");
 
   // Add specialized function to the library.
   TF_RETURN_IF_ERROR(ctx->function_library().AddFunctionDef(specialized_func));
@@ -1479,6 +1484,19 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
     if (func == nullptr) {
       copy_node();
       continue;
+    }
+
+    // Do not specialize if function implementation selection can happen later,
+    // since specialization may change signature.
+    bool noimpl_selection = false;
+    noimpl_selection &= TryGetNodeAttr(AttrSlice(&node.attr()),
+                                       "_noimpl_selection", &noimpl_selection);
+    if (!noimpl_selection) {
+      FunctionApiInfo api_info;
+      if (api_info.Init(*func).ok() && !api_info.interface_name().empty()) {
+        copy_node();
+        continue;
+      }
     }
 
     const string& func_name = func->signature().name();
