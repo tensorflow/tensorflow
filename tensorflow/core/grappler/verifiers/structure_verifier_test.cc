@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
