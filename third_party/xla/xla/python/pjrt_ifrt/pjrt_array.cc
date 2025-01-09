@@ -382,7 +382,8 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
     ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   Memory* memory = nullptr;
   for (Memory* ms : device->Memories()) {
-    if (ms->Kind() == memory_kind) {
+    if (ms->Kind() == memory_kind &&
+        tensorflow::down_cast<PjRtCompatibleMemory*>(ms)->pjrt_memory()) {
       memory = ms;
       break;
     }
@@ -445,7 +446,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
                                 GetMemorySpaceFromMemoryKind(
                                     new_sharding_devices[i],
                                     canonicalized_sharding_memory_kind));
-            PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+            PjRtCompatibleMemory* pjrt_memory =
+                llvm::dyn_cast<PjRtCompatibleMemory>(memory);
             TF_ASSIGN_OR_RETURN(auto copied_buffer,
                                 pjrt_buffers_[i]->CopyToMemorySpace(
                                     pjrt_memory->pjrt_memory()));
@@ -489,7 +491,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
             auto memory,
             GetMemorySpaceFromMemoryKind(new_sharding_devices[i],
                                          canonicalized_sharding_memory_kind));
-        PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+        PjRtCompatibleMemory* pjrt_memory =
+            llvm::dyn_cast<PjRtCompatibleMemory>(memory);
         TF_RET_CHECK(pjrt_memory != nullptr);
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtBuffer> copied_buffer,

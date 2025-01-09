@@ -64,7 +64,7 @@ class PjRtMemory final
 class PjRtMemoryDescription final
     : public llvm::RTTIExtends<PjRtMemoryDescription, PjRtCompatibleMemory> {
  public:
-  PjRtMemoryDescription(PjRtClient* client, absl::Span<Device*> devices,
+  PjRtMemoryDescription(PjRtClient* client,
                         const xla::PjRtMemorySpaceDescription* desc);
 
   PjRtClient* client() const { return client_; }
@@ -74,7 +74,9 @@ class PjRtMemoryDescription final
   const MemoryKind& Kind() const override;
   absl::string_view ToString() const override;
   absl::string_view DebugString() const override;
-  absl::Span<Device* const> Devices() const override { return devices_; }
+  absl::Span<Device* const> Devices() const override;
+
+  void SetDevice(Device* device) { device_ = device; }
 
   static char ID;  // NOLINT
 
@@ -82,7 +84,7 @@ class PjRtMemoryDescription final
   PjRtClient* client_;
   const xla::PjRtMemorySpaceDescription* desc_;
   MemoryKind kind_;
-  std::vector<Device*> devices_;
+  Device* device_;
 };
 
 // Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,

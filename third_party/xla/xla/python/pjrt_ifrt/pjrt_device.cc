@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -42,15 +43,27 @@ PjRtDevice::PjRtDevice(
     PjRtClient* client, DeviceId id, std::string kind, std::string to_string,
     std::string debug_string, int process_index,
     absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
-    xla::PjRtDevice* pjrt_device)
+    xla::PjRtDevice* pjrt_device,
+    absl::Span<std::unique_ptr<PjRtMemoryDescription>> memories,
+    Memory* default_memory)
     : client_(client),
       id_(id),
       attributes_(FromPjRtAttributeMap(std::move(attributes))),
       kind_(std::move(kind)),
       to_string_(std::move(to_string)),
       debug_string_(std::move(debug_string)),
+      default_memory_(default_memory),
       process_index_(process_index),
-      pjrt_device_(pjrt_device) {}
+      pjrt_device_(pjrt_device) {
+  if (default_memory) {
+    default_memory_.emplace(default_memory);
+  }
+  for (std::unique_ptr<PjRtMemoryDescription>& memory : memories) {
+    memory->SetDevice(this);
+    memories_.push_back(&*memory);
+    memory_descriptions_.push_back(std::move(memory));
+  }
+}
 
 DeviceId PjRtDevice::Id() const { return id_; }
 

@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -508,10 +509,38 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
                           "[PjRtIFRTDeviceId=", ifrt_device_id.value(), "]");
         }
       }
+
+      std::vector<std::unique_ptr<xla::ifrt::PjRtMemoryDescription>>
+          descriptions;
+      absl::StatusOr<const PjRtTopologyDescription*> topology =
+          pjrt_client->GetTopologyDescription();
+      Memory* default_memory = nullptr;
+      if (topology.ok()) {
+        for (std::unique_ptr<const PjRtDeviceDescription>& description :
+             (*topology)->DeviceDescriptions()) {
+          if (pjrt_device && description->id() == pjrt_device->id()) {
+            absl::StatusOr<const PjRtMemorySpaceDescription*> has_default =
+                description->default_memory_space();
+            for (const PjRtMemorySpaceDescription* space :
+                 description->memory_spaces()) {
+              auto m = std::make_unique<xla::ifrt::PjRtMemoryDescription>(
+                  client, space);
+              if (has_default.ok() && space == *has_default) {
+                default_memory = &*m;
+              }
+              descriptions.emplace_back(std::move(m));
+            }
+          }
+        }
+      }
+
       auto ifrt_device = std::make_unique<PjRtDevice>(
           client, ifrt_device_id, device_proto.device_kind(),
           std::move(to_string), std::move(debug_string), process_index,
-          std::move(attributes), pjrt_device);
+          std::move(attributes), pjrt_device,
+          absl::Span<std::unique_ptr<xla::ifrt::PjRtMemoryDescription>>(
+              descriptions.data(), descriptions.size()),
+          default_memory);
       devices.push_back(std::move(ifrt_device));
     }
   }
@@ -919,7 +948,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
       // and matches the sharding's memory_kind.
       Memory* memory = nullptr;
       for (Memory* ms : device->Memories()) {
-        if (ms->Kind() == sharding->memory_kind()) {
+        if (ms->Kind() == sharding->memory_kind() &&
+            tensorflow::down_cast<PjRtCompatibleMemory*>(ms)->pjrt_memory()) {
           memory = ms;
           break;
         }
@@ -937,7 +967,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
           buffer, pjrt_client_->BufferFromHostBuffer(
                       data, primitive_type, shape.dims(), byte_strides,
                       semantics, on_done_with_host_buffer_per_device,
-                      tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
+                      tensorflow::down_cast<PjRtCompatibleMemory*>(memory)
+                          ->pjrt_memory(),
                       /*device_layout=*/nullptr));
     } else {
       if (!device->IsAddressable()) {
