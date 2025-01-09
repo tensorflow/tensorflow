@@ -746,7 +746,7 @@ target_link_libraries(tensorflow-lite
 )
 
 if (NOT BUILD_SHARED_LIBS)
-  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
 endif()
 
 target_compile_options(tensorflow-lite
