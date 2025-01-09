@@ -288,10 +288,10 @@ LiteRtDispatchInvocationContextT::IoRequirementsBuilder::IoRequirementsBuilder(
 
 Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::IoRequirementsBuilder::Create() {
-  static constexpr std::array<LiteRtTensorBufferType, 1>
-      kSupportedTensorBufferTypes = {
-          kLiteRtTensorBufferTypeAhwb,
-      };
+  static constexpr std::array kSupportedTensorBufferTypes = {
+      kLiteRtTensorBufferTypeAhwb,
+      kLiteRtTensorBufferTypeDmaBuf,
+  };
 
   LiteRtTensorBufferRequirements requirements;
   if (auto status = LiteRtCreateTensorBufferRequirements(

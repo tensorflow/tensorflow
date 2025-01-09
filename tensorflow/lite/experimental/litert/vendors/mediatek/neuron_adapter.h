@@ -114,6 +114,8 @@ int NeuronExecution_setOutputFromMemory(NeuronExecution* execution,
                                         size_t offset, size_t length);
 int NeuronMemory_createFromAHardwareBuffer(const AHardwareBuffer* ahwb,
                                            NeuronMemory** memory);
+int NeuronMemory_createFromFd(size_t size, int protect, int fd, size_t offset,
+                              NeuronMemory** memory);
 int NeuronModel_addOperand(NeuronModel* model, const NeuronOperandType* type);
 int NeuronModel_addOperation(NeuronModel* model, NeuronOperationType type,
                              uint32_t inputCount, const uint32_t* inputs,
@@ -232,6 +234,7 @@ struct NeuronAdapter::Api {
       execution_set_output_from_memory = nullptr;
   decltype(&NeuronMemory_createFromAHardwareBuffer) memory_create_from_ahwb =
       nullptr;
+  decltype(&NeuronMemory_createFromFd) memory_create_from_fd = nullptr;
   decltype(&NeuronMemory_free) memory_free = nullptr;
   decltype(&NeuronModel_addOperand) model_add_operand = nullptr;
   decltype(&NeuronModel_addOperation) model_add_operation = nullptr;
