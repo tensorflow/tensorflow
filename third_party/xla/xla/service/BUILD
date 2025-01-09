@@ -4612,14 +4612,21 @@ cc_library(
     deps = [
         ":computation_placer",
         ":executable",
-        "//xla:status_macros",
-        "//xla:types",
+        ":hlo_module_config",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
