@@ -36,7 +36,7 @@
 #       export TF_ANY_EXTRA_ENV=ci/official/envs/local_rbe
 #       ./any.sh
 #       ...
-set -euxo pipefail
+set -exo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
 # Any request that includes "nightly_upload" should just use the
 # local multi-cache (public read-only cache + disk cache) instead.

@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-set -euxo pipefail
+set -exo pipefail
 
 # Run this from inside the tensorflow github directory.
 # Usage: setup_venv_test.sh venv_and_symlink_name "glob pattern for one wheel file"
