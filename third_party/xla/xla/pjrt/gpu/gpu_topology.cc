@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
+
 namespace xla {
 
 std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
