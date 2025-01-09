@@ -835,6 +835,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
@@ -875,7 +876,6 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
@@ -936,6 +936,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_graph_dumper",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
@@ -953,9 +954,11 @@ tf_cc_test(
         ":tool_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/service:hlo_graph_dumper",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
