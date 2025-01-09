@@ -24,6 +24,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
+inline constexpr absl::string_view kXnnFusionKind = "__xnn_fusion";
+
 // Returns true if XNNPACK should use thread pool to execute given HLO
 // instruction or computation. We rely on simple heuristics to determine if
 // thread pool is beneficial.
