@@ -257,11 +257,36 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_permute_utils",
+    srcs = ["collective_permute_utils.cc"],
+    hdrs = ["collective_permute_utils.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/graphcycles",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_permute_utils_test",
+    srcs = ["collective_permute_utils_test.cc"],
+    deps = [
+        ":collective_permute_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "collective_permute_decomposer",
     srcs = ["collective_permute_decomposer.cc"],
     hdrs = ["collective_permute_decomposer.h"],
     deps = [
         ":collective_ops_utils",
+        ":collective_permute_utils",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
