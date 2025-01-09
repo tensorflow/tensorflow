@@ -2551,10 +2551,10 @@ xla_test(
         ],
     },
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":hlo_test_base",
+        ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
@@ -2562,10 +2562,12 @@ xla_test(
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
