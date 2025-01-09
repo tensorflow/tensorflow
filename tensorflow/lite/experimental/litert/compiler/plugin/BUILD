@@ -65,7 +65,6 @@ cc_library(
 #     deps = [
 #         ":compiler_plugin",
 #         "@com_google_googletest//:gtest_main",
-#         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
 #         "//tensorflow/lite/experimental/litert/c:litert_op_code",
