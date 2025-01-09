@@ -589,10 +589,14 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdPartitioningVisitor(const SpmdPartitioningVisitor& src);
 
   absl::Status DefaultAction(HloInstruction* hlo) override;
+
   absl::Status HandleAllReduce(HloInstruction* hlo) override;
   absl::Status HandleBroadcast(HloInstruction* hlo) override;
   absl::Status HandleCall(HloInstruction* hlo) override;
+  absl::Status HandleConcatenate(HloInstruction* hlo) override;
+  absl::Status HandleConditional(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* hlo) override;
+  absl::Status HandleConvolution(HloInstruction* hlo) override;
   absl::Status HandleCustomCall(HloInstruction* hlo) override;
   absl::Status HandleDot(HloInstruction* hlo) override;
   absl::Status HandleDynamicSlice(HloInstruction* hlo) override;
@@ -601,27 +605,24 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleGather(HloInstruction* hlo) override;
   absl::Status HandleGetTupleElement(HloInstruction* hlo) override;
   absl::Status HandleInfeed(HloInstruction* hlo) override;
+  absl::Status HandleIota(HloInstruction* hlo) override;
   absl::Status HandleOptimizationBarrier(HloInstruction* hlo) override;
   absl::Status HandleOutfeed(HloInstruction* hlo) override;
   absl::Status HandlePad(HloInstruction* hlo) override;
   absl::Status HandleParameter(HloInstruction* hlo) override;
+  absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleReduce(HloInstruction* hlo) override;
-  absl::Status HandleReverse(HloInstruction* hlo) override;
-  absl::Status HandleWhile(HloInstruction* hlo) override;
-  absl::Status HandleConditional(HloInstruction* hlo) override;
   absl::Status HandleReduceWindow(HloInstruction* hlo) override;
-  absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
-  absl::Status HandleTuple(HloInstruction* hlo) override;
+  absl::Status HandleReshape(HloInstruction* hlo) override;
+  absl::Status HandleReverse(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* hlo) override;
-  absl::Status HandleConvolution(HloInstruction* hlo) override;
-  absl::Status HandleConcatenate(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
+  absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
   absl::Status HandleSlice(HloInstruction* hlo) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTranspose(HloInstruction* hlo) override;
-  absl::Status HandleReshape(HloInstruction* hlo) override;
-  absl::Status HandleIota(HloInstruction* hlo) override;
-  absl::Status HandlePartitionId(HloInstruction* hlo) override;
+  absl::Status HandleTuple(HloInstruction* hlo) override;
+  absl::Status HandleWhile(HloInstruction* hlo) override;
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   absl::Status HandleDotHelper(
