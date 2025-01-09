@@ -174,7 +174,7 @@ class InputWorkers(object):
 
 
 def _calculate_replicas_with_values(strategy, input_workers, optional_list):
-  """Calculates the number of replicas that have values.
+  """Computes the number of replicas that have values.
 
   Args:
     strategy: the `tf.distribute.Strategy`.
