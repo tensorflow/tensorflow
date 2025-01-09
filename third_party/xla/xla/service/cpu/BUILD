@@ -1001,7 +1001,6 @@ cc_library(
     ],
     copts = runtime_copts(),
     deps = [
-        ":collectives_interface",
         ":cpu_executable_run_options",
         ":in_process_collectives",
         "//xla:executable_run_options",
@@ -1009,7 +1008,11 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/collectives:cpu_clique",
+        "//xla/backends/cpu/collectives:cpu_clique_key",
+        "//xla/backends/cpu/collectives:cpu_cliques",
         "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:collective_ops_utils",
@@ -1017,6 +1020,8 @@ cc_library(
         "//xla/service:global_device_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -1029,9 +1034,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -1958,33 +1960,10 @@ cc_library(
 )
 
 cc_library(
-    name = "collectives_interface",
-    hdrs = ["collectives_interface.h"],
-    deps = [
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/collectives:cpu_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:clique_key",
-        "//xla/core/collectives:communicator",
-        "//xla/core/collectives:rank_id",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:global_device_id",
-        "//xla/stream_executor:device_memory",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "in_process_collectives",
     srcs = ["in_process_collectives.cc"],
     hdrs = ["in_process_collectives.h"],
     deps = [
-        ":collectives_interface",
         "//xla:refcounting_hash_map",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1992,6 +1971,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_communicator",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",
@@ -2014,7 +1995,7 @@ cc_library(
 cc_library(
     name = "cpu_executable_run_options",
     hdrs = ["cpu_executable_run_options.h"],
-    deps = [":collectives_interface"],
+    deps = ["//xla/backends/cpu/collectives:cpu_collectives"],
 )
 
 cc_library(

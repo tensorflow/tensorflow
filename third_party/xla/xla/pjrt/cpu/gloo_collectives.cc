@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/gloo_collectives.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -27,7 +29,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "gloo/context.h"
 #include "gloo/rendezvous/context.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "gloo/rendezvous/store.h"
 #include "gloo/transport/device.h"
 #include "xla/backends/cpu/collectives/gloo_communicator.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
@@ -48,42 +51,38 @@ GlooCollectives::GlooCollectives(
 
 GlooCollectives::~GlooCollectives() = default;
 
-absl::StatusOr<std::shared_ptr<Communicator>> GlooCollectives::GetCommunicator(
-    absl::Span<GlobalDeviceId const> global_devices, int rank) {
-  Context* context;
-  {
-    absl::MutexLock lock(&mu_);
-    auto& context_ref = contexts_[std::make_tuple(
-        std::vector<GlobalDeviceId>(global_devices.begin(),
-                                    global_devices.end()),
-        rank)];
-    if (!context_ref) {
-      context_ref = std::make_unique<Context>();
+absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+GlooCollectives::CreateCommunicators(int32_t nranks,
+                                     const CliqueKey& clique_key,
+                                     const std::optional<CliqueId>& clique_id,
+                                     absl::Span<const DeviceRank> ranks,
+                                     const Config& config) {
+  std::vector<std::unique_ptr<Communicator>> communicators;
+  for (auto& device_rank : ranks) {
+    size_t rank = device_rank.rank.value();
+
+    auto gloo_context = std::make_shared<gloo::rendezvous::Context>(
+        rank, clique_key.num_devices());
+    auto prefix_store = gloo::rendezvous::PrefixStore(
+        absl::StrCat("gloo/",
+                     absl::StrJoin(clique_key.devices(), ",",
+                                   [](std::string* out, GlobalDeviceId id) {
+                                     absl::StrAppend(out, id.value());
+                                   })),
+        *store_);
+
+    try {
+      gloo_context->connectFullMesh(prefix_store, device_);
+    } catch (std::exception& e) {
+      return absl::UnknownError(
+          absl::StrCat("Gloo context initialization failed: ", e.what()));
     }
-    context = context_ref.get();
+
+    communicators.push_back(std::make_unique<GlooCommunicator>(
+        std::move(gloo_context), rank, clique_key.num_devices()));
   }
-  absl::MutexLock context_lock(&context->mu);
-  if (context->communicator) {
-    return context->communicator;
-  }
-  auto gloo_context =
-      std::make_shared<gloo::rendezvous::Context>(rank, global_devices.size());
-  auto prefix_store = gloo::rendezvous::PrefixStore(
-      absl::StrCat("gloo/",
-                   absl::StrJoin(global_devices, ",",
-                                 [](std::string* out, GlobalDeviceId id) {
-                                   absl::StrAppend(out, id.value());
-                                 })),
-      *store_);
-  try {
-    gloo_context->connectFullMesh(prefix_store, device_);
-  } catch (std::exception& e) {
-    return absl::UnknownError(
-        absl::StrCat("Gloo context initialization failed: ", e.what()));
-  }
-  context->communicator = std::make_shared<GlooCommunicator>(
-      std::move(gloo_context), rank, global_devices.size());
-  return context->communicator;
+
+  return communicators;
 }
 
 }  // namespace xla::cpu

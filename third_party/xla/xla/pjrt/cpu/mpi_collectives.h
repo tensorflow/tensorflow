@@ -16,23 +16,24 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_MPI_COLLECTIVES_H_
 #define XLA_PJRT_CPU_MPI_COLLECTIVES_H_
 
+#include <cstdint>
 #include <memory>
-#include <tuple>
+#include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/collectives/mpi_communicator.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class MpiCollectives : public CollectivesInterface {
+class MpiCollectives : public CpuCollectives {
  public:
   /*
   The user has to explicitly call Init() and Finalize() before and
@@ -46,8 +47,11 @@ class MpiCollectives : public CollectivesInterface {
   void Init();
   void Finalize();
 
-  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
-      absl::Span<GlobalDeviceId const> global_devices, int rank) override;
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                      const std::optional<CliqueId>& clique_id,
+                      absl::Span<const DeviceRank> ranks,
+                      const Config& config) final;
 
  private:
   absl::Status ExchangeGlobalDeviceIds(
@@ -55,9 +59,6 @@ class MpiCollectives : public CollectivesInterface {
 
   int mpi_world_rank_;
   int mpi_world_size_;
-  absl::flat_hash_map<std::tuple<std::vector<GlobalDeviceId>, int>,
-                      std::shared_ptr<MpiCommunicator>>
-      contexts_;
 };
 
 }  // namespace xla::cpu

@@ -16,49 +16,39 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_GLOO_COLLECTIVES_H_
 #define XLA_PJRT_CPU_GLOO_COLLECTIVES_H_
 
+#include <cstdint>
 #include <memory>
-#include <tuple>
+#include <optional>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "gloo/context.h"
 #include "gloo/rendezvous/store.h"
 #include "gloo/transport/device.h"
-#include "xla/backends/cpu/collectives/gloo_communicator.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/cpu/collectives_interface.h"
-#include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class GlooCollectives : public CollectivesInterface {
+class GlooCollectives : public CpuCollectives {
  public:
   GlooCollectives(std::unique_ptr<gloo::rendezvous::Store> store,
                   std::shared_ptr<gloo::transport::Device> device);
   ~GlooCollectives() override;
 
-  // Thread-safe.
-  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
-      absl::Span<GlobalDeviceId const> devices, int rank) override;
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                      const std::optional<CliqueId>& clique_id,
+                      absl::Span<const DeviceRank> ranks,
+                      const Config& config) final;
 
  private:
-  struct Context {
-    absl::Mutex mu;
-    std::shared_ptr<GlooCommunicator> communicator;
-  };
-
   std::unique_ptr<gloo::rendezvous::Store> store_;
   std::shared_ptr<gloo::transport::Device> device_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<std::tuple<std::vector<GlobalDeviceId>, int>,
-                      std::unique_ptr<Context>>
-      contexts_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla::cpu

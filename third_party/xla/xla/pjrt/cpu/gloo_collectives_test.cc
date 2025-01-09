@@ -20,18 +20,22 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -59,7 +63,7 @@ constexpr int kNumParticipants = 2;
 constexpr size_t kBufferSize = 256;
 constexpr absl::Duration kTimeout = absl::Seconds(5);
 
-absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
+absl::StatusOr<std::unique_ptr<Communicator>> GetCommunicator(
     size_t kNumParticipants, absl::Span<GlobalDeviceId const> global_devices,
     const std::shared_ptr<xla::KeyValueStoreInterface>& kv_store, int rank) {
   auto collectives = std::make_shared<cpu::GlooCollectives>(
@@ -69,7 +73,16 @@ absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
 #elif defined(__APPLE__)
       gloo::transport::uv::CreateDevice(gloo::transport::uv::attr()));
 #endif  // defined(__linux__)
-  return collectives->GetCommunicator(global_devices, rank);
+
+  CpuCliqueKey clique_key(global_devices);
+  CpuCollectives::DeviceRank device_rank(nullptr, RankId(rank));
+
+  TF_ASSIGN_OR_RETURN(auto communicators,
+                      collectives->CreateCommunicators(
+                          global_devices.size(), clique_key, std::nullopt,
+                          {device_rank}, CpuCollectives::Config()));
+
+  return std::move(communicators[0]);
 }
 
 RendezvousKey MakeRendezvousKey(std::vector<GlobalDeviceId> global_devices) {

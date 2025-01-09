@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/global_device_id.h"
@@ -103,7 +102,7 @@ Thunk::CollectiveExecuteParams::Create(
 
   // Default implementation of a collectives interface that can execute
   // collective operations within the same process.
-  static CollectivesInterface* in_process_collectives =
+  static CpuCollectives* in_process_collectives =
       new runtime::InProcessCollectives();
 
   // If CPU executable run options are set, use the collectives interface
@@ -111,7 +110,7 @@ Thunk::CollectiveExecuteParams::Create(
   // in-process collectives interface.
   const CpuExecutableRunOptions* cpu_run_options =
       run_options->cpu_executable_run_options();
-  CollectivesInterface* collectives =
+  CpuCollectives* collectives =
       cpu_run_options && cpu_run_options->collectives()
           ? cpu_run_options->collectives()
           : in_process_collectives;

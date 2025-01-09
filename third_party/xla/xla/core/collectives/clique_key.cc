@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,8 +26,8 @@ limitations under the License.
 
 namespace xla {
 
-CliqueKey::CliqueKey(std::vector<GlobalDeviceId> devices)
-    : devices_(std::move(devices)) {}
+CliqueKey::CliqueKey(absl::Span<const GlobalDeviceId> devices)
+    : devices_(devices.begin(), devices.end()) {}
 
 absl::Span<const GlobalDeviceId> CliqueKey::devices() const { return devices_; }
 

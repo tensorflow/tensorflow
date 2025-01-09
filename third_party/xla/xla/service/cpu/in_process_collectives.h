@@ -16,25 +16,31 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IN_PROCESS_COLLECTIVES_H_
 #define XLA_SERVICE_CPU_IN_PROCESS_COLLECTIVES_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_communicator.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/cpu/collectives_interface.h"
-#include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu::runtime {
 
-class InProcessCollectives : public CollectivesInterface {
+class InProcessCollectives : public CpuCollectives {
  public:
-  // Thread-safe.
-  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
-      absl::Span<GlobalDeviceId const> devices, int rank) override;
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                      const std::optional<CliqueId>& clique_id,
+                      absl::Span<const DeviceRank> ranks,
+                      const Config& config) final;
 
  private:
   absl::Mutex mu_;

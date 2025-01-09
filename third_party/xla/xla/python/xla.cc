@@ -46,6 +46,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -63,7 +64,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"  // NOLINT
 
@@ -259,8 +259,7 @@ NB_MODULE(xla_extension, m) {
 
   jax::BuildWeakrefLRUCacheAPI(m);
 
-  nb::class_<xla::cpu::CollectivesInterface> cpu_collectives(m,
-                                                             "CpuCollectives");
+  nb::class_<xla::cpu::CpuCollectives> cpu_collectives(m, "CpuCollectives");
 
   m.def(
       "make_gloo_tcp_collectives",
@@ -268,7 +267,7 @@ NB_MODULE(xla_extension, m) {
 
          std::optional<std::string> hostname,
          std::optional<std::string> interface)
-          -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+          -> std::shared_ptr<xla::cpu::CpuCollectives> {
 #if defined(__linux__)
         std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
@@ -321,7 +320,7 @@ NB_MODULE(xla_extension, m) {
   });
 #else   // !_WIN32 && !PLATFORM_GOOGLE
   m.def("make_mpi_collectives",
-        []() -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+        []() -> std::shared_ptr<xla::cpu::CpuCollectives> {
           throw xla::XlaRuntimeError(
               "make_mpi_collectives is not implemented for Windows");
         });
@@ -332,7 +331,7 @@ NB_MODULE(xla_extension, m) {
       [](bool asynchronous,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id, int num_nodes,
-         std::shared_ptr<xla::cpu::CollectivesInterface> collectives,
+         std::shared_ptr<xla::cpu::CpuCollectives> collectives,
          std::optional<int> num_devices) -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
@@ -363,7 +362,7 @@ NB_MODULE(xla_extension, m) {
       nb::arg("asynchronous") = true, nb::arg("distributed_client") = nullptr,
       nb::arg("node_id") = 0, nb::arg("num_nodes") = 1,
       nb::arg("collectives").none() =
-          std::shared_ptr<xla::cpu::CollectivesInterface>(),
+          std::shared_ptr<xla::cpu::CpuCollectives>(),
       nb::arg("num_devices").none() = std::nullopt);
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     absl::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);

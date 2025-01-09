@@ -40,8 +40,8 @@ cc_library(
     srcs = [],
     hdrs = ["cpu_client_options.h"],
     deps = [
+        "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/service:hlo_module_config",
-        "//xla/service/cpu:collectives_interface",
     ],
 )
 

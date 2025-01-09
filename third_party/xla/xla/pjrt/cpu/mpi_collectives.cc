@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/mpi_collectives.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <tuple>
+#include <optional>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -25,8 +27,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mpi.h"
 #include "xla/backends/cpu/collectives/mpi_communicator.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -39,13 +42,13 @@ void MpiCollectives::Init() {
   VLOG(1) << "MPI rank=" << mpi_world_rank_ << " size=" << mpi_world_size_;
 }
 
-void MpiCollectives::Finalize() {
-  contexts_.clear();
-  MPI_Finalize();
-}
+void MpiCollectives::Finalize() { MPI_Finalize(); }
 
-absl::StatusOr<std::shared_ptr<Communicator>> MpiCollectives::GetCommunicator(
-    absl::Span<GlobalDeviceId const> global_devices, int rank) {
+absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+MpiCollectives::CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                                    const std::optional<CliqueId>& clique_id,
+                                    absl::Span<const DeviceRank> ranks,
+                                    const Config& config) {
   int flag;
   MPI_Is_thread_main(&flag);
   if (!flag) {
@@ -55,23 +58,21 @@ absl::StatusOr<std::shared_ptr<Communicator>> MpiCollectives::GetCommunicator(
         "threads/devices per process are not yet supported.");
   }
 
-  auto& context = contexts_[std::make_tuple(
-      std::vector<GlobalDeviceId>(global_devices.begin(), global_devices.end()),
-      rank)];
-  if (context) {
-    return context;
+  std::vector<std::unique_ptr<Communicator>> communicators;
+  for (auto& device_rank : ranks) {
+    size_t rank = device_rank.rank.value();
+    int color;
+    int key = 0;
+    if (clique_key.num_devices() > 0) {
+      color = static_cast<int>(clique_key.devices().at(0).value());
+      key = rank;
+    } else {
+      color = MPI_UNDEFINED;
+    }
+    communicators.push_back(std::make_unique<MpiCommunicator>(color, key));
   }
 
-  int color;
-  int key = 0;
-  if (global_devices.size() > 0) {
-    color = static_cast<int>(global_devices.at(0).value());
-    key = rank;
-  } else {
-    color = MPI_UNDEFINED;
-  }
-  context = std::make_shared<MpiCommunicator>(color, key);
-  return context;
+  return communicators;
 }
 
 }  // namespace xla::cpu
