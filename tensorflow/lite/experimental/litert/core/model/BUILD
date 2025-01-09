@@ -253,6 +253,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
     ],
 )
