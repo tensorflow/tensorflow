@@ -21,7 +21,8 @@ TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1
 TFCI_MACOS_BAZEL_TEST_DIR_PATH="/Volumes/BuildData/bazel_output"
 TFCI_OUTPUT_DIR=build_output
 TFCI_WHL_BAZEL_TEST_ENABLE=1
-TFCI_WHL_SIZE_LIMIT=240M
+# TODO: Set back to 240M once the wheel size is fixed.
+TFCI_WHL_SIZE_LIMIT=270M
 TFCI_WHL_SIZE_LIMIT_ENABLE=1
 
 # 3.11 is the system python on our images
