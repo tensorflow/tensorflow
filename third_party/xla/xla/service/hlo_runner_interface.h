@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
@@ -113,8 +112,7 @@ class HloRunnerInterface {
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
-      const std::string& filename, const DebugOptions& debug_options,
-      const HloParserOptions& options = HloParserOptions());
+      const std::string& filename, const DebugOptions& debug_options);
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
