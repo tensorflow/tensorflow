@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/in_process_collectives.h"
+#include "xla/backends/cpu/collectives/in_process_collectives.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::cpu::runtime {
+namespace xla::cpu {
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 InProcessCollectives::CreateCommunicators(
@@ -56,4 +56,4 @@ InProcessCollectives::CreateCommunicators(
   return communicators;
 }
 
-}  // namespace xla::cpu::runtime
+}  // namespace xla::cpu

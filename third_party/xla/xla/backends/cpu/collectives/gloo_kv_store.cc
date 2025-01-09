@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/gloo_kv_store.h"
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"
 
 #include <chrono>  // NOLINT
 #include <memory>

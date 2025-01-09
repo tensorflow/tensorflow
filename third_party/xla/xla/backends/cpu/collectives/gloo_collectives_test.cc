@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/gloo_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_collectives.h"
 
 #include <unistd.h>
 
@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
-#include "xla/pjrt/cpu/gloo_kv_store.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/collective_ops_utils.h"

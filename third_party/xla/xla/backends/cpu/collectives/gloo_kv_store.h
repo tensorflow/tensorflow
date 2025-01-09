@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_GLOO_KV_STORE_H_
-#define XLA_PJRT_CPU_GLOO_KV_STORE_H_
+#ifndef XLA_BACKENDS_CPU_COLLECTIVES_GLOO_KV_STORE_H_
+#define XLA_BACKENDS_CPU_COLLECTIVES_GLOO_KV_STORE_H_
 
 #include <chrono>  // NOLINT
 #include <memory>
@@ -49,4 +49,4 @@ class GlooKeyValueStore : public ::gloo::rendezvous::Store {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_PJRT_CPU_GLOO_KV_STORE_H_
+#endif  // XLA_BACKENDS_CPU_COLLECTIVES_GLOO_KV_STORE_H_

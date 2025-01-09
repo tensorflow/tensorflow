@@ -1345,21 +1345,21 @@ tsl_pybind_extension(
     ] + select({
         # gloo tcp transport only builds on linux
         "//xla/tsl:macos": [
-            "//xla/pjrt/cpu:gloo_collectives",
-            "//xla/pjrt/cpu:gloo_kv_store",
+            "//xla/backends/cpu/collectives:gloo_collectives",
+            "//xla/backends/cpu/collectives:gloo_kv_store",
             "@gloo//:transport_uv",
         ],
         "//xla/tsl:windows": [],
         "//conditions:default": [
-            "//xla/pjrt/cpu:gloo_collectives",
-            "//xla/pjrt/cpu:gloo_kv_store",
+            "//xla/backends/cpu/collectives:gloo_collectives",
+            "//xla/backends/cpu/collectives:gloo_kv_store",
             "@gloo//:transport_tcp",
         ],
     }) + select({
         # mpitrampoline does not build on windows
         "//xla/tsl:windows": [],
         # we support MPI collectives only in OSS builds
-        "//conditions:default": if_oss(["//xla/pjrt/cpu:mpi_collectives"]),
+        "//conditions:default": if_oss(["//xla/backends/cpu/collectives:mpi_collectives"]),
     }),
 )
 

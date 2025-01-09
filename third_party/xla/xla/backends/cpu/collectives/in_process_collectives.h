@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_IN_PROCESS_COLLECTIVES_H_
-#define XLA_SERVICE_CPU_IN_PROCESS_COLLECTIVES_H_
+#ifndef XLA_BACKENDS_CPU_COLLECTIVES_IN_PROCESS_COLLECTIVES_H_
+#define XLA_BACKENDS_CPU_COLLECTIVES_IN_PROCESS_COLLECTIVES_H_
 
 #include <cstdint>
 #include <memory>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::cpu::runtime {
+namespace xla::cpu {
 
 class InProcessCollectives : public CpuCollectives {
  public:
@@ -49,6 +49,6 @@ class InProcessCollectives : public CpuCollectives {
   std::weak_ptr<InProcessCommunicator::State> state_ ABSL_GUARDED_BY(mu_);
 };
 
-}  // namespace xla::cpu::runtime
+}  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_IN_PROCESS_COLLECTIVES_H_
+#endif  // XLA_BACKENDS_CPU_COLLECTIVES_IN_PROCESS_COLLECTIVES_H_

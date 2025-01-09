@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_GLOO_COLLECTIVES_H_
-#define XLA_PJRT_CPU_GLOO_COLLECTIVES_H_
+#ifndef XLA_BACKENDS_CPU_COLLECTIVES_GLOO_COLLECTIVES_H_
+#define XLA_BACKENDS_CPU_COLLECTIVES_GLOO_COLLECTIVES_H_
 
 #include <cstdint>
 #include <memory>
@@ -53,4 +53,4 @@ class GlooCollectives : public CpuCollectives {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_PJRT_CPU_GLOO_COLLECTIVES_H_
+#endif  // XLA_BACKENDS_CPU_COLLECTIVES_GLOO_COLLECTIVES_H_

@@ -70,16 +70,16 @@ limitations under the License.
 #if defined(__linux__)
 #include "gloo/transport/tcp/attr.h"
 #include "gloo/transport/tcp/device.h"
-#include "xla/pjrt/cpu/gloo_collectives.h"
-#include "xla/pjrt/cpu/gloo_kv_store.h"
+#include "xla/backends/cpu/collectives/gloo_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"
 #elif defined(__APPLE__)
 #include "gloo/transport/uv/device.h"
-#include "xla/pjrt/cpu/gloo_collectives.h"  // NOLINT
-#include "xla/pjrt/cpu/gloo_kv_store.h"  // NOLINT
+#include "xla/backends/cpu/collectives/gloo_collectives.h"  // NOLINT
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"  // NOLINT
 #endif  // defined(__linux__)
 
 #if !defined(_WIN32) && !defined(PLATFORM_GOOGLE)
-#include "xla/pjrt/cpu/mpi_collectives.h"
+#include "xla/backends/cpu/collectives/mpi_collectives.h"
 #endif  // !_WIN32 && !PLATFORM_GOOGLE
 
 #include "xla/pjrt/distributed/key_value_store_interface.h"
