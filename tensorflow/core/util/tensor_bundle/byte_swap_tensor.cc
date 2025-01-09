@@ -162,7 +162,7 @@ absl::Status ByteSwapTensor(Tensor* t) {
 }
 
 absl::Status ByteSwapTensorProto(TensorProto* tp) {
-  std:string content_str = std::string(tp->tensor_content());
+  std::string content_str = std::string(tp->tensor_content());
   char* buff = const_cast<char*>(content_str.data());
   TF_RETURN_IF_ERROR(ByteSwapBuffer(buff, content_str.size(), tp->dtype(), -1));
   tp->set_tensor_content(content_str);
