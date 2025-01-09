@@ -2445,6 +2445,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/log",
