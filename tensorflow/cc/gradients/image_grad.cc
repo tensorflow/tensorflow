@@ -29,9 +29,9 @@ REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV3");
 REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV4");
 REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV5");
 
-Status ResizeNearestNeighborGradHelper(const Scope& scope, const Operation& op,
-                                       const std::vector<Output>& grad_inputs,
-                                       std::vector<Output>* grad_outputs) {
+absl::Status ResizeNearestNeighborGradHelper(
+    const Scope& scope, const Operation& op,
+    const std::vector<Output>& grad_inputs, std::vector<Output>* grad_outputs) {
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
@@ -51,9 +51,9 @@ Status ResizeNearestNeighborGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ResizeNearestNeighbor", ResizeNearestNeighborGradHelper);
 
-Status ResizeBilinearGradHelper(const Scope& scope, const Operation& op,
-                                const std::vector<Output>& grad_inputs,
-                                std::vector<Output>* grad_outputs) {
+absl::Status ResizeBilinearGradHelper(const Scope& scope, const Operation& op,
+                                      const std::vector<Output>& grad_inputs,
+                                      std::vector<Output>* grad_outputs) {
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
@@ -69,9 +69,9 @@ Status ResizeBilinearGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ResizeBilinear", ResizeBilinearGradHelper);
 
-Status ResizeBicubicGradHelper(const Scope& scope, const Operation& op,
-                               const std::vector<Output>& grad_inputs,
-                               std::vector<Output>* grad_outputs) {
+absl::Status ResizeBicubicGradHelper(const Scope& scope, const Operation& op,
+                                     const std::vector<Output>& grad_inputs,
+                                     std::vector<Output>* grad_outputs) {
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
@@ -88,9 +88,10 @@ Status ResizeBicubicGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ResizeBicubic", ResizeBicubicGradHelper);
 
-Status ScaleAndTranslateGradHelper(const Scope& scope, const Operation& op,
-                                   const std::vector<Output>& grad_inputs,
-                                   std::vector<Output>* grad_outputs) {
+absl::Status ScaleAndTranslateGradHelper(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
   string kernel_type;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "kernel_type", &kernel_type));
@@ -109,9 +110,9 @@ Status ScaleAndTranslateGradHelper(const Scope& scope, const Operation& op,
 
 REGISTER_GRADIENT_OP("ScaleAndTranslate", ScaleAndTranslateGradHelper);
 
-Status CropAndResizeGradHelper(const Scope& scope, const Operation& op,
-                               const std::vector<Output>& grad_inputs,
-                               std::vector<Output>* grad_outputs) {
+absl::Status CropAndResizeGradHelper(const Scope& scope, const Operation& op,
+                                     const std::vector<Output>& grad_inputs,
+                                     std::vector<Output>* grad_outputs) {
   DataType input_type;
   string method;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "method", &method));

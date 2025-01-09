@@ -19,15 +19,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -37,7 +36,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Attributes.h"
-#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
@@ -49,7 +47,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -60,11 +58,12 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
-#include "xla/service/cpu/elemental_math_emitter.h"
+#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -73,137 +72,24 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
+
 namespace {
 
-// Following struct types correspond to HostKernel C API.
-// See: xla/stream_executor/host/host_kernel_c_api.h
-
-static llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx,
-                                      std::string_view name) {
-  auto* i64 = llvm::IntegerType::getInt64Ty(ctx);
-  return llvm::StructType::create(name, i64, i64, i64);
-}
-
-static llvm::StructType* KernelThreadDimTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "SE_HOST_KernelThreadDim");
-}
-
-static llvm::StructType* KernelThreadTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "SE_HOST_KernelThread");
-}
-
-static llvm::StructType* KernelArgTy(llvm::LLVMContext& ctx) {
-  auto* ptr = llvm::PointerType::getUnqual(ctx);
-  auto* i64 = llvm::IntegerType::getInt64Ty(ctx);
-  return llvm::StructType::create("SE_HOST_KernelArg", ptr, i64);
-}
-
-static llvm::StructType* KernelCallFrameTy(llvm::LLVMContext& ctx) {
-  auto* ptr = llvm::PointerType::getUnqual(ctx);
-  auto* i64 = llvm::IntegerType::getInt64Ty(ctx);
-  return llvm::StructType::create("SE_HOST_KernelCallFrame", ptr, ptr, i64,
-                                  ptr);
-}
-
-static llvm::FunctionType* KernelFunctionTy(llvm::LLVMContext& ctx) {
-  return llvm::FunctionType::get(llvm::PointerType::getUnqual(ctx),
-                                 llvm::PointerType::getUnqual(ctx),
-                                 /*isVarArg=*/false);
+KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
+    const HloModuleConfig& config) {
+  return KernelApiIrBuilder::Options{
+      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
+      config.debug_options().xla_cpu_prefer_vector_width()};
 }
 
 }  // namespace
-
-//===----------------------------------------------------------------------===//
-// ElementalIrEmitter
-//===----------------------------------------------------------------------===//
-
-class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
- public:
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
-                     const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
-                     bool fast_min_max)
-      : xla::ElementalIrEmitter(module, b),
-        hlo_module_(hlo_module),
-        nested_ir_emitter_(nested_ir_emitter),
-        fast_min_max_(fast_min_max) {}
-
- protected:
-  absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs,
-                                         absl::string_view) override {
-    return xla::cpu::EmitAtan2(module(), *b(), prim_type, lhs, rhs);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                        llvm::Value* value) override {
-    return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
-  }
-
-  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
-                                       llvm::Value* value) override {
-    return xla::cpu::EmitErf(module(), *b(), prim_type, value);
-  }
-
-  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    // Module must be scheduled to emit thread local computation.
-    if (!hlo_module_ || !hlo_module_->has_schedule()) {
-      return absl::InternalError(
-          "HLO module must be scheduled to emit thread local computation.");
-    }
-
-    // Create a nested function for thread local computation(s) if it is not
-    // already created. Nested functions are created with internal linkage.
-    auto emit_computation = [&](const HloComputation* computation) {
-      if (!nested_ir_emitter_->is_computation_emitted(*computation,
-                                                      is_reducer)) {
-        VLOG(2) << "Emit nested computation: " << computation->name();
-        TF_RETURN_IF_ERROR(
-            nested_ir_emitter_
-                ->EmitComputation(
-                    const_cast<HloComputation*>(computation), name, false,
-                    hlo_module_->schedule()
-                        .sequence(computation)
-                        .instructions(),
-                    /*allow_reassociation=*/is_reducer,
-                    /*function_attributes=*/{llvm::Attribute::AlwaysInline})
-                .status());
-      }
-      return absl::OkStatus();
-    };
-
-    // We emit all embedded computations reachable through the `callee` to
-    // support nested thread local call, i.e., nested map computations.
-    for (HloComputation* embedded : callee.MakeEmbeddedComputationsList()) {
-      if (embedded->IsFusionComputation()) continue;
-      TF_RETURN_IF_ERROR(emit_computation(embedded));
-    }
-    TF_RETURN_IF_ERROR(emit_computation(&callee));
-
-    // Add a thread local call to the nested computation.
-    VLOG(2) << "Emit thread local call to: " << callee.name();
-    nested_ir_emitter_->b()->SetInsertPoint(b()->GetInsertPoint());
-    auto values = nested_ir_emitter_->EmitThreadLocalCall(
-        callee, parameters, name, is_reducer, /*in_compute_function=*/false);
-
-    return values;
-  }
-
-  bool fast_min_max() override { return fast_min_max_; }
-
- private:
-  const HloModule* hlo_module_;
-  IrEmitter* nested_ir_emitter_;
-  bool fast_min_max_;
-};
 
 //===----------------------------------------------------------------------===//
 // IrEmitter2
@@ -214,45 +100,20 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
     : hlo_module_(hlo_module),
       module_(module),
       nested_ir_emitter_(nested_ir_emitter),
-      call_frame_ty_(KernelCallFrameTy(module_->getContext())),
-      thread_dims_ty_(KernelThreadDimTy(module_->getContext())),
-      thread_ty_(KernelThreadTy(module_->getContext())),
-      arg_ty_(KernelArgTy(module_->getContext())) {}
+      kernel_api_ir_builder_(
+          module_->getContext(),
+          KernelApiIrBuilderOptionsFromHloModuleConfig(hlo_module_.config())) {}
 
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit elemental host kernel: " << instr->name();
-
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (int64_t i = 0; i < instr->operand_count(); ++i) {
-    const HloInstruction* operand = instr->operand(i);
-    operand_to_generator[operand] = [&, i](const llvm_ir::IrArray::Index& idx) {
-      return kernel_prototype.arguments[i].EmitReadArrayElement(idx, &b);
-    };
-  }
-
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
-                                       nested_ir_emitter_, fast_min_max());
-  llvm_ir::ElementGenerator element_generator =
-      elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
-
-  TF_ASSIGN_OR_RETURN(
-      se::ThreadDim thread_dims,
-      EmitElementalLoops(b, instr, kernel_prototype, element_generator));
-
-  return kernels_.emplace_back(KernelInfo{
-      kernel_prototype.function->getName().str(), se::BlockDim(), thread_dims});
-}
+IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
+                                   const se::BlockDim& block_dims,
+                                   const se::ThreadDim& thread_dims)
+    : name(prototype.function->getName().str()),
+      block_dims(block_dims),
+      thread_dims(thread_dims),
+      invariant_arguments(std::move(prototype.invariant_arguments)) {}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
     const HloInstruction* pad) {
@@ -281,8 +142,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
   nested_ir_emitter_->PopComputeFunction();
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
@@ -295,7 +155,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   }
 
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return Internal("Unsupported loop fusion kind for instruction: %s",
+    return Internal("Unsupported fusion kind for instruction: %s",
                     fusion->ToString());
   }
 
@@ -305,8 +165,13 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
-                                       nested_ir_emitter_, fast_min_max());
+  IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
+
+  HloComputation* nested_computation = fusion->fused_instructions_computation();
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitNestedComputation(
+      *nested_computation, llvm_ir::IrName(fusion), false));
+
+  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
 
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion->operand_count(); i++) {
@@ -326,9 +191,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
         const_cast<HloFusionInstruction*>(fusion), kernel_prototype.results[0],
         &fused_emitter, &b));
 
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
+    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
+                                            se::BlockDim(), se::ThreadDim()));
   }
 
   // Emit plain elemental loops for the fusion operation.
@@ -340,16 +204,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
       se::ThreadDim thread_dims,
       EmitElementalLoops(b, fusion, kernel_prototype, element_generator));
 
-  return kernels_.emplace_back(KernelInfo{
-      kernel_prototype.function->getName().str(), se::BlockDim(), thread_dims});
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit reduction host kernel: " << instr->name();
-
-  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
-  return EmitElementalHostKernel(instr);
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
 }
 
 // Dot (fusion) host kernel only supports strategies that emit LLVM IR.
@@ -393,34 +249,27 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
       /*allow_runtime_calls=*/false));
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit concatenate host kernel: " << instr->name();
 
-  auto fast_impl_reason = CanDoFastConcatenate(instr);
-  if (fast_impl_reason.ok()) {
-    VLOG(1) << "Emitting fast concatenate for " << instr->ToString() << ": "
-            << fast_impl_reason.message();
-    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                        EmitKernelPrototype(instr));
-    llvm::IRBuilder<> ir_builder(module_->getContext());
-    ir_builder.SetInsertPoint(
-        kernel_prototype.function->getEntryBlock().getTerminator());
+  DCHECK_OK(CanDoFastConcatenate(instr));
 
-    llvm_ir::IrArray output_array = kernel_prototype.results[0];
-    TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
-        instr, kernel_prototype.arguments, output_array, module_, ir_builder));
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
-  }
-  VLOG(1) << "Could not emit fast concatenate for " << instr->ToString() << ": "
-          << fast_impl_reason.message();
-  return EmitElementalHostKernel(instr);
+  VLOG(1) << "Emitting fast concatenate for " << instr->ToString();
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
+  llvm::IRBuilder<> ir_builder(module_->getContext());
+  ir_builder.SetInsertPoint(
+      kernel_prototype.function->getEntryBlock().getTerminator());
+
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+  TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
+      instr, kernel_prototype.arguments, output_array, module_, ir_builder));
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
@@ -477,8 +326,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
       /*allow_runtime_calls=*/false));
 
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
@@ -496,57 +344,31 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
   TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitSliceToDynamic(
       instr, kernel_prototype.arguments, output_array));
   return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo>
-IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
-  llvm_ir::IrArray source_array = kernel_prototype.arguments[1];
-  llvm_ir::IrArray output_array = kernel_prototype.results[0];
-
-  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandleSelectAndScatter(
-      const_cast<HloInstruction*>(instr), operand_array, source_array,
-      output_array));
-
-  return kernels_.emplace_back(
-      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                 se::ThreadDim()});
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
-  if (llvm_ir::CanUpdateDynamicSliceInPlace(const_cast<HloInstruction*>(instr),
-                                            nested_ir_emitter_->assignment())) {
-    VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
+  DCHECK(CanUpdateDynamicSliceInPlace(instr));
 
-    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                        EmitKernelPrototype(instr));
+  VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
 
-    llvm::IRBuilder<> b(module_->getContext());
-    b.SetInsertPoint(
-        kernel_prototype.function->getEntryBlock().getTerminator());
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
 
-    TF_RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
-        kernel_prototype.arguments, kernel_prototype.results.front(),
-        llvm_ir::IrName(instr, "in_place"), &b));
+  llvm::IRBuilder<> b(module_->getContext());
+  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-    return kernels_.emplace_back(
-        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
-                   se::ThreadDim()});
-  }
+  TF_RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
+      kernel_prototype.arguments, kernel_prototype.results.front(),
+      llvm_ir::IrName(instr, "in_place"), &b));
 
-  return EmitElementalHostKernel(instr);
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
-    const HloInstruction* instr) {
-  HloComputation* comparator = instr->to_apply();
-
+    HloComputation* comparator) {
   // Find if we already emitted this comparator.
   auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
     return info.name == comparator->name();
@@ -577,318 +399,10 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<BufferAllocation::Slice> IrEmitter2::GetAllocationSlice(
-    const HloInstruction* instruction, const ShapeIndex& index) {
-  return nested_ir_emitter_->assignment().GetUniqueSlice(instruction, index);
-}
-
-absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
-IrEmitter2::GetKernelArgumentsParameters(const HloInstruction* instruction) {
-  std::vector<KernelParameter> arguments;
-
-  for (HloInstruction* operand : instruction->operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                          GetAllocationSlice(operand, indexed.index));
-      arguments.push_back(KernelParameter{indexed.shape, slice});
-    }
-  }
-  return arguments;
-}
-
-absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
-IrEmitter2::GetKernelResultsParameters(const HloInstruction* instruction) {
-  std::vector<KernelParameter> results;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        GetAllocationSlice(instruction, indexed.index));
-    results.push_back(KernelParameter{indexed.shape, slice});
-  }
-  return results;
-}
-
-absl::Status IrEmitter2::VerifyKernelParameters(
-    absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results) {
-  // IMPORTANT: Buffer slice non-overlapping property checked below does not
-  // necessarily mean that the buffers do not alias. Parameter allocations
-  // might have different index but at run time might be backed by the same
-  // memory (or aliased memory). We conservatively do not emit noalias metadata
-  // for buffers coming from parameter allocations.
-
-  // Check that all kernel arguments are coming from non-overlapping slices. It
-  // is fine to pass same slice as different arguments. This property is not
-  // used anywhere during the codegen, it acts mostly as a sanity check for
-  // the buffer assignment. In the future we might emit better aliasing metadata
-  // based on this property.
-  for (size_t i = 0; i < arguments.size(); ++i) {
-    for (size_t j = i + 1; j < arguments.size(); ++j) {
-      const KernelParameter& a = arguments[i];
-      const KernelParameter& b = arguments[j];
-
-      if (a.slice != b.slice && a.slice.OverlapsWith(b.slice)) {
-        return Internal(
-            "Kernel arguments must not overlap: result #%d (%s) overlaps "
-            "with result #%d (%s)",
-            i, a.slice.ToString(), j, b.slice.ToString());
-      }
-    }
-  }
-
-  // Check that all kernel results are unique and coming from non-overlapping
-  // slices. We rely on this property to create LLVM `!alias.scope` for each
-  // kernel result buffer and to construct `!noalias` metadata for arguments.
-  for (size_t i = 0; i < results.size(); ++i) {
-    for (size_t j = i + 1; j < results.size(); ++j) {
-      const KernelParameter& a = results[i];
-      const KernelParameter& b = results[j];
-
-      if (a.slice.OverlapsWith(b.slice)) {
-        return Internal(
-            "Kernel results must not overlap: result #%d (%s) overlaps "
-            "with result #%d (%s)",
-            i, a.slice.ToString(), j, b.slice.ToString());
-      }
-    }
-  }
-
-  // Check that results do not overlap with arguments, or if they do, they must
-  // be the same as one of the arguments, which can happen for inplace kernels.
-  for (size_t i = 0; i < results.size(); ++i) {
-    for (size_t j = 0; j < arguments.size(); ++j) {
-      const KernelParameter& result = results[i];
-      const KernelParameter& argument = arguments[j];
-
-      if (result.slice.OverlapsWith(argument.slice) &&
-          result.slice != argument.slice) {
-        return Internal(
-            "Kernel results must not partially overlap with arguments: result "
-            "#%d (%s) overlaps with argument #%d (%s)",
-            i, result.slice.ToString(), j, argument.slice.ToString());
-        break;
-      }
-    }
-  }
-
-  return absl::OkStatus();
-}
-
-IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
-    llvm::IRBuilder<>& b, llvm::Value* call_frame) {
-  auto* td_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 0, "tdims_gep");
-  auto* tdims = b.CreateLoad(b.getPtrTy(), td_gep, "tdims");
-  auto* x_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 0, "tdim_x_gep");
-  auto* y_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 1, "tdim_y_gep");
-  auto* z_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 2, "tdim_z_gep");
-
-  return {b.CreateLoad(b.getInt64Ty(), x_gep, "tdim_x"),
-          b.CreateLoad(b.getInt64Ty(), y_gep, "tdim_y"),
-          b.CreateLoad(b.getInt64Ty(), z_gep, "tdim_z")};
-}
-
-IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilder<>& b,
-                                                      llvm::Value* call_frame) {
-  auto* t_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 1, "tid_gep");
-  auto* tids = b.CreateLoad(b.getPtrTy(), t_gep, "tids");
-  auto* x_gep = b.CreateStructGEP(thread_ty_, tids, 0, "tid_x_gep");
-  auto* y_gep = b.CreateStructGEP(thread_ty_, tids, 1, "tid_y_gep");
-  auto* z_gep = b.CreateStructGEP(thread_ty_, tids, 2, "tid_z_gep");
-
-  return {b.CreateLoad(b.getInt64Ty(), x_gep, "tid_x"),
-          b.CreateLoad(b.getInt64Ty(), y_gep, "tid_y"),
-          b.CreateLoad(b.getInt64Ty(), z_gep, "tid_z")};
-}
-
-llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
-                                                llvm::Value* call_frame,
-                                                int64_t index,
-                                                const Shape& shape) {
-  llvm::Type* ptr = llvm::PointerType::get(b.getContext(), 0);
-  std::string name = absl::StrCat("arg", index);
-
-  auto* args_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 3, "args_gep");
-  auto* args = b.CreateLoad(ptr, args_gep, "args");
-  auto* data_gep = b.CreateConstGEP2_32(arg_ty_, args, index, 0, name + "_gep");
-  auto* data = b.CreateLoad(ptr, data_gep, name);
-
-  // All buffers passed to host kernels are expected to be properly aligned,
-  // emit metadata to allow LLVM to use that information for optimization.
-  llvm_ir::SetAlignmentMetadataForLoad(data, cpu_function_runtime::MinAlign());
-
-  // All buffers pointers passed to host kernels are expected to be
-  // dereferenceable.
-  IrEmitter::AttachDereferenceableMetadataForLoad(data, ByteSizeOf(shape));
-
-  // All buffers pointers passed to host kernels are expected to be invariant
-  // over the whole program. Note the metadata is attached only to loading
-  // buffer pointers, not to loading actual buffers.
-  AttachInvariantLoadMetadataForLoad(data);
-
-  return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
-}
-
-absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
-    std::string_view name, absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results) {
-  VLOG(3) << "Emit kernel prototype: " << name
-          << ", #arguments=" << arguments.size()
-          << ", #results=" << results.size();
-  for (const KernelParameter& argument : arguments) {
-    VLOG(3) << "  argument: " << argument.shape.ToString(true) << " in "
-            << argument.slice.ToString();
-  }
-  for (const KernelParameter& result : results) {
-    VLOG(3) << "  result: " << result.shape.ToString(true) << " in "
-            << result.slice.ToString();
-  }
-
-  TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
-
-  llvm::LLVMContext& ctx = module_->getContext();
-  llvm::MDBuilder mb(ctx);
-  llvm::IRBuilder<> b(ctx);
-
-  // Create an alias domain for the host kernel function.
-  llvm::MDNode* domain = mb.createAliasScopeDomain(
-      absl::StrFormat("XLA host kernel %s AA domain", name));
-
-  // Emit alias scopes for all kernel result buffers. We do not emit alias
-  // scopes for kernel arguments, because it's usually not profitable, and we
-  // mostly care about avoiding reloading data from read-only buffers. We use
-  // sorted container to make sure that emitted metadata is deterministic.
-  absl::btree_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes;
-  for (const KernelParameter& result : results) {
-    // Skip result buffers that are aliased with entry parameters as we don't
-    // know if they can alias with any other buffers.
-    if (result.slice.allocation()->is_parameter_aliased_with_output()) {
-      continue;
-    }
-    alias_scopes[result.slice] = mb.createAliasScope(
-        absl::StrFormat("result slice: %s", result.slice.ToString()), domain);
-  }
-
-  // Returns alias scope for the given buffer slice.
-  auto get_alias_scope = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
-    auto it = alias_scopes.find(slice);
-    return it == alias_scopes.end() ? nullptr
-                                    : llvm::MDNode::get(ctx, it->second);
-  };
-
-  // Construct !noalias metadata for buffer slice.
-  auto get_noalias = [&](BufferAllocation::Slice slice) -> llvm::MDNode* {
-    llvm::SmallVector<llvm::Metadata*> scopes;
-    for (const auto& [alias_slice, alias_scope] : alias_scopes) {
-      if (!slice.OverlapsWith(alias_slice)) {
-        scopes.push_back(alias_scope);
-      }
-    }
-    return scopes.empty() ? nullptr : llvm::MDNode::get(ctx, scopes);
-  };
-
-  // Collect all buffer slices that the kernel writes to.
-  absl::flat_hash_set<BufferAllocation::Slice> result_slices;
-  result_slices.reserve(results.size());
-  for (const KernelParameter& result : results) {
-    result_slices.insert(result.slice);
-  }
-
-  // Collect a set of invariant (read-only) buffer slices. If a buffer slice is
-  // not a part of result set, then it must be a read-only buffer.
-  //
-  // TODO(ezhulenev): Pass this information to KernelThunk and add an extra run
-  // time check to verify that this property holds, as otherwise it can lead to
-  // hard to debug errors.
-  absl::flat_hash_set<BufferAllocation::Slice> invariant_slices;
-  for (const KernelParameter& argument : arguments) {
-    if (!result_slices.contains(argument.slice)) {
-      invariant_slices.insert(argument.slice);
-    }
-  }
-
-  // Create a kernel function with HostKernel API. We use external linkage
-  // because we'll be resolving this function from the XLA runtime.
-  llvm::Function* function = llvm::Function::Create(
-      KernelFunctionTy(ctx), llvm::GlobalValue::ExternalLinkage, name, module_);
-  function->setCallingConv(llvm::CallingConv::C);
-
-  // Generate unwind information so that GDB can crawl through the stack frames
-  // created by the JIT compiled code.
-  function->setUWTableKind(llvm::UWTableKind::Default);
-
-  // Set prefer-vector-width attribute to allow LLVM to use wider vector
-  // registers (by default LLVM uses at most 256-bit registers).
-  const DebugOptions& debug_options = hlo_module_.config().debug_options();
-  function->addFnAttr(
-      "prefer-vector-width",
-      absl::StrCat(debug_options.xla_cpu_prefer_vector_width()));
-
-  // Always keep a frame pointer for the host kernel so we can see them in all
-  // performance profiling tools.
-  function->addFnAttr("frame-pointer", "all");
-
-  // Create an entry basic block and set insert point to the end of it.
-  b.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
-
-  llvm::Value* call_frame = function->getArg(0);
-  // Build thread coordinates from the call frame.
-  KernelThreadDims kernel_thread_dims = EmitKernelThreadDims(b, call_frame);
-  KernelThread kernel_thread = EmitKernelThread(b, call_frame);
-
-  int64_t idx = 0;
-
-  // IrArrays for the parameters.
-  std::vector<llvm_ir::IrArray> ir_arguments;
-  for (const KernelParameter& argument : arguments) {
-    auto ir_argument = EmitKernelArgument(b, call_frame, idx++, argument.shape);
-    if (auto* noalias = get_noalias(argument.slice)) {
-      ir_argument.AddNoaliasMetadata(noalias);
-    }
-    if (invariant_slices.contains(argument.slice)) {
-      ir_argument.MarkInvariantOverWholeProgram(&ctx);
-    }
-    ir_arguments.push_back(std::move(ir_argument));
-  }
-
-  // IrArrays for the results.
-  std::vector<llvm_ir::IrArray> ir_results;
-  for (const KernelParameter& result : results) {
-    auto ir_result = EmitKernelArgument(b, call_frame, idx++, result.shape);
-    if (auto* noalias = get_noalias(result.slice)) {
-      ir_result.AddNoaliasMetadata(noalias);
-    }
-    if (auto* alias_scope = get_alias_scope(result.slice)) {
-      ir_result.AddAliasScopeMetadata(alias_scope);
-    }
-    ir_results.push_back(std::move(ir_result));
-  }
-
-  // Return null pointer to signal success as we do not support error handling
-  // in the compiled host kernel.
-  llvm::BasicBlock* return_block =
-      llvm::BasicBlock::Create(ctx, "return", function);
-
-  b.CreateBr(return_block);
-
-  b.SetInsertPoint(return_block);
-  b.CreateRet(
-      llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(ctx)));
-
-  return KernelPrototype{function,
-                         return_block,
-                         kernel_thread_dims,
-                         kernel_thread,
-                         std::move(ir_arguments),
-                         std::move(ir_results)};
-}
-
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
-                      GetKernelArgumentsParameters(instr));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
-                      GetKernelResultsParameters(instr));
-  return EmitKernelPrototype(instr->name(), std::move(arguments),
-                             std::move(results));
+  return kernel_api_ir_builder_.EmitKernelPrototype(
+      *module_, instr, &nested_ir_emitter_->assignment());
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
@@ -929,10 +443,16 @@ absl::Status IrEmitter2::CanDoFastConcatenate(
   return absl::OkStatus();
 };
 
+bool IrEmitter2::CanUpdateDynamicSliceInPlace(
+    const HloInstruction* update) const {
+  return llvm_ir::CanUpdateDynamicSliceInPlace(
+      const_cast<HloInstruction*>(update), nested_ir_emitter_->assignment());
+}
+
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
-    llvm::IRBuilder<>& b, const KernelPrototype& kernel_prototype,
+    llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
     const ParallelConfig& parallel_config, const Shape& shape,
-    std::string_view name) {
+    absl::string_view name) {
   ShapePartitionIterator it(shape, parallel_config.outer_dimension_partitions);
 
   size_t num_parallel_dimensions =
@@ -976,7 +496,7 @@ IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
   // Construct IR to load bounds for all parallel dimensions.
   ParallelPartitionBounds bounds;
   for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.thread.x;
+    llvm::Value* partition = kernel_prototype.thread_id.x;
     llvm::Value* parallel_dim = b.getInt32(i);
 
     llvm::Value* lower_gep = b.CreateInBoundsGEP(
@@ -998,7 +518,7 @@ IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
 }
 
 absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
-    llvm::IRBuilder<>& b, const HloInstruction* instr,
+    llvm::IRBuilderBase& b, const HloInstruction* instr,
     const KernelPrototype& kernel_prototype,
     const llvm_ir::ElementGenerator& element_generator) {
   // We can emit loops for instruction with multiple results only if it is a
@@ -1056,6 +576,20 @@ void IrEmitter2::AttachInvariantLoadMetadataForLoad(
     llvm::LoadInst* instr) const {
   nested_ir_emitter_->AttachInvariantLoadMetadataForLoad(instr,
                                                          hlo_module_.config());
+}
+
+CpuElementalIrEmitter IrEmitter2::ElementalIrEmmiterFactory(
+    llvm::IRBuilderBase* b) const {
+  auto thread_local_call_fn = [this](const HloComputation& callee,
+                                     absl::Span<llvm::Value* const> parameters,
+                                     absl::string_view name, bool is_reducer) {
+    return nested_ir_emitter_->EmitThreadLocalCall(
+        callee, parameters, name, is_reducer,
+        /*in_compute_function=*/false);
+  };
+
+  return CpuElementalIrEmitter(module_, b, thread_local_call_fn, true,
+                               fast_min_max());
 }
 
 }  // namespace xla::cpu

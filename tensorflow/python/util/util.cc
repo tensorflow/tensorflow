@@ -120,7 +120,7 @@ bool IsString(PyObject* o) {
 // Note that '__class__' attribute is set only in new-style classes.
 // A lot of tensorflow code uses __class__ without checks, so it seems like
 // we only support new-style classes.
-StringPiece GetClassName(PyObject* o) {
+absl::string_view GetClassName(PyObject* o) {
   // __class__ is equivalent to type() for new style classes.
   // type() is equivalent to PyObject_Type()
   // (https://docs.python.org/3.5/c-api/object.html#c.PyObject_Type)
@@ -130,9 +130,9 @@ StringPiece GetClassName(PyObject* o) {
 
   // __name__ is the value of `tp_name` after the last '.'
   // (https://docs.python.org/2/c-api/typeobj.html#c.PyTypeObject.tp_name)
-  StringPiece name(type->tp_name);
+  absl::string_view name(type->tp_name);
   size_t pos = name.rfind('.');
-  if (pos != StringPiece::npos) {
+  if (pos != absl::string_view::npos) {
     name.remove_prefix(pos + 1);
   }
   return name;
@@ -816,7 +816,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 // Returns true iff there were no "internal" errors. In other words,
 // errors that has nothing to do with structure checking.
 // If an "internal" error occurred, the appropriate Python error will be
-// set and the caller can propage it directly to the user.
+// set and the caller can propagate it directly to the user.
 //
 // Both `error_msg` and `is_type_error` must be non-null. `error_msg` must
 // be empty.

@@ -19,15 +19,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -918,7 +919,10 @@ TEST_F(HloCseTest, MultiOutputFusion) {
     ENTRY entry {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      ROOT root = (f32[], f32[]) fusion(p0, p1), kind=kLoop, calls=f
+      fusion = (f32[], f32[]) fusion(p0, p1), kind=kLoop, calls=f
+      gte0 = f32[] get-tuple-element(fusion), index=0
+      gte1 = f32[] get-tuple-element(fusion), index=1
+      ROOT res = (f32[], f32[]) tuple(gte0, gte1)
     }
   )";
 
@@ -928,10 +932,18 @@ TEST_F(HloCseTest, MultiOutputFusion) {
 
   SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
   EXPECT_EQ(changed, true);
+  HloInstruction* root = m->entry_computation()->root_instruction();
   HloInstruction* add0;
   HloInstruction* add1;
+  HloInstruction* gte0;
+  HloInstruction* gte1;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(&gte0),
+                                        m::GetTupleElement(&gte1))));
+  EXPECT_EQ(gte0, gte1);
+  EXPECT_EQ(gte0->tuple_index(), 0);
+  const HloInstruction* fusion = gte0->operand(0);
   ASSERT_THAT(
-      m->entry_computation()->root_instruction()->fused_expression_root(),
+      fusion->fused_expression_root(),
       GmockMatch(m::Tuple(m::Add(&add0, m::Parameter(0), m::Parameter(1)),
                           m::Add(&add1, m::Parameter(0), m::Parameter(1)))));
   EXPECT_EQ(add0, add1);

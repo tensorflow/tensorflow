@@ -116,14 +116,15 @@ class Exporter {
   // one entry function, which is identified by name "main". This entry function
   // is converted to the base of the graph graph. The rest of the functions are
   // converted to the library functions in that graph.
-  static Status Convert(mlir::ModuleOp module, const GraphExportConfig& configs,
-                        std::unique_ptr<Graph>* graph,
-                        FunctionLibraryDefinition* flib_def,
-                        absl::flat_hash_set<Node*>* control_ret_nodes);
+  static absl::Status Convert(mlir::ModuleOp module,
+                              const GraphExportConfig& configs,
+                              std::unique_ptr<Graph>* graph,
+                              FunctionLibraryDefinition* flib_def,
+                              absl::flat_hash_set<Node*>* control_ret_nodes);
 
   // Converts a given FuncOp to a FunctionDef and adds it to the function
   // definition library
-  static Status ConvertLibFunction(
+  static absl::Status ConvertLibFunction(
       const GraphExportConfig& configs, const Dialect* tf_dialect,
       const SymbolTable& symbol_table, FuncOp function,
       FunctionLibraryDefinition* flib_def,
@@ -150,14 +151,14 @@ class Exporter {
     graph_->ToGraphDef(&graphdef_);
   }
 
-  Status AddArgumentNode(BlockArgument arg, unsigned index,
-                         llvm::StringRef name);
-  Status AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
-                      llvm::ArrayRef<llvm::StringRef> names);
-  Status AddInstructionNode(Operation* inst);
+  absl::Status AddArgumentNode(BlockArgument arg, unsigned index,
+                               llvm::StringRef name);
+  absl::Status AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
+                            llvm::ArrayRef<llvm::StringRef> names);
+  absl::Status AddInstructionNode(Operation* inst);
   void UseOriginalFunctionNames(NodeDef& node_def);
 
-  Status AddEdge(Operation* inst);
+  absl::Status AddEdge(Operation* inst);
 
   absl::StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(
       BlockArgument arg, unsigned index, llvm::StringRef name);
@@ -165,11 +166,13 @@ class Exporter {
                                                          Value operand,
                                                          unsigned index,
                                                          llvm::StringRef name);
-  Status GetControlRetNodes(mlir::tf_executor::FetchOp fetch,
-                            absl::flat_hash_set<Node*>* control_ret_nodes);
+  absl::Status GetControlRetNodes(
+      mlir::tf_executor::FetchOp fetch,
+      absl::flat_hash_set<Node*>* control_ret_nodes);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
   // an index is used to find out the right operand of the dst_node.
-  Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
+  absl::Status AddEdgeBetweenNodes(Value src, Node* dst_node,
+                                   unsigned dst_index);
 
   const GraphExportConfig& configs_;
   Graph* graph_;
@@ -292,8 +295,8 @@ absl::StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   return node_def;
 }
 
-Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
-                                     unsigned dst_index) {
+absl::Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
+                                           unsigned dst_index) {
   if (auto input_result = mlir::dyn_cast<mlir::OpResult>(src)) {
     auto* input_inst = GetIslandInnerOpOrSelf(input_result.getOwner());
     // Replaces the input node with NextIteration sink if it is a NextIteration
@@ -325,7 +328,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
   return absl::OkStatus();
 }
 
-Status Exporter::AddEdge(Operation* inst) {
+absl::Status Exporter::AddEdge(Operation* inst) {
   // For tf_executor.fetch, add only its data edges. Control edges are captured
   // later.
   if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
@@ -414,7 +417,7 @@ void Exporter::UseOriginalFunctionNames(NodeDef& node_def) {
   }
 }
 
-Status Exporter::AddInstructionNode(Operation* inst) {
+absl::Status Exporter::AddInstructionNode(Operation* inst) {
   std::unique_ptr<NodeDef> node_def;
   int graph_hash_value = graph_regularization::ComputeHash(graphdef_);
   auto name = op_to_name_.GetUniqueName(inst, graph_hash_value);
@@ -437,8 +440,8 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 
 // Creates argument nodes from Block argument. If a name is supplied, that
 // name will be used instead of generating a unique name.
-Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
-                                 llvm::StringRef name) {
+absl::Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
+                                       llvm::StringRef name) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
   TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
   args_[arg] = node;
@@ -447,8 +450,9 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
 
 // Creates return nodes per operand of a FetchOp. If names is supplied, those
 // names will be used per node in order instead of generating a unique name.
-Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
-                              llvm::ArrayRef<llvm::StringRef> names) {
+absl::Status Exporter::AddFetchNode(FuncOp function,
+                                    mlir::tf_executor::FetchOp fetch,
+                                    llvm::ArrayRef<llvm::StringRef> names) {
   auto& return_nodes = returns_[fetch];
   for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
     if (mlir::isa<mlir::tf_executor::ControlType>(
@@ -468,7 +472,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
 
 // Collects control ret Nodes based on tf_executor.graph's associated
 // tf_executor.fetch control inputs.
-Status Exporter::GetControlRetNodes(
+absl::Status Exporter::GetControlRetNodes(
     mlir::tf_executor::FetchOp fetch,
     absl::flat_hash_set<Node*>* control_ret_nodes) {
   for (Value fetch_operand : fetch.getOperands()) {
@@ -669,7 +673,7 @@ absl::StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   return graph;
 }
 
-Status Exporter::ConvertLibFunction(
+absl::Status Exporter::ConvertLibFunction(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
     const SymbolTable& symbol_table, FuncOp function,
     FunctionLibraryDefinition* flib_def,
@@ -737,11 +741,11 @@ Status Exporter::ConvertLibFunction(
   return flib_def->AddFunctionDef(std::move(func_def));
 }
 
-Status Exporter::Convert(mlir::ModuleOp module,
-                         const GraphExportConfig& configs,
-                         std::unique_ptr<Graph>* graph,
-                         FunctionLibraryDefinition* flib_def,
-                         absl::flat_hash_set<Node*>* control_ret_nodes) {
+absl::Status Exporter::Convert(mlir::ModuleOp module,
+                               const GraphExportConfig& configs,
+                               std::unique_ptr<Graph>* graph,
+                               FunctionLibraryDefinition* flib_def,
+                               absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::StringAttr entry_func_id =
       mlir::StringAttr::get(module.getContext(), "main");
   std::optional<FuncOp> entry_func;
@@ -796,11 +800,10 @@ Status Exporter::Convert(mlir::ModuleOp module,
 
 }  // namespace
 
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def,
-                          absl::flat_hash_set<Node*>* control_ret_nodes) {
+absl::Status ConvertTfExecutorToGraph(
+    mlir::ModuleOp module, const GraphExportConfig& configs,
+    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+    absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::StatusScopedDiagnosticHandler sh(module.getContext());
   if (failed(VerifyExportSuitable(module))) return sh.ConsumeStatus();
   return sh.Combine(

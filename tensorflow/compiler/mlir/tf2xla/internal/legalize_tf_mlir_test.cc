@@ -16,28 +16,33 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 namespace {
 
-using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
 
@@ -49,10 +54,17 @@ static constexpr char kMlirModuleStr[] = R"(
     }
   })";
 
-absl::StatusOr<std::string> CompileMlirModule(bool compile_to_xla_hlo,
-                                              const char* module_str) {
-  MlirToHloArgs mlir_to_hlo_args;
-  mlir_to_hlo_args.mlir_module = module_str;
+absl::StatusOr<XlaCompilationResult> CompileMlirModule(bool compile_to_xla_hlo,
+                                                       const char* module_str) {
+  XlaCompilationResult compilation_result;
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  TF_RETURN_IF_ERROR(
+      tensorflow::DeserializeMlirModule(module_str, &context, &mlir_module));
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
@@ -61,51 +73,20 @@ absl::StatusOr<std::string> CompileMlirModule(bool compile_to_xla_hlo,
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
-  auto compilation_result = std::make_unique<XlaCompilationResult>();
-
-  return CompileFromMlirToXlaHlo(
-      compile_to_xla_hlo, mlir_to_hlo_args, metadata_proto,
+  TF_RETURN_IF_ERROR(CompileFromMlirToXlaHlo(
+      compile_to_xla_hlo, mlir_module.get(), metadata_proto,
       /*device_type=*/"XLA_TPU_JIT",
-      /*shape_determination_fns=*/{}, use_tuple_args, compilation_result.get(),
+      /*shape_determination_fns=*/{}, use_tuple_args, &compilation_result,
       custom_legalization_passes, arg_shapes, &arg_core_mapping,
-      &per_core_arg_shapes);
+      &per_core_arg_shapes));
+  return compilation_result;
 }
 
-absl::StatusOr<XlaCompiler::CompilationResult> LegalizeMlirModule(
-    const char* module_str) {
-  MlirToHloArgs mlir_to_hlo_args;
-  mlir_to_hlo_args.mlir_module = module_str;
-
-  std::vector<TensorShape> arg_shapes;
-  TPUCompileMetadataProto metadata_proto;
-  bool use_tuple_args = true;
-  std::vector<ShardingAndIndex> arg_core_mapping;
-  std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
-  std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
-
-  auto compilation_result = std::make_unique<XlaCompilationResult>();
-
-  return LegalizeWithMlirBridge(
-      mlir_to_hlo_args, metadata_proto, use_tuple_args,
-      /*device_type=*/"XLA_TPU_JIT",
-      /*shape_determination_fns=*/{}, arg_shapes, &arg_core_mapping,
-      &per_core_arg_shapes, custom_legalization_passes,
-      compilation_result.get());
-}
-
-TEST(LegalizeWithMlirBridge, LegalizesToMhloProto) {
-  auto result = LegalizeMlirModule(kMlirModuleStr);
+TEST(CompileFromMlir, ReturnsLoweredModule) {
+  auto result = CompileMlirModule(/*compile_to_xla_hlo=*/true, kMlirModuleStr);
 
   ASSERT_THAT(result, IsOkOrFiltered());
-  EXPECT_THAT(result, ComputationProtoContains("opcode.*constant"));
-}
-
-TEST(CompileFromMlir, ReturnsModuleAsString) {
-  auto result = CompileMlirModule(true, kMlirModuleStr);
-
-  ASSERT_THAT(result, IsOkOrFiltered());
-  // TODO(b/288289388) Update test once module is actually returned
-  EXPECT_THAT(result, HasMlirModuleWith("mhlo.constant"));
+  EXPECT_THAT(result, ComputationProtoContains("opcode: \"constant\""));
 }
 
 }  // namespace

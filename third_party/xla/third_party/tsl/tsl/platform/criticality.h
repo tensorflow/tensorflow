@@ -42,9 +42,9 @@ enum class Criticality {
 }  // namespace tsl
 
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/criticality.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/criticality.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/criticality.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/criticality.h"  // IWYU pragma: export
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_CRITICALITY_H_

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 namespace xla {
@@ -169,5 +170,14 @@ ExecutableRunOptions& ExecutableRunOptions::set_run_id(RunId id) {
 }
 
 RunId ExecutableRunOptions::run_id() const { return run_id_; }
+
+ExecutableRunOptions& ExecutableRunOptions::set_local_device_count(
+    int local_device_count) {
+  local_device_count_ = local_device_count;
+  return *this;
+}
+int ExecutableRunOptions::local_device_count() const {
+  return local_device_count_;
+}
 
 }  // namespace xla

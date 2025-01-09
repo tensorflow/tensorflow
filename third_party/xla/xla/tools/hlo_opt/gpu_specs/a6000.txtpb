@@ -32,6 +32,8 @@ gpu_device_info {
     major: 8
     minor: 6
   }
+  registers_per_core_limit: 65536
+  registers_per_block_limit: 65536
 }
 platform_name: "CUDA"
 dnn_version_info {

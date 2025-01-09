@@ -553,7 +553,7 @@ InterpreterValue MultiReduction(InterpreterState& state,
                                 const InterpreterValue& acc) {
   auto element_ty = getElementTypeOrSelf(reduction->getResultTypes()[0]);
   return {ReductionImpl(state, source, &acc, reduction.getKind(),
-                        ExtractVector<int64_t>(reduction.getReductionDims()),
+                        SmallVector<int64_t>(reduction.getReductionDims()),
                         element_ty)};
 }
 

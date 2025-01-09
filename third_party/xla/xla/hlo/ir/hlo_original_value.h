@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 // Stores information of original values.
@@ -32,6 +33,8 @@ struct OriginalArray {
 using OriginalValue = ShapeTree<std::optional<OriginalArray>>;
 
 std::string OriginalValueToString(const OriginalValue& original_value);
+
+OriginalValueProto OriginalValueToProto(const OriginalValue& original_value);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

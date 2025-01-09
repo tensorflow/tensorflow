@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/test_op/tmpl_tflite_op.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/test_op/tmpl_op.h"

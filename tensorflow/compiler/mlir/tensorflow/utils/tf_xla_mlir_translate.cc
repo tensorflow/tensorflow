@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -33,32 +36,42 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace {
 
@@ -135,7 +148,7 @@ mlir::LogicalResult PrintHloModuleText(
   return mlir::success();
 }
 
-Status ParseArgumentShapes(
+absl::Status ParseArgumentShapes(
     absl::string_view input_shapes_str,
     llvm::SmallVectorImpl<TensorOrResourceShape>& arg_shapes) {
   arg_shapes.clear();
@@ -155,8 +168,8 @@ Status ParseArgumentShapes(
   return absl::OkStatus();
 }
 
-Status ParseDataTypes(absl::string_view data_types_str,
-                      llvm::SmallVectorImpl<DataType>& data_types) {
+absl::Status ParseDataTypes(absl::string_view data_types_str,
+                            llvm::SmallVectorImpl<DataType>& data_types) {
   data_types.clear();
   std::vector<std::string> input_dtypes_vector;
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types_str, input_dtypes_vector));
@@ -178,7 +191,7 @@ Status ParseDataTypes(absl::string_view data_types_str,
   return absl::OkStatus();
 }
 
-Status ParseArgumentKinds(
+absl::Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
@@ -203,10 +216,10 @@ Status ParseArgumentKinds(
   return absl::OkStatus();
 }
 
-Status ParseXlaArguments(absl::string_view input_shapes_str,
-                         absl::string_view input_dtypes_str,
-                         absl::string_view arg_kinds_str,
-                         llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
+absl::Status ParseXlaArguments(
+    absl::string_view input_shapes_str, absl::string_view input_dtypes_str,
+    absl::string_view arg_kinds_str,
+    llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
   xla_arguments.clear();
   std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(
@@ -257,7 +270,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
 // Test BuildHloFromTf. BuildHloFromTf only performs part of the conversion, so
 // to make this test comparable to other compile tests, the test implements
 // the remaining parts of the conversion.
-Status CompileMlirToXlaHloViaBuilder(
+absl::Status CompileMlirToXlaHloViaBuilder(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -329,17 +342,16 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
       custom_legalization_passes{};
   XlaCompilationResult compilation_result;
   auto compilation_status =
-      via_builder
-          ? CompileMlirToXlaHloViaBuilder(module_op, arg_shapes, device_type,
-                                          &compilation_result,
-                                          custom_legalization_passes)
-          : CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
-                                emit_use_tuple_arg,
-                                /*analyse_graph=*/false, emit_return_tuple,
-                                /*use_resource_updates_for_aliases=*/true,
-                                /*shape_determination_fns=*/{},
-                                &compilation_result, custom_legalization_passes)
-                .status();
+      via_builder ? CompileMlirToXlaHloViaBuilder(
+                        module_op, arg_shapes, device_type, &compilation_result,
+                        custom_legalization_passes)
+                  : CompileMlirToXlaHloAndSerialize(
+                        module_op, arg_shapes, device_type, emit_use_tuple_arg,
+                        /*enable_op_fallback=*/false, emit_return_tuple,
+                        /*use_resource_updates_for_aliases=*/true,
+                        /*shape_determination_fns=*/{}, &compilation_result,
+                        custom_legalization_passes)
+                        .status();
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();
@@ -381,7 +393,7 @@ static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
   registry
       .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
               mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect,
-              mlir::quant::QuantizationDialect>();
+              mlir::quant::QuantDialect>();
   mlir::func::registerAllExtensions(registry);
 }
 

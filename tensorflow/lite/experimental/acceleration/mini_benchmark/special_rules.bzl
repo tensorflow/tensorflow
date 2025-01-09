@@ -26,7 +26,7 @@ def libjpeg_deps():
 
 def libjpeg_handle_deps():
     """Returns the deps for the jpeg handle used in the mini-benchmark."""
-    return [clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:libjpeg_handle_static_link")]
+    return ["//tensorflow/lite/experimental/acceleration/mini_benchmark:libjpeg_handle_static_link"]
 
 def minibenchmark_visibility_allowlist():
     """Returns a list of packages that can depend on mini_benchmark."""
@@ -38,5 +38,5 @@ def minibenchmark_visibility_allowlist():
 def register_selected_ops_deps():
     """Return a list of dependencies for registering selected ops."""
     return [
-        clean_dep("//tensorflow/lite/tools/benchmark:register_custom_op"),
+        "//tensorflow/lite/tools/benchmark:register_custom_op",
     ]

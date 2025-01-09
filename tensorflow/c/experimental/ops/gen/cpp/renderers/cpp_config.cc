@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html devsite>
+  <head>
+    <title>TensorFlowLiteSwift Framework Reference</title>
+    <link rel="stylesheet" href="../css/jazzy.css" />
+    <meta charset='utf-8'>
+  </head>
+  <body>
+    <div class="content-wrapper">
+      <article class="main-content">
+        <section>
+          <section class="section">
+            <h1>Interpreter</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="kt">Interpreter</span></code></pre>
+
+                </div>
+              </div>
+            <p>A TensorFlow Lite interpreter that performs inference from a given model.</p>
+
+          </section>
+          <section class="section task-group-section">
+            <div class="task-group">
+              <ul>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC7optionsAC7OptionsVSgvp"></a>
+                    <a name="//apple_ref/swift/Property/options" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC7optionsAC7OptionsVSgvp">options</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The configuration options for the <code>Interpreter</code>.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">let</span> <span class="nv">options</span><span class="p">:</span> <span class="kt"><a href="../Classes/Interpreter/Options.html">Options</a></span><span class="p">?</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC9delegatesSayAA8Delegate_pGSgvp"></a>
+                    <a name="//apple_ref/swift/Property/delegates" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC9delegatesSayAA8Delegate_pGSgvp">delegates</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>An <code>Array</code> of <code><a href="../Protocols/Delegate.html">Delegate</a></code>s for the <code>Interpreter</code> to use to perform graph operations.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">let</span> <span class="nv">delegates</span><span class="p">:</span> <span class="p">[</span><span class="kt"><a href="../Protocols/Delegate.html">Delegate</a></span><span class="p">]?</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC05inputA5CountSivp"></a>
+                    <a name="//apple_ref/swift/Property/inputTensorCount" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC05inputA5CountSivp">inputTensorCount</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The total number of input <code><a href="../Structs/Tensor.html">Tensor</a></code>s associated with the model.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">inputTensorCount</span><span class="p">:</span> <span class="kt">Int</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC06outputA5CountSivp"></a>
+                    <a name="//apple_ref/swift/Property/outputTensorCount" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC06outputA5CountSivp">outputTensorCount</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The total number of output <code><a href="../Structs/Tensor.html">Tensor</a></code>s associated with the model.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">outputTensorCount</span><span class="p">:</span> <span class="kt">Int</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC9modelPath7options9delegatesACSS_AC7OptionsVSgSayAA8Delegate_pGSgtKcfc"></a>
+                    <a name="//apple_ref/swift/Method/init(modelPath:options:delegates:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC9modelPath7options9delegatesACSS_AC7OptionsVSgSayAA8Delegate_pGSgtKcfc">init(modelPath:options:delegates:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Creates a new instance with the given values.</p>
+<div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the model could not be loaded or the interpreter could not be created.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="nf">init</span><span class="p">(</span><span class="nv">modelPath</span><span class="p">:</span> <span class="kt">String</span><span class="p">,</span> <span class="nv">options</span><span class="p">:</span> <span class="kt"><a href="../Classes/Interpreter/Options.html">Options</a></span><span class="p">?</span> <span class="o">=</span> <span class="kc">nil</span><span class="p">,</span> <span class="nv">delegates</span><span class="p">:</span> <span class="p">[</span><span class="kt"><a href="../Protocols/Delegate.html">Delegate</a></span><span class="p">]?</span> <span class="o">=</span> <span class="kc">nil</span><span class="p">)</span> <span class="k">throws</span></code></pre>
+
+                        </div>
+                      </div>
+                      <div>
+                        <h4>Parameters</h4>
+                        <table class="graybox">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <code>
+                                <em>modelPath</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The local file path to a TensorFlow Lite model.</p>
+                                </div>
+                              </td>
+                            </tr>                            <tr>
+                              <td>
+                                <code>
+                                <em>options</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>Configurations for the <code>Interpreter</code>. The default is <code>nil</code> indicating that the
+<code>Interpreter</code> will determine the configuration options.</p>
+                                </div>
+                              </td>
+                            </tr>                            <tr>
+                              <td>
+                                <code>
+                                <em>delegate</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p><code>Array</code> of <code><a href="../Protocols/Delegate.html">Delegate</a></code>s for the <code>Interpreter</code> to use to perform graph operations.
+The default is <code>nil</code>.</p>
+                                </div>
+                              </td>
+                            </tr>                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC6invokeyyKF"></a>
+                    <a name="//apple_ref/swift/Method/invoke()" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC6invokeyyKF">invoke()</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Invokes the interpreter to perform inference from the loaded graph.</p>
+<div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the model was not ready because the tensors were not allocated.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">func</span> <span class="nf">invoke</span><span class="p">()</span> <span class="k">throws</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC5input2atAA0A0VSi_tKF"></a>
+                    <a name="//apple_ref/swift/Method/input(at:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC5input2atAA0A0VSi_tKF">input(at:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Returns the input <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index.</p>
+<div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the index is invalid or the tensors have not been allocated.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">func</span> <span class="nf">input</span><span class="p">(</span><span class="n">at</span> <span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span> <span class="k">throws</span> <span class="o">-&gt;</span> <span class="kt"><a href="../Structs/Tensor.html">Tensor</a></span></code></pre>
+
+                        </div>
+                      </div>
+                      <div>
+                        <h4>Parameters</h4>
+                        <table class="graybox">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <code>
+                                <em>index</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The index for the input <code><a href="../Structs/Tensor.html">Tensor</a></code>.</p>
+                                </div>
+                              </td>
+                            </tr>                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <h4>Return Value</h4>
+                        <p>The input <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index.</p>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC6output2atAA0A0VSi_tKF"></a>
+                    <a name="//apple_ref/swift/Method/output(at:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC6output2atAA0A0VSi_tKF">output(at:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Returns the output <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index.</p>
+<div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the index is invalid, tensors haven&rsquo;t been allocated, or interpreter
+has not been invoked for models that dynamically compute output tensors based on the
+values of its input tensors.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">func</span> <span class="nf">output</span><span class="p">(</span><span class="n">at</span> <span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span> <span class="k">throws</span> <span class="o">-&gt;</span> <span class="kt"><a href="../Structs/Tensor.html">Tensor</a></span></code></pre>
+
+                        </div>
+                      </div>
+                      <div>
+                        <h4>Parameters</h4>
+                        <table class="graybox">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <code>
+                                <em>index</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The index for the output <code><a href="../Structs/Tensor.html">Tensor</a></code>.</p>
+                                </div>
+                              </td>
+                            </tr>                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <h4>Return Value</h4>
+                        <p>The output <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index.</p>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC11resizeInput2at2toySi_AA0A0V5ShapeVtKF"></a>
+                    <a name="//apple_ref/swift/Method/resizeInput(at:to:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC11resizeInput2at2toySi_AA0A0V5ShapeVtKF">resizeInput(at:to:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Resizes the input <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index to the specified <code><a href="../Structs/Tensor/Shape.html">Tensor.Shape</a></code>.</p>
+<div class="aside aside-note">
+    <p class="aside-title">Note</p>
+    After resizing an input tensor, the client <strong>must</strong> explicitly call
+<code><a href="../Classes/Interpreter.html#/s:19TensorFlowLiteSwift11InterpreterC15allocateTensorsyyKF">allocateTensors()</a></code> before attempting to access the resized tensor data or invoking the
+interpreter to perform inference.
+
+</div><div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the input tensor at the given index could not be resized.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">func</span> <span class="nf">resizeInput</span><span class="p">(</span><span class="n">at</span> <span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">,</span> <span class="n">to</span> <span class="nv">shape</span><span class="p">:</span> <span class="kt"><a href="../Structs/Tensor.html">Tensor</a></span><span class="o">.</span><span class="kt">Shape</span><span class="p">)</span> <span class="k">throws</span></code></pre>
+
+                        </div>
+                      </div>
+                      <div>
+                        <h4>Parameters</h4>
+                        <table class="graybox">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <code>
+                                <em>index</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The index for the input <code><a href="../Structs/Tensor.html">Tensor</a></code>.</p>
+                                </div>
+                              </td>
+                            </tr>                            <tr>
+                              <td>
+                                <code>
+                                <em>shape</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The shape to resize the input <code><a href="../Structs/Tensor.html">Tensor</a></code> to.</p>
+                                </div>
+                              </td>
+                            </tr>                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC4copy_9toInputAtAA0A0V10Foundation4DataV_SitKF"></a>
+                    <a name="//apple_ref/swift/Method/copy(_:toInputAt:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC4copy_9toInputAtAA0A0V10Foundation4DataV_SitKF">copy(_:toInputAt:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Copies the given data to the input <code><a href="../Structs/Tensor.html">Tensor</a></code> at the given index.</p>
+<div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if the <code>data.count</code> does not match the input tensor&rsquo;s <code>data.count</code> or if
+the given index is invalid.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">@discardableResult</span>
+<span class="kd">public</span> <span class="kd">func</span> <span class="nf">copy</span><span class="p">(</span><span class="n">_</span> <span class="nv">data</span><span class="p">:</span> <span class="kt">Data</span><span class="p">,</span> <span class="n">toInputAt</span> <span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span> <span class="k">throws</span> <span class="o">-&gt;</span> <span class="kt"><a href="../Structs/Tensor.html">Tensor</a></span></code></pre>
+
+                        </div>
+                      </div>
+                      <div>
+                        <h4>Parameters</h4>
+                        <table class="graybox">
+                          <tbody>
+                            <tr>
+                              <td>
+                                <code>
+                                <em>data</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The data to be copied to the input <code><a href="../Structs/Tensor.html">Tensor</a></code>&lsquo;s data buffer.</p>
+                                </div>
+                              </td>
+                            </tr>                            <tr>
+                              <td>
+                                <code>
+                                <em>index</em>
+                                </code>
+                              </td>
+                              <td>
+                                <div>
+                                  <p>The index for the input <code><a href="../Structs/Tensor.html">Tensor</a></code>.</p>
+                                </div>
+                              </td>
+                            </tr>                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <h4>Return Value</h4>
+                        <p>The input <code><a href="../Structs/Tensor.html">Tensor</a></code> with the copied data.</p>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC15allocateTensorsyyKF"></a>
+                    <a name="//apple_ref/swift/Method/allocateTensors()" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift11InterpreterC15allocateTensorsyyKF">allocateTensors()</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Allocates memory for all input <code><a href="../Structs/Tensor.html">Tensor</a></code>s based on their <code><a href="../Structs/Tensor/Shape.html">Tensor.Shape</a></code>s.</p>
+<div class="aside aside-note">
+    <p class="aside-title">Note</p>
+    This is a relatively expensive operation and should only be called after creating the
+interpreter and resizing any input tensors.
+
+</div><div class="aside aside-throws">
+    <p class="aside-title">Throws</p>
+    An error if memory could not be allocated for the input tensors.
+
+</div>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">func</span> <span class="nf">allocateTensors</span><span class="p">()</span> <span class="k">throws</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift11InterpreterC7OptionsV"></a>
+                    <a name="//apple_ref/swift/Struct/Options" class="dashAnchor"></a>
+                    <h3><a class="token" href="../Classes/Interpreter/Options.html">Options</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Options for configuring the <code><a href="../Classes/Interpreter.html">Interpreter</a></code>.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">Options</span> <span class="p">:</span> <span class="kt">Equatable</span><span class="p">,</span> <span class="kt">Hashable</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>          </section>
+        </section>
+      </article>
+    </div>
+  </body>
+</html>

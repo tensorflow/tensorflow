@@ -18,24 +18,42 @@ limitations under the License.
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_fp16.h>
 
-#include <functional>
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <map>
 #include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "rocm/include/hip/amd_detail/amd_hip_bfloat16.h"
+#include "rocm/include/hip/amd_detail/hip_fp16_gcc.h"
 #include "rocm/include/miopen/miopen.h"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/platform/dso_loader.h"
+#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -45,10 +63,17 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/determinism.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+
+#ifndef PLATFORM_GOOGLE
+#include "tsl/platform/dso_loader.h"
+#include "tsl/platform/env.h"
+#endif
 
 namespace {
 
@@ -215,16 +240,18 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+  MIOpenHandle(StreamExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
                miopenHandle_t handle)
-      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
+      : context_(executor->Activate()),
+        lock_(std::move(lock)),
+        handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
   // a copy.
   miopenHandle_t handle() const { return handle_; }
 
  private:
-  gpu::ScopedActivateExecutorContext context_;
+  std::unique_ptr<ActivateContext> context_;
   std::unique_ptr<absl::MutexLock> lock_;
   miopenHandle_t handle_;  // Not owned.
 };
@@ -248,7 +275,7 @@ namespace wrap {
     static const char* kName;                                            \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
     static void* GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      auto s = tsl::internal::CachedDsoLoader::GetMiopenDsoHandle();     \
       return s.value();                                                  \
     }                                                                    \
     static FuncPtrT LoadOrDie() {                                        \
@@ -734,10 +761,13 @@ class MIOpenAccess {
   // The null stream synchronizes with all other streams and it is
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
-  MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
+  MIOpenHandle GetHandle(StreamExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
+    hipStream_t hip_stream =
+        stream ? static_cast<hipStream_t>(
+                     stream->platform_specific_handle().stream)
+               : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
     CHECK_EQ(status, miopenStatusSuccess) << "Failed to set MIOpen stream.";
     return MIOpenHandle(executor, std::move(lock), handle_);
@@ -751,7 +781,7 @@ class MIOpenAccess {
   miopenHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
-MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
+MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
   // by default, the Get*Algorithm API will return the list of all applicable
   // algorithms
   return_best_algo_only_ = false;
@@ -774,7 +804,7 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
 }
 
 absl::Status MIOpenSupport::Init() {
-  ScopedActivateExecutorContext context(parent_);
+  std::unique_ptr<ActivateContext> context = parent_->Activate();
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
       reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
@@ -1966,7 +1996,7 @@ class MixinBase<void> {};
 }  // namespace
 
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                                   \
-  if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {                    \
+  if (!ABSL_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {                  \
     std::string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
     SetFailure(::absl::UnknownError(error_msg));                              \
     LOG(ERROR) << error_msg;                                                  \
@@ -2388,7 +2418,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
                         const MIOpenRnnDescriptor& rnn_desc,
                         const MIOpenRnnSequenceTensorDescriptor& input_desc,
                         ScratchAllocator* workspace_allocator,
-                        DeviceMemory<uint8>* workspace) {
+                        DeviceMemory<uint8_t>* workspace) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenGetRNNWorkspaceSize(
@@ -2412,7 +2442,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
       return false;
     }
   } else {
-    *workspace = DeviceMemory<uint8>();
+    *workspace = DeviceMemory<uint8_t>();
   }
   return true;
 }
@@ -2459,7 +2489,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   // create the workspace
-  DeviceMemory<uint8> workspace;
+  DeviceMemory<uint8_t> workspace;
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
@@ -2468,7 +2498,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   // query the reserve space size
   // allocate the reserve space
-  DeviceMemory<uint8> reserve_space;
+  DeviceMemory<uint8_t> reserve_space;
   if (is_training) {
     size_t reserve_space_size_in_bytes = 0;
     auto status = wrap::miopenGetRNNTrainingReserveSize(
@@ -2573,7 +2603,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
     DeviceMemory<T>* input_h_backprop_data,
     DeviceMemory<T>* input_c_backprop_data,
     DeviceMemory<T>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   // extract model parameters
@@ -2597,7 +2627,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   }
 
   // create the workspace
-  DeviceMemory<uint8> workspace;
+  DeviceMemory<uint8_t> workspace;
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
@@ -2774,7 +2804,7 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
     const NumericOptions& numeric_options, ScratchAllocator* scratch_allocator,
-    DeviceMemory<uint8>* scratch_memory, int* ctc_loss_algo_id) {
+    DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2801,7 +2831,7 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
         "Failed to determine scratch memory size for MIOpen CTC Loss");
   }
 
-  *scratch_memory = DeviceMemory<uint8>();
+  *scratch_memory = DeviceMemory<uint8_t>();
 
   // Allocate the workspace.
   if (workspace_size_in_bytes != 0) {
@@ -2836,7 +2866,7 @@ absl::Status MIOpenSupport::DoCtcLossImpl(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const MIOpenRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
+    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2866,7 +2896,7 @@ absl::Status MIOpenSupport::DoCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory,
+    DeviceMemoryBase grads_data, DeviceMemory<uint8_t> scratch_memory,
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
@@ -3085,7 +3115,7 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<Eigen::half>* input_h_backprop_data,
     DeviceMemory<Eigen::half>* input_c_backprop_data,
     DeviceMemory<Eigen::half>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -3138,7 +3168,7 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<float>* input_h_backprop_data,
     DeviceMemory<float>* input_c_backprop_data,
     DeviceMemory<float>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -3192,7 +3222,7 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<double>* input_h_backprop_data,
     DeviceMemory<double>* input_c_backprop_data,
     DeviceMemory<double>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "miopen does not support half type RNN bwd yet";
@@ -3212,7 +3242,7 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
   auto* mac = static_cast<MIOpenAllocatorContext*>(ctx);
   auto allocated = mac->scratch_allocator_->AllocateBytes(size_in_bytes);
 
-  DeviceMemory<uint8> scratch;
+  DeviceMemory<uint8_t> scratch;
   if (allocated.ok()) {
     scratch = allocated.value();
     return scratch.opaque();
@@ -3235,7 +3265,7 @@ absl::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory) {
+    DeviceMemory<uint8_t>* scratch_memory) {
   std::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
 
@@ -3275,7 +3305,7 @@ absl::Status MIOpenSupport::DoPrepareForConvolution(
 
 class RocmConvRunner : public dnn::ConvRunner {
  public:
-  RocmConvRunner(GpuExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
+  RocmConvRunner(StreamExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
                  size_t workspace_size, dnn::ConvolutionKind kind,
                  dnn::DataType input_type, dnn::DataType output_type,
                  bool use_immediate_mode,
@@ -3420,7 +3450,7 @@ class RocmConvRunner : public dnn::ConvRunner {
   }
 
  private:
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   MIOpenAccess* miopen_;
   int64_t algo_id_;
   size_t workspace_size_;
@@ -3441,7 +3471,7 @@ absl::Status MIOpenSupport::DoConvolve(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
+    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
   TF_ASSIGN_OR_RETURN(
       auto runner,
@@ -3828,7 +3858,7 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
   }
 
   // allocate scratch memory
-  DeviceMemory<uint8> scratch_memory;
+  DeviceMemory<uint8_t> scratch_memory;
   if (scratch_memory_size != 0) {
     if (scratch_allocator == nullptr) {
       return absl::InternalError(
@@ -4082,7 +4112,7 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
     DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
     DeviceMemory<Eigen::half>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
              stream, miopenHalf, miopenFloat, y_backprop, x, scale, mean,
@@ -4101,7 +4131,7 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
     DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
     DeviceMemory<float>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<float, float>(
              stream, miopenFloat, miopenFloat, y_backprop, x, scale, mean,
@@ -4261,8 +4291,9 @@ absl::Status InplaceBiasActivation(
       typename std::conditional<std::is_same_v<Tbias, Eigen::bfloat16>,
                                 hip_bfloat16, Tbias>::type>::type CTbias;
   launchInplaceBiasActivation<CT, CTbias>(
-      AsGpuStreamValue(stream), c_data.opaque(), bias_data.opaque(),
-      side_input_data.opaque(), side_input_scale,
+      static_cast<hipStream_t>(stream->platform_specific_handle().stream),
+      c_data.opaque(), bias_data.opaque(), side_input_data.opaque(),
+      side_input_scale,
       static_cast<int>(activation_mode) + (transpose ? 10 : 0), batch, m, n,
       ldc, param);
   return absl::OkStatus();
@@ -4393,7 +4424,7 @@ absl::Status MIOpenSupport::DoPoolForward(
   TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   bool do_backward = false;
-  uint8* workspace = nullptr;
+  uint8_t* workspace = nullptr;
   size_t workspace_size = 0;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
@@ -4413,11 +4444,12 @@ absl::Status MIOpenSupport::DoPoolForward(
                                miopenFloat, pdesc);
       if (cache_hit) {
         // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
+        workspace =
+            reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
       } else {
         TF_ASSIGN_OR_RETURN(auto allocated,
                             workspace_allocator->AllocateBytes(workspace_size));
-        workspace = reinterpret_cast<uint8*>(allocated.opaque());
+        workspace = reinterpret_cast<uint8_t*>(allocated.opaque());
       }
     }
   }
@@ -4470,7 +4502,7 @@ void PoolingWorkspaceCache::insert(
     const void* p, const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
+    ScopedDeviceMemory<uint8_t>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
   PoolingWorkspaceDescriptor* desc = 0;
   auto it = cache.find(p);
@@ -4546,8 +4578,8 @@ absl::Status MIOpenSupport::DoPoolBackward(
   TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
   TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
-  uint8* workspace_ptr = 0;
-  DeviceMemory<uint8> workspace;
+  uint8_t* workspace_ptr = 0;
+  DeviceMemory<uint8_t> workspace;
   PoolingWorkspaceDescriptor* pdesc = 0;
 
   size_t workspace_size_in_bytes = 0;
@@ -4568,7 +4600,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
     if (cache_hit) {
       assert(pdesc != 0);
       workspace_ptr =
-          reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
+          reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
       VLOG(1) << "Pooling cache miss";
@@ -4579,7 +4611,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
         return absl::InternalError(
             "Failed to allocate backward pooling workspace");
       }
-      DeviceMemory<uint8> dest2;  // duplicated dest from forward:
+      DeviceMemory<uint8_t> dest2;  // duplicated dest from forward:
       int64_t dest2_size = 0;
 
       // miopen requires the strides and dims to be ordered as BDYX.
@@ -4615,7 +4647,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
             "Failed to enqueue forward pooling (before backward) on stream: ",
             ToString(status)));
       }
-      workspace_ptr = reinterpret_cast<uint8*>(workspace.opaque());
+      workspace_ptr = reinterpret_cast<uint8_t*>(workspace.opaque());
     }
   }
 
@@ -4704,7 +4736,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   float alpha = 1.0f;
   float beta = 0.0f;
 
-  DeviceMemory<uint8> workspace;
+  DeviceMemory<uint8_t> workspace;
   size_t workspace_size_in_bytes = 0;
   auto status =
       wrap::miopenLRNGetWorkSpaceSize(dims.handle(), &workspace_size_in_bytes);
@@ -4725,7 +4757,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     }
   }
 
-  DeviceMemory<uint8> dest2;  // duplicated dest from forward:
+  DeviceMemory<uint8_t> dest2;  // duplicated dest from forward:
   int dest2_size = 0;
 
   // miopen requires the strides and dims to be ordered as BDYX.
@@ -4888,7 +4920,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
  public:
   // Queries the workspace size and constructs a 'RocmFusedConvRunner'.
   static absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>> Create(
-      GpuExecutor* parent, Stream* stream, MIOpenAccess* miopen,
+      StreamExecutor* parent, Stream* stream, MIOpenAccess* miopen,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       dnn::DataType bias_type, double conv_scale, double side_input_scale,
       double leakyrelu_alpha, BatchDescriptor input_nd,
@@ -4960,7 +4992,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
  private:
   // Private to prevent passing in the wrong workspace_size.
   RocmFusedConvRunner(
-      GpuExecutor* parent, Stream* stream, MIOpenAccess* miopen,
+      StreamExecutor* parent, Stream* stream, MIOpenAccess* miopen,
       int64_t algo_id, size_t workspace_size, dnn::DataType input_type,
       dnn::DataType bias_type, double conv_scale, double side_input_scale,
       double leakyrelu_alpha, BatchDescriptor dnn_input_nd,
@@ -5076,7 +5108,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
   std::string desc_;
 
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   MIOpenAccess* miopen_;
   int64_t algo_id_;
   size_t workspace_size_;
@@ -5191,16 +5223,7 @@ void initialize_miopen() {
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
             [](StreamExecutor* parent) -> dnn::DnnSupport* {
-              gpu::GpuExecutor* rocm_executor =
-                  dynamic_cast<gpu::GpuExecutor*>(parent);
-              if (rocm_executor == nullptr) {
-                LOG(ERROR)
-                    << "Attempting to initialize an instance of the MIOpen "
-                    << "support library with a non-ROCM StreamExecutor";
-                return nullptr;
-              }
-
-              gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(rocm_executor);
+              gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(parent);
               if (!dnn->Init().ok()) {
                 // Note: Init() will log a more specific error.
                 delete dnn;

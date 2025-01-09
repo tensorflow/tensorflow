@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -78,7 +79,7 @@ std::string PyObject_ToString(PyObject* o, int length = -1) {
   if (length < 0 || str.size() <= length) {
     return str;
   }
-  tensorflow::StringPiece str_piece(str);
+  absl::string_view str_piece(str);
   return tensorflow::strings::StrCat(str_piece.substr(length), "...");
 }
 
@@ -111,7 +112,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
   return input_run;
 }
 
-tensorflow::Status Run(
+absl::Status Run(
     SavedModel* saved_model,
     const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
     absl::string_view name, const std::vector<tensorflow::Tensor>& inputs,

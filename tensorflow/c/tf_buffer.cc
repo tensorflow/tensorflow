@@ -56,8 +56,8 @@ TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
 namespace tensorflow {
 
-Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
-                       TF_Buffer* out) {
+absl::Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
+                             TF_Buffer* out) {
   if (out->data != nullptr) {
     return errors::InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
@@ -81,8 +81,8 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
   return absl::OkStatus();
 }
 
-Status BufferToMessage(const TF_Buffer* in,
-                       tensorflow::protobuf::MessageLite* out) {
+absl::Status BufferToMessage(const TF_Buffer* in,
+                             tensorflow::protobuf::MessageLite* out) {
   if (in == nullptr || !out->ParseFromArray(in->data, in->length)) {
     return errors::InvalidArgument("Unparseable ", out->GetTypeName(),
                                    " proto");

@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -71,7 +70,6 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/status.h"
@@ -96,6 +94,16 @@ namespace {
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
 using std::optional;
+
+// Returns the shape of the element with index tuple_idx from shape when shape
+// is a tuple shape. Returns shape when shape is not a tuple shape.
+Shape MaybeTupleElementShape(Shape shape, int64_t tuple_idx) {
+  if (shape.IsTuple()) {
+    return shape.tuple_shapes(tuple_idx);
+  } else {
+    return shape;
+  }
+}
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
@@ -337,7 +345,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // "input/output" or "scratch".
 absl::StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                                    se::Stream* stream, absl::string_view name,
-                                   std::string_view instr_str,
+                                   absl::string_view instr_str,
                                    AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
@@ -447,8 +455,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 
   // Get canonical HLO.
   std::string canonical_hlo(
-      AutotuneCacheKey(config.GetExecutor()->GetDeviceDescription(), *instr)
-          .GetHlo());
+      AutotuneCacheKey(config.GetDeviceDescription(), *instr).GetHlo());
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
@@ -512,8 +519,7 @@ static const DisabledAlgorithm kDisabledAlgorithms[] = {
 absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
-    absl::Span<const AlgorithmDesc> disabled_algos,
-    std::optional<AutotuneCacheKey> instruction_info,
+    absl::Span<const AlgorithmDesc> disabled_algos, absl::string_view instr_str,
     const AutotuneRuntimeArguments& runtime_arguments) {
   auto alg = runner->ToAlgorithmDesc();
 
@@ -533,10 +539,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   };
 
   AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), std::nullopt);
-
-  std::string instr_str = instruction_info.has_value()
-                              ? std::string(instruction_info->GetHlo())
-                              : "<unknown>";
 
   for (const auto& disabled_algo : kDisabledAlgorithms) {
     if (disabled_algo.cudnn_version_range.IsInRange(
@@ -580,19 +582,22 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         "Disqualified for implicit RELU.");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::RedzoneAllocator scratch_allocator,
-      AutotunerUtil::CreateRedzoneAllocator(
-          config_, runtime_arguments.hlo_module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
+  se::RedzoneAllocator scratch_allocator(
+      stream, config_.GetAllocator(),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/config_.should_check_correctness()
+          ? runtime_arguments.hlo_module_config.debug_options()
+                .xla_gpu_redzone_padding_bytes()
+          : 0);
 
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
 
-  SlowOperationAlarm alarm(absl::Seconds(1), [&] {
-    return absl::StrFormat(
-        "Trying algorithm %s for conv %s is taking a while...", alg.ToString(),
-        instr_str);
-  });
+  SlowOperationAlarm alarm(
+      absl::Seconds(1),
+      absl::StrFormat("Trying algorithm %s for conv %s is taking a while...",
+                      alg.ToString(), instr_str));
 
   std::optional<size_t> workspace_size =
       runner->ToAlgorithmDesc().workspace_size();
@@ -622,8 +627,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       runtime_arguments.rz_buffers.input_buffers();
   std::vector<se::DeviceMemoryBase> result_buffers =
       runtime_arguments.rz_buffers.output_buffers();
-
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
@@ -735,9 +738,15 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
     const DebugOptions& debug_options =
         runtime_arguments.hlo_module_config.debug_options();
-    BufferComparator comparator(runtime_arguments.rz_buffers.output_shape(),
-                                debug_options.xla_gpu_autotune_gemm_rtol());
     for (int i = 0; i < result_buffers.size(); ++i) {
+      // If there is one output, the output shape describes the shape of an
+      // array. If there are multiple outputs, the output shape is a tuple, in
+      // which case get the shape of the i-th element.
+      Shape output_shape = MaybeTupleElementShape(
+          runtime_arguments.rz_buffers.output_shape(), i);
+      XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
+      BufferComparator comparator(output_shape,
+                                  debug_options.xla_gpu_autotune_gemm_rtol());
       absl::StatusOr<bool> compare_result = comparator.CompareEqual(
           stream, (*reference_result)->buffers[i], result_buffers[i]);
       if (!compare_result.ok()) {
@@ -758,10 +767,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
             << instr_str << " for " << (*reference_result)->algorithm.ToString()
             << " vs " << alg.ToString();
         PrintPlatformInfo(stream);
-        if (instruction_info.has_value()) {
-          VLOG(2) << "Full module on failure: \n"
-                  << instruction_info->GetModelStr();
-        }
+        VLOG(2) << "Full module on failure: \n" << instr_str;
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         fail->set_buffer_address(
@@ -848,7 +854,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     TF_ASSIGN_OR_RETURN(
         auto result,
         AutotuneOneConvRunner(&runner_cache, &reference_result, disabled_algos,
-                              instruction_info, runtime_arguments));
+                              instr->ToString(), runtime_arguments));
     profile_results.emplace_back(std::move(result));
   }
 
@@ -870,7 +876,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
           auto result, AutotuneOneConvRunner(&runner_cache, &reference_result,
-                                             disabled_algos, instruction_info,
+                                             disabled_algos, instr->ToString(),
                                              runtime_arguments));
       profile_results.emplace_back(std::move(result));
     }

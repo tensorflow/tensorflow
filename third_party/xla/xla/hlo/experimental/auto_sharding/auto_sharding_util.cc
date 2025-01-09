@@ -19,9 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
@@ -37,12 +35,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "json/json.h"
 #include "xla/array.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -51,14 +51,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -153,8 +157,7 @@ std::optional<HloSharding> PropagateReduceWindowSharding(
 // We also assign a much larger distance to heavy operators (e.g., dot,
 // convolution).
 InstructionDepthMap BuildInstructionDepthMap(
-    const HloInstructionSequence& sequence,
-    const InstructionBatchDimMap& batch_dim_map) {
+    const HloInstructionSequence& sequence) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   InstructionDepthMap depth_map;
@@ -822,55 +825,62 @@ bool AllInfinityCosts(
 // that were not intended to be replicated when being generating, but ending up
 // being replicated, which could happen when, for example, generating 2D
 // sharding for a 1D mesh shape.
-void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
-  if (strategy_group->is_tuple) {
-    for (auto& child : strategy_group->childs) {
-      RemoveDuplicatedStrategy(child);
+void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
+  if (strategy_group.is_tuple) {
+    for (auto& child : strategy_group.GetChildren()) {
+      RemoveDuplicatedStrategy(*child);
     }
-  } else if (!strategy_group->following) {
-    if (strategy_group->strategies.empty()) return;
-    std::vector<ShardingStrategy> new_vector;
-    std::vector<ShardingStrategy> deduped_replicated_strategies;
-    absl::flat_hash_set<std::string> added;
-    size_t num_skipped_due_to_infinity_costs = 0;
-    for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-      if (AllInfinityCosts(
-              strategy_group->strategies[i].communication_resharding_costs)) {
-        num_skipped_due_to_infinity_costs++;
-        continue;
-      }
-      std::string key =
-          strategy_group->strategies[i].output_sharding.ToString();
-      if (!strategy_group->strategies[i].input_shardings.empty()) {
-        for (const auto& sharding :
-             strategy_group->strategies[i].input_shardings) {
-          key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
-        }
-      }
-      if (!added.contains(key)) {
-        added.insert(key);
-        if (!strategy_group->strategies[i].output_sharding.IsReplicated()) {
-          new_vector.push_back(std::move(strategy_group->strategies[i]));
-        } else {
-          deduped_replicated_strategies.push_back(
-              std::move(strategy_group->strategies[i]));
-        }
+    return;
+  }
+  if (strategy_group.following || strategy_group.GetStrategies().empty()) {
+    return;
+  }
+  std::vector<std::pair<ShardingStrategy, InputShardings>> new_vector;
+  std::vector<std::pair<ShardingStrategy, InputShardings>>
+      deduped_replicated_strategies;
+  absl::flat_hash_set<std::string> added;
+  size_t num_skipped_due_to_infinity_costs = 0;
+  const auto& strategy_input_shardings =
+      strategy_group.GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const ShardingStrategy& strategy =
+        strategy_group.GetStrategyForInputShardings(iid);
+    if (AllInfinityCosts(strategy.communication_resharding_costs)) {
+      num_skipped_due_to_infinity_costs++;
+      continue;
+    }
+    std::string key = strategy.output_sharding.ToString();
+    if (!input_shardings.shardings.empty()) {
+      for (const auto& sharding : input_shardings.shardings) {
+        key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
       }
     }
-    CHECK_LT(num_skipped_due_to_infinity_costs,
-             strategy_group->strategies.size())
-        << "All strategies removed due to infinite resharding costs";
-    // Keeps replicated strategies as the last ones.
-    if (!deduped_replicated_strategies.empty()) {
-      for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
-        new_vector.push_back(std::move(deduped_replicated_strategies[i]));
-      }
+    if (added.contains(key)) {
+      continue;
     }
-    strategy_group->strategies = std::move(new_vector);
+    added.insert(key);
+    if (!strategy.output_sharding.IsReplicated()) {
+      new_vector.push_back({strategy, input_shardings});
+    } else {
+      deduped_replicated_strategies.push_back({strategy, input_shardings});
+    }
+  }
+  CHECK_LT(num_skipped_due_to_infinity_costs, strategy_input_shardings.size())
+      << "All strategies removed due to infinite resharding costs";
+  // Keeps replicated strategies as the last ones.
+  if (!deduped_replicated_strategies.empty()) {
+    for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
+      new_vector.push_back(std::move(deduped_replicated_strategies[i]));
+    }
+  }
+  strategy_group.ClearStrategies();
+  for (const auto& [strategy, input_shardings] : new_vector) {
+    strategy_group.AddStrategy(strategy, input_shardings);
   }
 }
 
-bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
+bool IsDivisible(const HloInstruction* ins, const DeviceMesh& device_mesh,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims) {
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
@@ -1041,17 +1051,17 @@ absl::StatusOr<int64_t> CheckArithmeticSequence(
   return delta;
 }
 
-bool IsValidTileAssignment(const HloSharding& spec) {
-  if (IsUndefined(spec)) {
+bool IsValidTileAssignment(const HloSharding& sharding) {
+  if (IsUndefined(sharding)) {
     return false;
   }
 
-  if (spec.IsReplicated()) {
+  if (sharding.IsReplicated()) {
     return true;
   }
 
   // Check all tile dims
-  const auto& tile_assignment = spec.tile_assignment();
+  const auto& tile_assignment = sharding.tile_assignment();
   for (int i = 0; i < tile_assignment.num_dimensions(); i++) {
     if (tile_assignment.dim(i) != 1) {
       std::vector<int64_t> device_ids =
@@ -1066,24 +1076,24 @@ bool IsValidTileAssignment(const HloSharding& spec) {
   return true;
 }
 
-int64_t NumTileDimensions(const HloSharding& spec) {
-  if (spec.IsReplicated()) {
+int64_t NumTileDimensions(const HloSharding& sharding) {
+  if (sharding.IsReplicated()) {
     return -1;
   }
   int64_t num_tile_dims = 0;
-  for (int i = 0; i < spec.tile_assignment().num_dimensions(); i++) {
-    if (spec.tile_assignment().dim(i) != 1) {
+  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); i++) {
+    if (sharding.tile_assignment().dim(i) != 1) {
       num_tile_dims++;
     }
   }
   return num_tile_dims;
 }
 
-bool TileAssignmentMatchesMesh(const HloSharding& spec,
-                               const Array<int64_t>& mesh) {
+bool TileAssignmentMatchesMesh(const HloSharding& sharding,
+                               const DeviceMesh& mesh) {
   int sharded_dims = 0;
-  for (int i = 0; i < spec.tile_assignment().num_dimensions(); ++i) {
-    if (spec.tile_assignment().dim(i) > 1) {
+  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    if (sharding.tile_assignment().dim(i) > 1) {
       sharded_dims++;
     }
   }
@@ -1095,61 +1105,9 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
   return sharded_dims <= 0;
 }
 
-absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
-    const HloSharding& spec, const Array<int64_t>& device_mesh,
-    bool consider_reverse_device_meshes) {
-  auto check_mesh =
-      [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
-    // Permute the dimensions (or axes in numpy term), find the transform that
-    // makes tile_assignment == device_mesh.
-    std::vector<int64_t> axes(mesh.num_dimensions());
-    absl::c_iota(axes, 0);
-    do {
-      Array<int64_t> transposed_mesh = Transpose(mesh, axes);
-      if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
-                     spec.tile_assignment().array().begin())) {
-        return axes;
-      }
-    } while (absl::c_next_permutation(axes));
-    return std::nullopt;
-  };
-
-  // This is an expensive search, as we try all possible meshes obtained by
-  // reversing a subset of the mesh axes. Reversed shardings only occur due to
-  // the somewhat rare kReverse HLO op. The hope therefore is that most calls to
-  // the function that reach here will find a mapping within the first iteration
-  // of the loop below.
-  std::vector<int64_t> axes(device_mesh.num_dimensions());
-  size_t num_subsets =
-      consider_reverse_device_meshes ? (1 << device_mesh.num_dimensions()) : 1;
-  std::vector<int64_t> reverse_dimensions;
-  for (size_t i = 0; i < num_subsets; ++i) {
-    reverse_dimensions.clear();
-    for (size_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-      if (i & (1 << j)) {
-        reverse_dimensions.push_back(j);
-      }
-    }
-    Array<int64_t> new_mesh(device_mesh.dimensions());
-    new_mesh.Each([&](absl::Span<const int64_t> indices, int64_t* device) {
-      std::vector<int64_t> original_indices(indices.begin(), indices.end());
-      for (int64_t d : reverse_dimensions) {
-        original_indices[d] = new_mesh.dim(d) - 1 - original_indices[d];
-      }
-      *device = device_mesh(original_indices);
-    });
-    if (auto result = check_mesh(new_mesh); result.has_value()) {
-      return result.value();
-    }
-  }
-  return absl::NotFoundError(absl::StrCat("Could not find mapping for ",
-                                          spec.ToString(), " with device mesh ",
-                                          device_mesh.ToString()));
-}
-
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes) {
   if (spec.IsReplicated()) {
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
@@ -1166,8 +1124,8 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
-                      GetMeshDimPermutationOrderInShardingSpec(
-                          spec, device_mesh, consider_reverse_device_meshes));
+                      device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+                          spec, consider_reverse_device_meshes));
   // Transform tile_assignment_dimensions using found transformation (axes).
   std::vector<int64_t> tensor_dim_to_device_dim(tensor_shape_rank, -1);
   int mesh_index = 0;
@@ -1183,9 +1141,57 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   return tensor_dim_to_device_dim;
 }
 
+absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+GetTensorDimToMeshDimMixedMeshSharding(int64_t tensor_shape_rank,
+                                       const HloSharding& sharding,
+                                       const DeviceMesh& device_mesh,
+                                       bool consider_reverse_device_meshes) {
+  CHECK(!sharding.IsReplicated());
+  // Check the compatibility of tensor_shape_rank and spec
+  if (tensor_shape_rank != sharding.TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        "Tensor shape rank should be equal to the tiled data rank of the input "
+        "spec.");
+  }
+  if (!TileAssignmentMatchesMesh(sharding, device_mesh)) {
+    return absl::InvalidArgumentError(
+        "Device mesh and tile assignment need to have the same number of "
+        "sharded dims.");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+                      device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+                          sharding, consider_reverse_device_meshes));
+
+  std::vector<absl::btree_set<int64_t>> tensor_dim_to_mesh_axis_mapping;
+  int mesh_axis_idx = 0;
+  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    if (sharding.tile_assignment().dim(i) == 1) {
+      tensor_dim_to_mesh_axis_mapping.push_back({});
+      continue;
+    }
+
+    absl::btree_set<int64_t> mesh_axes_for_this_tensor_dim;
+    int product = 1;
+    do {
+      if (mesh_axis_idx >= device_mesh.num_dimensions()) {
+        return absl::InternalError(
+            "Mismatched mesh shapes encountered. This can happen when the "
+            "sharding does not map well to the mesh shape provided");
+      }
+      product *= device_mesh.dim(axes[mesh_axis_idx]);
+      mesh_axes_for_this_tensor_dim.insert(axes[mesh_axis_idx]);
+      mesh_axis_idx++;
+    } while (product < sharding.tile_assignment().dim(i));
+    CHECK(!mesh_axes_for_this_tensor_dim.empty());
+    tensor_dim_to_mesh_axis_mapping.push_back(mesh_axes_for_this_tensor_dim);
+  }
+  return tensor_dim_to_mesh_axis_mapping;
+}
+
 std::vector<int64_t> GetTensorDimToMeshDim(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh, bool consider_reverse_device_meshes) {
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes) {
   auto mapping_or = GetTensorDimToMeshDimNoCrash(
       tensor_shape_rank, spec, device_mesh, consider_reverse_device_meshes);
   if (mapping_or.ok()) {
@@ -1195,22 +1201,16 @@ std::vector<int64_t> GetTensorDimToMeshDim(
   }
 }
 
-absl::StatusOr<Shape> ComputeIntermediateShape(
-    const HloSharding& src_sharding, const HloSharding& dst_sharding,
-    const Shape& shape, const Array<int64_t>& device_mesh) {
+absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
+                                               const HloSharding& dst_sharding,
+                                               const Shape& shape,
+                                               const DeviceMesh& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
-
-  const HloSharding* sharding_1d;
-
-  if (src_n_dim == 1) {
-    sharding_1d = &src_sharding;
-  } else {
-    sharding_1d = &dst_sharding;
-  }
+  const HloSharding* sharding_1d =
+      src_n_dim == 1 ? &src_sharding : &dst_sharding;
 
   // Find an intermediate shape
   std::vector<int64_t> inter_shape_dims;
-
   for (size_t i = 0; i < shape.rank(); ++i) {
     if (sharding_1d->tile_assignment().dim(i) == 1) {
       inter_shape_dims.push_back(shape.dimensions(i));
@@ -1233,7 +1233,7 @@ absl::StatusOr<Shape> ComputeIntermediateShape(
 HloInstruction* ReshardTensor(HloInstruction* tensor,
                               const HloSharding& src_sharding,
                               const HloSharding& dst_sharding,
-                              const Array<int64_t>& device_mesh) {
+                              const DeviceMesh& device_mesh) {
   const Shape& shape = tensor->shape();
   HloComputation* computation = tensor->parent();
 
@@ -1249,39 +1249,32 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
           hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
       std::optional<HloSharding> dst_inter_sharding =
           hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
-      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-        src_inter_sharding = HloSharding::Replicate();
-        dst_inter_sharding = HloSharding::Replicate();
-        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      if (src_inter_sharding.has_value() && dst_inter_sharding.has_value()) {
+        HloInstruction* src_inter = computation->AddInstruction(
+            HloInstruction::CreateReshape(*inter_shape, tensor));
+        src_inter->set_sharding(*src_inter_sharding);
+
+        HloInstruction* dst_inter = computation->AddInstruction(
+            HloInstruction::CreateReshape(*inter_shape, src_inter));
+        dst_inter->set_sharding(*dst_inter_sharding);
+
+        replace_with = computation->AddInstruction(
+            HloInstruction::CreateReshape(shape, dst_inter));
+        replace_with->set_sharding(dst_sharding);
+        return replace_with;
       }
-
-      HloInstruction* src_inter = computation->AddInstruction(
-          HloInstruction::CreateReshape(*inter_shape, tensor));
-      src_inter->set_sharding(*src_inter_sharding);
-
-      HloInstruction* dst_inter = computation->AddInstruction(
-          HloInstruction::CreateReshape(*inter_shape, src_inter));
-      dst_inter->set_sharding(*dst_inter_sharding);
-
-      replace_with = computation->AddInstruction(
-          HloInstruction::CreateReshape(shape, dst_inter));
-    } else {
-      replace_with = computation->AddInstruction(
-          HloInstruction::CreateReshape(shape, tensor));
     }
-  } else {
-    replace_with = computation->AddInstruction(
-        HloInstruction::CreateReshape(shape, tensor));
   }
+  replace_with =
+      computation->AddInstruction(HloInstruction::CreateReshape(shape, tensor));
   replace_with->set_sharding(dst_sharding);
-
   return replace_with;
 }
 
 absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_shardings,
-    const Array<int64_t>& device_mesh) {
+    const DeviceMesh& device_mesh) {
   size_t tuple_size = inst->shape().tuple_shapes_size();
   const HloSharding& current_sharding = inst->sharding();
 
@@ -1345,7 +1338,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
 
 absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
-    const Array<int64_t>& device_mesh,
+    const DeviceMesh& device_mesh,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
   const HloInstruction* operand = inst->operand(0);
@@ -1387,7 +1380,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElement(
 
 absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                          const HloSharding& dst_sharding,
-                                         const Array<int64_t>& device_mesh,
+                                         const DeviceMesh& device_mesh,
                                          ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
   if (operand->opcode() == HloOpcode::kOutfeed ||
@@ -1406,41 +1399,35 @@ absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
     // token.
     CHECK_EQ(operand_num, 1);
     operand->set_sharding(dst_sharding);
-  } else {
-    const HloSharding& src_sharding = operand->sharding();
-    HloInstruction* replace_with = nullptr;
-    // Query cache first
-    std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector =
-        nullptr;
-    if (resharding_cache != nullptr) {
-      cache_vector = &((*resharding_cache)[operand]);
-      for (const std::pair<HloSharding, HloInstruction*>& entry :
-           *cache_vector) {
-        if (entry.first == dst_sharding) {
-          replace_with = entry.second;
-        }
-      }
-    }
-
-    if (replace_with != nullptr) {
-      // Do nothing
-    } else {
-      replace_with =
-          ReshardTensor(operand, src_sharding, dst_sharding, device_mesh);
-      if (cache_vector != nullptr) {
-        cache_vector->push_back({dst_sharding, replace_with});
-      }
-    }
-
-    size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
-    if (size > 1) {
-      LOG(WARNING) << "Large reshape instruction inserted (operand of "
-                   << inst->name() << ") with size " << size
-                   << "GB: " << replace_with->ToString();
-    }
-
-    TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
+    return absl::OkStatus();
   }
+  const HloSharding& src_sharding = operand->sharding();
+  HloInstruction* replace_with = nullptr;
+  // Query cache first
+  std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector = nullptr;
+  if (resharding_cache != nullptr) {
+    cache_vector = &((*resharding_cache)[operand]);
+    for (const std::pair<HloSharding, HloInstruction*>& entry : *cache_vector) {
+      if (entry.first == dst_sharding) {
+        replace_with = entry.second;
+      }
+    }
+  }
+
+  if (replace_with == nullptr) {
+    replace_with =
+        ReshardTensor(operand, src_sharding, dst_sharding, device_mesh);
+    if (cache_vector != nullptr) {
+      cache_vector->push_back({dst_sharding, replace_with});
+    }
+  }
+
+  size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
+  LOG_IF(WARNING, size > 1)
+      << "Large reshape instruction inserted (operand of " << inst->name()
+      << ") with size " << size << "GB: " << replace_with->ToString();
+
+  TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
   return absl::OkStatus();
 }
 
@@ -1486,7 +1473,7 @@ bool IsDivisible(int64_t numerator, int64_t denominator) {
 }
 
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
-    const Array<int64_t>& device_mesh, int32_t communication_dim) {
+    const DeviceMesh& device_mesh, int32_t communication_dim) {
   CHECK_LT(communication_dim, device_mesh.num_dimensions());
   std::vector<int64_t> indices(device_mesh.num_dimensions(), 0);
   std::vector<std::vector<int64_t>> replica_groups;
@@ -1507,10 +1494,10 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
 }
 
 // Create a HloSharding that tiles some tensor dims on some device mesh dims.
-HloSharding Tile(const Shape& tensor_shape,
-                 absl::Span<const int64_t> tensor_dims,
-                 const std::vector<std::vector<int64_t>>& mesh_dims,
-                 const Array<int64_t>& device_mesh) {
+HloSharding TileV1(const Shape& tensor_shape,
+                   absl::Span<const int64_t> tensor_dims,
+                   const std::vector<std::vector<int64_t>>& mesh_dims,
+                   const DeviceMesh& device_mesh) {
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
   CHECK(tensor_shape.IsArray());
   std::vector<int64_t> tile_assignment_dimensions(tensor_shape.rank(), 1);
@@ -1555,7 +1542,7 @@ HloSharding Tile(const Shape& tensor_shape,
 
     if (proceed_to_next_tensor_dim &&
         current_tensor_dim == tensor_shape.rank() - 1) {
-      AppendFlattenElements(&tile_assignment_devices, device_mesh,
+      AppendFlattenElements(&tile_assignment_devices, device_mesh.DeviceArray(),
                             mesh_indices);
       return;
     }
@@ -1603,15 +1590,91 @@ HloSharding Tile(const Shape& tensor_shape,
              : HloSharding::Tile(std::move(tile_assignment));
 }
 
+HloSharding TileV2(const Shape& tensor_shape,
+                   absl::Span<const int64_t> tensor_dims,
+                   const std::vector<std::vector<int64_t>>& mesh_dims,
+                   const DeviceMesh& device_mesh) {
+  CHECK_EQ(tensor_dims.size(), mesh_dims.size());
+  CHECK(tensor_shape.IsArray());
+  std::vector<int64_t> tile_assignment_dimensions(tensor_shape.rank(), 1);
+  std::vector<int> transpose_perm;
+  absl::Span<const int64_t> reshape_dims = device_mesh.dimensions();
+
+  struct TensorDimWithIndex {
+    int64_t tensor_dim;
+    int64_t idx_in_vector;
+  };
+
+  std::vector<TensorDimWithIndex> sorted_tensor_dims(tensor_dims.size());
+  for (size_t i = 0; i < tensor_dims.size(); ++i) {
+    sorted_tensor_dims[i].tensor_dim = tensor_dims[i];
+    sorted_tensor_dims[i].idx_in_vector = i;
+  }
+
+  absl::c_sort(sorted_tensor_dims,
+               [](const TensorDimWithIndex& a, const TensorDimWithIndex& b) {
+                 return a.tensor_dim < b.tensor_dim;
+               });
+
+  // Split on certain mesh dimensions
+  int64_t split_prod = 1;
+  for (const TensorDimWithIndex& tensor_dim_with_index : sorted_tensor_dims) {
+    int64_t tensor_dim = tensor_dim_with_index.tensor_dim;
+    const std::vector<int64_t>& mesh_dims_for_this_tensor_dim =
+        mesh_dims[tensor_dim_with_index.idx_in_vector];
+    int64_t num_devices_for_tensor_dim = 1;
+    for (int64_t mesh_dim_idx : mesh_dims_for_this_tensor_dim) {
+      num_devices_for_tensor_dim *= device_mesh.dim(mesh_dim_idx);
+      transpose_perm.push_back(mesh_dim_idx);
+    }
+    tile_assignment_dimensions[tensor_dim] = num_devices_for_tensor_dim;
+    split_prod *= num_devices_for_tensor_dim;
+  }
+  // Replicate on remaining mesh dimensions
+  bool replicate_on_last_tile_dim = false;
+  if (split_prod < device_mesh.num_elements()) {
+    tile_assignment_dimensions.push_back(device_mesh.num_elements() /
+                                         split_prod);
+    replicate_on_last_tile_dim = true;
+  }
+
+  for (int i = 0; i < device_mesh.num_dimensions(); ++i) {
+    if (absl::c_find(transpose_perm, i) == transpose_perm.end()) {
+      transpose_perm.push_back(i);
+    }
+  }
+
+  // Make HloSharding
+  TileAssignment tile_assignment(tile_assignment_dimensions, reshape_dims,
+                                 transpose_perm);
+
+  return replicate_on_last_tile_dim
+             ? HloSharding::PartialTile(std::move(tile_assignment))
+             : HloSharding::Tile(std::move(tile_assignment));
+}
+
+HloSharding Tile(const Shape& tensor_shape,
+                 absl::Span<const int64_t> tensor_dims,
+                 const std::vector<std::vector<int64_t>>& mesh_dims,
+                 const DeviceMesh& device_mesh) {
+  if (device_mesh.IsIota()) {
+    return TileV2(tensor_shape, tensor_dims, mesh_dims, device_mesh);
+  }
+  return TileV1(tensor_shape, tensor_dims, mesh_dims, device_mesh);
+}
+
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
-                 const Array<int64_t>& device_mesh) {
+                 const DeviceMesh& device_mesh) {
   std::vector<std::vector<int64_t>> mesh_dims_general(mesh_dims.size());
   for (int i = 0; i < mesh_dims.size(); ++i) {
     mesh_dims_general[i].push_back(mesh_dims[i]);
   }
-  return Tile(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+  if (device_mesh.IsIota()) {
+    return TileV2(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+  }
+  return TileV1(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
 }
 
 AliasMap BuildAliasMap(const HloModule* module,
@@ -1688,13 +1751,13 @@ AliasSet BuildAliasSet(const HloModule* module,
       traverse_tuple_alias;
   traverse_tuple_alias = [&](const StrategyGroup* src_strategy_group,
                              const StrategyGroup* dst_strategy_group) {
+    const auto& src_children = src_strategy_group->GetChildren();
+    const auto& dst_children = dst_strategy_group->GetChildren();
     if (src_strategy_group->is_tuple) {
       CHECK(dst_strategy_group->is_tuple);
-      CHECK_EQ(src_strategy_group->childs.size(),
-               dst_strategy_group->childs.size());
-      for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
-        traverse_tuple_alias(src_strategy_group->childs[i].get(),
-                             dst_strategy_group->childs[i].get());
+      CHECK_EQ(src_children.size(), dst_children.size());
+      for (size_t i = 0; i < src_children.size(); ++i) {
+        traverse_tuple_alias(src_children[i].get(), dst_children[i].get());
       }
     } else {
       alias_set.insert(
@@ -1712,17 +1775,19 @@ AliasSet BuildAliasSet(const HloModule* module,
 
     HloInstruction* param_ins = parameter_instructions[alias.parameter_number];
     if (alias.parameter_index.empty()) {
-      traverse_tuple_alias(
-          strategy_map.at(param_ins).get(),
-          strategy_map.at(output_tuple)->childs[output_index.front()].get());
+      traverse_tuple_alias(strategy_map.at(param_ins).get(),
+                           strategy_map.at(output_tuple)
+                               ->GetChildren()[output_index.front()]
+                               .get());
     } else {
       // parameter_instructions[alias.parameter_number] is a tuple.
       // alias.parameter_index.size() == 1 per the CHECK_LT statement.
-      traverse_tuple_alias(
-          strategy_map.at(param_ins)
-              ->childs[alias.parameter_index.front()]
-              .get(),
-          strategy_map.at(output_tuple)->childs[output_index.front()].get());
+      traverse_tuple_alias(strategy_map.at(param_ins)
+                               ->GetChildren()[alias.parameter_index.front()]
+                               .get(),
+                           strategy_map.at(output_tuple)
+                               ->GetChildren()[output_index.front()]
+                               .get());
     }
   });
 
@@ -1763,19 +1828,21 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
                                         bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
-  for (const auto& pair : alias_set) {
+  for (const std::pair<NodeIdx, NodeIdx>& pair : alias_set) {
     const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
     const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
 
     size_t compatible_cnt = 0;
     bool replicated = false;
-    for (size_t i = 0; i < src_strategy_group->strategies.size(); ++i) {
-      for (size_t j = 0; j < dst_strategy_group->strategies.size(); ++j) {
-        if (src_strategy_group->strategies[i].output_sharding ==
-            dst_strategy_group->strategies[j].output_sharding) {
+    for (size_t i = 0; i < src_strategy_group->GetStrategies().size(); ++i) {
+      const HloSharding& src_sharding =
+          src_strategy_group->GetStrategies()[i].output_sharding;
+      for (size_t j = 0; j < dst_strategy_group->GetStrategies().size(); ++j) {
+        const HloSharding& dst_sharding =
+            dst_strategy_group->GetStrategies()[j].output_sharding;
+        if (src_sharding == dst_sharding) {
           compatible_cnt += 1;
-          if (src_strategy_group->strategies[i]
-                  .output_sharding.IsReplicated()) {
+          if (src_sharding.IsReplicated()) {
             replicated = true;
           }
         }
@@ -1783,8 +1850,8 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
     }
 
     if (compatible_cnt == 1 &&
-        (replicated && (src_strategy_group->strategies.size() > 1 ||
-                        dst_strategy_group->strategies.size() > 1))) {
+        (replicated && (src_strategy_group->GetStrategies().size() > 1 ||
+                        dst_strategy_group->GetStrategies().size() > 1))) {
       LOG(WARNING)
           << "Alias pair has only replicated strategy in common. This "
              "will result in choosing replicated strategy for these "
@@ -1816,6 +1883,157 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
   return absl::OkStatus();
 }
 
+struct AliasCompatibility {
+  std::vector<int> src_compatible;
+  std::vector<int> dst_compatible;
+  bool replicated = false;
+};
+
+absl::StatusOr<AliasCompatibility> ComputeAliasCompatibility(
+    const StrategyGroup* src_strategy_group,
+    const StrategyGroup* dst_strategy_group,
+    const std::vector<HloInstruction*>& instructions) {
+  AliasCompatibility alias_compatibility;
+  for (size_t i = 0; i < src_strategy_group->GetStrategies().size(); ++i) {
+    const HloSharding& src_sharding =
+        src_strategy_group->GetStrategies()[i].output_sharding;
+    for (size_t j = 0; j < dst_strategy_group->GetStrategies().size(); ++j) {
+      const HloSharding& dst_sharding =
+          dst_strategy_group->GetStrategies()[j].output_sharding;
+      if (src_sharding == dst_sharding) {
+        alias_compatibility.src_compatible.push_back(i);
+        alias_compatibility.dst_compatible.push_back(j);
+        if (src_sharding.IsReplicated()) {
+          alias_compatibility.replicated = true;
+        }
+      }
+    }
+  }
+
+  int compatible_cnt = alias_compatibility.src_compatible.size();
+  if (compatible_cnt == 1 &&
+      (alias_compatibility.replicated &&
+       (src_strategy_group->GetStrategies().size() > 1 ||
+        dst_strategy_group->GetStrategies().size() > 1))) {
+    LOG(WARNING) << "Alias pair has only replicated strategy in common. This "
+                    "will result in choosing replicated strategy for these "
+                    "tensors and may result in large memory consumption: "
+                 << "("
+                 << instructions.at(src_strategy_group->instruction_id)->name()
+                 << ", "
+                 << instructions.at(dst_strategy_group->instruction_id)->name()
+                 << ")" << "\n"
+                 << "(" << src_strategy_group->node_idx << ", "
+                 << dst_strategy_group->node_idx << ")\n"
+                 << src_strategy_group->ToString() << "\n"
+                 << dst_strategy_group->ToString();
+  }
+  if (compatible_cnt <= 0) {
+    std::string err_msg = absl::StrCat(
+        "Alias pair does not have any sharding strategy in common: (",
+        instructions.at(src_strategy_group->instruction_id)->name(), ", ",
+        instructions.at(dst_strategy_group->instruction_id)->name(), ")\n(",
+        src_strategy_group->node_idx, ", ", dst_strategy_group->node_idx, ")\n",
+        src_strategy_group->ToString(), "\n", dst_strategy_group->ToString());
+    LOG(WARNING) << err_msg;
+    return absl::InternalError(err_msg);
+  }
+  return alias_compatibility;
+}
+
+absl::Status RemoveFollowersIfMismatchedStrategies(
+    const AliasSet& alias_set, const StrategyGroups& strategy_groups,
+    const HloInstructionSequence& sequence, bool crash_on_error) {
+  // Compress follower relations
+  absl::flat_hash_map<NodeIdx, NodeIdx> follower_to_followees;
+  auto compress_follower = [&follower_to_followees](
+                               const StrategyGroup& strategy_group) {
+    if (strategy_group.following == nullptr) {
+      return;
+    }
+    if (strategy_group.following->following == nullptr) {
+      follower_to_followees[strategy_group.node_idx] =
+          strategy_group.following->node_idx;
+      return;
+    }
+    auto it = follower_to_followees.find(strategy_group.following->node_idx);
+    CHECK(it != follower_to_followees.end());
+    follower_to_followees[strategy_group.node_idx] = it->second;
+  };
+  for (const StrategyGroup* strategy_group : strategy_groups) {
+    strategy_group->ForEachLeafStrategyGroup(compress_follower);
+  }
+
+  absl::flat_hash_map<NodeIdx, absl::flat_hash_set<int>>
+      followee_root_valid_strategies;
+  auto update_valid_strategies = [&](NodeIdx idx,
+                                     std::vector<int>& valid_strategies) {
+    if (auto it = follower_to_followees.find(idx);
+        it != follower_to_followees.end()) {
+      idx = it->second;
+    }
+    if (auto it = followee_root_valid_strategies.find(idx);
+        it != followee_root_valid_strategies.end()) {
+      absl::erase_if(it->second, [&valid_strategies](int e) {
+        return absl::c_find(valid_strategies, e) == valid_strategies.end();
+      });
+    } else {
+      followee_root_valid_strategies[idx].insert(valid_strategies.begin(),
+                                                 valid_strategies.end());
+    }
+  };
+
+  const std::vector<HloInstruction*>& instructions = sequence.instructions();
+  // For each follower group, compute the set of valid strategies based on
+  // aliasing relations
+  for (const std::pair<NodeIdx, NodeIdx>& pair : alias_set) {
+    const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
+    const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
+
+    TF_ASSIGN_OR_RETURN(
+        AliasCompatibility alias_compatibility,
+        ComputeAliasCompatibility(src_strategy_group, dst_strategy_group,
+                                  instructions));
+    update_valid_strategies(pair.first, alias_compatibility.src_compatible);
+    update_valid_strategies(pair.second, alias_compatibility.dst_compatible);
+  }
+
+  // Break appropriate follower relationships if there are no valid strategies
+  // with finite costs for a given node
+  absl::flat_hash_set<NodeIdx> unfollowed;
+  auto unfollow_if_no_valid_strategies = [&](StrategyGroup& strategy_group) {
+    if (strategy_group.following == nullptr) {
+      return;
+    }
+    NodeIdx idx = strategy_group.node_idx;
+    if (auto it = follower_to_followees.find(idx);
+        it != follower_to_followees.end()) {
+      idx = it->second;
+    }
+    if (auto it = followee_root_valid_strategies.find(idx);
+        it != followee_root_valid_strategies.end()) {
+      for (auto strategy_idx : it->second) {
+        if (strategy_group.GetStrategies()[strategy_idx].compute_cost !=
+            kInfinityCost) {
+          return;
+        }
+      }
+      LOG(INFO) << "Unfollow " << strategy_group.node_idx << " " << idx << " "
+                << absl::StrJoin(it->second, ",");
+      if (unfollowed.contains(strategy_group.following->node_idx)) {
+        return;
+      }
+      strategy_group.following = nullptr;
+      unfollowed.insert(strategy_group.node_idx);
+    }
+  };
+  for (StrategyGroup* strategy_group : strategy_groups) {
+    strategy_group->ForEachLeafStrategyGroup(unfollow_if_no_valid_strategies);
+  }
+
+  return absl::OkStatus();
+}
+
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim) {
   return VectorGreaterThanOneElementIndices(span, omit_last_dim).size();
@@ -1830,6 +2048,20 @@ std::vector<int64_t> VectorGreaterThanOneElementIndices(
     }
     if (span.at(i) > 1) {
       result.push_back(i);
+    }
+  }
+  return result;
+}
+
+std::vector<int64_t> VectorGreaterThanOneElements(
+    absl::Span<const int64_t> span, bool omit_last_dim) {
+  std::vector<int64_t> result;
+  for (size_t i = 0; i < span.size(); i++) {
+    if (i == span.size() - 1 && omit_last_dim) {
+      continue;
+    }
+    if (span.at(i) > 1) {
+      result.push_back(span.at(i));
     }
   }
   return result;
@@ -1913,90 +2145,74 @@ HloInstruction* FindInstruction(
 
 absl::StatusOr<std::optional<HloSharding>>
 AdjustShardingWithPartialMeshShapePerElement(
-    const HloSharding& sharding,
-    const absl::flat_hash_set<int64_t>& valid_shards, int64_t total_num_devices,
+    int64_t tensor_shape_rank, const HloSharding& sharding,
+    const absl::flat_hash_set<int64_t>& valid_shards_idx,
+    const DeviceMesh& original_device_mesh, int64_t total_num_devices,
     bool crash_on_error) {
-  if (sharding.TotalNumTiles() > total_num_devices &&
-      VectorGreaterThanOneElementCount(
-          sharding.tile_assignment().dimensions()) > valid_shards.size()) {
-    for (auto shard : valid_shards) {
-      bool contains_shard = false;
-      for (auto dim : sharding.tile_assignment().dimensions()) {
-        if (dim == shard) {
-          contains_shard = true;
-          break;
-        }
-      }
+  // TODO: Do not modify the sharding if it is already a partial sharding.
+  // Partial shardings come from previous iterations with mesh shapes and are
+  // handled appropriately in TrimOrGenerateStrategiesBasedOnExistingSharding.
+  if (!ShardingIsComplete(sharding, original_device_mesh.num_elements()) ||
+      sharding.IsReplicated() || sharding.IsManual()) {
+    return std::nullopt;
+  }
 
-      if (!contains_shard && !sharding.IsReplicated()) {
-        auto err_msg = absl::StrCat(
-            "There is a mismatch between the user provided sharding ",
-            sharding.ToString(),
-            " and the device mesh. This case is currently unsupported.");
-        if (crash_on_error) {
-          LOG(FATAL) << err_msg;
-        } else {
-          LOG(WARNING) << err_msg;
-          return absl::InternalError(err_msg);
-        }
-      }
+  std::vector<int64_t> reshape_dims(original_device_mesh.num_dimensions(), 1);
+  std::vector<int> transpose_perm;
+  transpose_perm.reserve(original_device_mesh.num_dimensions());
+  absl::flat_hash_set<int64_t> valid_shards;
+  for (int i = 0; i < original_device_mesh.num_dimensions(); ++i) {
+    if (valid_shards_idx.contains(i)) {
+      valid_shards.insert(original_device_mesh.dim(i));
+      reshape_dims[i] = original_device_mesh.dim(i);
+    }
+  }
+
+  std::vector<int64_t> new_tile_assignment_dimensions;
+  bool replicate_on_last_dim = false;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> axes,
+      original_device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+          sharding,
+          /*consider_reverse_device_meshes=*/true));
+
+  int mesh_axis_idx = 0;
+  int end = sharding.ReplicateOnLastTileDim()
+                ? sharding.tile_assignment().num_dimensions() - 1
+                : sharding.tile_assignment().num_dimensions();
+  for (int i = 0; i < end; ++i) {
+    if (sharding.tile_assignment().dim(i) == 1) {
+      new_tile_assignment_dimensions.push_back(1);
+      continue;
     }
 
-    std::vector<int64_t> new_tile_assignment_dimensions;
-    if (sharding.ReplicateOnLastTileDim()) {
-      // If replicate on valid_shards dimensions, turns this instruction
-      // into replicate.
-      // If two mesh dimensions are the same size, it becomes replicated too.
-      if (valid_shards.find(sharding.tile_assignment().dim(
-              sharding.tile_assignment().num_dimensions() - 1)) !=
-          valid_shards.end()) {
-        return HloSharding::Replicate();
+    int product = 1;
+    int partial_product = 1;
+    do {
+      if (valid_shards_idx.contains(axes[mesh_axis_idx])) {
+        partial_product *= original_device_mesh.dim(axes[mesh_axis_idx]);
       }
-      // If replicate on other dimensions, remove the
-      // replicate_on_last_tile
-      new_tile_assignment_dimensions.assign(
-          sharding.tile_assignment().dimensions().begin(),
-          sharding.tile_assignment().dimensions().end());
-      new_tile_assignment_dimensions.erase(
-          new_tile_assignment_dimensions.end() - 1);
-    } else {
-      new_tile_assignment_dimensions.assign(
-          sharding.tile_assignment().dimensions().begin(),
-          sharding.tile_assignment().dimensions().end());
-      absl::flat_hash_set<int64_t> current_shards;
-      for (const auto dim : new_tile_assignment_dimensions) {
-        if (dim > 1) {
-          current_shards.insert(dim);
-        }
-      }
-      if (current_shards.size() == 1) {
-        // Two mesh dimensions are the same size. Keep the first sharded
-        // dimension.
-        for (int32_t i = new_tile_assignment_dimensions.size() - 1; i >= 0;
-             i--) {
-          if (new_tile_assignment_dimensions[i] > 1 &&
-              valid_shards.find(new_tile_assignment_dimensions[i]) !=
-                  valid_shards.end()) {
-            new_tile_assignment_dimensions[i] = 1;
-            break;
-          }
-        }
-      } else {
-        for (size_t i = 0; i < new_tile_assignment_dimensions.size(); i++) {
-          if (new_tile_assignment_dimensions[i] > 1 &&
-              valid_shards.find(new_tile_assignment_dimensions[i]) ==
-                  valid_shards.end()) {
-            new_tile_assignment_dimensions[i] = 1;
-          }
-        }
-      }
-    }
-    Array<int64_t> tile_assignment(new_tile_assignment_dimensions);
-    std::vector<int64_t> device_ids = std::vector<int64_t>(total_num_devices);
-    // Set arbitrary values because it will not be used.
-    std::iota(device_ids.begin(), device_ids.end(), 0);
-    tile_assignment.SetValues(device_ids);
-    return HloSharding::Tile(std::move(tile_assignment));
+      product *= original_device_mesh.dim(axes[mesh_axis_idx]);
+      mesh_axis_idx++;
+    } while (product < sharding.tile_assignment().dim(i));
+    new_tile_assignment_dimensions.push_back(partial_product);
+  }
+  int64_t total_devices_considered = Product(new_tile_assignment_dimensions);
+  if (total_devices_considered < total_num_devices) {
+    new_tile_assignment_dimensions.push_back(total_num_devices /
+                                             total_devices_considered);
+    replicate_on_last_dim = true;
+  }
+
+  // Make HloSharding
+  TileAssignment tile_assignment(new_tile_assignment_dimensions, reshape_dims,
+                                 std::vector<int>(axes.begin(), axes.end()));
+  HloSharding result =
+      replicate_on_last_dim
+          ? HloSharding::PartialTile(std::move(tile_assignment))
+          : HloSharding::Tile(std::move(tile_assignment));
+  if (result != sharding) {
+    return result;
   }
   return std::nullopt;
 }
@@ -2004,15 +2220,24 @@ AdjustShardingWithPartialMeshShapePerElement(
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
-    bool crash_on_error) {
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh, bool crash_on_error) {
   bool changed = false;
-  absl::flat_hash_set<int64_t> valid_shards;
-  for (const auto shape : mesh_shape) {
-    if (shape > 1) {
-      valid_shards.insert(shape);
+  int64_t total_num_devices = Product(mesh_shape);
+  absl::flat_hash_set<int64_t> valid_shards_idx;
+  for (int i = 0; i < mesh_shape.size(); ++i) {
+    if (mesh_shape[i] == original_device_mesh.dim(i)) {
+      valid_shards_idx.insert(i);
     }
   }
+
+  auto adjust_sharding = [&](int64_t tensor_shape_rank,
+                             const HloSharding& sharding) {
+    return AdjustShardingWithPartialMeshShapePerElement(
+        tensor_shape_rank, sharding, valid_shards_idx, original_device_mesh,
+        total_num_devices, crash_on_error);
+  };
+
   for (HloInstruction* inst : instructions) {
     if (!inst->has_sharding() || !instructions_to_shard.contains(inst)) {
       continue;
@@ -2021,43 +2246,32 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
       std::vector<HloSharding> output_flattened_shardings;
       for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
-        auto shape = inst->shape().tuple_shapes(i);
-        auto sharding = inst->sharding().tuple_elements()[i];
+        const Shape& shape = inst->shape().tuple_shapes(i);
+        const HloSharding& sharding = inst->sharding().tuple_elements()[i];
         if (sharding.IsUnknown()) {
           output_flattened_shardings.push_back(sharding);
           continue;
         }
-        absl::StatusOr<std::optional<HloSharding>> new_sharding_result =
-            AdjustShardingWithPartialMeshShapePerElement(
-                sharding, valid_shards, total_num_devices, crash_on_error);
-        if (new_sharding_result.ok()) {
-          if (new_sharding_result.value().has_value()) {
-            output_flattened_shardings.push_back(*new_sharding_result.value());
-          } else {
-            output_flattened_shardings.push_back(sharding);
-          }
-        } else {
-          return new_sharding_result.status();
-        }
+        TF_ASSIGN_OR_RETURN(std::optional<HloSharding> new_sharding,
+                            adjust_sharding(shape.rank(), sharding));
+        output_flattened_shardings.push_back(
+            new_sharding.has_value() ? *new_sharding : sharding);
+        changed |= new_sharding.has_value();
       }
       size_t i = 0;
-      for (auto& leaf : output_tuple_sharding.leaves()) {
+      for (std::pair<ShapeIndex, HloSharding>& leaf :
+           output_tuple_sharding.leaves()) {
         leaf.second = output_flattened_shardings[i++];
       }
       inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
-    } else {
-      absl::StatusOr<std::optional<HloSharding>> sharding_result =
-          AdjustShardingWithPartialMeshShapePerElement(
-              inst->sharding(), valid_shards, total_num_devices,
-              crash_on_error);
-      if (sharding_result.ok()) {
-        if (sharding_result.value().has_value()) {
-          inst->set_sharding(*sharding_result.value());
-          changed = true;
-        }
-      } else {
-        return sharding_result.status();
-      }
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<HloSharding> new_sharding,
+        adjust_sharding(inst->shape().rank(), inst->sharding()));
+    if (new_sharding.has_value()) {
+      inst->set_sharding(*new_sharding);
+      changed = true;
     }
   }
   return changed;
@@ -2198,31 +2412,30 @@ void EnumerateAllPossibleMeshShapesHelper(
 
 std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     const HloModule& module) {
-  int64_t sharding_1d = -1;
-  absl::flat_hash_set<std::vector<int64_t>> shardings_nd;
+  std::vector<HloSharding> tiled_shardings;
+  size_t max_tile_dimensions = 0;
+  size_t max_reshape_dims = 0;
   std::function<void(const HloSharding&)> process_sharding;
-  process_sharding = [&sharding_1d, &shardings_nd,
-                      &process_sharding](const HloSharding& sharding) {
+  process_sharding = [&](const HloSharding& sharding) {
     if (sharding.IsTuple()) {
       for (const HloSharding& child : sharding.tuple_elements()) {
         process_sharding(child);
       }
-    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal() &&
-               !sharding.IsManual()) {
-      absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
-      std::vector<int64_t> dims_greater_than_one;
-      for (const int64_t dim : dims) {
-        if (dim > 1) {
-          dims_greater_than_one.push_back(dim);
-        }
-      }
-      if (dims_greater_than_one.size() == 1) {
-        CHECK(sharding_1d == -1 || sharding_1d == dims_greater_than_one[0]);
-        sharding_1d = dims_greater_than_one[0];
-      } else {
-        std::sort(dims_greater_than_one.begin(), dims_greater_than_one.end());
-        shardings_nd.insert(dims_greater_than_one);
-      }
+      return;
+    }
+    if (sharding.IsReplicated() || sharding.IsTileMaximal() ||
+        sharding.IsManual()) {
+      return;
+    }
+    tiled_shardings.push_back(sharding);
+    max_tile_dimensions = std::max(
+        max_tile_dimensions, VectorGreaterThanOneElementCount(
+                                 sharding.tile_assignment().dimensions()));
+    if (sharding.tile_assignment().iota().has_value()) {
+      max_reshape_dims =
+          std::max(max_reshape_dims,
+                   VectorGreaterThanOneElementCount(
+                       sharding.tile_assignment().iota()->reshape_dims()));
     }
   };
 
@@ -2234,20 +2447,43 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     }
   }
 
-  if (shardings_nd.empty() && sharding_1d < 0) {
-    return {};
-  } else if (shardings_nd.empty()) {
-    CHECK_GE(sharding_1d, 0);
-    return {{1, sharding_1d}};
-  } else {
-    std::vector<std::vector<int64_t>> result;
-    for (std::vector<int64_t> mesh : shardings_nd) {
-      do {
-        result.push_back(std::vector<int64_t>(mesh));
-      } while (std::next_permutation(std::begin(mesh), std::end(mesh)));
+  std::vector<HloSharding> tiled_shardings_with_all_dims_in_order;
+  for (const HloSharding& sharding : tiled_shardings) {
+    if (VectorGreaterThanOneElementCount(
+            sharding.tile_assignment().dimensions()) != max_tile_dimensions ||
+        !sharding.tile_assignment().iota().has_value()) {
+      continue;
     }
-    return result;
+    if (spmd::AreValuesIota(
+            sharding.tile_assignment().iota()->transpose_perm())) {
+      tiled_shardings_with_all_dims_in_order.push_back(sharding);
+    }
   }
+
+  absl::flat_hash_set<std::vector<int64_t>> mesh_shape_candidates;
+  if (!tiled_shardings_with_all_dims_in_order.empty()) {
+    for (const HloSharding& sharding : tiled_shardings_with_all_dims_in_order) {
+      mesh_shape_candidates.insert(VectorGreaterThanOneElements(
+          sharding.tile_assignment().dimensions()));
+    }
+  } else {
+    for (const HloSharding& sharding : tiled_shardings) {
+      if (!sharding.tile_assignment().iota().has_value() ||
+          VectorGreaterThanOneElementCount(
+              sharding.tile_assignment().iota()->reshape_dims()) !=
+              max_reshape_dims) {
+        continue;
+      }
+      const IotaTileAssignment& iota = *sharding.tile_assignment().iota();
+      std::vector<int64_t> reshape_dims(iota.reshape_dims().size());
+      for (int i = 0; i < iota.transpose_perm().size(); ++i) {
+        reshape_dims[iota.transpose_perm()[i]] = iota.reshape_dims()[i];
+      }
+      mesh_shape_candidates.insert(VectorGreaterThanOneElements(reshape_dims));
+    }
+  }
+  return std::vector<std::vector<int64_t>>(mesh_shape_candidates.begin(),
+                                           mesh_shape_candidates.end());
 }
 
 std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
@@ -2264,9 +2500,7 @@ std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
       dedup_result.insert(
           absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
     }
-
     mesh_shapes.clear();
-
     for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
       mesh_shapes.push_back(
           std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
@@ -2393,6 +2627,22 @@ bool OpEncountersShardToFull(const HloInstruction* op) {
   }
 
   return false;
+}
+
+absl::Status EnsureEntryComputationLayoutHasShapeLayouts(HloModule* module) {
+  ComputationLayout computation_layout_with_layouts =
+      module->compute_computation_layout();
+  ComputationLayout* computation_layout =
+      module->mutable_entry_computation_layout();
+  for (int i = 0; i < computation_layout->parameter_count(); ++i) {
+    TF_RETURN_IF_ERROR(
+        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+            computation_layout_with_layouts.parameter_layout(i).shape()));
+  }
+  TF_RETURN_IF_ERROR(
+      computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+          computation_layout_with_layouts.result_layout().shape()));
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

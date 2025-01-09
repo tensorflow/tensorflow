@@ -18,8 +18,9 @@ limitations under the License.
 #include <exception>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 

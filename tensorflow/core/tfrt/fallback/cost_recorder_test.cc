@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
+#include <cstdint>
 #include <limits>
 #include <string>
 

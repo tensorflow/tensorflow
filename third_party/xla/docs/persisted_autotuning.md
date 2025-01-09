@@ -10,6 +10,38 @@ normally. Autotuning caches are still useful if we make a few changes: the
 fusions that are present in the cache will use the cache, and the other ones
 will be autotuned normally.
 
+## Recommended: Cache directory
+
+```
+--xla_gpu_per_fusion_autotune_cache_dir=your/directory
+```
+
+Use and maintain a per-fusion autotune cache in the given directory. There will
+be one file per distinct fusion.
+
+The main advantage of this approach is that you can use the same cache directory
+for multiple XLA runs (of different models) and your cache will grow with each
+new fusion encountered - speeding up subsequent runs. There is also basic
+support for running multiple XLA instances with the same cache directory
+concurrently.
+
+XLA will read existing results when they are needed and write new results after
+they are determined.
+
+-   The directory must exist before running XLA and it must be writable.
+-   Cache invalidation has to be handled by the user:
+    -   Please use an empty directory if you want to start with an empty cache.
+-   XLA version checks must be done by the user:
+    -   If you want to use separate caches for different versions of XLA, please
+        use different directories.
+
+The cache is turned off by default (when you don't provide the parameter).
+
+Limitation: This is not guaranteed to work well in combination with the other
+caching method described below.
+
+## Alternative: Loading or dumping all results from a given HLO to one file
+
 The autotuning results can be dumped/loaded using these parameters:
 
 ```

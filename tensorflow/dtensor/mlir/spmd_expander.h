@@ -115,14 +115,15 @@ class SPMDExpanderBase {
 
   // Run ExpandOp() and set layout from the computed layout from original op.
   // Returns the expanded op in output.
-  Status ExpandOpAndSetLayout(mlir::Operation* op, mlir::Operation** output);
+  absl::Status ExpandOpAndSetLayout(mlir::Operation* op,
+                                    mlir::Operation** output);
 };
 
 // Computes the SPMD expansion for `op`.
 //
 // Prior to this call, all inputs to `op` have been lowered to local operations
 // & shapes. The lowered op must emit a type compatible with the local shape.
-Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output);
+absl::Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output);
 
 // A registry of SPMD expanders. This map is statically stored and initialized
 // with all the registered SPMD expanders.

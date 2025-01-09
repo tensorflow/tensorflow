@@ -52,7 +52,8 @@ void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
 }
 
 // Return group shape, which is the 1st n-1 dimensions of shape.
-Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
+absl::Status GroupShape(const VarDimArray& input_shape,
+                        ShapeArray* grouped_shape) {
   if (input_shape.size() < 2) {
     // TODO(irving): Why can't 2 be 1 here?
     return errors::InvalidArgument("Shape [", absl::StrJoin(input_shape, ","),
@@ -65,9 +66,10 @@ Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
 
 // Build `SparseTensor` from indices, values, and shape in inputs
 // [base_index, base_index + 3), and validate its rank and indices.
-Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
-                               const bool validate_indices,
-                               sparse::SparseTensor* tensor) {
+absl::Status SparseTensorFromContext(OpKernelContext* ctx,
+                                     const int32_t base_index,
+                                     const bool validate_indices,
+                                     sparse::SparseTensor* tensor) {
   // Assume row-major order.
   TensorShape shape;
   const Tensor& shape_tensor = ctx->input(base_index + 2);
@@ -80,7 +82,7 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
 
-  Status status = sparse::SparseTensor::Create(
+  absl::Status status = sparse::SparseTensor::Create(
       ctx->input(base_index), ctx->input(base_index + 1), shape, order, tensor);
 
   if (!validate_indices || !status.ok()) return status;
@@ -419,7 +421,7 @@ void SetOperationOp<T>::ApplySetOperation(const absl::flat_hash_set<T>& set1,
 }
 
 // Validate shapes have the same dimensions.
-Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
+absl::Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
   if (shape1 != shape2) {
     return errors::InvalidArgument("Mismatched shapes [",
                                    absl::StrJoin(shape1, ","), "] vs [",
@@ -430,8 +432,8 @@ Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
 
 // Validate ranks are the same, and all but last dimension are the same.
 // Return GroupShape.
-Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
-                            ShapeArray* group_shape) {
+absl::Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
+                                  ShapeArray* group_shape) {
   ShapeArray group_shape_1;
   TF_RETURN_IF_ERROR(GroupShape(shape1, &group_shape_1));
   ShapeArray group_shape_2;

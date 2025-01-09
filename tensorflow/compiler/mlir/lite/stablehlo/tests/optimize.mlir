@@ -408,3 +408,107 @@ func.func @testConvertReshapeDotRhsToBatchedDot(%arg0: tensor<1x72x72xf32>, %arg
 // CHECK-SAME: >}> : (tensor<1x72x72xf32>, tensor<1x72x128xf32>) -> tensor<1x72x128xf32>
 // CHECK:      return %[[R]] : tensor<1x72x128xf32>
 }
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_one_non_unit_dimnsion
+func.func @broadcast_reshape_one_non_unit_dimnsion(%arg0: tensor<1x1x1x63xf32>) -> tensor<32x1x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x1x1x63xf32>) -> tensor<1x32x1x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<1x32x1x63xf32>) -> tensor<32x1x63xf32>
+  return %1 : tensor<32x1x63xf32>
+}
+
+// CHECK: %0 = mhlo.reshape %arg0 : (tensor<1x1x1x63xf32>) -> tensor<63xf32>
+// CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<63xf32>) -> tensor<32x1x63xf32>
+// CHECK: return %1 : tensor<32x1x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_one_non_unit_dimnsion_trailing_zeros
+func.func @broadcast_reshape_one_non_unit_dimnsion_trailing_zeros(%arg0: tensor<63x1x1x1xf32>) -> tensor<63x1x2xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<63x1x1x1xf32>) -> tensor<63x1x1x2xf32>
+  %1 = mhlo.reshape %0 : (tensor<63x1x1x2xf32>) -> tensor<63x1x2xf32>
+  return %1 : tensor<63x1x2xf32>
+}
+
+// CHECK: %0 = mhlo.reshape %arg0 : (tensor<63x1x1x1xf32>) -> tensor<63xf32>
+// CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<63xf32>) -> tensor<63x1x2xf32>
+// CHECK: return %1 : tensor<63x1x2xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_multiple_non_unit_dimension
+func.func @broadcast_reshape_multiple_non_unit_dimension(%arg0: tensor<1x2x1x63xf32>) -> tensor<2x3x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x2x1x63xf32>) -> tensor<1x2x3x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<1x2x3x63xf32>) -> tensor<2x3x63xf32>
+  return %1 : tensor<2x3x63xf32>
+}
+
+// CHECK: %0 = mhlo.reshape %arg0 : (tensor<1x2x1x63xf32>) -> tensor<2x63xf32>
+// CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}> : (tensor<2x63xf32>) -> tensor<2x3x63xf32>
+// CHECK: return %1 : tensor<2x3x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_multiple_non_unit_dimension_unsorted_broadcast_dims
+func.func @broadcast_reshape_multiple_non_unit_dimension_unsorted_broadcast_dims(%arg0: tensor<1x2x1x63xf32>) -> tensor<3x2x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 2, 1, 3]> : tensor<4xi64>}> : (tensor<1x2x1x63xf32>) -> tensor<3x1x2x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<3x1x2x63xf32>) -> tensor<3x2x63xf32>
+  return %1 : tensor<3x2x63xf32>
+}
+
+// CHECK: %0 = mhlo.reshape %arg0 : (tensor<1x2x1x63xf32>) -> tensor<2x63xf32>
+// CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}> : (tensor<2x63xf32>) -> tensor<3x2x63xf32>
+// CHECK: return %1 : tensor<3x2x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_broadcast_increases_rank
+func.func @broadcast_reshape_broadcast_increases_rank(%arg0: tensor<1x2x1x63xf32>) -> tensor<2x3x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 4]> : tensor<4xi64>}> : (tensor<1x2x1x63xf32>) -> tensor<1x2x3x1x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<1x2x3x1x63xf32>) -> tensor<2x3x63xf32>
+  return %1 : tensor<2x3x63xf32>
+}
+
+// CHECK: %0 = mhlo.reshape %arg0 : (tensor<1x2x1x63xf32>) -> tensor<2x63xf32>
+// CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}> : (tensor<2x63xf32>) -> tensor<2x3x63xf32>
+// CHECK: return %1 : tensor<2x3x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_not_same_non_unit_dims
+func.func @broadcast_reshape_not_same_non_unit_dims(%arg0: tensor<63x1x1x1xf32>) -> tensor<2x1x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<63x1x1x1xf32>) -> tensor<63x1x1x2xf32>
+  %1 = mhlo.reshape %0 : (tensor<63x1x1x2xf32>) -> tensor<2x1x63xf32>
+  return %1 : tensor<2x1x63xf32>
+}
+
+// CHECK: %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<63x1x1x1xf32>) -> tensor<63x1x1x2xf32>
+// CHECK: %1 = mhlo.reshape %0 : (tensor<63x1x1x2xf32>) -> tensor<2x1x63xf32>
+// CHECK: return %1 : tensor<2x1x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_multi_use
+func.func @broadcast_reshape_multi_use(%arg0: tensor<1x1x1x63xf32>) -> (tensor<32x1x63xf32>, tensor<1x32x1x63xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x1x1x63xf32>) -> tensor<1x32x1x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<1x32x1x63xf32>) -> tensor<32x1x63xf32>
+  return %1, %0 : tensor<32x1x63xf32>, tensor<1x32x1x63xf32>
+}
+
+// CHECK: %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x1x1x63xf32>) -> tensor<1x32x1x63xf32>
+// CHECK: %1 = mhlo.reshape %0 : (tensor<1x32x1x63xf32>) -> tensor<32x1x63xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_reshape_rank_increase
+func.func @broadcast_reshape_rank_increase(%arg0: tensor<1x1x1x63xf32>) -> tensor<32x1x1x1x1x63xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x1x1x63xf32>) -> tensor<1x32x1x63xf32>
+  %1 = mhlo.reshape %0 : (tensor<1x32x1x63xf32>) -> tensor<32x1x1x1x1x63xf32>
+  return %1 : tensor<32x1x1x1x1x63xf32>
+}
+
+// CHECK: %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>}> : (tensor<1x1x1x63xf32>) -> tensor<1x32x1x63xf32>
+// CHECK: %1 = mhlo.reshape %0 : (tensor<1x32x1x63xf32>) -> tensor<32x1x1x1x1x63xf32>
+
+

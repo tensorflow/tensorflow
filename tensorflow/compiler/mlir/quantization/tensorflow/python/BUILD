@@ -1,3 +1,4 @@
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -93,6 +94,7 @@ cc_library(
         ":py_function_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -202,6 +204,7 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = [
         "__subpackages__",
+        "//tensorflow/python:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
@@ -229,7 +232,6 @@ tf_python_pybind_extension(
     # All deps must be header-only.
     deps = [
         ":py_function_lib",
-        ":quantize_model_cc",
         ":type_casters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -245,7 +247,10 @@ tf_python_pybind_extension(
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
+    ] + if_pywrap(
+        [":quantize_model_cc_impl"],
+        [":quantize_model_cc"],
+    ),
 )
 
 tf_py_strict_test(

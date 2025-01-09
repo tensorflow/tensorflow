@@ -44,10 +44,9 @@ __device__ __forceinline__ void ThreadStoreVolatilePtr<Eigen::half>(
       Eigen::numext::bit_cast<uint16_t>(val);
 }
 
-template <>
-__device__ __forceinline__ Eigen::half ThreadLoadVolatilePointer<Eigen::half>(
-    Eigen::half *ptr, Int2Type<true> /*is_primitive*/) {
-  uint16_t result = *reinterpret_cast<volatile uint16_t *>(ptr);
+__device__ __forceinline__ Eigen::half ThreadLoadVolatilePointer(
+    const Eigen::half *ptr, Int2Type<true> /*is_primitive*/) {
+  uint16_t result = *reinterpret_cast<volatile const uint16_t *>(ptr);
   return Eigen::numext::bit_cast<Eigen::half>(result);
 }
 
@@ -58,10 +57,8 @@ __device__ __forceinline__ void ThreadStoreVolatilePtr<tsl::bfloat16>(
       Eigen::numext::bit_cast<uint16_t>(val);
 }
 
-template <>
-__device__ __forceinline__ tsl::bfloat16
-ThreadLoadVolatilePointer<tsl::bfloat16>(tsl::bfloat16 *ptr,
-                                         Int2Type<true> /*is_primitive*/) {
+__device__ __forceinline__ tsl::bfloat16 ThreadLoadVolatilePointer(
+    tsl::bfloat16 *ptr, Int2Type<true> /*is_primitive*/) {
   uint16_t result = *reinterpret_cast<volatile uint16_t *>(ptr);
   return Eigen::numext::bit_cast<tsl::bfloat16>(result);
 }

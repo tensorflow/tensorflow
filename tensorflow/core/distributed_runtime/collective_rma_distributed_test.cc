@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/collective_rma_distributed.h"
 
+#include <memory>
+
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -60,7 +62,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
         : Device(nullptr, attr), allocator_(allocator) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
 
    private:
@@ -130,9 +132,9 @@ class FakeWorker : public TestWorkerInterface {
     buf_rendezvous_.ConsumeBuf(
         request->buf_rendezvous_key(), request->src_device(),
         request->src_incarnation(),
-        [this, opts, request, response, done](const Status& status,
+        [this, opts, request, response, done](const absl::Status& status,
                                               BufRendezvous::Hook* h) {
-          Status s = status;
+          absl::Status s = status;
           if (s.ok()) {
             opts->ClearCancelCallback();
             int64_t num_bytes = h->prod_value->TotalBytes();
@@ -194,7 +196,7 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Status status = wi->GetStatus(&req, &resp);
+    absl::Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
       return;
@@ -253,9 +255,9 @@ class CollRMADistTest
       DefineWorker(name, device_type, num_devices);
     }
     // All tests simulate requests from worker 0 to worker 1.
-    rma_.reset(new CollectiveRemoteAccessDistributed(
+    rma_ = std::make_unique<CollectiveRemoteAccessDistributed>(
         device_mgrs_[0], dev_resolvers_[dev0_worker_name], work_queue_, &wc_,
-        kStepId, "/job:worker/replica:0/task:0"));
+        kStepId, "/job:worker/replica:0/task:0");
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});
@@ -373,14 +375,14 @@ TEST_P(CollRMADistTest, ProdFirstOK) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
-  Status consumer_status;
-  Status producer_status;
+  absl::Status consumer_status;
+  absl::Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [&producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const absl::Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       },
@@ -397,7 +399,7 @@ TEST_P(CollRMADistTest, ProdFirstOK) {
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const absl::Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -412,8 +414,8 @@ TEST_P(CollRMADistTest, ConsFirstOK) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
-  Status consumer_status;
-  Status producer_status;
+  absl::Status consumer_status;
+  absl::Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
   Device* dst_device = nullptr;
@@ -428,14 +430,14 @@ TEST_P(CollRMADistTest, ConsFirstOK) {
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const absl::Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [&producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const absl::Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       },
@@ -450,7 +452,7 @@ TEST_P(CollRMADistTest, ConsFirstOK) {
 TEST_P(CollRMADistTest, ConsFirstAbort) {
   ResolveDeviceAttributes();
   Notification consumer_note;
-  Status consumer_status;
+  absl::Status consumer_status;
   const string kBufKey = "fake_buf_key";
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
@@ -464,7 +466,7 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const absl::Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -477,14 +479,14 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
-  Status consumer_status;
-  Status producer_status;
+  absl::Status consumer_status;
+  absl::Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &large_response_,
       AllocatorAttributes(),
-      [&producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const absl::Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       },
@@ -501,7 +503,7 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const absl::Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -517,8 +519,8 @@ TEST_P(CollRMADistTest, WorkerRestart) {
   ResolveDeviceAttributes();
   Notification consumer_note;
   Notification producer_note;
-  Status consumer_status;
-  Status producer_status;
+  absl::Status consumer_status;
+  absl::Status producer_status;
   FakeWorker* wi = workers_[1];
   const string buf_key = "fake_buf_key";
   Device* dst_device = nullptr;
@@ -533,14 +535,14 @@ TEST_P(CollRMADistTest, WorkerRestart) {
       buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const absl::Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   wi->buf_rendezvous()->ProvideBuf(
       buf_key, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [&producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const absl::Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       },
@@ -561,7 +563,7 @@ TEST_P(CollRMADistTest, WorkerRestart) {
       buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
       nullptr /*cancellation_manager*/,
-      [&consumer_status, &post_restart_note](const Status& s) {
+      [&consumer_status, &post_restart_note](const absl::Status& s) {
         consumer_status = s;
         post_restart_note.Notify();
       });
@@ -571,11 +573,11 @@ TEST_P(CollRMADistTest, WorkerRestart) {
 
 TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   ResolveDeviceAttributes();
-  Status check_health_status;
+  absl::Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
-      [&check_health_status, &check_health_done](const Status s) {
+      [&check_health_status, &check_health_done](const absl::Status s) {
         check_health_status = s;
         check_health_done.Notify();
       });
@@ -584,11 +586,11 @@ TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
 }
 
 TEST_P(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
-  Status check_health_status;
+  absl::Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
-      [&check_health_status, &check_health_done](const Status s) {
+      [&check_health_status, &check_health_done](const absl::Status s) {
         check_health_status = s;
         check_health_done.Notify();
       });
@@ -600,11 +602,11 @@ TEST_P(CollRMADistTest, CheckHealthRestarted) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
 
-  Status check_health_status;
+  absl::Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
-      [&check_health_status, &check_health_done](const Status s) {
+      [&check_health_status, &check_health_done](const absl::Status s) {
         check_health_status = s;
         check_health_done.Notify();
       });
@@ -617,11 +619,11 @@ TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1,
                 /*is_failed*/ true);
 
-  Status check_health_status;
+  absl::Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
-      [&check_health_status, &check_health_done](const Status s) {
+      [&check_health_status, &check_health_done](const absl::Status s) {
         check_health_status = s;
         check_health_done.Notify();
       });
@@ -632,11 +634,11 @@ TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
 TEST_P(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "GPU", /*num_devices*/ 1);
-  Status check_health_status;
+  absl::Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
-      [&check_health_status, &check_health_done](const Status s) {
+      [&check_health_status, &check_health_done](const absl::Status s) {
         check_health_status = s;
         check_health_done.Notify();
       });

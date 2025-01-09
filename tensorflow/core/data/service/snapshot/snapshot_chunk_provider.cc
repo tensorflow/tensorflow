@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -46,7 +46,6 @@ limitations under the License.
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

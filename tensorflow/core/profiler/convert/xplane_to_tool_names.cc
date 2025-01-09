@@ -44,6 +44,9 @@ absl::StatusOr<std::string> GetAvailableToolNames(
     tools.push_back("pod_viewer");
     tools.push_back("tf_data_bottleneck_analysis");
     tools.push_back("op_profile");
+    tools.push_back("inference_profile");
+    tools.push_back("hlo_stats");
+    tools.push_back("roofline_model");
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(0));

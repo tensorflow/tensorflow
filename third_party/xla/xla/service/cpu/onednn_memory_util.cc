@@ -50,10 +50,8 @@ struct MemrefInfoPOD {
   void* data;
 };
 
-MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, void* const buf) {
   MemrefInfoHandler result(new MemrefInfoPOD);
-
-  const auto& shape = literal->shape();
   result->dtype = shape.element_type();
   result->rank = shape.rank();
   auto dimensions = shape.dimensions();
@@ -65,13 +63,17 @@ MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
     result->strides[i] = stride;
     stride *= dimensions.at(i);
   }
-
-  result->data = const_cast<void*>(literal->untyped_data());
-
+  result->data = buf;
   return result;
 }
 
-StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+  const auto& shape = literal->shape();
+  void* const buf = const_cast<void*>(literal->untyped_data());
+  return CreateMemrefFromShape(shape, buf);
+}
+
+StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();
   int64_t rank = shape.rank();

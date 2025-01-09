@@ -40,6 +40,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -76,6 +77,10 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
+
+namespace model_builder {
+class ModelBuilder;
+}  // namespace model_builder
 #endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -335,21 +340,29 @@ class Interpreter {
   }
 
   /// \brief Returns a pointer to the SignatureRunner instance to run the part
-  /// of the graph identified by a SignatureDef. The nullptr is returned if the
-  /// given signature key is not valid.
+  /// of the graph identified by a SignatureDef.  If the model does not have any
+  /// signature defs, passing nullptr as signature_key will also default to
+  /// creating runner for primary subgraph.  A nullptr is returned if the given
+  /// signature_key is not valid.
+  /// NOTE: The returned SignatureRunner instance is owned by and has the same
+  /// lifetime as the Interpreter object; additionally, class SignatureRunner is
+  /// *not* thread-safe.
   /// If you need to specify delegates, you have to do that before calling this
   /// function. This function will additionally apply default delegates. Thus,
   /// applying delegates after that might lead to undesirable behaviors.
-  /// Note, the pointed instance has lifetime same as the Interpreter object
-  /// and the SignatureRunner class is *not* thread-safe.
+  /// If you need `SignatureRunner` without applying default delegates,
+  /// use `BuiltinOpResolverWithoutDefaultDelegates`.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
-  /// \warning Experimental interface, subject to change. \n
+  /// \warning Experimental interface, subject to change.
   /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
-  /// part of the graph identified by a SignatureDef. The nullptr is returned if
-  /// the given signature key is not valid.
-  /// if the model does not have signature def, pass nullptr to signature_key
-  /// and AsyncSignatureRunner will be created using primary subgraph (0).
+  /// part of the graph identified by a SignatureDef.  If the model does not
+  /// have any signature defs, passing nullptr as signature_key will also
+  /// default to creating runner for primary subgraph.  A nullptr is returned if
+  /// the given signature_key is not valid.
+  /// NOTE: The returned AsyncSignatureRunner instance is owned by and has the
+  /// same lifetime as the Interpreter object; additionally, class
+  /// AsyncSignatureRunner is *not* thread-safe.
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);
@@ -555,7 +568,7 @@ class Interpreter {
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief  Attempts to cancel in flight invocation if any.
-  /// This will not affect `Invoke`s that happends after the cancellation.
+  /// This will not affect `Invoke`s that happen after the cancellation.
   /// Non blocking. Thread safe.
   /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
   /// kTfLiteOk.
@@ -687,13 +700,14 @@ class Interpreter {
   /// \brief Gets the profiler used for op tracing.
   Profiler* GetProfiler();
 
-  // The default capacity of `tensors_` vector.
-  static constexpr int kTensorsReservedCapacity = 128;
-  /// The capacity headroom of `tensors_` vector before calling ops'
-  /// `prepare` and `invoke` function. In these functions, it's guaranteed
-  /// allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
+  /// The default capacity of the tensors vector.
+  static const int& kTensorsReservedCapacity;
+
+  /// The capacity headroom of the tensors vector before calling ops'
+  /// `prepare` and `invoke` function. In those functions, it's guaranteed
+  /// allocating up to this many more tensors won't invalidate
   /// pointers to existing tensors.
-  static constexpr int kTensorsCapacityHeadroom = 16;
+  static const int& kTensorsCapacityHeadroom;
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Set if buffer handle output is allowed.
@@ -796,6 +810,7 @@ class Interpreter {
   friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
+  friend class tflite::model_builder::ModelBuilder;
   friend class tflite::SingleOpModel;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
@@ -905,6 +920,13 @@ class Interpreter {
 
   TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
+  std::unique_ptr<internal::SignatureDef> CreatePlaceholderSignatureDef();
+  // Given an input signature key, return a pair where the first field is a
+  // possibly replaced signature key and the second field indicates if the
+  // returned signature key was replaced.
+  std::pair<const char*, bool> ReplaceWithPlaceholderSignatureKeyIfNeeded(
+      const char* signature_key);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -963,6 +985,13 @@ class Interpreter {
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;
+
+  // Default signature key to use when the model has no signatures.
+  static constexpr char kPlaceholderSignatureDefKey[] =
+      "<placeholder signature>";
+
+  // Placeholder SignatureDef for legacy models with no signatures.
+  std::unique_ptr<internal::SignatureDef> placeholder_signature_def_;
 
   // Map of signature key to its corresponding SignatureRunner object.
   // A SignatureRunner is basically a wrapper of the Subgraph corresponding to

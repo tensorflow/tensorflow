@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status FingerprintFunctionLibrary(const FunctionLibraryDefinition& library,
-                                  uint64_t& fingerprint) {
+absl::Status FingerprintFunctionLibrary(
+    const FunctionLibraryDefinition& library, uint64_t& fingerprint) {
   // TODO(phawkins): rather than fingerprinting the entire function library,
   // consider fingerprinting just the transitive dependencies of a
   // computation.

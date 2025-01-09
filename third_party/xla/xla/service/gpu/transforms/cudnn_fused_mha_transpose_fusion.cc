@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -514,7 +514,7 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
                                          int64_t index) {
     int count = 0;
     for (auto user : instr->users()) {
-      if (user->opcode() == HloOpcode::kGetTupleElement &&
+      if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user) &&
           user->tuple_index() == index) {
         count += 1;
       }

@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -32,6 +33,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:shape_inference_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/mlir/tf2xla/internal:mlir_pass_instrumentation",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:lowering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
@@ -61,14 +63,14 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
-        "@local_xla//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@stablehlo//:register",
     ],
 )
@@ -100,8 +102,8 @@ tf_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -114,7 +116,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
@@ -142,8 +143,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/client:compile_only_client",
@@ -165,6 +164,8 @@ tf_cc_test(
         ":compile_tf_graph",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:xla_tpu_device",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tf2xla/internal:test_matchers",
         "//tensorflow/compiler/mlir/tf2xla/internal/utils:test_metadata_config",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -173,20 +174,28 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla:xla_tpu_backend_registration",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/monitoring:test_utils",
     ],
 )
 
@@ -209,6 +218,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:errors",
@@ -276,9 +286,9 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/platform:error_logging",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/monitoring:counter",
     ],
 )
 
@@ -302,4 +312,11 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
+)
+
+tf_proto_library(
+    name = "mlir_bridge_config_v1_proto",
+    srcs = ["mlir_bridge_config_v1.proto"],
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
 )

@@ -140,7 +140,7 @@ class ShapeUtil {
     return product;
   }
 
-  // Returns the number of elements are contained within the provided shape;
+  // Returns the number of elements contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
@@ -513,9 +513,6 @@ class ShapeUtil {
   // that floating point numbers are signed.
   static bool ElementIsSigned(const Shape& shape);
 
-  // Returns whether the given primitive type corresponds to an array shape.
-  static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
-
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
   static bool IsNestedTuple(const Shape& shape);
@@ -726,6 +723,11 @@ class ShapeUtil {
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
 
+  // Extracts the packing factor for a 1D interleaved array based on the layout.
+  // For example, bf16[1024]{0:T(1024)(128)(2,1)} -> 2
+  static absl::StatusOr<int64_t> PackedFactorFor1DInterleavedArray(
+      const Shape& shape);
+
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 
@@ -881,6 +883,11 @@ class ShapeUtil {
   static std::optional<Shape> AlignLayouts(const Shape& input_shape,
                                            const Shape& output_shape);
 
+  // Returns a shape with the given logical dimensions reordered, updating the
+  // layout so that physical dimensions are preserved.
+  static Shape ReorderLogicalDimensions(const Shape& shape,
+                                        absl::Span<const int64_t> permutation);
+
   // Returns a shape with the given dimension deleted.
   // For example:
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
@@ -1011,36 +1018,6 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
-  // In this case, we care about transposes that swap two dimensions of a
-  // a shape that can be viewed as three logical components 0-1-2 in the order
-  // of major to minor.
-  // As an example, let's consider a 0-2-1 transpose:
-  //
-  // If a shape can be viewed as three logical components 0-1-2 in the order of
-  // major to minor, a 0-2-1-transpose changes the order of such logical
-  // components to 0-2-1. We call the shape being transposed the input shape and
-  // the transposed shape the output shape. The logical view of the input/output
-  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
-  // normalized shapes. The original input/output shapes are called unnormalized
-  // shapes.
-  //
-  // 'permutation' specifies the kind of transpose. For a 0-2-1 transpose, it
-  // should be set to {0, 2, 1}.
-  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-  // normalized shape of `b` or the 0-2-1 shape. In general, the
-  // permutation[0]-permutation[1]-permutation[2] shape is returned.
-  static std::optional<absl::InlinedVector<int64_t, 3>>
-  GetNormalizedTransposeShape(
-      const Shape& input_shape, const Shape& output_shape,
-      const absl::InlinedVector<int64_t, 3>& permutation);
-
-  // Entry point for physical + logical transposition.
-  static std::optional<absl::InlinedVector<int64_t, 3>>
-  GetNormalizedLogicalTransposeShape(
-      const Shape& input_shape, const Shape& output_shape,
-      absl::Span<int64_t const> dimensions,
-      const absl::InlinedVector<int64_t, 3>& permutation);
-
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);
@@ -1066,20 +1043,19 @@ class ShapeUtil {
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
 
+  // Updates element_size_in_bits on each subshape's layout. If
+  // 'pack_subbyte_types' is true, sets the element size to the dtype bitwidth
+  // for subbyte types (S4, U4, etc) and 0 for non-subbyte types, which
+  // indicates that for arrays of subbyte types, multiple elements are packed in
+  // a single byte. If 'pack_subbyte_types' is false, sets the element size to 0
+  // for all types.
+  static void UpdateElementSizeInBits(Shape* s, bool pack_subbyte_types);
+
  private:
   // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);
-
-  // Validates the shape size is sane. This makes sure it's safe to do
-  // calculations in int64_t without overflowing.
-  static absl::Status ValidateShapeSize(const Shape& shape);
-
-  // Validates all of the non-layout properties of the shape -- this is a helper
-  // used by both the layout-optional and layout-required public method.
-  static absl::Status ValidateShapeWithOptionalLayoutInternal(
-      const Shape& shape);
 
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.

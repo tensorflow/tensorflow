@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
+#include "xla/tsl/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {

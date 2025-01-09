@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"

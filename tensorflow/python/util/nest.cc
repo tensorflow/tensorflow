@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/nest.h"
 
-#include <utility>
+#include <cstddef>
+#include <string>
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -40,7 +41,7 @@ std::string PyObject_ToString(PyObject* o, int length = -1) {
   if (length < 0 || str.size() <= length) {
     return str;
   }
-  tensorflow::StringPiece str_piece(str);
+  absl::string_view str_piece(str);
   return tensorflow::strings::StrCat(str_piece.substr(length), "...");
 }
 

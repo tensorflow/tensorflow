@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/random/philox_random.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/lib/random/philox_random.h"
 
 namespace Eigen {
 namespace internal {

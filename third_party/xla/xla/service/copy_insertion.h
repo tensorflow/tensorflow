@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_COPY_INSERTION_H_
 #define XLA_SERVICE_COPY_INSERTION_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/call_graph.h"
 
 namespace xla {
 
@@ -100,6 +106,10 @@ class CopyInsertion : public HloModulePass {
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
       const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
+
+  // Add copies for async send/recv instructions.
+  absl::Status AddCopiesForAsyncSendRecv(const HloAliasAnalysis& alias_analysis,
+                                         HloInstruction* async);
 
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.

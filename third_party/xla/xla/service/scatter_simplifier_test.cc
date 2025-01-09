@@ -18,9 +18,9 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

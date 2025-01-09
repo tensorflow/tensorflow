@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/util.h"
@@ -59,10 +59,10 @@ bool RegisterQuantizeFn(const QuantizeXlaFn& fn) {
 namespace {
 
 // Compiles the XLA computation into executable code.
-Status CompileXla(xla::CompileOnlyClient* client,
-                  const xla::XlaComputation& computation,
-                  const xla::cpu::CpuAotCompilationOptions& aot_opts,
-                  CompileResult* compile_result) {
+absl::Status CompileXla(xla::CompileOnlyClient* client,
+                        const xla::XlaComputation& computation,
+                        const xla::cpu::CpuAotCompilationOptions& aot_opts,
+                        CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
   // TODO(toddw): Should we let the user choose the major/minor ordering?
   absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
@@ -105,8 +105,9 @@ Status CompileXla(xla::CompileOnlyClient* client,
 
 }  // namespace
 
-Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
-                    const MainFlags& flags, CompileResult* compile_result) {
+absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
+                          const MainFlags& flags,
+                          CompileResult* compile_result) {
   // Converts the graph into an XLA computation, and compiles the
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
@@ -170,7 +171,8 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
+static absl::Status ReadProtoFile(const string& fname,
+                                  protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
@@ -243,7 +245,7 @@ static std::string InterpolateErrorMessage(std::string message) {
   return message;
 }
 
-Status Main(const MainFlags& flags) {
+absl::Status Main(const MainFlags& flags) {
   absl::call_once(targets_init, &InitializeTargets);
 
   // Process config.
@@ -270,7 +272,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
   CompileResult compile_result;
 
-  Status status =
+  absl::Status status =
       CompileGraph(std::move(graph_def), config, flags, &compile_result);
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(

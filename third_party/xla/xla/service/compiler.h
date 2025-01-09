@@ -157,10 +157,6 @@ class Compiler {
     // on which compilation is performed.
     std::optional<TargetConfig> target_config;
 
-    // Registry of MLIR dialects and plugins to be loaded during optimization.
-    // If non-null, it will be used to construct relevant MLIR contexts.
-    mlir::DialectRegistry* registry = nullptr;
-
     MultiProcessKeyValueStore key_value_store;
   };
 
@@ -304,7 +300,7 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() {
+  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() const {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
     return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());

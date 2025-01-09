@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 
@@ -43,13 +43,12 @@ static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
     StreamExecutor* executor, absl::string_view kernel_name,
     absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
   using KernelPtrCacheKey =
-      std::tuple<CUcontext, absl::string_view, absl::string_view>;
+      std::tuple<StreamExecutor*, absl::string_view, absl::string_view>;
 
   static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
   static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
       *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
-  CUcontext current_context = cuda::CurrentContextOrDie();
-  KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
+  KernelPtrCacheKey kernel_ptr_cache_key{executor, kernel_name, ptx};
   absl::MutexLock lock(&kernel_ptr_cache_mutex);
 
   auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
@@ -121,12 +120,13 @@ LBB6_3:
 }
 )";
 
-absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
-    StreamExecutor* executor, GpuAsmOpts gpu_asm_opts) {
+absl::StatusOr<ComparisonKernel*> GetComparisonKernel(StreamExecutor* executor,
+                                                      GpuAsmOpts gpu_asm_opts) {
   absl::Span<const uint8_t> compiled_ptx = {};
   absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
-      CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
-                               gpu_asm_opts);
+      CompileGpuAsmOrGetCached(
+          executor->GetDeviceDescription().cuda_compute_capability(),
+          redzone_checker_ptx, gpu_asm_opts);
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.value();
   } else {

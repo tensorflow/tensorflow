@@ -557,7 +557,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
 
 
 class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking."""
 
   def __init__(
       self, name: str, model_config: ModelConfig,
@@ -657,14 +657,14 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
 
 
 class ModelHandlerManagerV1(_ModelHandlerManagerBase):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF1."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking in TF1."""
 
   model_handler_cls = ModelHandlerV1
   trt_model_handler_cls = TrtModelHandlerV1
 
 
 class ModelHandlerManagerV2(_ModelHandlerManagerBase):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF2."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking in TF2."""
 
   model_handler_cls = ModelHandlerV2
   trt_model_handler_cls = TrtModelHandlerV2

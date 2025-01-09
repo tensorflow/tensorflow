@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_HLO_CSE_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -48,6 +48,10 @@ class HloCSE : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Run CSE on the given computation. Returns whether the computation was
+  // changed.
+  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
  private:
   const bool is_layout_sensitive_;

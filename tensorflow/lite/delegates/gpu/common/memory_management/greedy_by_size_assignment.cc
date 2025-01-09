@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
-#include <iterator>
 #include <vector>
 
 #include "absl/status/status.h"

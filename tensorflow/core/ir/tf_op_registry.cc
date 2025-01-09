@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/ir/tf_op_registry.h"
 
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
 
 namespace mlir {

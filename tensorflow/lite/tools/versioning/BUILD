@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -66,6 +67,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/lite/tools/versioning:op_signature",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
@@ -108,6 +110,7 @@ cc_library(
         ":op_signature",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",

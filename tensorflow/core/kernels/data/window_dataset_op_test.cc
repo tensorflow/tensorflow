@@ -62,7 +62,7 @@ class WindowDatasetParams : public DatasetParams {
             CreateTensor<bool>(TensorShape({}), {drop_remainder_})};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(WindowDatasetOp::kInputDataset);
     input_names->emplace_back(WindowDatasetOp::kSize);
@@ -72,7 +72,7 @@ class WindowDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);

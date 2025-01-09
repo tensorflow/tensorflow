@@ -13,9 +13,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <functional>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Support/LogicalResult.h"
@@ -138,32 +140,20 @@ struct StablehloRefineShapesPass
     auto func = stablehlo::getStablehloRefineShapesTarget(getOperation());
     if (!func) return signalPassFailure();
 
-    // The algorithm behind this pass consists of a single traversal of the
-    // function. This is sufficient because we only support one function per
-    // program at the moment.
-    // TODO(#1048): Find out why .maxIterations = 1 no longer works.
-    // There have been recent refactors to applyPatternsAndFoldGreedily
-    // upstream, and that might be the reason.
-    GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
-    config.maxIterations = 3;
-    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
-    config.strictMode = GreedyRewriteStrictness::AnyOp;
+    // Start with empty state, and no dim args / token args.
+    MLIRContext* context = func.getContext();
 
-    RewritePatternSet patterns(&getContext());
-    stablehlo::populateStablehloRefineShapesPatterns(&patterns, &getContext());
-    stablehlo::populateStablehloShapeFolderPatterns(&patterns, &getContext());
-    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
-    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
-    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
-    if (failed(
-            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
-      func.emitError()
-          << "Greedy rewriter in StablehloRefineShapes does not converge after "
-          << config.maxIterations << " iterations.";
+    // Populate additional patterns for StableHLO extensions.
+    std::function<void(RewritePatternSet*)> additionalPatternsFn =
+        [&](RewritePatternSet* patterns) {
+          patterns->add<RefineDynamicReduceWindowOpPattern>(context);
+          patterns->add<RefineDynamicRngBitGeneratorOpPattern>(context);
+          patterns->add<RefineDynamicTopKOpPattern>(context);
+        };
+
+    if (failed(stablehlo::refineEntryFunction(*context, func,
+                                              additionalPatternsFn)))
       return signalPassFailure();
-    }
   }
 };
 

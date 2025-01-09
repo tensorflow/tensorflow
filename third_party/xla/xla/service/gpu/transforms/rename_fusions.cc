@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
@@ -78,7 +78,7 @@ absl::StatusOr<bool> RenameFusions::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kFusion ||
+      if (HloPredicateIsNotOp<HloOpcode::kFusion>(instruction) ||
           instruction->fusion_kind() == HloInstruction::FusionKind::kCustom) {
         continue;
       }

@@ -40,9 +40,9 @@ This project follows
 
 ### Developer Guide
 
-For a guide on how to setup a development environment for OpenXLA, including getting
-code, building it, running tests and submitting changes, please refer to the
-[Developer guide](docs/developer_guide.md).
+For a guide on how to setup a development environment for OpenXLA, including
+getting code, building it, running tests and submitting changes, please refer to
+the [Developer guide](./developer_guide.md).
 
 ### Code standards
 

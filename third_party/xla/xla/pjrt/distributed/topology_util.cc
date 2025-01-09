@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -68,16 +67,17 @@ absl::StatusOr<std::string> GetBootIdString() {
   return boot_id_str;
 }
 
-static std::string GetLocalTopologyKey(std::string_view platform, int node_id) {
+static std::string GetLocalTopologyKey(absl::string_view platform,
+                                       int node_id) {
   return absl::StrCat("local_topology/", platform, "/", node_id);
 }
 
-static std::string GetGlobalTopologyKey(std::string_view platform) {
+static std::string GetGlobalTopologyKey(absl::string_view platform) {
   return absl::StrCat("global_topology/", platform);
 }
 
 static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
-    std::string_view platform, int num_nodes, KeyValueStoreInterface* kv_store,
+    absl::string_view platform, int num_nodes, KeyValueStoreInterface* kv_store,
     absl::Duration timeout) {
   std::vector<absl::StatusOr<std::string>> local_topology_strs(num_nodes);
 
@@ -136,7 +136,7 @@ GlobalTopologyProto BuildGlobalTopology(
   absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
   for (LocalTopologyProto& local : local_topologies) {
     // Every new boot_id seen is treated as a new host/slice.
-    std::string_view boot_id = local.boot_id();
+    absl::string_view boot_id = local.boot_id();
     auto [it, inserted] =
         boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
     if (inserted) {
@@ -160,7 +160,7 @@ GlobalTopologyProto BuildGlobalTopology(
   return global_topology;
 }
 
-absl::Status ExchangeTopologies(std::string_view platform, int node_id,
+absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
                                 int num_nodes,
                                 absl::Duration get_local_topology_timeout,
                                 absl::Duration get_global_topology_timeout,
@@ -244,9 +244,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     for (const DeviceProto& device : local_topology.devices()) {
       if (gpu_topology.platform_version().empty()) {
         gpu_topology.set_platform_version(device.name());
-      }
-      if (gpu_topology.core_count_per_chip() == 0) {
-        gpu_topology.set_core_count_per_chip(device.core_count());
       }
       slice_id_to_node_ids[device.slice_index()].insert(
           local_topology.node_id());

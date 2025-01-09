@@ -13,14 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,7 +64,7 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
       absl::WrapUnique(target->createTargetMachine(
           /*TT=*/triple, /*CPU=*/"", /*Features=*/"", llvm::TargetOptions{},
           /*RM=*/std::nullopt));
-  cpu::LLVMTargetMachineFeatures target_machine_features(target_machine.get());
+  cpu::TargetMachineFeatures target_machine_features(target_machine.get());
   return target_machine_features.vector_register_byte_size(*function);
 }
 

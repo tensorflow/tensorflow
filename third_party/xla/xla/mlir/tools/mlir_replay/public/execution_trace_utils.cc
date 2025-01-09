@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {
@@ -251,7 +254,13 @@ absl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
   }
 
   if (literal.shape().IsArray()) {
-    switch (literal.shape().element_type()) {
+    auto type = literal.shape().element_type();
+    if (xla::primitive_util::IsF8Type(type)) {
+      return absl::UnimplementedError(
+          absl::StrCat(xla::primitive_util::LowercasePrimitiveTypeName(type),
+                       " not implemented"));
+    }
+    switch (type) {
       case xla::PRED:
         return {{ArrayLiteralToTensor<bool>(literal)}};
       case xla::S8:
@@ -278,16 +287,6 @@ absl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
         return absl::UnimplementedError("BF16 not implemented");
       case xla::F64:
         return {{ArrayLiteralToTensor<double>(literal)}};
-      case xla::F8E5M2:
-        return absl::UnimplementedError("F8E5M2 not implemented");
-      case xla::F8E4M3FN:
-        return absl::UnimplementedError("F8E4M3FN not implemented");
-      case xla::F8E4M3B11FNUZ:
-        return absl::UnimplementedError("F8E4M3B11FNUZ not implemented");
-      case xla::F8E5M2FNUZ:
-        return absl::UnimplementedError("F8E5M2FNUZ not implemented");
-      case xla::F8E4M3FNUZ:
-        return absl::UnimplementedError("F8E4M3FNUZ not implemented");
       case xla::C64:
         return {{ArrayLiteralToTensor<std::complex<float>>(literal)}};
       case xla::C128:

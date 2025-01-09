@@ -28,13 +28,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -45,22 +46,6 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Describes the layout of a `BasicStringArray`.
-class BasicStringArrayLayout : public PjRtLayout {
- public:
-  BasicStringArrayLayout() = default;
-  BasicStringArrayLayout(const BasicStringArrayLayout& other) = delete;
-
-  ~BasicStringArrayLayout() override = default;
-
-  std::string Serialize() const override;
-  std::string ToString() const override;
-  bool operator==(const PjRtLayout& other) const override;
-
- protected:
-  void Hash(absl::HashState state) const override;
-};
-
 // `BasicStringArray` implements an `ifrt::Array` by wrapping a local (aka host)
 // string buffer. This object is expected to live exclusively in the IFRT layer,
 // and thus is not specific to any particular backend. However, it is currently
@@ -70,7 +55,7 @@ class BasicStringArray final
     : public llvm::RTTIExtends<BasicStringArray, Array> {
  public:
   // Must be in dense major to minor order.
-  using Buffer = absl::Span<const absl::string_view>;
+  using Buffer = absl::Span<const absl::Cord>;
 
   // One Buffer per shard.
   static constexpr int kBuffersInlineSize = 1;
@@ -81,7 +66,7 @@ class BasicStringArray final
   using OnDoneWithBuffer = std::function<void()>;
 
   // General array construction. The `buffers` and their elements
-  // (absl::string_views) must live until the `on_done_with_buffer` is called.
+  // (absl::Cords) must live until the `on_done_with_buffer` is called.
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
@@ -120,10 +105,14 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<> CopyToHostBuffer(
@@ -131,7 +120,7 @@ class BasicStringArray final
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> Copy(
-      std::optional<xla::ifrt::DeviceList> devices,
+      std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 

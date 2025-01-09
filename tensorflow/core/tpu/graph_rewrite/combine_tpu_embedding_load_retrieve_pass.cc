@@ -67,7 +67,7 @@ absl::flat_hash_set<std::string> GetLoadRetrieveNodeNames() {
 }
 
 // Gets TPUEmbeddingConfiguration proto from embedding ops.
-Status GetTPUEmbeddingConfiguration(
+absl::Status GetTPUEmbeddingConfiguration(
     Graph* graph,
     tensorflow::tpu::TPUEmbeddingConfiguration* tpu_embedding_config,
     std::string* tpu_embedding_config_str) {
@@ -109,7 +109,7 @@ Status GetTPUEmbeddingConfiguration(
 }
 
 // Validates that all of the table names are distinct and non-empty.
-Status ValidateEmbeddingTableNames(
+absl::Status ValidateEmbeddingTableNames(
     const tensorflow::tpu::TPUEmbeddingConfiguration& tpu_embedding_config) {
   // Map from table names to first occurrences.
   TableNameToIntegerMap table_name_map;
@@ -188,7 +188,7 @@ absl::flat_hash_set<Node*> GetRetrieveNodes(Graph* graph) {
 //
 // Returns: Status (OK if successful; otherwise, an error status).
 //
-Status GetLoadOrRetrieveNodesByTable(
+absl::Status GetLoadOrRetrieveNodesByTable(
     const absl::flat_hash_set<Node*>& candidate_nodes,
     const tensorflow::tpu::TPUEmbeddingConfiguration& tpu_embedding_config,
     const TableNameToIntegerMap& table_name_to_id_map,
@@ -280,7 +280,7 @@ using LoadCombinedParametersType =
 
 // Computes an array of ports containing the source of each table/parameter
 // combination. Fills in any unused ports with {nullptr, 0}.
-Status CombinePerTableParametersForLoad(
+absl::Status CombinePerTableParametersForLoad(
     const absl::flat_hash_set<Node*>& load_nodes,
     std::vector<Node*>* nodes_per_table,
     std::vector<bool>* is_debug_load_retrieve_node,
@@ -303,7 +303,7 @@ Status CombinePerTableParametersForLoad(
                                  .optimization_parameters();
 
     std::vector<tpu::StateVariableSpecification> state_variable_specs;
-    Status status = tpu::GetOptimizationAlgorithmStateVariables(
+    absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
         opt_params, &state_variable_specs);
 
     if (!status.ok()) {
@@ -378,14 +378,14 @@ void RemoveEdgesBetweenIndividualNodes(
 
 }  // namespace
 
-Status CombineTPUEmbeddingLoadRetrievePass::Run(
+absl::Status CombineTPUEmbeddingLoadRetrievePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(2) << "Starting CombineTPUEmbeddingLoadRetrievePass";
   Graph* graph = options.graph->get();
 
   tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config;
   std::string tpu_embedding_config_str;
-  const Status tpu_embedding_config_error = GetTPUEmbeddingConfiguration(
+  const absl::Status tpu_embedding_config_error = GetTPUEmbeddingConfiguration(
       graph, &tpu_embedding_config, &tpu_embedding_config_str);
   TF_RETURN_IF_ERROR(ValidateEmbeddingTableNames(tpu_embedding_config));
 

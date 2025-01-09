@@ -47,7 +47,7 @@ using CustomCallInComputation =
 bool MayInvokeCustomCall(
     const HloInstruction* hlo,
     const CustomCallInComputation& custom_call_in_computation) {
-  if (hlo->opcode() == HloOpcode::kCustomCall) {
+  if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
     return true;
   }
 

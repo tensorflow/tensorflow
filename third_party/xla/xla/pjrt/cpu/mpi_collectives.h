@@ -16,58 +16,21 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_MPI_COLLECTIVES_H_
 #define XLA_PJRT_CPU_MPI_COLLECTIVES_H_
 
-#include <cstddef>
 #include <memory>
-#include <optional>
 #include <tuple>
 #include <vector>
 
-#include "mpi.h"  // NOLINT
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/backends/cpu/collectives/mpi_communicator.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
-
-class MpiCollectivesCommunicator : public CollectivesCommunicator {
- public:
-  explicit MpiCollectivesCommunicator(int color, int key);
-  ~MpiCollectivesCommunicator() override;
-
-  absl::Status AllReduce(const RendezvousKey& key, ReductionKind reduction_kind,
-                         PrimitiveType element_type, size_t num_elements,
-                         const void* input_buffer, void* output_buffer,
-                         absl::Duration timeout) override;
-  absl::Status CollectivePermute(const RendezvousKey& key, size_t num_bytes,
-                                 std::optional<int> source_rank,
-                                 absl::Span<int const> target_ranks,
-                                 const void* input_buffer, void* output_buffer,
-                                 absl::Duration timeout) override;
-  absl::Status AllToAll(const RendezvousKey& key, size_t chunk_bytes,
-                        absl::Span<const void* const> input_buffers,
-                        absl::Span<void* const> output_buffers,
-                        absl::Duration timeout) override;
-  absl::Status AllGather(const RendezvousKey& key, size_t chunk_bytes,
-                         const void* input_buffer, void* output_buffer,
-                         absl::Duration timeout) override;
-  absl::Status ReduceScatter(const RendezvousKey& key,
-                             ReductionKind reduction_kind,
-                             PrimitiveType element_type, size_t chunk_elems,
-                             const void* input_buffer, void* output_buffer,
-                             absl::Duration timeout) override;
-
- private:
-  MPI_Comm comm_;
-  int mpi_rank_;
-  int mpi_size_;
-};
 
 class MpiCollectives : public CollectivesInterface {
  public:
@@ -83,7 +46,7 @@ class MpiCollectives : public CollectivesInterface {
   void Init();
   void Finalize();
 
-  absl::StatusOr<std::shared_ptr<CollectivesCommunicator>> GetCommunicator(
+  absl::StatusOr<std::shared_ptr<Communicator>> GetCommunicator(
       absl::Span<GlobalDeviceId const> global_devices, int rank) override;
 
  private:
@@ -93,7 +56,7 @@ class MpiCollectives : public CollectivesInterface {
   int mpi_world_rank_;
   int mpi_world_size_;
   absl::flat_hash_map<std::tuple<std::vector<GlobalDeviceId>, int>,
-                      std::shared_ptr<MpiCollectivesCommunicator>>
+                      std::shared_ptr<MpiCommunicator>>
       contexts_;
 };
 

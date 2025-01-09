@@ -26,13 +26,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,25 +44,53 @@ PjRtCompatibleClientRemapArrays(
     PjRtCompatibleClient* client, const RemapPlan& plan,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics semantics) {
-  const int num_inputs = arrays.size();
+  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
+  const int num_inputs = plan.input_specs.size();
+  const int num_actual_inputs = arrays.size();
+  const int num_outputs = plan.output_specs.size();
+  if (num_inputs != num_actual_inputs) {
+    return InvalidArgument("RemapArrays expects %d input arrays, but got %d",
+                           num_inputs, num_actual_inputs);
+  }
   for (int i = 0; i < num_inputs; ++i) {
     if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
       return InvalidArgument(
-          "Only PjRtCompatibleArray is supported: arrays[%d]=%s", i,
+          "Only PjRtCompatibleArray is supported, but input#%d is %s", i,
           arrays[i]->DebugString());
     }
-  }
-  if (plan.input_specs.size() > 1) {
-    if (semantics != ArrayCopySemantics::kDonateInput) {
+
+    if (plan.input_specs[i].dtype != arrays[i]->dtype()) {
       return InvalidArgument(
-          "kDonateInput is required if multiple inputs are used");
+          "RemapArrays expects input #%d to have dtype %v, but got %v", i,
+          plan.input_specs[i].dtype, arrays[i]->dtype());
+    }
+    if (plan.input_specs[i].shape != arrays[i]->shape()) {
+      return InvalidArgument(
+          "RemapArrays expects input #%d to have shape %v, but got %v", i,
+          plan.input_specs[i].shape, arrays[i]->shape().DebugString());
+    }
+    // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
+    // is currently called with input arrays with implicit sharding
+    // reinterpretation. Such patterns should be fixed before enabling stricter
+    // checking to avoid false positives.
+    if (*plan.input_specs[i].sharding->devices() !=
+            *arrays[i]->sharding().devices() ||
+        plan.input_specs[i].sharding->memory_kind() !=
+            arrays[i]->sharding().memory_kind()) {
+      return InvalidArgument(
+          "RemapArrays expects input #%d to be on %v with "
+          "%v, but is on %v with %v",
+          i, *plan.input_specs[i].sharding->devices(),
+          plan.input_specs[i].sharding->memory_kind(),
+          *arrays[i]->sharding().devices(),
+          arrays[i]->sharding().memory_kind());
     }
   }
 
-  const int num_outputs = plan.output_specs.size();
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    out_buffers_list[i].resize(plan.output_specs[i].sharding->devices().size());
+    out_buffers_list[i].resize(
+        plan.output_specs[i].sharding->devices()->size());
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {

@@ -35,7 +35,8 @@ namespace gpu {
 class CuDnnThunk : public Thunk {
  public:
   CuDnnThunk(std::string fingerprint, ThunkInfo,
-             absl::Span<const KernelArgument>);
+             absl::Span<const KernelArgument>,
+             std::optional<int64_t> sdpa_dropout_seed = std::nullopt);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
   ~CuDnnThunk() override = default;
@@ -53,6 +54,8 @@ class CuDnnThunk : public Thunk {
   std::string fingerprint_;
   std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
   std::vector<BufferAllocation::Slice> args_;
+  // Sdpa dropout seed
+  std::optional<int64_t> sdpa_dropout_seed_;
 };
 
 }  // namespace gpu

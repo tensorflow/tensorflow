@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LOCAL_CLIENT_H_
 #define XLA_CLIENT_LOCAL_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,8 +27,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
@@ -80,6 +81,10 @@ class LocalExecutable {
 
   // Return the built executable.
   Executable* executable() const { return executable_.get(); }
+
+  // Verifies that the a device is compatible with the executable's
+  // build device.
+  absl::Status VerifyRunDeviceCompatible(int run_device_ordinal) const;
 
  private:
   absl::StatusOr<ExecutionOutput> RunAsync(

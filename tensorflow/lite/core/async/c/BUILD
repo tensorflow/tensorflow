@@ -118,6 +118,9 @@ cc_test(
     name = "async_signature_runner_test",
     srcs = ["async_signature_runner_test.cc"],
     copts = tflite_copts() + tflite_copts_warnings(),
+    data = [
+        "//tensorflow/lite:testdata/no_signatures.bin",
+    ],
     deps = [
         ":async_signature_runner",
         ":internal",

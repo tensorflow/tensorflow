@@ -124,6 +124,7 @@ cc_library(
     hdrs = ["conv.h"],
     deps = [
         ":conv_util",
+        ":op_util_common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -140,6 +141,7 @@ cc_library(
     hdrs = ["conv_util.h"],
     deps = [
         ":op_util_common",
+        "//tensorflow/core/lib/math:math_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -259,6 +261,87 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo:hlo_matchers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "iota",
+    srcs = ["iota.cc"],
+    hdrs = ["iota.h"],
+    deps = [
+        ":op_util_common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "while",
+    srcs = ["while.cc"],
+    hdrs = ["while.h"],
+    deps = [
+        ":op_util_common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "get_dimension_size",
+    srcs = ["get_dimension_size.cc"],
+    hdrs = ["get_dimension_size.h"],
+    deps = [
+        ":util",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "if",
+    srcs = ["if.cc"],
+    hdrs = ["if.h"],
+    deps = [
+        ":util",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "fft",
+    srcs = ["fft.cc"],
+    hdrs = ["fft.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:constant_utils",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",

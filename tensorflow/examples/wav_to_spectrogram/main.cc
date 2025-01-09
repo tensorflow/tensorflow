@@ -55,8 +55,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  tensorflow::Status wav_status = WavToSpectrogram(
-      input_wav, window_size, stride, brightness, output_image);
+  absl::Status wav_status = WavToSpectrogram(input_wav, window_size, stride,
+                                             brightness, output_image);
   if (!wav_status.ok()) {
     LOG(ERROR) << "WavToSpectrogram failed with " << wav_status;
     return -1;

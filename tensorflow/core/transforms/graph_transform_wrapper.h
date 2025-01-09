@@ -34,7 +34,7 @@ namespace tfg {
 //
 // This is meant for simple interop where there is a Graph* currently. Passes
 // created here are constrained to run on Module ops.
-tensorflow::Status RunTransformOnGraph(
+absl::Status RunTransformOnGraph(
     tensorflow::Graph* graph,
     const std::initializer_list<
         llvm::function_ref<std::unique_ptr<mlir::Pass>()>>& passes,

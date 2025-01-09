@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/gpu/gpu_delegate_compatibility_checker.h"
 
-#include <functional>
-#include <memory>
 #include <string>
 #include <unordered_map>
 

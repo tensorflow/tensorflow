@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"

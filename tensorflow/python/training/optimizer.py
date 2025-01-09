@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
@@ -406,7 +407,9 @@ class Optimizer(
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name):
+  def __init__(
+      self, use_locking, name, use_own_namescope_for_non_slot_vars=False
+  ):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -414,8 +417,10 @@ class Optimizer(
     Args:
       use_locking: Bool. If True apply use locks to prevent concurrent updates
         to variables.
-      name: A non-empty string.  The name to use for accumulators created
-        for the optimizer.
+      name: A non-empty string.  The name to use for accumulators created for
+        the optimizer.
+      use_own_namescope_for_non_slot_vars: If True, use a root namescope under
+        self._name for non-slot variables.
 
     Raises:
       ValueError: If name is malformed.
@@ -424,6 +429,13 @@ class Optimizer(
       raise ValueError("Must specify the optimizer name")
     self._use_locking = use_locking
     self._name = name
+    self._use_own_namescope_for_non_slot_vars = (
+        use_own_namescope_for_non_slot_vars
+    )
+    if self._use_own_namescope_for_non_slot_vars:
+      with variable_scope.variable_scope(None, default_name=self._name) as vs:
+        self._non_slot_variable_scope = vs
+
     # Dictionary of slots.
     #  {slot_name :
     #      {_var_key(variable_to_train): slot_for_the_variable, ... },
@@ -948,10 +960,26 @@ class Optimizer(
               name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_v1.VariableV1(
-            initial_value, name=name, trainable=False,
-            use_resource=resource_variable_ops.is_resource_variable(
-                colocate_with))
+        if self._use_own_namescope_for_non_slot_vars:
+          with ops.name_scope("", skip_on_eager=False):
+            with variable_scope.variable_scope(self._non_slot_variable_scope):
+              v = variable_scope.get_variable(
+                  initializer=initial_value,
+                  name=name,
+                  trainable=False,
+                  use_resource=resource_variable_ops.is_resource_variable(
+                      colocate_with
+                  ),
+              )
+        else:
+          v = variable_v1.VariableV1(
+              initial_value,
+              name=name,
+              trainable=False,
+              use_resource=resource_variable_ops.is_resource_variable(
+                  colocate_with
+              ),
+          )
       # Restore this variable by name if necessary, but don't add a
       # Trackable dependency. Optimizers return the current graph's
       # non-slot variables from _checkpoint_dependencies explicitly rather

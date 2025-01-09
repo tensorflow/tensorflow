@@ -18,9 +18,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -42,6 +42,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
                  << status_or_tpu_platform.status();
     return nullptr;
   }
+  LOG(INFO) << "Platform manager status: " << status_or_tpu_platform.status();
 
   // Use any other registered TPU platform.
   auto status_or_other_tpu_platforms =
@@ -72,12 +73,14 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
 
   --tries_left;
   if (tries_left <= 0) {
-    LOG(INFO) << "No TPU platform found.";
+    LOG(INFO) << "No TPU platform found. Platform manager status: "
+              << status_or_other_tpu_platforms.status();
     return nullptr;
   }
   LOG(INFO)
       << "No TPU platform registered. Waiting 1 second and trying again... ("
-      << tries_left << " tries left)";
+      << tries_left << " tries left) Platform manager status: "
+      << status_or_other_tpu_platforms.status();
   tsl::Env::Default()->SleepForMicroseconds(1000000);  // 1 second
   return GetRegisteredPlatformStatic(initialize_platform, tries_left);
 }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
@@ -157,7 +158,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
                                       /*preferred_cuda_dir=*/"", extra_flags);
 
   return stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
-      cc.major, cc.minor, ptx_input, options, cancel_if_reg_spill);
+      cc, ptx_input, options, cancel_if_reg_spill);
 }
 
 class PtxCompilerTest : public ::testing::Test {
@@ -165,7 +166,7 @@ class PtxCompilerTest : public ::testing::Test {
     // This can't be in the constructor because `GTEST_SKIP` can't be called
     // from constructors.
     if (!stream_executor::IsLibNvPtxCompilerSupported()) {
-      // We skip these tests if this is a build without libnvptxcompiler
+      // We skip these tests if this is a build without libNvptxCompiler
       // support.
       GTEST_SKIP();
     }
@@ -223,8 +224,7 @@ TEST_F(PtxCompilerTest, AcceptsExtraArguments) {
 }
 
 TEST_F(PtxCompilerTest, ReturnsReasonableVersion) {
-  constexpr stream_executor::LibNvPtxCompilerVersion kMinSupportedVersion = {
-      12, 0, 0};
+  constexpr stream_executor::SemanticVersion kMinSupportedVersion = {12, 0, 0};
 
   EXPECT_THAT(stream_executor::GetLibNvPtxCompilerVersion(),
               tsl::testing::IsOkAndHolds(testing::Ge(kMinSupportedVersion)));

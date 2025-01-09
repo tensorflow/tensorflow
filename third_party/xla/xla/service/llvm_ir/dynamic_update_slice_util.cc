@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 
+#include <cstdint>
+#include <functional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -122,7 +126,7 @@ static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const IndexGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
-    absl::string_view name, llvm::IRBuilder<>* b) {
+    absl::string_view name, llvm::IRBuilderBase* b) {
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
@@ -186,7 +190,7 @@ static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
 
 absl::Status EmitDynamicUpdateSliceInPlace(
     absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
-    absl::string_view name, llvm::IRBuilder<>* b) {
+    absl::string_view name, llvm::IRBuilderBase* b) {
   VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
 
   // No need to use operand_arrays[0], the input array of the
@@ -219,7 +223,7 @@ static absl::Status EmitFusedDynamicUpdateSliceInPlaceImpl(
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,
     FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilder<>* b) {
+    const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilderBase* b) {
   VLOG(2) << "EmitFusedDynamicUpdateSliceInPlace for " << fusion->ToString();
 
   CHECK_GE(dus_and_output_array.size(), 1);
@@ -272,7 +276,7 @@ static absl::Status EmitFusedDynamicUpdateSliceInPlaceImpl(
 
 absl::Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const IrArray& fusion_output_array,
-    FusedIrEmitter* fused_emitter, llvm::IRBuilder<>* b) {
+    FusedIrEmitter* fused_emitter, llvm::IRBuilderBase* b) {
   HloInstruction* dus = fusion->called_computations()[0]->root_instruction();
   CHECK_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
   std::vector<std::pair<const HloInstruction*, const IrArray>>
@@ -288,7 +292,7 @@ absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,
     FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b) {
+    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
       fusion, dus_and_output_array, fused_emitter, &launch_dimensions, b);
 }

@@ -87,7 +87,7 @@ TpuCompilationCacheEntry CompilationCacheEntryRef::get() {
   return TpuCompilationCacheEntry(entry_->tpu_program_group.get(), index_);
 }
 
-Status CompilationCacheEntryRef::ToSubEntryRef(
+absl::Status CompilationCacheEntryRef::ToSubEntryRef(
     CompilationCacheFetchTarget fetch_target) {
   CompiledSubgraph* target = nullptr;
   switch (fetch_target) {
@@ -129,7 +129,7 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
   // outstanding client references to avoid leaking storage.
   for (const auto& entry : entries_by_uid_) {
     while (entry.second->external_references > 0) {
-      Status s = Release(entry.first);
+      absl::Status s = Release(entry.first);
       TF_CHECK_OK(s);
     }
   }
@@ -146,7 +146,7 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
   CHECK_EQ(marked_for_eviction_size_, 0);
 }
 
-Status TpuCompilationCacheInterface::MarkEntryForEviction(
+absl::Status TpuCompilationCacheInterface::MarkEntryForEviction(
     int64_t subgraph_uid) {
   tsl::profiler::TraceMe key_release_traceme(
       "TPU compilation cache possibly evict uid",
@@ -194,7 +194,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
+absl::Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
   tsl::profiler::TraceMe key_release_traceme(
       "TPU compilation cache release uid",
       /*level=*/2);
@@ -367,14 +367,15 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
                      key));
 }
 
-Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
+absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64_t* uid,
     std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
-    const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
+    const std::function<absl::Status(TpuProgramGroupInterface*)>&
+        compile_function) {
   std::vector<CompiledSubgraph*> removed_entries;
   auto status = CompileIfKeyAbsentHelper(
       subgraph_key, session_metadata, per_step_ref_holder, uid, proto_key,
@@ -405,7 +406,7 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
   return "";
 }
 
-Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
+absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64_t* uid,
@@ -413,7 +414,8 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     std::vector<bool>* may_modify_variables,
     std::vector<CompiledSubgraph*>* removed_entries,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
-    const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
+    const std::function<absl::Status(TpuProgramGroupInterface*)>&
+        compile_function) {
   CompiledSubgraph* entry = nullptr;
 
   tsl::profiler::TraceMe subgraph_lookup_traceme(
@@ -550,7 +552,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
   return entry->initialization_status;
 }
 
-Status TpuCompilationCacheInterface::GetKeysFromUid(
+absl::Status TpuCompilationCacheInterface::GetKeysFromUid(
     int64_t uid, std::vector<std::string>* keys) {
   keys->clear();
 
@@ -563,7 +565,7 @@ Status TpuCompilationCacheInterface::GetKeysFromUid(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheInterface::Lookup(
+absl::Status TpuCompilationCacheInterface::Lookup(
     int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
@@ -588,7 +590,7 @@ Status TpuCompilationCacheInterface::Lookup(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheInterface::Lookup(
+absl::Status TpuCompilationCacheInterface::Lookup(
     const std::string& proto_key,
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();

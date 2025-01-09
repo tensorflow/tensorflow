@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html devsite>
+  <head>
+    <title>TensorFlowLiteSwift Framework Reference</title>
+    <link rel="stylesheet" href="../css/jazzy.css" />
+    <meta charset='utf-8'>
+  </head>
+  <body>
+    <div class="content-wrapper">
+      <article class="main-content">
+        <section>
+          <section class="section">
+            <h1>ThreadWaitType</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">ThreadWaitType</span> <span class="p">:</span> <span class="kt">Equatable</span><span class="p">,</span> <span class="kt">Hashable</span></code></pre>
+
+                </div>
+              </div>
+            <p>A type indicating how the current thread should wait for work scheduled on the GPU to complete.</p>
+
+          </section>
+          <section class="section task-group-section">
+            <div class="task-group">
+              <ul>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14ThreadWaitTypeO4noneyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/none" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14ThreadWaitTypeO4noneyA2CmF">none</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The thread does not wait for the work to complete. Useful when the output of the work is used
+with the GPU pipeline.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="k">none</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14ThreadWaitTypeO7passiveyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/passive" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14ThreadWaitTypeO7passiveyA2CmF">passive</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The thread waits until the work is complete.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">passive</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14ThreadWaitTypeO6activeyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/active" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14ThreadWaitTypeO6activeyA2CmF">active</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The thread waits for the work to complete with minimal latency, which may require additional
+CPU resources.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">active</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift14ThreadWaitTypeO10aggressiveyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/aggressive" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift14ThreadWaitTypeO10aggressiveyA2CmF">aggressive</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The thread waits for the work while trying to prevent the GPU from going into sleep mode.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">aggressive</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>          </section>
+        </section>
+      </article>
+    </div>
+  </body>
+</html>

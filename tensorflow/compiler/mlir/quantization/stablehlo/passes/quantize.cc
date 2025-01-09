@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -104,7 +101,7 @@ void QuantizePass::runOnOperation() {
   // Quantize all quantizable ops, including ops that are not compute-heavy.
   PopulateAllQuantizablePatterns(ctx, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.

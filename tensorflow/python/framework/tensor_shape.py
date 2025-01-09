@@ -1360,11 +1360,12 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
 
     """
     other = as_shape(other)
-    if self.dims is not None and other.dims is not None:
+    if self._dims is not None and other._dims is not None:  # pylint: disable=protected-access
       if self.rank != other.rank:
         return False
-      for x_dim, y_dim in zip(self.dims, other.dims):
-        if not x_dim.is_compatible_with(y_dim):
+      for x_dim, y_dim in zip(self._dims, other._dims):  # pylint: disable=protected-access
+        # Inline TensorShape.dims logic for performance in tight loops.
+        if x_dim is not None and y_dim is not None and x_dim != y_dim:
           return False
     return True
 

@@ -3,7 +3,8 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -150,10 +151,7 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tstring.h",
     ],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/c:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = selects.with_or({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -309,8 +307,6 @@ tf_cuda_library(
             "//tensorflow/cc:scope_internal",
             "//tensorflow/cc:while_loop",
             "//tensorflow/cc/saved_model:loader_lite",
-            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
-            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
@@ -349,8 +345,6 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
-        "//tensorflow/cc/experimental/libtf:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__subpackages__",
         # copybara:uncomment_begin(google-only)
         # "//tensorflow/cc/experimental/tf2:__pkg__",
         # "//tensorflow/cc/experimental/tf2:__subpackages__",
@@ -560,7 +554,7 @@ tf_cuda_library(
         "tf_tensor_helper.h",
         "tf_tensor_internal.h",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros",
         ":tensor_interface",
@@ -754,6 +748,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -814,7 +809,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
             "@local_tsl//tsl/platform:statusor",
-            "@local_xla//xla/stream_executor",
+            "@local_xla//xla/stream_executor:stream",
             "@local_xla//xla/tsl/framework:device_id_utils",
         ],
     }),
@@ -936,6 +931,7 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
+    extra_copts = if_pywrap(["-DTENSORFLOW_NO_SHARED_OBJECTS"]),
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -1135,7 +1131,10 @@ tf_cuda_library(
     name = "python_api",
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":c_api",
         ":c_api_internal",

@@ -42,7 +42,7 @@ struct FftPlan {
   // protect each plan with a mutex.
   absl::Mutex mu;
   std::unique_ptr<se::fft::Plan> plan ABSL_GUARDED_BY(mu);
-  float scale_factor ABSL_GUARDED_BY(mu);
+  uint64_t scale_factor ABSL_GUARDED_BY(mu);
 };
 
 class FftPlanCache {

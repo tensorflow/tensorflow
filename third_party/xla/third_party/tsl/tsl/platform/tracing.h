@@ -142,9 +142,9 @@ const char* GetLogDir();
 }  // namespace tsl
 
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/tracing_impl.h"
+#include "xla/tsl/platform/google/tracing_impl.h"
 #else
-#include "tsl/platform/default/tracing_impl.h"
+#include "xla/tsl/platform/default/tracing_impl.h"
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_TRACING_H_

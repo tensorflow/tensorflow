@@ -43,17 +43,17 @@ MangledKind GetMangledKind(absl::string_view str);
 // Return a TensorShapeProto mangled as a string.
 string MangleShape(const TensorShapeProto& shape);
 // Demangle a string mangled with MangleShape.
-Status DemangleShape(absl::string_view str, TensorShapeProto* proto);
+absl::Status DemangleShape(absl::string_view str, TensorShapeProto* proto);
 
 // Return a TensorProto mangled as a string.
 string MangleTensor(const TensorProto& tensor);
 // Demangle a string mangled with MangleTensor.
-Status DemangleTensor(absl::string_view str, TensorProto* proto);
+absl::Status DemangleTensor(absl::string_view str, TensorProto* proto);
 
 // Return a DataType mangled as a string.
 string MangleDataType(const DataType& dtype);
 // Demangle a string mangled with MangleDataType.
-Status DemangleDataType(absl::string_view str, DataType* proto);
+absl::Status DemangleDataType(absl::string_view str, DataType* proto);
 
 }  // namespace mangling_util
 }  // namespace tensorflow

@@ -18,77 +18,14 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
-  let summary = "Adds sparse dot encoding.";
-  let options = [
-    Option<"num_warps_", "num-warps", "int32_t", /*default=*/"4",
-           "Number of warps">,
-    Option<"threads_per_warp_", "threads-per-warp", "int32_t", /*default=*/"32",
-           "Number of threads per warp">,
-    Option<"num_ctas_", "num-ctas", "int32_t", /*default=*/"1",
-           "Number of CTAs in a CGA">,
-  ];
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseAddEncodingPass()";
-}
-
-def SparseBlockedToMMAPass : Pass<"sparse-blocked-to-mma", "mlir::ModuleOp"> {
-  let summary = "Add convert layouts to/from MMA before and after SparseDotOp.";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseBlockedToMMAPass()";
-}
-
-def SparseRemoveLayoutConversionPass
-    : Pass<"sparse-remove-layout-conversion", "mlir::ModuleOp"> {
-  let summary = "Replaces ConvertLayoutOp with sparse dot encoding";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseRemoveLayoutConversionPass()";
-}
-
-def SparseLocalLoadToLLVMPass
-    : Pass<"sparse-local-load-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse local load to LLVM";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::LLVM::LLVMDialect"
-  ];
-  let constructor = "CreateSparseLocalLoadToLLVMPass()";
-}
-
-def SparseDotOpToLLVMPass : Pass<"sparse-dot-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse dot to LLVM";
-  let constructor = "CreateSparseDotOpToLLVMPass()";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::triton::nvgpu::NVGPUDialect",
-  ];
-}
-
-def SparseWGMMAOpToLLVMPass : Pass<"sparse-wgmma-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse WGMMA to LLVM";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::triton::nvgpu::NVGPUDialect",
-  ];
-  let constructor = "CreateSparseWGMMAOpToLLVMPass()";
-}
-
-def PreventMmaV3LoopUnrollingPass
-    : Pass<"prevent-mmav3-loop-unrolling", "mlir::ModuleOp"> {
-  let summary = "Prevent MMAv3 loop unrolling.";
+def GeneralizeKernelSignaturePass
+    : Pass<"generalize-kernel-signature"> {
+  let summary = "Rewrite kernels to use generic data pointer arguments.";
   let description = [{
-    This pass is a result of b/344841434:
-    PTX sometimes unrolls wgmma loops that can cause a 1000x slow down in
-    compilation time. Most unrolling has already been done before PTX,
-    this pragma prevents ptxas from doing more.
+    Rewrite signatures of kernel functions from global pointers to generic
+    pointers and cast them to global ones within the kernel.
   }];
-  let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
+  let constructor = "CreateGeneralizeKernelSignaturePass()";
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_TD_

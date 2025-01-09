@@ -61,7 +61,7 @@ static tpu::TopologyProto* global_tpu_topology
 
 constexpr char kTaskSpec[] = "/job:localhost/replica:0/task:0";
 
-Status CreateDeviceMgr(Env* env, std::unique_ptr<DeviceMgr>* device_mgr) {
+absl::Status CreateDeviceMgr(Env* env, std::unique_ptr<DeviceMgr>* device_mgr) {
   SessionOptions session_options;
   session_options.env = env;
   std::vector<std::unique_ptr<Device>> devices;
@@ -95,9 +95,9 @@ std::string GetTPUSystemDevice(absl::string_view job_name) {
   }
 }
 
-Status ConstructDistributedInitializationGraph(absl::string_view job_name,
-                                               const DeviceSet& device_set,
-                                               Graph* graph_to_run) {
+absl::Status ConstructDistributedInitializationGraph(
+    absl::string_view job_name, const DeviceSet& device_set,
+    Graph* graph_to_run) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   GraphOptimizationPassOptions options;
   options.graph = &graph;
@@ -122,9 +122,9 @@ Status ConstructDistributedInitializationGraph(absl::string_view job_name,
   return absl::OkStatus();
 }
 
-Status InitializeFromSession(absl::string_view session_target,
-                             const Graph* graph_to_run,
-                             std::vector<Tensor>* outputs) {
+absl::Status InitializeFromSession(absl::string_view session_target,
+                                   const Graph* graph_to_run,
+                                   std::vector<Tensor>* outputs) {
   tensorflow::SessionOptions s_opts;
   s_opts.target = std::string(session_target);
 
@@ -142,10 +142,10 @@ Status InitializeFromSession(absl::string_view session_target,
 
 }  // namespace
 
-Status InitializeTPUSystemGlobally(absl::string_view job_name,
-                                   absl::string_view session_target,
-                                   const DeviceSet& device_set, Env* env,
-                                   tpu::TopologyProto* tpu_topology) {
+absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
+                                         absl::string_view session_target,
+                                         const DeviceSet& device_set, Env* env,
+                                         tpu::TopologyProto* tpu_topology) {
   VLOG(1) << "InitializeTpuSystemGlobally";
 
   absl::MutexLock lock(&global_init_tpu_mutex);
@@ -207,7 +207,8 @@ Status InitializeTPUSystemGlobally(absl::string_view job_name,
 // runs. This means that we need to create the right options and pass it to this
 // API to make it work correctly. We felt it was an onerous restriction to place
 // on the API, so we went with the current approach.
-Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology) {
+absl::Status InitializeTPUSystemGlobally(Env* env,
+                                         tpu::TopologyProto* tpu_topology) {
   std::unique_ptr<DeviceMgr> device_mgr;
   TF_RETURN_IF_ERROR(CreateDeviceMgr(env, &device_mgr));
   DeviceSet device_set;
@@ -218,7 +219,7 @@ Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology) {
                                      device_set, env, tpu_topology);
 }
 
-Status InitializeTPUSystemGlobally() {
+absl::Status InitializeTPUSystemGlobally() {
   tensorflow::tpu::TopologyProto tpu_topology;
   return InitializeTPUSystemGlobally(tensorflow::Env::Default(), &tpu_topology);
 }

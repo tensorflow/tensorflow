@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,20 +42,20 @@ class ConfigurationEntry {
  public:
   ConfigurationEntry(const std::string& test_id_rex, T test_config,
                      bool is_denylist)
-      : test_id_rex_(test_id_rex),
+      : test_id_rex_(new RE2(test_id_rex)),
         test_config_(test_config),
         is_denylist_(is_denylist) {}
 
-  bool Matches(const std::string& test_id) {
-    return RE2::FullMatch(test_id, test_id_rex_);
+  bool Matches(const std::string& test_id) const {
+    return RE2::FullMatch(test_id, *test_id_rex_);
   }
   bool IsDenylistEntry() const { return is_denylist_; }
   const T& TestConfig() const { return test_config_; }
 
-  const std::string& TestIdRex() const { return test_id_rex_; }
+  const std::string& TestIdRex() const { return test_id_rex_->pattern(); }
 
  private:
-  std::string test_id_rex_;
+  std::unique_ptr<RE2> test_id_rex_;
   T test_config_;
   bool is_denylist_;
 };
@@ -74,7 +75,7 @@ std::optional<T> GetAccelerationTestParam(std::string test_id) {
     auto consumer = [&config](std::string key, std::string value_str,
                               bool is_denylist) mutable {
       T value = T::ParseConfigurationLine(value_str);
-      config->push_back(ConfigurationEntry<T>(key, value, is_denylist));
+      config->emplace_back(key, value, is_denylist);
     };
 
     ReadAccelerationConfig(T::AccelerationTestConfig(), consumer);
@@ -88,9 +89,11 @@ std::optional<T> GetAccelerationTestParam(std::string test_id) {
   const std::vector<ConfigurationEntry<T>>* test_config =
       test_config_ptr.load();
 
-  const auto test_config_iter = std::find_if(
-      test_config->begin(), test_config->end(),
-      [&test_id](ConfigurationEntry<T> elem) { return elem.Matches(test_id); });
+  const auto test_config_iter =
+      std::find_if(test_config->begin(), test_config->end(),
+                   [&test_id](const ConfigurationEntry<T>& elem) {
+                     return elem.Matches(test_id);
+                   });
   if (test_config_iter != test_config->end() &&
       !test_config_iter->IsDenylistEntry()) {
     return std::optional<T>(test_config_iter->TestConfig());

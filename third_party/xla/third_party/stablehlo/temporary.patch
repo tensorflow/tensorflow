@@ -1,1 +1,154 @@
+diff --ruN a/stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py b/stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
+--- stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
++++ stablehlo/build_tools/math/generate_ChloDecompositionPatternsMath.py
+@@ -71,8 +71,15 @@
+ 
+   output_file = os.path.relpath(
+       os.path.normpath(
+-          os.path.join(os.path.dirname(__file__), "..", "..", "stablehlo",
+-                       "transforms", output_filename)),
++          os.path.join(
++              os.path.dirname(__file__),
++              "..",
++              "..",
++              "stablehlo",
++              "transforms",
++              output_filename,
++          )
++      ),
+       os.getcwd(),
+   )
+ 
+@@ -105,7 +112,8 @@
+     func = getattr(fa.algorithms, fname, None)
+     if func is None:
+       warnings.warn(
+-          f"{fa.algorithms.__name__} does not define {fname}. Skipping.")
++          f"{fa.algorithms.__name__} does not define {fname}. Skipping."
++      )
+       continue
+     ctx = fa.Context(paths=[fa.algorithms],
+                      parameters=dict(rewrite_keep_integer_literals=True))
+@@ -116,14 +124,15 @@
+     sources[-1] += src
+   source = "\n\n".join(sources) + "\n"
+ 
+-  if chloname.startswith('StableHLO_'):
++  if chloname.startswith("StableHLO_"):
+     # an ugly hack to fix the definition of stablehlo complex math
+     # functions. TODO(pearu): add the corresponding feature to
+     # functional_algorithms stablehlo printer
+-    NameOp = chloname.split('_', 1)[1]
++    NameOp = chloname.split("_", 1)[1]
+     source = source.replace(
+-        f'def : Pat<({chloname}',
+-        f'def {NameOp}_ComplexElementType_ComplexMathExpander : Pat<({chloname}'
++        f"def : Pat<({chloname}",
++        f"def {NameOp}_ComplexElementType_ComplexMathExpander :"
++        f" Pat<({chloname}",
+     )
+ 
+   if os.path.isfile(output_file):
+diff --ruN a/stablehlo/build_tools/math/generate_tests.py b/stablehlo/build_tools/math/generate_tests.py
+--- stablehlo/build_tools/math/generate_tests.py
++++ stablehlo/build_tools/math/generate_tests.py
+@@ -64,10 +64,12 @@
+     dict(name="acosh", mpmath_name="arccosh"),
+     dict(name="atanh", mpmath_name="arctanh"),
+     dict(name="square", mpmath_name="square"),
+-    dict(name="log_plus_one",
+-         mpmath_name="log1p",
+-         namespace="stablehlo",
+-         passes="--stablehlo-complex-math-expander"),
++    dict(
++        name="log_plus_one",
++        mpmath_name="log1p",
++        namespace="stablehlo",
++        passes="--stablehlo-complex-math-expander",
++    ),
+ ]
+ 
+ 
+@@ -138,13 +140,16 @@
+       params = fa.utils.function_validation_parameters(opname, dtype)
+       max_ulp_difference = op.get(
+           "max_ulp_difference",
+-          params.get("max_valid_ulp_count", default_max_ulp_difference))
++          params.get("max_valid_ulp_count", default_max_ulp_difference),
++      )
+ 
+       nmp = fa.utils.numpy_with_mpmath(
+           extra_prec_multiplier=op.get(
+               "extra_prec_multiplier",
+-              params.get("extra_prec_multiplier",
+-                         default_extra_prec_multiplier)),
++              params.get(
++                  "extra_prec_multiplier", default_extra_prec_multiplier
++              ),
++          ),
+           flush_subnormals=flush_subnormals,
+       )
+ 
+@@ -208,8 +213,10 @@
+           continue
+ 
+       f = open(fname, "w")
+-      f.write(f"// RUN: stablehlo-opt {passes} %s |"
+-              " stablehlo-translate --interpret\n")
++      f.write(
++          f"// RUN: stablehlo-opt {passes} %s |"
++          " stablehlo-translate --interpret\n"
++      )
+       f.write(
+           "// This file is generated, see build_tools/math/README.md for more"
+           " information.\n")
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -107,6 +107,8 @@
+ 
+ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
+   addArgumentMaterialization(scalarToTensor);
++  addSourceMaterialization(scalarToTensor);
++  addTargetMaterialization(scalarToTensor);
+ }
+ 
+ }  // namespace mlir::stablehlo
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -440,7 +440,6 @@
+ }
+ 
+ // -----
+-
+ 
+ // CHECK-LABEL:   func.func @asinh_f64(
+ // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<f64>) -> tensor<f64> {
+@@ -2788,7 +2787,6 @@
+ 
+ // -----
+ 
+-
+ // CHECK-LABEL: @sinh_f32
+ // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
+ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
+@@ -3891,6 +3889,8 @@
+   return
+ }
+ 
++// -----
++
+ // CHECK-LABEL:   @square_complex_f32(
+ // CHECK-SAME:                                  %[[VAL_0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>> {
+ // CHECK:           %[[VAL_1:.*]] = stablehlo.real %[[VAL_0]] : (tensor<complex<f32>>) -> tensor<f32>
+@@ -3916,6 +3916,8 @@
+   func.return %result : tensor<complex<f32>>
+ }
+ 
++// -----
++
+ // CHECK-LABEL:   @square_f32(
+ // CHECK-SAME:                          %[[VAL_0:.*]]: tensor<f32>) -> tensor<f32> {
+ // CHECK:           %[[VAL_1:.*]] = stablehlo.multiply %[[VAL_0]], %[[VAL_0]] : tensor<f32>
 

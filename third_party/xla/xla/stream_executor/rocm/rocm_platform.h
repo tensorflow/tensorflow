@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
@@ -39,7 +39,6 @@ extern const Platform::Id kROCmPlatformId;
 class ROCmPlatform : public Platform {
  public:
   ROCmPlatform();
-  ~ROCmPlatform() override;
 
   // Platform interface implementation:
   // Returns the same value as kROCmPlatform above.
@@ -56,15 +55,12 @@ class ROCmPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-
  private:
-  // Returns a device constructed with the options specified in "config" without
+  // Returns a device constructed with ordinal without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config);
+      int ordinal);
 
   // This platform's name.
   std::string name_;

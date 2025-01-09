@@ -1,9 +1,9 @@
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "@local_tsl//tsl/platform:build_config.bzl",
+    "//xla/tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -69,8 +69,6 @@ filegroup(
 )
 
 # Test against platforms and architecures that don't support CUDA.
-# TODO(b/153737462): Automatically filter tests to create the appropriate
-# portable test list.
 test_suite(
     name = "portable_kernel_tests",
     tags = [

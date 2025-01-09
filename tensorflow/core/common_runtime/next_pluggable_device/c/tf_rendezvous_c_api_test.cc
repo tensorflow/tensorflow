@@ -74,7 +74,7 @@ class FakeAllocator : public Allocator {
 class FakeDevice : public Device {
  public:
   explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-  Status Sync() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes) override {
     return allocator_.get();
   }
@@ -102,7 +102,8 @@ class FakeDeviceManager : public DeviceMgr {
   }
   std::string DebugString() const override { return ""; }
   std::string DeviceMappingString() const override { return ""; }
-  absl::Status LookupDevice(StringPiece name, Device** device) const override {
+  absl::Status LookupDevice(absl::string_view name,
+                            Device** device) const override {
     *device = fake_device_.get();
     return absl::OkStatus();
   }

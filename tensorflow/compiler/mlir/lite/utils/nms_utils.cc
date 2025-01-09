@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
 
+#include <cstddef>
 #include <string>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers

@@ -166,18 +166,18 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DReshape) {
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  // auto shape_rng =
-  //     std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
-  const auto batch = 2;           // shape_rng();
-  const auto width = 3;           // shape_rng();
-  const auto input_channels = 4;  // channels_rng();
+  const auto batch = shape_rng();
+  const auto width = shape_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
       .InputShape({batch, width, input_channels})
-      .InputChannels(width * input_channels)
+      .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());

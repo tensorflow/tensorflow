@@ -16,17 +16,17 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 
 #include <string>
-#include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 
 namespace xla {
 
-absl::StatusOr<std::string> InMemoryKeyValueStore::Get(std::string_view key,
+absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
                                                        absl::Duration timeout) {
   absl::MutexLock lock(&mu_);
   auto cond = [&]() {
@@ -41,8 +41,19 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(std::string_view key,
   return kv_store_.find(key)->second;
 }
 
-absl::Status InMemoryKeyValueStore::Set(std::string_view key,
-                                        std::string_view value) {
+absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
+    absl::string_view key) {
+  absl::MutexLock lock(&mu_);
+  auto it = kv_store_.find(key);
+  if (it == kv_store_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat(key, " is not found in the kv store."));
+  }
+  return it->second;
+}
+
+absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
+                                        absl::string_view value) {
   absl::MutexLock lock(&mu_);
   kv_store_[key] = value;
   return absl::OkStatus();

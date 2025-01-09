@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 
 #include <map>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
@@ -55,18 +56,18 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     std::unique_ptr<WorkerCacheInterface> worker_cache(
         NewGrpcWorkerCache(channel_cache, grpc_worker_env_.get()));
 
-    worker_session_.reset(new WorkerSession(
+    worker_session_ = std::make_unique<WorkerSession>(
         "cluster_test_session", "/job:localhost/replica:0/task:0",
         std::move(worker_cache), std::unique_ptr<DeviceMgr>(),
         std::unique_ptr<GraphMgr>(), nullptr,
         [](WorkerSession* worker_session, bool called,
-           DeviceMgr* remote_device_mgr) { return nullptr; }));
+           DeviceMgr* remote_device_mgr) { return nullptr; });
 
-    cluster_flr_.reset(new ClusterFunctionLibraryRuntime(worker_session_.get(),
-                                                         true, nullptr));
+    cluster_flr_ = std::make_unique<ClusterFunctionLibraryRuntime>(
+        worker_session_.get(), true, nullptr);
   }
 
-  Status ConstructFunctionGraphHelper(
+  absl::Status ConstructFunctionGraphHelper(
       const OpDef& sig, test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const FunctionLibraryDefinition& lib_def, GraphDef* g,
@@ -85,19 +86,20 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
                               local_handle, done);
   }
 
-  Status InstantiateAndRun(
+  absl::Status InstantiateAndRun(
       const string& function_name, const FunctionLibraryDefinition& lib_def,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    Status status;
+    absl::Status status;
     Notification instantiate_done;
-    cluster_flr_->Instantiate(function_name, lib_def, attrs, options, &handle,
-                              [&status, &instantiate_done](const Status& s) {
-                                status = s;
-                                instantiate_done.Notify();
-                              });
+    cluster_flr_->Instantiate(
+        function_name, lib_def, attrs, options, &handle,
+        [&status, &instantiate_done](const absl::Status& s) {
+          status = s;
+          instantiate_done.Notify();
+        });
     instantiate_done.WaitForNotification();
     if (!status.ok()) {
       return status;
@@ -107,7 +109,7 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     FunctionLibraryRuntime::Options opts;
     std::vector<Tensor> out;
     cluster_flr_->Run(opts, handle, args, &out,
-                      [&status, &done](const Status& s) {
+                      [&status, &done](const absl::Status& s) {
                         status = s;
                         done.Notify();
                       });

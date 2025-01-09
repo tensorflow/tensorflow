@@ -125,6 +125,7 @@ cc_test(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "@com_google_absl//absl/algorithm",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -160,8 +161,10 @@ cc_library(
     }),
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_params",
         ":benchmark_utils",
         ":profiling_listener",
+        "//tensorflow/core/example:example_protos_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
@@ -171,6 +174,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/profiling:model_runtime_info",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools:logging",
@@ -180,6 +184,8 @@ cc_library(
         "//tensorflow/lite/tools/delegates:tflite_execution_providers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@ruy//ruy/profiler",
     ],
 )
@@ -190,6 +196,9 @@ cc_test(
         "benchmark_tflite_model_test.cc",
     ],
     data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    tags = [
+        "no_oss",  # TODO: b/361565588 - Re-enable.
+    ],
     deps = [
         ":benchmark_model_lib",
         ":benchmark_params",

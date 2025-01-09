@@ -42,10 +42,10 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename Device, typename T>
-Status SpaceToBatchOpCompute(OpKernelContext* context,
-                             const Tensor& orig_input_tensor,
-                             const Tensor& orig_block_shape,
-                             const Tensor& orig_paddings) {
+absl::Status SpaceToBatchOpCompute(OpKernelContext* context,
+                                   const Tensor& orig_input_tensor,
+                                   const Tensor& orig_block_shape,
+                                   const Tensor& orig_paddings) {
   const int input_dims = orig_input_tensor.dims();
   if (!TensorShapeUtils::IsVector(orig_block_shape.shape())) {
     return errors::InvalidArgument("block_shape rank should be 1 instead of ",

@@ -159,10 +159,10 @@ class OpTestBuilder {
   // sets it to the NodeDef of the operator under test. Fills 'inputs' and
   // 'outputs' with the names of the input placeholder nodes and the output
   // identity nodes, respectively.
-  Status BuildGraph(const string& name_prefix, const string& device,
-                    bool use_jit, GraphDef* graphdef, NodeDef** test_node_def,
-                    std::vector<string>* inputs,
-                    std::vector<string>* outputs) const;
+  absl::Status BuildGraph(const string& name_prefix, const string& device,
+                          bool use_jit, GraphDef* graphdef,
+                          NodeDef** test_node_def, std::vector<string>* inputs,
+                          std::vector<string>* outputs) const;
 
   struct InputDescription {
     Tensor tensor;
@@ -245,11 +245,12 @@ OpTestBuilder& OpTestBuilder::Attr(absl::string_view attr_name,
   return *this;
 }
 
-Status OpTestBuilder::BuildGraph(const string& name_prefix,
-                                 const string& device, bool use_jit,
-                                 GraphDef* graphdef, NodeDef** test_node_def,
-                                 std::vector<string>* inputs,
-                                 std::vector<string>* outputs) const {
+absl::Status OpTestBuilder::BuildGraph(const string& name_prefix,
+                                       const string& device, bool use_jit,
+                                       GraphDef* graphdef,
+                                       NodeDef** test_node_def,
+                                       std::vector<string>* inputs,
+                                       std::vector<string>* outputs) const {
   OpRegistryInterface* op_registry = OpRegistry::Global();
 
   const OpDef* op_def;
@@ -1260,7 +1261,7 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
   d.output_dims.resize(num_spatial_dims);
   d.stride_dims.resize(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
-    Status s;
+    absl::Status s;
     // Repeatedly try different filter/stride sizes until we find a valid
     // combination.
     do {
@@ -1388,8 +1389,8 @@ string Str<complex64>(complex64 x) {
 }
 
 template <typename T>
-Status TensorsAreCloseImpl(const Tensor& x, const Tensor& y, double atol,
-                           double rtol) {
+absl::Status TensorsAreCloseImpl(const Tensor& x, const Tensor& y, double atol,
+                                 double rtol) {
   auto Tx = x.flat<T>();
   auto Ty = y.flat<T>();
   for (int i = 0; i < Tx.size(); ++i) {
@@ -1405,7 +1406,7 @@ Status TensorsAreCloseImpl(const Tensor& x, const Tensor& y, double atol,
 }
 
 template <typename T>
-Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
+absl::Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
   auto Tx = x.flat<T>();
   auto Ty = y.flat<T>();
   for (int i = 0; i < Tx.size(); ++i) {
@@ -1418,7 +1419,7 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
   return absl::OkStatus();
 }
 
-Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
+absl::Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
   auto Tx = x.flat<bfloat16>();
   auto Ty = y.flat<bfloat16>();
   for (int i = 0; i < Tx.size(); ++i) {
@@ -1436,8 +1437,8 @@ Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
 // close values. For floating-point tensors, the element-wise difference between
 // x and y must no more than atol + rtol * abs(x). For non-floating-point
 // tensors the values must match exactly.
-Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
-                       double rtol) {
+absl::Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
+                             double rtol) {
   if (a.dtype() != b.dtype()) {
     return errors::InvalidArgument(absl::StrCat(
         "Tensors have different types: ", DataTypeString(a.dtype()), " and ",
@@ -1511,7 +1512,7 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   GraphDef graph;
   std::vector<string> expected_inputs, test_inputs;
   std::vector<string> expected_fetches, test_fetches;
-  Status status = builder.BuildGraph(
+  absl::Status status = builder.BuildGraph(
       absl::StrCat("test", num_tests_, "_expected"), reference_device,
       /*use_jit=*/false, &graph, /*test_node_def=*/nullptr, &expected_inputs,
       &expected_fetches);
@@ -1559,7 +1560,7 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
 
   std::vector<Tensor> expected_outputs, test_outputs;
   VLOG(1) << "Running expected graph";
-  Status s =
+  absl::Status s =
       session_->Run(expected_feeds, expected_fetches, {}, &expected_outputs);
   if (!s.ok()) {
     VLOG(1) << "Expected graph failed with status: " << s << ". Ignoring test";

@@ -1,3 +1,4 @@
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -29,8 +30,11 @@ cc_library(
     hdrs = ["tf_tfl_flatbuffer_helpers.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
@@ -39,9 +43,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:types_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -59,15 +60,14 @@ cc_library(
     deps = [
         ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:types_proto_cc",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
     ],
@@ -82,16 +82,16 @@ cc_library(
     deps = [
         ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -110,13 +110,13 @@ cc_library(
     deps = [
         ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:types_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -124,9 +124,9 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/hlo/parser:hlo_parser",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
     ],
 )
 
@@ -155,6 +155,7 @@ py_strict_library(
         "wrap_converter.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
@@ -165,9 +166,7 @@ py_strict_library(
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -175,9 +174,7 @@ filegroup(
     srcs = [
         "converter_python_api.h",
     ],
-    visibility = [
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -195,6 +192,9 @@ cc_library(
         ":saved_model_to_tfl_flatbuffer",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
@@ -207,17 +207,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:model",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_convert",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_graphviz_dump_options",
-        "//tensorflow/lite/toco:toco_port",
-        "//tensorflow/lite/toco:toco_tooling",
-        "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/toco:types_proto_cc",
-        "//tensorflow/lite/toco/logging:conversion_log_util",
-        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -248,10 +237,13 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_converter_api.pyi",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":converter_python_api"]),
 )

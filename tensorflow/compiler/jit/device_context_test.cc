@@ -46,7 +46,7 @@ class DeviceContextTest : public ::testing::Test {
     auto device_factory = DeviceFactory::GetFactory(device_type);
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;
-    Status s = device_factory->CreateDevices(
+    absl::Status s = device_factory->CreateDevices(
         options, "/job:worker/replica:0/task:0", &devices);
     device_ = std::move(devices[0]);
 

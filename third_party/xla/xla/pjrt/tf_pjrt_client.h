@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -247,9 +247,6 @@ class TfPjRtClient : public PjRtClient {
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
   }
-  PjRtRuntimeType runtime_type() const override {
-    return wrapped_->runtime_type();
-  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -342,15 +339,6 @@ class TfPjRtClient : public PjRtClient {
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffersForGather(
         shapes, std::move(gather_details), device, std::move(notifier));
-  }
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return wrapped_->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return wrapped_->CreateDeviceToHostChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return wrapped_->CreateHostToDeviceChannelHandle();
   }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {

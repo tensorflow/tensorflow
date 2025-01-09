@@ -48,7 +48,7 @@ namespace tensorflow {
 
 namespace {
 
-Status ValidateTensorId(const tf2xla::TensorId& id) {
+absl::Status ValidateTensorId(const tf2xla::TensorId& id) {
   if (id.node_name().empty()) {
     return errors::InvalidArgument("TensorId node_name must be non-empty");
   }
@@ -58,8 +58,8 @@ Status ValidateTensorId(const tf2xla::TensorId& id) {
   return absl::OkStatus();
 }
 
-Status CheckNameDuplicates(const string& kind, const string& name,
-                           std::set<string>* names) {
+absl::Status CheckNameDuplicates(const string& kind, const string& name,
+                                 std::set<string>* names) {
   if (!name.empty()) {
     if (!names->insert(name).second) {
       return errors::InvalidArgument("duplicate ", kind, " name: ", name);
@@ -68,8 +68,8 @@ Status CheckNameDuplicates(const string& kind, const string& name,
   return absl::OkStatus();
 }
 
-Status CheckFeedFetchNameConflicts(const string& kind,
-                                   const std::set<string>& names) {
+absl::Status CheckFeedFetchNameConflicts(const string& kind,
+                                         const std::set<string>& names) {
   // We don't allow the feeds or fetches to contain both "foo" and "foo_data",
   // since that will cause a collision in codegen symbols.
   for (const string& name : names) {
@@ -84,9 +84,9 @@ Status CheckFeedFetchNameConflicts(const string& kind,
 
 // For graph `g`, copy all function call nodes' FunctionDef from `lookup_fld` to
 // `fld`. This is to ensure that `fld` can instantiate FunctionDef of graph `g`.
-Status CopyAssociatedFunctions(Graph* g,
-                               const FunctionLibraryDefinition* lookup_fld,
-                               FunctionLibraryDefinition* fld) {
+absl::Status CopyAssociatedFunctions(
+    Graph* g, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld) {
   for (Node* n : g->op_nodes()) {
     for (const auto& associated_function :
          GetAssociatedFunctions(*n, lookup_fld)) {
@@ -127,8 +127,8 @@ absl::StatusOr<Node*> ReplaceEdge(Graph* g, Node* dst, int dst_input,
 
 // Replaces usages of the given `src_output` index of the given `src` node with
 // the given `replacement` node (assumes the :0 output of `replacement`).
-Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
-                                     Node* replacement) {
+absl::Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
+                                           Node* replacement) {
   VLOG(1) << "Replace usages of output " << src_output << " of node "
           << (VLOG_IS_ON(3) ? src->DebugString() : src->name()) << " with "
           << (VLOG_IS_ON(3) ? replacement->DebugString() : replacement->name());
@@ -167,7 +167,7 @@ Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
 
 // For graph `g`, replaces _Arg nodes whose "index" attribute is in
 // `const_input_index_to_node` with Const nodes.
-Status ReplaceArgUsageWithConstNode(
+absl::Status ReplaceArgUsageWithConstNode(
     Graph* g,
     const absl::flat_hash_map<int, const Node*>& const_input_index_to_node) {
   // Collect all _Arg nodes.
@@ -196,7 +196,7 @@ Status ReplaceArgUsageWithConstNode(
 // Replaces the single input to _Retval nodes with an index in the keys of
 // const_input_index_to_node with the single output of the corresponding _Arg
 // node.
-Status ReplaceRetvalInputWithArg(
+absl::Status ReplaceRetvalInputWithArg(
     Graph* g,
     const absl::flat_hash_map<int, const Node*>& const_input_index_to_node) {
   absl::flat_hash_map<int, Node*> arg_nodes;
@@ -226,7 +226,7 @@ Status ReplaceRetvalInputWithArg(
 // For a node's function attr (e.g. then/else branch for "If" nodes), rewrites
 // the function to replace _Arg nodes in `const_input_index_to_node` with Const
 // inputs.
-Status PropagateConstIntoFuncAttr(
+absl::Status PropagateConstIntoFuncAttr(
     Node* n, const string& attr_name,
     const absl::flat_hash_map<int, const Node*>& const_input_index_to_node,
     const FunctionLibraryDefinition* lookup_fld, FunctionLibraryDefinition* fld,
@@ -281,9 +281,9 @@ Status PropagateConstIntoFuncAttr(
 
 // For an "If" node in graph `g`, if it has Const node inputs, rewrite its
 // then/else branch function to replace _Arg nodes with those Const inputs.
-Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
-                                const FunctionLibraryDefinition* lookup_fld,
-                                FunctionLibraryDefinition* fld) {
+absl::Status PropagateConstIntoIfNode(
+    Graph* g, Node* if_node, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld) {
   // Notice that first input for If node is predicate; other inputs are function
   // inputs.
   absl::flat_hash_map<int, const Node*> const_input_index_to_node;
@@ -326,8 +326,8 @@ absl::StatusOr<FunctionBody*> FindOrInsert(
       return errors::Internal("Traverse: Cannot find body function ", name);
     }
     std::unique_ptr<FunctionBody> fbody;
-    Status s = FunctionDefToBodyHelper(*body_func, AttrSlice(&body_attr.attr()),
-                                       lookup_fld, &fbody);
+    absl::Status s = FunctionDefToBodyHelper(
+        *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody);
     if (!s.ok() && fallback_fld != nullptr) {
       TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
           *body_func, AttrSlice(&body_attr.attr()), fallback_fld, &fbody));
@@ -401,7 +401,7 @@ absl::StatusOr<bool> IsLoopInvariant(
 // For a "While" node in graph `g`, if it has Const node inputs, rewrite its
 // cond/body function to replace _Arg nodes with those Const inputs. Then,
 // propagate these Const to consumers of the relevant outputs of the while loop.
-Status PropagateConstIntoAndAroundWhileNode(
+absl::Status PropagateConstIntoAndAroundWhileNode(
     Graph* g, Node* while_node, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
   VLOG(1) << "Propagate const into " << while_node->name();
@@ -486,7 +486,7 @@ absl::StatusOr<bool> IsLoopInvariant(
                          /*fallback_fld=*/nullptr, &cache);
 }
 
-Status ValidateConfig(const tf2xla::Config& config) {
+absl::Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;
   for (const tf2xla::Feed& feed : config.feed()) {
     TF_RETURN_IF_ERROR(ValidateTensorId(feed.id()));
@@ -506,7 +506,7 @@ Status ValidateConfig(const tf2xla::Config& config) {
   return absl::OkStatus();
 }
 
-Status AddPlaceholdersForFeeds(
+absl::Status AddPlaceholdersForFeeds(
     const tf2xla::Config& config, const OpRegistryInterface* op_registry,
     std::unordered_map<string, string>* feed_remapping, GraphDef* graph_def) {
   struct PlaceholderInfo {
@@ -603,8 +603,8 @@ Status AddPlaceholdersForFeeds(
   return absl::OkStatus();
 }
 
-Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
-                         GraphDef* out) {
+absl::Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
+                               GraphDef* out) {
   *out = in;
   out->clear_node();
 
@@ -672,7 +672,7 @@ string TensorIdToString(const tf2xla::TensorId& id) {
   return absl::StrCat(id.node_name(), ":", id.output_index());
 }
 
-Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
+absl::Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
   int core = -1;
   const Node* matching_node = nullptr;
   for (const Edge* edge : (out_edges ? n->out_edges() : n->in_edges())) {
@@ -792,7 +792,7 @@ std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
   return results;
 }
 
-Status RewriteAssociatedFunction(
+absl::Status RewriteAssociatedFunction(
     Graph* graph, Node* node, FunctionLibraryDefinition* fld,
     const AssociatedFunctionInfo& associated_function,
     const string& rewritten_function_name) {
@@ -862,7 +862,7 @@ Status RewriteAssociatedFunction(
   return absl::OkStatus();
 }
 
-Status CachedFunctionHandles::GetOrInstantiate(
+absl::Status CachedFunctionHandles::GetOrInstantiate(
     const string& func_name, AttrSlice attrs,
     FunctionLibraryRuntime::Handle* handle) {
   string canonicalized_name = Canonicalize(func_name, attrs);
@@ -877,8 +877,8 @@ Status CachedFunctionHandles::GetOrInstantiate(
   return absl::OkStatus();
 }
 
-Status CachedFunctionHandles::ReleaseAllHandles() {
-  Status result;
+absl::Status CachedFunctionHandles::ReleaseAllHandles() {
+  absl::Status result;
   for (const auto& iter : handles_) {
     result.Update(flr_->ReleaseHandle(iter.second));
   }
@@ -936,7 +936,7 @@ absl::StatusOr<Node*> BuildIdentityNode(
   return id_node;
 }
 
-Status PropagateConstIntoFunctionalNodes(
+absl::Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
   absl::flat_hash_set<int> done_node_ids;
@@ -969,8 +969,8 @@ Status PropagateConstIntoFunctionalNodes(
   return absl::OkStatus();
 }
 
-Status PruneUnreachableFunctionsFromGraph(const Graph& g,
-                                          FunctionLibraryDefinition* fld) {
+absl::Status PruneUnreachableFunctionsFromGraph(
+    const Graph& g, FunctionLibraryDefinition* fld) {
   GraphDef graph_def;
   g.ToGraphDef(&graph_def);
   FunctionLibraryDefinition reachable_functions =
@@ -983,8 +983,8 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
   return absl::OkStatus();
 }
 
-Status RewriteTensorListWithConstElement(Graph* g,
-                                         FunctionLibraryDefinition* fld) {
+absl::Status RewriteTensorListWithConstElement(Graph* g,
+                                               FunctionLibraryDefinition* fld) {
   for (Node* n : g->nodes()) {
     if (n->type_string() != "EmptyTensorList") {
       continue;

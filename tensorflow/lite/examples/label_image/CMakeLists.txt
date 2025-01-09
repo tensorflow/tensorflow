@@ -84,5 +84,5 @@ target_compile_options(label_image
 target_link_libraries(label_image
   tensorflow-lite
   profiling_info_proto
-  protobuf
+  libprotobuf
 )

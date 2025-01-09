@@ -1,35 +1,16 @@
-diff --git a/src/device/all_gather.h b/src/device/all_gather.h
-index 809e8ae..57eab81 100644
---- a/src/device/all_gather.h
-+++ b/src/device/all_gather.h
-@@ -296,7 +296,7 @@ struct RunWorkElement<ncclFuncAllGather, T, RedOp, NCCL_ALGO_COLLNET_DIRECT, NCC
-           scat.args = args;
-           scat.chunkSize = chunkSize;
-           scat.railGridOffset = railGridOffset;
--          prims.process</*Recv=*/1, /*Send=*/1>(scat);
-+          prims.template process</*Recv=*/1, /*Send=*/1>(scat);
-         }
-       }
-       return;
-@@ -314,7 +314,7 @@ struct RunWorkElement<ncclFuncAllGather, T, RedOp, NCCL_ALGO_COLLNET_DIRECT, NCC
-         scat.args = args;
-         scat.chunkSize = chunkSize;
-         scat.railGridOffset = railGridOffset;
--        prims.process</*Recv=*/1, /*Send=*/0>(scat);
-+        prims.template process</*Recv=*/1, /*Send=*/0>(scat);
-       }
-       return;
-     }
 diff --git a/src/device/common.cu b/src/device/common.cu.cc
 similarity index 100%
 rename from src/device/common.cu
 rename to src/device/common.cu.cc
+diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
+similarity index 100%
+rename from src/device/onerank.cu
+rename to src/device/onerank.cu.cc
 diff --git a/src/device/common.h b/src/device/common.h
-index d8581d3..09ac3b6 100644
 --- a/src/device/common.h
 +++ b/src/device/common.h
-@@ -15,7 +15,7 @@
- #define COLL_UNROLL (ncclCollUnroll())
+@@ -24,7 +24,7 @@
+ #endif
  
  typedef void(*ncclDevFuncPtr_t)();
 -extern __device__ ncclDevFuncPtr_t const ncclDevFuncTable[];
@@ -38,14 +19,16 @@ index d8581d3..09ac3b6 100644
  struct ncclShmemGroup {
    ncclConnInfo *recvConns[NCCL_MAX_ARITY];
 diff --git a/src/device/generate.py b/src/device/generate.py
-index 43de85d..87cd677 100755
+index a0d2259..62d6014 100755
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
-@@ -195,7 +195,7 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+@@ -194,8 +194,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+ 
  ################################################################################
  
- # Generate <gensrc>/device_table.cu
+-# Generate <gensrc>/device_table.cu
 -with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
++# Generate <gensrc>/device_table.cu.cc
 +with open(os.path.join(gensrc, "device_table.cu.cc"), "w") as f:
    out = f.write
    out('#include "common.h"\n')
@@ -59,12 +42,11 @@ index 43de85d..87cd677 100755
    index = 0
    for fn in primary_funcs:
      sym = paste("_", "ncclDevFunc", *fn)
-@@ -257,28 +257,45 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -262,28 +262,43 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  
    # List of all kernel function pointers.
    out("extern int const ncclDevKernelCount = %d;\n" % len(kernel_funcs))
 -  out("extern void* const ncclDevKernelList[] = {\n")
-+
    index = 0
    for kfn in kernel_funcs:
      cudart, _ = required_cuda(*kfn)
@@ -88,7 +70,6 @@ index 43de85d..87cd677 100755
  
    # Maps primary id to kernel function pointer.
 -  out("extern void* const ncclDevKernelForFunc[] = {\n")
-+
    index = 0
    for fn in primary_funcs:
      kfn = best_kernel(*fn)
@@ -111,7 +92,7 @@ index 43de85d..87cd677 100755
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -297,7 +314,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -302,7 +317,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
@@ -120,7 +101,7 @@ index 43de85d..87cd677 100755
  
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -318,7 +335,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
+@@ -323,7 +338,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
  with open(os.path.join(gensrc, "rules.mk"), "w") as f:
    out = f.write
    impl_names = sorted(name_to_funcs.keys())
@@ -129,29 +110,3 @@ index 43de85d..87cd677 100755
    out("LIB_OBJS_GEN = $(patsubst %, $(OBJDIR)/genobj/%.o, {names})\n"
        .format(names=" ".join(names)))
    out("\n")
-diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
-similarity index 100%
-rename from src/device/onerank.cu
-rename to src/device/onerank.cu.cc
-diff --git a/src/device/reduce_scatter.h b/src/device/reduce_scatter.h
-index d0b5249..2dacd60 100644
---- a/src/device/reduce_scatter.h
-+++ b/src/device/reduce_scatter.h
-@@ -254,7 +254,7 @@ struct RunWorkElement<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_COLLNET_DIRECT,
-         scat.args = args;
-         scat.chunkSize = chunkSize;
-         scat.railGridOffset = railGridOffset;
--        prims.process</*Recv=*/0, /*Send=*/1>(scat);
-+        prims.template process</*Recv=*/0, /*Send=*/1>(scat);
-       }
-       return;
-     }
-@@ -278,7 +278,7 @@ struct RunWorkElement<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_COLLNET_DIRECT,
-           scat.args = args;
-           scat.chunkSize = chunkSize;
-           scat.railGridOffset = railGridOffset;
--          prims.process</*Recv=*/1, /*Send=*/1>(scat);
-+          prims.template process</*Recv=*/1, /*Send=*/1>(scat);
-         }
-       }
-       return;

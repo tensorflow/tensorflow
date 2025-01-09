@@ -15,10 +15,23 @@ limitations under the License.
 
 #include "xla/service/cpu/tiled_dot_emitter.h"
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/cpu/vector_support_library.h"
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/numeric/bits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/vector_ir_builder.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
@@ -33,16 +46,16 @@ class MemoryTile {
   // `tile_size_along_major_dim` vectors from the matrix `matrix`, starting at
   // `major_dim_offset` in the major dimension.  The tile size along the minor
   // dimension is the vector size, and that is implicitly determined by `vsl`.
-  MemoryTile(VectorSupportLibrary* vsl, llvm::IRBuilder<>* b,
-             llvm::Value* matrix, int64_t matrix_size_along_minor_dim,
-             llvm::Value* major_dim_offset, int64_t tile_size_along_major_dim)
-      : vsl_(vsl), b_(b) {
+  MemoryTile(VectorIrBuilder* vsl, llvm::IRBuilderBase* b, llvm::Value* matrix,
+             int64_t matrix_size_along_minor_dim, llvm::Value* major_dim_offset,
+             int64_t tile_size_along_major_dim)
+      : vb_(vsl), b_(b) {
     pointers_.reserve(tile_size_along_major_dim);
     for (int64_t i = 0; i < tile_size_along_major_dim; i++) {
       llvm::Value* total_offset =
           b->CreateMul(b->getInt64(matrix_size_along_minor_dim),
                        b->CreateAdd(b->getInt64(i), major_dim_offset));
-      pointers_.push_back(vsl_->ComputeOffsetPointer(matrix, total_offset));
+      pointers_.push_back(vb_->ComputeOffsetPointer(matrix, total_offset));
     }
   }
 
@@ -54,7 +67,7 @@ class MemoryTile {
     std::vector<llvm::Value*> result;
     result.reserve(pointers_.size());
     for (const auto& pointer : pointers_) {
-      result.push_back(vsl_->LoadVector(pointer, minor_dim_offset));
+      result.push_back(vb_->LoadVector(pointer, minor_dim_offset));
     }
     return result;
   }
@@ -67,14 +80,14 @@ class MemoryTile {
                  llvm::Value* minor_dim_offset) const {
     CHECK_EQ(tile.size(), pointers_.size());
     for (int64_t i = 0; i < pointers_.size(); i++) {
-      vsl_->StoreVector(tile[i], pointers_[i], minor_dim_offset);
+      vb_->StoreVector(tile[i], pointers_[i], minor_dim_offset);
     }
   }
 
   // Loads a tile of size [`tile_size_along_major_dim`,
   // `tile_size_along_middle_dim`] from position {major: `major_dim_offset`,
   // minor: `minor_dim_offset`} and then broadcasts each element into a vector
-  // of size vsl_.vector_size().  The (i,j)'th element of the return value is
+  // of size vb_.vector_size().  The (i,j)'th element of the return value is
   // the (i,j)'th element in the tile broadcasted into an LLVM vector.
   //
   // Note: `major_dim_offset` is a parameter to the constructor.
@@ -84,7 +97,7 @@ class MemoryTile {
     result.resize(pointers_.size());
     for (int64_t i = 0; i < pointers_.size(); i++) {
       for (int64_t j = 0; j < tile_size_along_middle_dim; j++) {
-        result[i].push_back(vsl_->LoadBroadcast(
+        result[i].push_back(vb_->LoadBroadcast(
             pointers_[i], b_->CreateAdd(minor_dim_offset, b_->getInt64(j))));
       }
     }
@@ -92,8 +105,8 @@ class MemoryTile {
   }
 
  private:
-  VectorSupportLibrary* vsl_;
-  llvm::IRBuilder<>* b_;
+  VectorIrBuilder* vb_;
+  llvm::IRBuilderBase* b_;
   std::vector<llvm::Value*> pointers_;
 };
 
@@ -233,7 +246,7 @@ class ColumnMajorMatrixVectorProductEmitter
   ColumnMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                         llvm::Value* rhs, llvm::Value* addend,
                                         llvm::Value* result,
-                                        llvm::IRBuilder<>* b)
+                                        llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
@@ -241,7 +254,7 @@ class ColumnMajorMatrixVectorProductEmitter
         result_(result),
         b_(b),
         ksl_(b_),
-        vsl_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
+        vb_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
     CHECK(tile_rows() > 0 &&
           absl::has_single_bit(static_cast<uint64_t>(tile_rows())));
     CHECK(!has_addend() || addend != nullptr);
@@ -256,7 +269,7 @@ class ColumnMajorMatrixVectorProductEmitter
                          bool is_first_column);
 
   MemoryTile GetLhsMemoryTile(llvm::Value* column_start, int64_t column_count) {
-    return MemoryTile(&vsl_, b_, /*matrix=*/lhs_,
+    return MemoryTile(&vb_, b_, /*matrix=*/lhs_,
                       /*matrix_size_along_minor_dim=*/m(),
                       /*major_dim_offset=*/column_start,
                       /*tile_size_along_major_dim=*/column_count);
@@ -265,11 +278,11 @@ class ColumnMajorMatrixVectorProductEmitter
   // Load a tile of values from the RHS.  For the RHS a "tile" is a contiguous
   // sequence of `count` values, each one broadcasted to the vector width.
   std::vector<llvm::Value*> LoadRhsTile(llvm::Value* offset, int64_t count) {
-    llvm::Value* base_pointer = vsl_.ComputeOffsetPointer(rhs_, offset);
+    llvm::Value* base_pointer = vb_.ComputeOffsetPointer(rhs_, offset);
     std::vector<llvm::Value*> result;
     result.reserve(count);
     for (int64_t i = 0; i < count; i++) {
-      result.push_back(vsl_.LoadBroadcast(base_pointer, i));
+      result.push_back(vb_.LoadBroadcast(base_pointer, i));
     }
     return result;
   }
@@ -286,9 +299,9 @@ class ColumnMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
-  VectorSupportLibrary vsl_;
+  VectorIrBuilder vb_;
 };
 
 void ColumnMajorMatrixVectorProductEmitter::EmitOuterLoopBody(
@@ -330,13 +343,13 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
              std::vector<llvm::Value*> lhs_tile =
                  lhs_memory_tile->LoadTile(/*minor_dim_offset=*/row);
              llvm::Value* accumulator =
-                 is_first_column ? (addend_ ? vsl_.LoadVector(addend_, row)
-                                            : vsl_.GetZeroVector())
-                                 : vsl_.LoadVector(result_, row);
+                 is_first_column ? (addend_ ? vb_.LoadVector(addend_, row)
+                                            : vb_.GetZeroVector())
+                                 : vb_.LoadVector(result_, row);
              for (int i = 0; i < columns; i++) {
-               accumulator = vsl_.MulAdd(lhs_tile[i], rhs_tile[i], accumulator);
+               accumulator = vb_.MulAdd(lhs_tile[i], rhs_tile[i], accumulator);
              }
-             vsl_.StoreVector(accumulator, result_, row);
+             vb_.StoreVector(accumulator, result_, row);
            });
 }
 
@@ -363,15 +376,15 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
       /*step=*/1, [&](llvm::Value* col) {
         llvm::Value* is_first_scalar_col =
             b_->CreateICmpEQ(col, current_tile_col);
-        llvm::Value* rhs_element = vsl_.LoadScalar(rhs_, col);
+        llvm::Value* rhs_element = vb_.LoadScalar(rhs_, col);
         llvm::Value* total_offset = b_->CreateMul(col, b_->getInt64(m()));
         llvm::Value* lhs_base_pointer =
-            vsl_.ComputeOffsetPointer(lhs_, total_offset);
+            vb_.ComputeOffsetPointer(lhs_, total_offset);
         ksl_.For(
             "dot.inner.epilg.inner", /*start=*/row_start, /*end=*/m(),
             /*step=*/1, [&](llvm::Value* scalar_row) {
-              llvm::Value* product = vsl_.Mul(
-                  vsl_.LoadScalar(lhs_base_pointer, scalar_row), rhs_element);
+              llvm::Value* product = vb_.Mul(
+                  vb_.LoadScalar(lhs_base_pointer, scalar_row), rhs_element);
               llvm::Value* setting_result_first_time = b_->CreateAnd(
                   is_first_scalar_col, b_->getInt1(is_first_tiled_column));
               ksl_.If(
@@ -379,18 +392,17 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
                   /*true_block_generator=*/
                   [&]() {
                     if (addend_) {
-                      vsl_.StoreScalar(
-                          vsl_.Add(vsl_.LoadScalar(addend_, scalar_row),
-                                   product),
+                      vb_.StoreScalar(
+                          vb_.Add(vb_.LoadScalar(addend_, scalar_row), product),
                           result_, scalar_row);
                     } else {
-                      vsl_.StoreScalar(product, result_, scalar_row);
+                      vb_.StoreScalar(product, result_, scalar_row);
                     }
                   },
                   /*false_block_generator=*/
                   [&]() {
-                    vsl_.StoreScalar(
-                        vsl_.Add(vsl_.LoadScalar(result_, scalar_row), product),
+                    vb_.StoreScalar(
+                        vb_.Add(vb_.LoadScalar(result_, scalar_row), product),
                         result_, scalar_row);
                   });
             });
@@ -461,7 +473,8 @@ class RowMajorMatrixVectorProductEmitter
 
   RowMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                      llvm::Value* rhs, llvm::Value* addend,
-                                     llvm::Value* result, llvm::IRBuilder<>* b)
+                                     llvm::Value* result,
+                                     llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
@@ -469,7 +482,7 @@ class RowMajorMatrixVectorProductEmitter
         result_(result),
         b_(b),
         ksl_(b_),
-        vsl_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
+        vb_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
     CHECK(tile_cols() > 0 &&
           absl::has_single_bit(static_cast<uint64_t>(tile_cols())));
     CHECK(!has_addend() || addend != nullptr);
@@ -481,7 +494,7 @@ class RowMajorMatrixVectorProductEmitter
 
  private:
   MemoryTile GetLhsMemoryTile(llvm::Value* row_start, int64_t row_count) {
-    return MemoryTile(&vsl_, b_, /*matrix=*/lhs_,
+    return MemoryTile(&vb_, b_, /*matrix=*/lhs_,
                       /*matrix_size_along_minor_dim=*/k(),
                       /*major_dim_offset=*/row_start,
                       /*tile_size_along_major_dim=*/row_count);
@@ -500,9 +513,9 @@ class RowMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
-  VectorSupportLibrary vsl_;
+  VectorIrBuilder vb_;
 };
 
 void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
@@ -514,8 +527,8 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
   vector_accumulators.reserve(row_count);
   scalar_accumulators.reserve(row_count);
   for (int64_t i = 0; i < row_count; i++) {
-    vector_accumulators.emplace_back(&vsl_, vsl_.GetZeroVector());
-    scalar_accumulators.emplace_back(&vsl_, vsl_.GetZeroScalar());
+    vector_accumulators.emplace_back(&vb_, vb_.GetZeroVector());
+    scalar_accumulators.emplace_back(&vb_, vb_.GetZeroScalar());
   }
   EmitInnerLoopTiled(&lhs_memory_tile, /*rows=*/row_count,
                      &vector_accumulators);
@@ -529,26 +542,26 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
       [](const VectorVariable& vector_var) { return vector_var.Get(); });
 
   std::vector<llvm::Value*> horizontal_sums;
-  if (row_count == vsl_.vector_size()) {
+  if (row_count == vb_.vector_size()) {
     if (addend_) {
-      horizontal_sums = vsl_.ComputeHorizontalSums(
-          std::move(accumulator_values), vsl_.LoadVector(addend_, row));
+      horizontal_sums = vb_.ComputeHorizontalSums(std::move(accumulator_values),
+                                                  vb_.LoadVector(addend_, row));
     } else {
       horizontal_sums =
-          vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+          vb_.ComputeHorizontalSums(std::move(accumulator_values));
     }
   } else {
-    horizontal_sums = vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+    horizontal_sums = vb_.ComputeHorizontalSums(std::move(accumulator_values));
   }
 
   for (int i = 0; i < row_count; i++) {
     llvm::Value* result_value =
-        vsl_.Add(horizontal_sums[i], scalar_accumulators[i].Get());
+        vb_.Add(horizontal_sums[i], scalar_accumulators[i].Get());
     llvm::Value* offset = b_->CreateAdd(b_->getInt64(i), row);
-    if (addend_ && row_count != vsl_.vector_size()) {
-      result_value = vsl_.Add(vsl_.LoadScalar(addend_, offset), result_value);
+    if (addend_ && row_count != vb_.vector_size()) {
+      result_value = vb_.Add(vb_.LoadScalar(addend_, offset), result_value);
     }
-    vsl_.StoreScalar(result_value, result_, offset);
+    vb_.StoreScalar(result_value, result_, offset);
   }
 }
 
@@ -575,11 +588,11 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
            /*step=*/tile_cols(), [&](llvm::Value* col) {
              std::vector<llvm::Value*> lhs_tile =
                  lhs_memory_tile->LoadTile(/*minor_dim_offset=*/col);
-             llvm::Value* rhs_value = vsl_.LoadVector(rhs_, col);
+             llvm::Value* rhs_value = vb_.LoadVector(rhs_, col);
              for (int i = 0; i < rows; i++) {
                llvm::Value* old_sum = (*vector_accumulators)[i].Get();
                (*vector_accumulators)[i].Set(
-                   vsl_.Add(old_sum, vsl_.Mul(rhs_value, lhs_tile[i])));
+                   vb_.Add(old_sum, vb_.Mul(rhs_value, lhs_tile[i])));
              }
            });
 }
@@ -596,14 +609,14 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
     llvm::Value* total_offset = b_->CreateMul(
         b_->CreateAdd(b_->getInt64(r), current_tile_row), b_->getInt64(k()));
     llvm::Value* lhs_base_pointer =
-        vsl_.ComputeOffsetPointer(lhs_, total_offset);
+        vb_.ComputeOffsetPointer(lhs_, total_offset);
     ksl_.For("dot.inner.epilg.inner", /*start=*/column_start, /*end=*/k(),
              /*step=*/1, [&](llvm::Value* scalar_col) {
                llvm::Value* product =
-                   vsl_.Mul(vsl_.LoadScalar(lhs_base_pointer, scalar_col),
-                            vsl_.LoadScalar(rhs_, scalar_col));
+                   vb_.Mul(vb_.LoadScalar(lhs_base_pointer, scalar_col),
+                           vb_.LoadScalar(rhs_, scalar_col));
                llvm::Value* old_value = (*scalar_accumulators)[r].Get();
-               (*scalar_accumulators)[r].Set(vsl_.Add(old_value, product));
+               (*scalar_accumulators)[r].Set(vb_.Add(old_value, product));
              });
   }
 }
@@ -705,7 +718,7 @@ class TiledSmallGemmEmitter {
   // `lhs` with `rhs` and stores the result in `result`.
   explicit TiledSmallGemmEmitter(Config config, llvm::Value* lhs,
                                  llvm::Value* rhs, llvm::Value* result,
-                                 llvm::IRBuilder<>* b)
+                                 llvm::IRBuilderBase* b)
       : lhs_(lhs),
         rhs_(rhs),
         result_(result),
@@ -732,15 +745,15 @@ class TiledSmallGemmEmitter {
   // tiled GEMM kernel.
 
   void HandleResiduesOnN();
-  void HandleResiduesOnK(VectorSupportLibrary* vsl, llvm::Value* n_start,
+  void HandleResiduesOnK(VectorIrBuilder* vsl, llvm::Value* n_start,
                          llvm::Value* n_end);
-  void HandleResiduesOnM(VectorSupportLibrary* vsl, int64_t tile_size_k,
+  void HandleResiduesOnM(VectorIrBuilder* vsl, int64_t tile_size_k,
                          llvm::Value* k_start, llvm::Value* k_end,
                          llvm::Value* n_start, llvm::Value* n_end);
 
   // This emits a tiled GEMM kernel.  For a detailed description see the comment
   // on the implementation.
-  void EmitTiledGemm(VectorSupportLibrary* vsl, int64_t tile_size_k,
+  void EmitTiledGemm(VectorIrBuilder* vsl, int64_t tile_size_k,
                      llvm::Value* k_start, llvm::Value* k_end,
                      llvm::Value* n_start, llvm::Value* n_end,
                      int64_t tile_size_m, llvm::Value* m_start,
@@ -767,7 +780,7 @@ class TiledSmallGemmEmitter {
   llvm::Value* result_;
   Config config_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
 };
 
@@ -789,9 +802,9 @@ void TiledSmallGemmEmitter::HandleResiduesOnN() {
          current_vectorization_width >= min_vectorization_width()) {
     int64_t n_end = dims().n() - (dims().n() % current_vectorization_width);
     if (n_start != n_end) {
-      VectorSupportLibrary vsl(scalar_type(), current_vectorization_width, b_,
-                               "gemm");
-      HandleResiduesOnK(&vsl, GetInt64(n_start), GetInt64(n_end));
+      VectorIrBuilder vb(scalar_type(), current_vectorization_width, b_,
+                         "gemm");
+      HandleResiduesOnK(&vb, GetInt64(n_start), GetInt64(n_end));
       n_start = n_end;
     }
     if (current_vector_count == 1) {
@@ -804,15 +817,15 @@ void TiledSmallGemmEmitter::HandleResiduesOnN() {
   }
 
   if (n_start != dims().n()) {
-    VectorSupportLibrary vsl(scalar_type(), 1, b_, "gemm");
+    VectorIrBuilder vb(scalar_type(), 1, b_, "gemm");
     ksl_.For("epi.n", n_start, dims().n(), 1, [&](llvm::Value* n_i) {
       llvm::Value* n_i_next = b_->CreateAdd(n_i, b_->getInt64(1));
-      HandleResiduesOnK(&vsl, n_i, n_i_next);
+      HandleResiduesOnK(&vb, n_i, n_i_next);
     });
   }
 }
 
-void TiledSmallGemmEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
+void TiledSmallGemmEmitter::HandleResiduesOnK(VectorIrBuilder* vsl,
                                               llvm::Value* n_start,
                                               llvm::Value* n_end) {
   int64_t k_start = 0;
@@ -830,7 +843,7 @@ void TiledSmallGemmEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
 }
 
 void TiledSmallGemmEmitter::HandleResiduesOnM(
-    VectorSupportLibrary* vsl, int64_t tile_size_k, llvm::Value* k_start,
+    VectorIrBuilder* vsl, int64_t tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
   const int64_t m_end = dims().m() - dims().m() % tile_size_m();
   EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end, tile_size_m(),
@@ -913,7 +926,7 @@ void TiledSmallGemmEmitter::HandleResiduesOnM(
 //   | a0*p0+b0*q0+c0*r0 | a0*p1+b0*q1+c0*r1 | a0*p2+b0*q2+c0*r2 |  ...
 //   +-------------------+-------------------+-------------------+---------
 void TiledSmallGemmEmitter::EmitTiledGemm(
-    VectorSupportLibrary* vsl, int64_t tile_size_k, llvm::Value* k_start,
+    VectorIrBuilder* vsl, int64_t tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end,
     int64_t tile_size_m, llvm::Value* m_start, llvm::Value* m_end) {
   ksl_.For("dot.m", m_start, m_end, tile_size_m, [&](llvm::Value* m_i) {
@@ -955,7 +968,7 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
                       int64_t tile_cols, int64_t m, int64_t k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
-                      llvm::Value* result, llvm::IRBuilder<>* b,
+                      llvm::Value* result, llvm::IRBuilderBase* b,
                       const HloModuleConfig& module_config) {
   RowMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
@@ -976,7 +989,7 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
                          int64_t tile_cols, int64_t m, int64_t k,
                          llvm::Value* lhs, llvm::Value* rhs,
                          llvm::Value* addend, llvm::Value* result,
-                         llvm::IRBuilder<>* b,
+                         llvm::IRBuilderBase* b,
                          const HloModuleConfig& module_config) {
   ColumnMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
@@ -997,7 +1010,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64_t m, int64_t k, int64_t n,
                    int64_t max_vectorization_width, int64_t max_vector_count,
                    int64_t min_vectorization_width, int64_t tile_size_m,
                    int64_t tile_size_k, llvm::Value* lhs, llvm::Value* rhs,
-                   llvm::Value* result, llvm::IRBuilder<>* b,
+                   llvm::Value* result, llvm::IRBuilderBase* b,
                    const HloModuleConfig& module_config) {
   TiledSmallGemmEmitter::Config config(
       /*scalar_type=*/scalar_type,

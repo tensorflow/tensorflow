@@ -34,8 +34,8 @@ namespace v1 {
 // Tensorflow Dialect. The output MLIR is in the TF Functional Dialect.  The
 // input MLIR should not have infeed and outfeed ops, which are unsupported via
 // this API. Returns OkStatus if passed, otherwise an error.
-tensorflow::Status RunSessionTf2xlaClusteringBridge(
-    mlir::ModuleOp module, bool is_in_fallback_enabled_mode);
+absl::Status RunSessionTf2xlaClusteringBridge(mlir::ModuleOp module,
+                                              bool is_in_fallback_enabled_mode);
 
 }  // namespace v1
 }  // namespace tf2xla

@@ -234,7 +234,7 @@ There are two ways to run TensorFlow unit tests.
     for the required packages. Alternatively, use the said
     [tensorflow/build Docker images](https://hub.docker.com/r/tensorflow/build)
     (`tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` are no
-    longer supported for) development. Use TF SIG Build Dockerfiles in
+    longer supported for development). Use TF SIG Build Dockerfiles in
     development to avoid installing the packages directly on your system (in
     which case remember to change the directory from `/root` to `/tensorflow`
     once you get into the running container so `bazel` can find the `tensorflow`
@@ -253,13 +253,22 @@ There are two ways to run TensorFlow unit tests.
     export flags="--config=opt -k"
     ```
 
-    If the tests are to be run on the GPU, add CUDA paths to LD_LIBRARY_PATH and
-    add the `cuda` option flag
+    If the tests are to be run on the GPU:
 
-    ```bash
-    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-    export flags="--config=opt --config=cuda -k"
-    ```
+    *   For TensorFlow versions starting from v.2.18.0: Add the `cuda` option
+        flag.
+
+        ```bash
+        export flags="--config=opt --config=cuda -k"
+        ```
+
+    *   For TensorFlow versions prior v.2.18.0: Add CUDA paths to
+        LD_LIBRARY_PATH and add the `cuda` option flag.
+
+        ```bash
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+        export flags="--config=opt --config=cuda -k"
+        ```
 
     For example, to run all tests under tensorflow/python, do:
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
@@ -148,8 +149,9 @@ const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   return *replica_groups_;
 }
 
-std::string CollectiveDeviceList::ToString() const {
-  if (iota_replica_group_list_.has_value()) {
+std::string CollectiveDeviceList::ToString(
+    bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
     return iota_replica_group_list_->ToString();
   }
 

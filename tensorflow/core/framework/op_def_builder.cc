@@ -96,7 +96,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
     return false;
   }
   int64_t value = 0;
-  if (!strings::safe_strto64(match, &value)) {
+  if (!absl::SimpleAtoi(match, &value)) {
     return false;
   }
   *out = value;
@@ -492,7 +492,7 @@ void FinalizeDoc(const string& text, OpDef* op_def,
   // Trim trailing blank lines from the description.
   while (start_l < end_l && lines[end_l - 1].empty()) --end_l;
   string desc = absl::StrJoin(
-      gtl::ArraySlice<string>(lines.data() + start_l, end_l - start_l), "\n");
+      absl::Span<const string>(lines.data() + start_l, end_l - start_l), "\n");
   if (!desc.empty()) op_def->set_description(desc);
 
   // name: description
@@ -664,7 +664,7 @@ OpDefBuilder& OpDefBuilder::AllowAttrTypeAny() {
   return *this;
 }
 
-Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
+absl::Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   std::vector<string> errors = errors_;
   *op_reg_data = op_reg_data_;
 
@@ -687,7 +687,7 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
     TF_RETURN_IF_ERROR(op_reg_data->type_ctor(op_def));
   }
 
-  if (errors.empty()) return OkStatus();
+  if (errors.empty()) return absl::OkStatus();
   return errors::InvalidArgument(absl::StrJoin(errors, "\n"));
 }
 

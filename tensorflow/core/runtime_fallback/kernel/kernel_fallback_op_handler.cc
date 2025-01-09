@@ -155,7 +155,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
   op_name.consume_front("tf.");
   return CoreRuntimeOp(
       [op_name = op_name.str(), this](const OpInvocation& invocation) {
-        auto propagate_error = [&invocation](Status s) {
+        auto propagate_error = [&invocation](absl::Status s) {
           auto error = tfrt::EmitErrorAsync(
               invocation.exec_ctx,
               absl::Status(

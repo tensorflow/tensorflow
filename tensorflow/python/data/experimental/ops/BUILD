@@ -259,14 +259,28 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "iterator_model_ops",
+    srcs = [
+        "iterator_model_ops.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
-        "//tensorflow/python/ops:proto_ops",
-        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )

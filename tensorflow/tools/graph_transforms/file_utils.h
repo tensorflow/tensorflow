@@ -24,7 +24,8 @@ namespace graph_transforms {
 
 // First tries to load the file as a text protobuf, if that fails tries to parse
 // it as a binary protobuf, and returns an error if both fail.
-Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def);
+absl::Status LoadTextOrBinaryGraphFile(const string& file_name,
+                                       GraphDef* graph_def);
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

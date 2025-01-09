@@ -52,8 +52,8 @@ constexpr char kHasSplitProvider[] = "has_split_provider";
 constexpr char kSlash[] = "/";
 constexpr char kSplitProvider[] = "split_provider";
 
-Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
-                          std::vector<Tensor>* out_tensors, int64 value) {
+absl::Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
+                                std::vector<Tensor>* out_tensors, int64 value) {
   switch (output_dtypes[0]) {
 #define HANDLE_TYPE(type)                                \
   case DataTypeToEnum<type>::value: {                    \
@@ -144,7 +144,7 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
   RangeSplitProvider(int64_t start, int64_t stop, int64_t step)
       : counter_(start, stop, step) {}
 
-  Status GetNext(Tensor* split, bool* end_of_splits) override {
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
     int64_t next = counter_.GetNext(end_of_splits);
     if (*end_of_splits) {
       return absl::OkStatus();
@@ -154,20 +154,20 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
     return absl::OkStatus();
   }
 
-  Status Reset() override {
+  absl::Status Reset() override {
     counter_.Reset();
     return absl::OkStatus();
   }
 
-  Status Save(std::function<std::string(std::string)> key_name_fn,
-              IteratorStateWriter* writer) override {
+  absl::Status Save(std::function<std::string(std::string)> key_name_fn,
+                    IteratorStateWriter* writer) override {
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(key_name_fn(kNext), counter_.Peek()));
     return absl::OkStatus();
   }
 
-  Status Restore(std::function<std::string(std::string)> key_name_fn,
-                 IteratorStateReader* reader) override {
+  absl::Status Restore(std::function<std::string(std::string)> key_name_fn,
+                       IteratorStateReader* reader) override {
     int64_t next;
     TF_RETURN_IF_ERROR(reader->ReadScalar(key_name_fn(kNext), &next));
     counter_.SetNext(next);
@@ -221,36 +221,37 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return RangeCardinality(start_, stop_, step_);
   }
 
-  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
-                                split_providers) const override {
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
     split_providers->push_back(
         std::make_unique<RangeSplitProvider>(start_, stop_, step_));
     return absl::OkStatus();
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return absl::OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  Status Get(AnyContext ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(AnyContext ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,
                               start_ + (index * step_));
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* start = nullptr;
     Node* stop = nullptr;
     Node* step = nullptr;
@@ -276,7 +277,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
         counter_ = std::make_unique<RangeCounter>(
             dataset()->start_, dataset()->stop_, dataset()->step_);
@@ -287,9 +288,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       if (ctx->index_mapper() != nullptr) {
         return global_shuffle_iterator_.GetNext(ctx, out_tensors,
                                                 end_of_sequence);
@@ -318,8 +319,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       if (split_provider_) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kHasSplitProvider, true));
@@ -336,8 +337,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
         return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }

@@ -175,7 +175,7 @@ string RecvOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
 namespace {
 Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
                                             AsyncOpKernel::DoneCallback done) {
-  return [ctx, done = std::move(done)](const Status& s,
+  return [ctx, done = std::move(done)](const absl::Status& s,
                                        const Rendezvous::Args& send_args,
                                        const Rendezvous::Args& recv_args,
                                        const Tensor& val, bool is_dead) {

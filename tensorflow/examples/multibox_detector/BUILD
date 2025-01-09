@@ -26,6 +26,7 @@ tf_cc_binary(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/util:command_line_flags",

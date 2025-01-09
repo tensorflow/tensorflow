@@ -23,9 +23,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
 #include "tsl/platform/statusor.h"
@@ -42,10 +43,11 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
     return "xla::ifrt::HloSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
     HloShardingProto proto;
-    *proto.mutable_devices() = sharding.devices().ToProto();
+    *proto.mutable_devices() = sharding.devices()->ToProto();
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }

@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {

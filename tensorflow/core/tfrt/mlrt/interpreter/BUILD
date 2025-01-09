@@ -127,6 +127,8 @@ cc_library(
         ":future",
         ":value",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/concurrency:async_value",
         "@tf_runtime//:async_value",
     ],

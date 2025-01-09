@@ -25,7 +25,6 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,20 +35,20 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/service/memory_space_assignment/allocation_value.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
@@ -60,153 +59,6 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
-
-// AllocationValue is used to break up HloValues for each non-trivial position
-// (trivial positions are considered Tuple, GetTupleElement, and Bitcast). An
-// HloValue may include positions and uses that alias with each other across
-// multiple computations. We use this class to break these HloValues such that
-// every AllocationValue has one defining position (that may alias with other
-// AllocationValues). The uses field of the AllocationValue contains only the
-// direct uses of the AllocationValue's defining position.
-//
-// For example, consider the following HLO snippet:
-//
-// Body {
-//   body_param = (f32[4,3]{1,0}, f32[]) parameter(0)
-//   get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element(body_param),
-//   index=0
-//   ...
-//   ROOT tuple = (f32[4,3]{1,0}, f32[]) tuple(get-tuple-element.3, ...)
-// }
-//
-// Cond {
-//   cond_param = (f32[4,3]{1,0}, f32[]) parameter(0)
-//   ...
-// }
-//
-// add.4 = f32[4,3]{1,0} add(...)
-// tuple.1 = (f32[4,3]{1,0}, f32[]) tuple(add.4, ...)
-// while = (f32[4,3]{1,0}, f32[]) while(tuple.1), body=Body, condition=Cond
-// get-tuple-element.5 = f32[4,3]{1,0} get-tuple-element(while), index=0
-// add.5 = f32[4,3]{1,0} add(get-tuple-element.5, ...)
-//
-// This contains an HloValue that looks like the following:
-// positions:
-//  add.4
-//  body_param {0}
-//  get-tuple-element.3
-//  tuple {0}
-//  cond_param {0}
-//  tuple.1 {0}
-//  while {0}
-//  get-tuple-element.5
-// uses:
-//  add.1, operand 0
-//  tuple, operand 0
-//  while, operand 0 {0}
-//  add.5, operand 0
-//
-// We break this HloValue up into the following AllocationValues for each
-// non-trivial position:
-// AllocationValue1: computation = Entry
-//  position:
-//   add.4
-//  uses:
-//   while, operand 0 {0}
-// AllocationValue2: computation = Cond
-//  position:
-//   cond_param {0}
-//  uses:
-// AllocationValue3: computation = Body
-//  position:
-//   body_param {0}
-//  uses:
-//   add.1, operand 0
-//   tuple, operand 0
-// AllocationValue4: computation = Entry
-//  position:
-//   while {0}
-//  uses:
-//   add.5, operand 0
-class AllocationValue {
- public:
-  // This data structure wraps an HloUse and adds additional metadata that are
-  // useful for allocation.
-  struct Use {
-    // The wrapped HloUse object.
-    HloUse hlo_use;
-    // The logical time this use is scheduled.
-    int64_t time;
-    // All the positions where this use aliases with. The aliased positions
-    // must get the same allocation.
-    std::vector<HloPosition> aliases;
-    // The sync copy instruction that produced the allocation value that this
-    // use is consuming.
-    HloInstruction* copy_source = nullptr;
-
-    bool operator==(const Use& other) const {
-      return hlo_use == other.hlo_use && time == other.time &&
-             aliases == other.aliases;
-    }
-
-    template <typename H>
-    friend H AbslHashValue(H h, const Use& s) {
-      return H::combine(std::move(h), s.hlo_use, s.time, s.aliases);
-    }
-  };
-
-  AllocationValue(const HloValue* value, const HloPosition& position,
-                  int64_t size)
-      : value_(value),
-        defining_position_(position),
-        size_(size),
-        requires_contiguous_allocation_(false) {}
-
-  const HloPosition& defining_position() const { return defining_position_; }
-  const HloInstruction* defining_instruction() const {
-    return defining_position().instruction;
-  }
-  int64_t size() const { return size_; }
-  const std::vector<Use>& uses() const { return uses_; }
-  std::vector<Use>& uses() { return uses_; }
-  const HloValue* value() const { return value_; }
-  const HloComputation* computation() const {
-    return defining_instruction()->parent();
-  }
-  AllocationSequence* mutable_allocation_sequence() {
-    return &allocation_sequence_;
-  }
-  const AllocationSequence* allocation_sequence() const {
-    return &allocation_sequence_;
-  }
-
-  // Sets/gets whether this AllocationValue requires allocating it
-  // contiguously throughout its live range (without any copies).
-  bool requires_contiguous_allocation() const {
-    return requires_contiguous_allocation_;
-  }
-  void set_requires_contiguous_allocation(bool requires_contiguous_allocation) {
-    requires_contiguous_allocation_ = requires_contiguous_allocation;
-  }
-
-  void AddUse(const HloUse& use, int64_t use_time) {
-    uses_.push_back({use, use_time, {}});
-  }
-
-  std::string ToString() const;
-  std::string ToShortString() const;
-
- private:
-  const HloValue* value_;
-  HloPosition defining_position_;
-  int64_t size_;
-  // If true, there must be a contiguous allocation for this buffer without
-  // any copies.
-  bool requires_contiguous_allocation_;
-  std::vector<Use> uses_;
-  AllocationSequence allocation_sequence_;
-};
-
 // A struct representing an asynchronous copy with its logical start and end
 // time (time that copy done is scheduled), the resource this copy would use,
 // its destination memory space, and a unique ID.
@@ -221,6 +73,34 @@ struct AsynchronousCopy {
     return std::make_tuple(exclusive_start_time, end_time, resource,
                            destination, id);
   }
+};
+
+// Represents a context for allocating a segment of an AllocationValue.
+// AllocationValue typically provides enough information to allocate the entire
+// live range of the AllocationValue, since all segments update only the
+// AllocationSequence belonging to the AllocationValue. However, in cases of
+// synchronous memory op conversion (e.g., copy, slice, etc.), we also need
+// to modify the AllocationSequence of the AllocationValue produced at the
+// synchronous memory op's output. This struct provides a context for allocating
+// a segment of an AllocationValue, specifying the uses of the AllocationValue
+// that we are processing, the index of the use that we are processing in the
+// AllocationValue's uses vector, the index of the AllocationValue in
+// Span<AllocationValue>, whose allocation sequence we will update, and whether
+// the use is only processed to extend the lifetime of its operand's allocation,
+// and the use will not receive a new allocation.
+struct AllocationSegmentContext {
+  // The uses of the AllocationValue that we are processing.
+  const std::vector<AllocationValue::Use>* uses;
+  // The index of the use that we are processing in the AllocationValue's
+  // AllocationValue::uses vector.
+  int use_idx;
+  // Index of the AllocationValue in allocation_values that is being processed
+  // in AllocateAllocationValues(), whose allocation sequence we will be
+  // updated.
+  int allocation_value_to_update_idx;
+  // If true, the use is only processed to extend the lifetime of its operand's
+  // allocation, and the use will not receive a new allocation.
+  bool only_extend_existing_allocation;
 };
 
 // Compare asynchronous copies such that an earlier start time has the same or
@@ -395,21 +275,21 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Given an HloValue, returns a group of HloValues that need to be processed
   // jointly. Normally, HloValues can be processed individually. However, in
-  // case we are trying to replace synchronous copies, we need to process all
-  // copy-connected values together.
+  // case we are trying to replace synchronous copies, we need to jointly
+  // process all values that are produced or consumed by a synchronous memory
+  // call instruction.
   std::vector<const HloValue*> GenerateJointProcessedValues(
       const HloValue* entrance_value);
-
-  // Given an HloValue, returns a group of HloValues that are connected to it by
-  // replaceable sync copy candidates that feed into or follow from that value.
-  std::vector<const HloValue*> GetJointProcessedValuesForSyncCopyReplacement(
-      const HloValue* entrance_value) const;
 
   // Updates sorted_sync_copy_replacement_candidates_ with synchronous copy
   // instructions that connect the given joint processed values, and meet the
   // conditions in IsReplaceableSyncCopyCandidate().
-  void UpdateSyncCopyCandidatesForJointProcessedValues(
+  void UpdateSyncDataMovementCandidatesForJointProcessedValues(
       const std::vector<const HloValue*>& joint_processed_values);
+
+  // Returns true if repack_allocation_blocks_ includes an AllocationBlock
+  // belonging to a converted synchronous memory operations.
+  bool RepackAllocationsIncludeConvertedSyncMemOp();
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
@@ -448,78 +328,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct RepackAllocationBlock : AllocationBlock {
     Allocation* allocation;
   };
-
-  // A data structure we use to associate Allocation objects that are aliased
-  // and must get the same offset.
-  struct AliasedOffset {
-    int64_t offset;
-    absl::flat_hash_set<const Allocation*> allocations;
-  };
-
-  // An allocation request for a use segment. A use segment is the time segment
-  // between the definition and the first use, and the time segment between the
-  // uses of a buffer. For example, the time between the definition and Use1, is
-  // the first segment, and the time between Use1 and Use2 is the second segment
-  // and so on:
-  //
-  //        +------+----------+-------+
-  //       /        \          \       \
-  //      /          v          v       v
-  //    Def         Use1       Use2    Use3
-  //     <----------> <--------> <----->
-  //        Segment    Segment   Segment
-  //
-  // start_time and end_time are the start and end logical times of the segment.
-  // use_times is a sorted sequence of the times of all uses.
-  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
-  // prefetch.
-  // If allow_no_copy_alternate_mem_allocation is false, an eviction is forced.
-  // If earliest_prefetch_time is set, prefetches cannot start before this
-  // value.
-  //
-  // In case we are trying to replace synchronous copies, and for example Use2
-  // is a replaceable sync copy candidate, we now skip Use2 and segments will be
-  // between Def, Use1, Use2.1, Use2.2, Use3:
-  //        +------+----------+-------------------+
-  //       /        \          \                   \
-  //      /          v          v                   v
-  //    Def         Use1       Use2(Sync Copy)     Use3
-  //    |            |           \         \        |
-  //    |            |            v         v       |
-  //    |            |           Use2.1    Use2.2   |
-  //    |<---------->|<---------->|<------->|<----->|
-  //    |  Segment   |   Segment  | Segment |Segment|
-
-  struct AllocationRequest {
-    int64_t inclusive_start_time;
-    int64_t end_time;
-    int64_t latest_prefetch_time;
-    // See the comment for require_copy_allocation
-    int64_t required_copy_allocation_latest_time;
-    int64_t size;
-    bool prefer_no_copy_alternate_mem_allocation;
-    bool allow_no_copy_alternate_mem_allocation;
-    bool require_no_copy_alternate_mem_allocation;
-    // If true, indicates we are requiring a copy allocation between def and
-    // use, that finishes by required_copy_allocation_latest_time.
-    // required_copy_allocation_for is a synchronous copy instruction that will
-    // be removed, if we are successful in adding the copy allocation.
-    bool require_copy_allocation;
-    bool allow_prefetch;
-    std::optional<int64_t> earliest_prefetch_time;
-    std::optional<int64_t> preferred_prefetch_time;
-    AliasedOffset* preferred_offset;
-    const AllocationValue::Use* use;
-    AllocationValue* allocation_value;
-    absl::Span<const int64_t> all_use_times;
-    // See the comment for require_copy_allocation
-    HloInstruction* required_copy_allocation_for;
-    // Data structure that contains the options for making window prefetched
-    // allocations.
-    const WindowPrefetchedAllocation::Options* window_prefetch_options =
-        nullptr;
-  };
-
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -680,74 +488,39 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     bool window_prefetch = false;
   };
 
-  // Result of an allocation, prefetch, eviction etc. request.  The result is
-  // either kSuccess or a bitwise OR of one or more failures. The values are
-  // unique powers of two. To check if a result contains a particular failure,
-  // use the result_is method. To add a new failure to a result, use the
-  // result_mark method.
-  enum class Result {
-    // Successful allocation.
-    kSuccess = 0,
-    // Allocation failed because we ran out of alternate memory.
-    kFailOutOfMemory = 1,
-    // A no-copy allocation couldn't be performed because the previous
-    // allocation wasn't in the alternate memory space.
-    kFailPrevAllocationNotInAlternateMem = 2,
-    // A no-copy allocation couldn't be performed because the live range was too
-    // long.
-    kFailLiveRangeTooLong = 4,
-    // A prefetching couldn't be performed because the live range was too short.
-    kFailLiveRangeTooShort = 8,
-    // Ran out of outstanding asynchronous copy limit either during prefetching
-    // or eviction.
-    kFailOutOfAsyncCopies = 16,
-    // A prefetching couldn't be performed because the asynchronous copy
-    // resource was violated.
-    kFailViolatesAsyncCopyResource = 32,
-    // An allocation failure happened that requires uncommitting all the pending
-    // allocations. Usually this is due to a situation requiring an eviction but
-    // the eviction couldn't be performed.
-    kFailRequiresUncommit = 64,
-    // For prefetching, indicates that all slices have the same start time, in
-    // which case, we fallback to an unsliced solution.
-    kAllSlicesHaveTheSameStartTime = 128,
-    // There were conflicting preferred offsets.
-    kFailConflictingPreferredOffsets = 256,
-    // Could not replace the synchronous copy with an asynchronous one
-    kFailSyncCopyReplacement = 512
-  };
-
   // Return true if the result belongs to a failure.
-  static bool result_is(Result result, Result failure) {
+  static bool result_is(AllocationResult result, AllocationResult failure) {
     return static_cast<int>(result) & static_cast<int>(failure);
   }
 
   // Mark (bitwise OR) a failure to the result.
-  static Result result_mark(Result failure, Result& result) {
-    result = static_cast<Result>(static_cast<int>(result) |
-                                 static_cast<int>(failure));
+  static AllocationResult result_mark(AllocationResult failure,
+                                      AllocationResult& result) {
+    result = static_cast<AllocationResult>(static_cast<int>(result) |
+                                           static_cast<int>(failure));
     return result;
   }
 
   // Return a string representation of a result that has at most a single
   // failure. Consider using ResultToString for a general case.
-  static std::string SingleFailureResultToString(const Result& result);
+  static std::string SingleFailureResultToString(
+      const AllocationResult& result);
   // Return a string representation of the result, with possibly more than one
   // failure.
-  static std::string ResultToString(const Result& result);
+  static std::string ResultToString(const AllocationResult& result);
 
   // Return true if the result is a failure that requires us to uncommit pending
   // chunks.
-  static bool result_requires_uncommit(Result result) {
-    return result_is(result, Result::kFailRequiresUncommit);
+  static bool result_requires_uncommit(AllocationResult result) {
+    return result_is(result, AllocationResult::kFailRequiresUncommit);
   }
 
   // Return true if the result is a failure either due to running out of
   // outstanding asynchronous copies or due to violating asynchronous copy
   // ordering.
-  static bool result_failed_because_of_async_copy(Result result) {
-    return result_is(result, Result::kFailOutOfAsyncCopies) ||
-           result_is(result, Result::kFailViolatesAsyncCopyResource);
+  static bool result_failed_because_of_async_copy(AllocationResult result) {
+    return result_is(result, AllocationResult::kFailOutOfAsyncCopies) ||
+           result_is(result, AllocationResult::kFailViolatesAsyncCopyResource);
   }
 
   // For the given loop with the start and end index and loop size, run the
@@ -760,11 +533,27 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // for the found loops.
   void IdentifyAndOptimizeMemoryBoundLoops();
 
+  // Returns true if the instruction meets the preconditions of a replaceable
+  // synchronous copy or slice instruction. This only checks for necessary
+  // conditions, and doesn't guarantee a successful replacement.
+  bool IsAsyncConversionCandidate(const HloInstruction* instruction) const;
   // Not supported instructions for sync copy replacement:
   // 1. Layout-changing copies
-  // 2. Copied value appears in more than one position
-  // 3. Instruction operand or output has a pre-specified memory space
-  bool IsReplaceableSyncCopyCandidate(const HloInstruction* instruction) const;
+  // 2. Instruction operand or output has a pre-specified memory space
+  bool IsAsyncConversionCopyCandidate(const HloInstruction* instruction) const;
+
+  enum class AsyncConversionResult {
+    kSuccess = 0,
+    kFeatureNotEnabled = 1,
+    kFailedPrecondition = 2,
+    kFailedValueNotAllowedInAlternateMemory = 4,
+    kFailedSatisfyingConstraints = 8,
+    kFailedNotProcessed = 16,
+    kFailedGaveUp = 32,
+  };
+
+  AsyncConversionResult IsAsyncConversionSliceCandidate(
+      const HloInstruction* instruction) const;
 
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
@@ -823,18 +612,45 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // can be placed in alternate memory, considering the restrictions for loops
   // and conditionals. Also calculates the timing for prefetching, taking into
   // account instruction schedules, operation type (e.g., sequential vs.
-  // non-sequential calls), and prior usage patterns.
+  // non-sequential calls), and prior usage patterns. We add the resulting
+  // Allocation to the AllocationSequence of allocation_value_to_update. When
+  // only_extend_existing_allocation is true, no new Allocations will be created
+  // while processing the resulting AllocationRequest, and we only need to
+  // extend an existing Allocation's end_time.
   AllocationRequest CreateAllocationRequest(
-      AllocationValue& allocation_value, const AllocationValue::Use& use,
-      const AllocationValue::Use* previous_use, AliasedOffset* preferred_offset,
-      int64_t definition_time, bool require_no_copy_alternate_mem_allocation,
-      const std::vector<int64_t>& all_use_times);
+      AllocationValue& allocation_value,
+      AllocationValue& allocation_value_to_update,
+      const AllocationValue::Use& use, const AllocationValue::Use* previous_use,
+      AliasedOffset* preferred_offset, int64_t definition_time,
+      bool require_no_copy_alternate_mem_allocation,
+      const std::vector<int64_t>& all_use_times,
+      bool only_extend_existing_allocation);
+
+  // Returns true, if the allocation value requires a pinned allocation in the
+  // alternate memory space.
+  bool RequiresNoCopyAlternateMemAllocation(
+      AllocationValue& allocation_value) const;
+
+  // Adds a required assignment in default memory, at the given time, if
+  // allocation_value's defining position is not allowed in alternate memory.
+  void AssignDefaultMemIfNotAllowedInAlternateMem(
+      AllocationValue& allocation_value, int64_t time);
+
+  // Returns all AllocationSegmentContexts needed for a given set of
+  // AllocationValues that we would like to process jointly.
+  std::vector<AllocationSegmentContext> GenerateAllocationSegmentContexts(
+      absl::Span<AllocationValue>& allocation_values,
+      absl::flat_hash_map<const HloInstruction*, std::vector<size_t>>&
+          value_indices_by_sync_inst,
+      int allocation_value_idx) const;
+
+  bool VerifyAllConversionsAreSuccessful();
 
   // Finds allocations for allocation values generated from colocated intervals.
   // All of the allocation values have a must-alias relationship with each
   // other. Returns either kSuccess if all of the sites could be placed in the
   // alternate memory or a bitwise OR of failure reasons why they couldn't
-  absl::StatusOr<Result> AllocateAllocationValues(
+  absl::StatusOr<AllocationResult> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
   // Finds an allocation for an allocation request for a segment (see the
@@ -855,22 +671,23 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Result::kSuccess if the buffer could be placed in alternate memory or some
   // other Result with an OR of reasons why the buffer couldn't be placed in
   // alternate memory.
-  Result AllocateSegment(AllocationRequest& request);
+  AllocationResult AllocateSegment(AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies.
-  Result AllocateInAlternateMemoryNoCopy(const AllocationRequest& request);
+  AllocationResult AllocateInAlternateMemoryNoCopy(
+      const AllocationRequest& request);
 
   // Try evicting to default memory space.
-  Result Evict(const AllocationRequest& request);
+  AllocationResult Evict(const AllocationRequest& request);
 
   // Returns the time a copy done of a prefetch should be scheduled.
   int64_t FindPrefetchEndTime(const AllocationRequest& request,
                               int64_t earliest_prefetch_time) const;
 
   // Try prefetching to alternate memory space.
-  Result Prefetch(const AllocationRequest& request,
-                  Allocation& prev_allocation_in_default_mem,
-                  const Shape* shape = nullptr);
+  AllocationResult Prefetch(const AllocationRequest& request,
+                            Allocation& prev_allocation_in_default_mem,
+                            const Shape* shape = nullptr);
 
   // Helper methods used to implement Prefetch().
   //
@@ -884,14 +701,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       PrefetchContext& context) const;
   // Initializes the PrefetchIntervalPicker and associated data structures in
   // context.
-  Result InitializePrefetchIntervalPicker(PrefetchContext& context);
+  AllocationResult InitializePrefetchIntervalPicker(PrefetchContext& context);
   // As a compile time optimization, try a prefetch allocation that is as late
   // as possible. If this is not able to find a solution, none of the
   // earlier tries will succeed either.
-  Result EnsureSomeSpatialPrefetchFitExists(PrefetchContext& context) const;
+  AllocationResult EnsureSomeSpatialPrefetchFitExists(
+      PrefetchContext& context) const;
   // Check if for the specified type of solution, using the parameters in
   // context. If we find a solution, it will be stored in context.
-  Result CheckPrefetchFit(bool for_sliced_solution, PrefetchContext& context);
+  AllocationResult CheckPrefetchFit(bool for_sliced_solution,
+                                    PrefetchContext& context);
   // Creates a debugging string describing the timing of the prefetch solution
   // we are currently attempting (as dictated by for_sliced_solution and
   // context).
@@ -899,8 +718,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       bool for_sliced_solution, const PrefetchContext& context) const;
 
   // Try to prefetch a window worth of data into the alternate memory.
-  Result WindowPrefetch(const AllocationRequest& request,
-                        Allocation& prev_allocation_in_default_mem);
+  AllocationResult WindowPrefetch(const AllocationRequest& request,
+                                  Allocation& prev_allocation_in_default_mem);
 
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
@@ -1036,14 +855,19 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                          AliasedOffset* aliased_offset, float resource,
                          std::optional<int> cross_program_prefetch_index);
 
-  // Adds an asynchronous copy to allocations.
-  void AddAsyncCopy(
+  // Adds an asynchronous copy or other memory operation (e.g., slice) to
+  // allocations. We pass sync_mem_op to the CopyAllocation constructor. When
+  // sync_mem_op is set, instead of an async copy, CopyAllocation::Process()
+  // will replace sync_mem_op with the async version of sync_mem_op's opcode
+  // (e.g., slice) and shape.
+  void AddAsyncCopyOrOtherMemOp(
       Allocation& prev_allocation, MemorySpace memory_space,
       std::optional<Chunk> chunk, int64_t exclusive_start_time,
       int64_t end_time, int64_t copy_done_schedule_before_time,
       AllocationSequence* allocations, AliasedOffset* aliased_offset,
       float resource,
-      std::optional<int> cross_program_prefetch_index = std::nullopt);
+      std::optional<int> cross_program_prefetch_index = std::nullopt,
+      HloInstruction* sync_mem_op = nullptr);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
@@ -1052,7 +876,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const Allocation& prev_allocation, AllocationSequence* allocations,
       AliasedOffset* aliased_offset,
       const std::vector<SliceDecision>& slice_decisions_sorted_by_start_time,
-      int64_t prefetch_end_time, int64_t allocation_end_time);
+      int64_t prefetch_end_time, int64_t allocation_end_time,
+      HloInstruction* sync_mem_op);
 
   // For window prefetching, adds a WindowPrefetchedAllocation to allocations.
   // Also updates asynchronous copy data structures, prefetch_interval_tree_,
@@ -1080,28 +905,44 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Clears all pending chunks and asynchronous copies.
   void ClearPendingChunks();
 
-  bool IsInstructionInPendingCopyReplacements(
-      const AllocationValue::Use& use) const {
-    return IsInstructionInPendingCopyReplacements(use.hlo_use.instruction);
-  }
-
-  bool IsInstructionInPendingCopyReplacements(
+  // Returns true if we are trying to replace instruction with its async
+  // version, while processing JointAllocationProposal.
+  bool IsInstructionPendingReplacements(
       const HloInstruction* instruction) const;
 
   // Colors the colocated intervals in the alternate memory.
   void ColorColocatedIntervalsToAlternate(
       const std::vector<const MsaBufferInterval*>& colocated_intervals);
 
-  // Iterates over joint_processed_values and populates
-  // joint_processed_allocation_values with allocation values created for the
-  // joint-processed values, and populates joint_processed_colocated_intervals
-  // with a vector of colocated buffer intervals, one vector per joint-processed
-  // value.
-  void CreateAllocationValuesForJointProcessedIntervals(
-      const std::vector<const HloValue*>& joint_processed_values,
-      std::vector<AllocationValue>& joint_allocation_values,
-      std::vector<std::vector<const MsaBufferInterval*>>&
-          joint_colocated_intervals);
+  // A proposal for a group of values to be allocated jointly. Proposals are not
+  // guaranteed to be accepted, and when they fail, the algorithm will try to
+  // come up with a new proposal on a smaller subset of values.
+  struct JointAllocationProposal {
+    // The values that are being jointly processed.
+    std::vector<const HloValue*> values;
+    // The allocation values created for the joint-processed values.
+    std::vector<AllocationValue> allocation_values;
+    // The colocated buffer intervals for the joint-processed values. This is a
+    // vector of vectors, one vector per joint-processed value, and the
+    // colocation must be only enforced on intervals belonging to the same
+    // joint-processed value.
+    std::vector<std::vector<const MsaBufferInterval*>> colocated_intervals;
+  };
+
+  // Iterates over proposal's values and populates its allocation_values and
+  // colocated_intervals with the appropriate allocation values and colocated
+  // intervals created for the values.
+  void CreateAllocationValuesForJointProcessedValues(
+      JointAllocationProposal& proposal);
+
+  // Returns a JointAllocationProposal with values, allocation
+  // values, and colocated intervals that are proposed to be processed jointly
+  // for the given interval. Also, if the interval consumes or produces any
+  // synchronous memory call instructions (e.g., kCopy, kSlice) and the option
+  // to replace them with their asynchronous versions is enabled, this method
+  // will add those instructions to the sorted_async_conversion_candidates_
+  // vector.
+  JointAllocationProposal GetJointProposal(MsaBufferInterval& interval);
 
   // Append buffer and allocation infos for debugging and dump it into a file,
   // if enabled.
@@ -1151,6 +992,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsIntervalPinnedToAlternateMemory(
       const MsaBufferInterval& interval) const;
 
+  // A convenience debugging method that returns true if the prefetch context
+  // matches the described producer and consumer.
+  bool MatchesPrefetchContext(const PrefetchContext& context,
+                              absl::string_view producer_name,
+                              ShapeIndex producer_shape_index,
+                              absl::string_view consumer_name) const;
+
   AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
@@ -1173,12 +1021,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
-  // A list of candidate sync copy instructions that we are trying to replace
-  // with asynchronous copies while processing the current interval, sorted by
+  // A list of candidate sync instructions that we are trying to replace with
+  // an asynchronous version, while processing the current interval, sorted by
   // their order in the instruction schedule. Being in this list doesn't
-  // guarantee that the copy will be replaced. These sync copies are basically
-  // the instructions that connects the values that are being jointly processed.
-  std::vector<const HloInstruction*> sorted_sync_copy_replacement_candidates_;
+  // guarantee that the sync instruction will be converted to async.
+  std::vector<const HloInstruction*> sorted_async_conversion_candidates_;
   // A cache to keep the peak memory usage at each point in the graph. We use
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
@@ -1215,7 +1062,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_map<HloUse, LoopOptimizedAllocationInfo>
       loop_optimized_allocations_map_;
   // A map to look the operands of each instruction that are assigned in
-  // alternate memory.
+  // alternate memory or are window prefetched.
   absl::flat_hash_map<const HloInstruction*,
                       absl::flat_hash_set<std::pair<int, ShapeIndex>>>
       operands_in_alternate_memory_map_;
@@ -1228,8 +1075,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<const HloValue*> finalized_values_;
   // Set of sync copy instructions that we failed/succeeded in replacing with
   // asynchronous copies.
-  absl::flat_hash_set<const HloInstruction*> failed_copy_replacements_set_;
-  absl::flat_hash_set<const HloInstruction*> successful_copy_replacements_set_;
+  absl::flat_hash_map<const HloInstruction*, AsyncConversionResult>
+      failed_async_conversions_;
+  absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
+  std::vector<const HloInstruction*> not_finalized_async_conversions_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -46,9 +47,11 @@ PJRT_Client* CreateClient(const PJRT_Api* api) {
   create_args.create_options = nullptr;
   create_args.num_options = 0;
   create_args.kv_get_callback = nullptr;
+  create_args.kv_get_user_arg = nullptr;
   create_args.kv_put_callback = nullptr;
   create_args.kv_put_user_arg = nullptr;
-  create_args.kv_get_user_arg = nullptr;
+  create_args.kv_try_get_callback = nullptr;
+  create_args.kv_try_get_user_arg = nullptr;
   PJRT_Error* error = api->PJRT_Client_Create(&create_args);
   CHECK_EQ(error, nullptr);
   CHECK_NE(create_args.client, nullptr);

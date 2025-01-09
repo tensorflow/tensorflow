@@ -38,7 +38,7 @@ from tensorflow.python.platform import test
 
 def serialize(module_str: str) -> tuple[str, int]:
   target = stablehlo.get_minimum_version()
-  byte_str = stablehlo.serialize_portable_artifact(module_str, target)
+  byte_str = stablehlo.serialize_portable_artifact_str(module_str, target)
   return byte_str, xla.call_module_maximum_supported_version()
 
 
@@ -275,24 +275,30 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     x_bad_etype = x.astype(np.int32)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Element type mismatch for argument 0 passed to XlaCallModule: '
-        r'expecting tensor<\?x2xf32>, got tensor<3x2xi32>',
+        re.escape(
+            'invalid refinement for argument 0, refinement element types must'
+            ' match in tensor<?x2xf32> -> tensor<3x2xi32>'
+        ),
     ):
       self._assertOpOutputMatchesExpected(f, (x_bad_etype, y), (x_bad_etype,))
 
     y_bad_etype = y.astype(np.float32)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Element type mismatch for argument 1 passed to XlaCallModule: '
-        r'expecting tensor<\*xi32>, got tensor<2x3xf32>',
+        re.escape(
+            'invalid refinement for argument 1, refinement element types must'
+            ' match in tensor<*xi32> -> tensor<2x3xf32>'
+        ),
     ):
       self._assertOpOutputMatchesExpected(f, (x, y_bad_etype), (x,))
 
     x_bad_shape = np.arange(15, dtype=np.float32).reshape(5, 3)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Shape mismatch for argument 0 passed to XlaCallModule: '
-        r'expecting tensor<\?x2xf32>, got tensor<5x3xf32>',
+        re.escape(
+            'invalid refinement for argument 0, refinement dimension sizes must'
+            ' match for static dimensions in tensor<?x2xf32> -> tensor<5x3xf32>'
+        ),
     ):
       self._assertOpOutputMatchesExpected(f, (x_bad_shape, y), (x_bad_shape,))
 

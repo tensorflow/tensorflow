@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
 
+#include <memory>
 #include <utility>
-#include <vector>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

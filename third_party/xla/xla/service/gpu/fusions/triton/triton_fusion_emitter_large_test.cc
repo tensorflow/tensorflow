@@ -28,7 +28,21 @@ namespace {
 
 class TritonGemmTest : public GpuCodegenTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  void SetUp() override {
+    if (std::holds_alternative<se::RocmComputeCapability>(
+            GetGpuComputeCapability())) {
+      GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
+    }
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
@@ -73,7 +87,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeNonContractingProductWorks) {
-  const std::string kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -97,7 +111,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeBatchWorks) {
-  const std::string kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -119,17 +133,10 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-class TritonSoftmaxTest : public GpuCodegenTest {
- public:
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
-    return debug_options;
-  }
-};
+using TritonNormalizationTest = GpuCodegenTest;
 
-TEST_F(TritonSoftmaxTest,
-       CanFuseAndEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
+TEST_F(TritonNormalizationTest,
+       CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
   const std::string hlo_text = R"(
 HloModule softmax
 
@@ -139,26 +146,26 @@ max_computation {
   ROOT maximum = f16[] maximum(arg_0, arg_1)
 }
 
-ENTRY main {
+triton_fusion_computation {
   param_0 = f16[65538,32768]{1,0} parameter(0)
   constant_neg_inf = f16[] constant(-inf)
   reduce = f16[65538]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f16[65538,32768]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = f16[65538,32768]{1,0} subtract(param_0, broadcast)
 }
-)";
 
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = f16[65538,32768]{1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton
-)");
+ENTRY main {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_fusion_computation,
+     backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+       "block_level_fusion_config":{"output_tile_sizes":["1","32768"],
+                                    "num_warps":"1"}}}
+})";
 
   // Checking that this does not crash should be enough.
-  EXPECT_TRUE(Run(hlo_text));
+  EXPECT_TRUE(Run(hlo_text, /*run_hlo_passes=*/false));
 }
 
 }  // namespace

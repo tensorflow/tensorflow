@@ -208,7 +208,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   return options;
 }
 
-CompiledMemoryStatsProto CompiledMemoryStats::ToProto() {
+CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   CompiledMemoryStatsProto proto;
   proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
   proto.set_argument_size_in_bytes(argument_size_in_bytes);
@@ -422,7 +422,7 @@ PjRtExecutable::GetOutputDimensions() const {
   return output_dimensions;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -439,15 +439,15 @@ PjRtExecutable::GetParameterLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedParameterLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -464,10 +464,10 @@ PjRtExecutable::GetOutputLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedResultLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }
@@ -586,6 +586,27 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
                std::holds_alternative<double>(value)) {
       reflection->SetDouble(&debug_options, xla_field, std::get<double>(value));
       return absl::OkStatus();
+    } else if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
+      if (std::holds_alternative<int64_t>(value)) {
+        if (xla_field->is_repeated()) {
+          reflection->AddEnumValue(&debug_options, xla_field,
+                                   std::get<int64_t>(value));
+        } else {
+          reflection->SetEnumValue(&debug_options, xla_field,
+                                   std::get<int64_t>(value));
+        }
+      } else {
+        auto enum_desc = xla_field->enum_type()->FindValueByName(
+            std::get<std::string>(value));
+        if (enum_desc != nullptr) {
+          if (xla_field->is_repeated()) {
+            reflection->AddEnum(&debug_options, xla_field, enum_desc);
+          } else {
+            reflection->SetEnum(&debug_options, xla_field, enum_desc);
+          }
+        }
+      }
+      return absl::OkStatus();
     } else {
       return InvalidArgument(
           "While setting option %s, '%s' is not a valid %s value.", key,
@@ -635,6 +656,29 @@ absl::Status CompileOptions::ApplyOptionFromString(
     if (value == "True" || value == "False") {
       reflection->SetBool(&debug_options, field, bvalue);
       return absl::OkStatus();
+    }
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
+    int int_value;
+    if (absl::SimpleAtoi(value, &int_value)) {
+      if (field->is_repeated()) {
+        reflection->AddEnumValue(&debug_options, field, int_value);
+      } else {
+        reflection->SetEnumValue(&debug_options, field, int_value);
+      }
+      return absl::OkStatus();
+    } else {
+      if (value.empty() && field->is_repeated()) {
+        reflection->ClearField(&debug_options, field);
+        return absl::OkStatus();
+      }
+      auto enum_desc = field->enum_type()->FindValueByName(value);
+      if (enum_desc != nullptr) {
+        if (field->is_repeated()) {
+          reflection->AddEnum(&debug_options, field, enum_desc);
+        } else {
+          reflection->SetEnum(&debug_options, field, enum_desc);
+        }
+      }
     }
   }
   return InvalidArgument(

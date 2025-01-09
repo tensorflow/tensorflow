@@ -52,10 +52,10 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/core/bitmap.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/macros.h"
@@ -367,9 +367,9 @@ class LiteralBase {
     static_assert(sizeof(H) == 0,
                   "Do not use Literal directly as a hash key, because it has "
                   "multiple definitions of equality - layout sensitive or "
-                  "insensitive. Instead, provide an external hash function "
-                  "that uses Literal::Hash which allows you to specify layout "
-                  "sensitivity.");
+                  "insensitive. Instead, use AbslHashable<...>() to create a "
+                  "wrapper with layout sensitivity specified suitable for "
+                  "passing to Absl::Hash");
   }
 
   // Always use this together with the Equal method and not operator== in order
@@ -418,6 +418,17 @@ class LiteralBase {
 
     return std::move(state);
   }
+
+  // Templated wrapper struct to control layout sensitivity during Absl::Hash.
+  template <bool layout_sensitive>
+  struct AbslHashable {
+    const LiteralBase& literal;
+    explicit AbslHashable(const LiteralBase& l) : literal(l) {}
+    template <typename H>
+    friend H AbslHashValue(H h, const AbslHashable& w) {
+      return LiteralBase::Hash<H, layout_sensitive>(std::move(h), w.literal);
+    }
+  };
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
@@ -1404,7 +1415,7 @@ class Literal : public MutableLiteralBase {
   static absl::StatusOr<Literal> Deserialize(InputIterator begin,
                                              InputIterator end);
 
-  static absl::StatusOr<Literal> DeserializeFromString(std::string_view data) {
+  static absl::StatusOr<Literal> DeserializeFromString(absl::string_view data) {
     return Deserialize(data.data(), data.data() + data.size());
   }
 

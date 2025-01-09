@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
@@ -197,9 +198,9 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
                           saved_model_bundle);
 }
 
-tensorflow::Status ExportModule(mlir::ModuleOp module,
-                                const std::string& output_filename,
-                                bool elide_large_elements_attrs) {
+absl::Status ExportModule(mlir::ModuleOp module,
+                          const std::string& output_filename,
+                          bool elide_large_elements_attrs) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
@@ -226,8 +227,8 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
-tensorflow::Status ConvertTFToStableHLO(
-    ModuleOp tf_module, const PassPipelineCLParser& pass_pipeline) {
+absl::Status ConvertTFToStableHLO(ModuleOp tf_module,
+                                  const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
   if (failed(applyPassManagerCLOptions(pm))) {
     return tensorflow::errors::Aborted(
@@ -272,14 +273,14 @@ tensorflow::Status ConvertTFToStableHLO(
   return absl::OkStatus();
 }
 
-tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
+absl::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   DialectRegistry registry;
   registerAllDialects(registry);
   RegisterAllTensorFlowDialects(registry);
   mhlo::registerAllMhloDialects(registry);
   stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::tf_type::TFTypeDialect,
-                  mlir::quant::QuantizationDialect>();
+                  mlir::quant::QuantDialect>();
   mlir::quant::RegisterOps();
 
   MLIRContext context(registry);

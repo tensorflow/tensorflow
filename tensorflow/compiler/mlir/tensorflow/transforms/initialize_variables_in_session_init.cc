@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {

@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -25,11 +25,8 @@ limitations under the License.
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
-#if GOOGLE_CUDA
-  Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
-#elif TENSORFLOW_USE_ROCM
-  Platform* platform = PlatformManager::PlatformWithName("ROCM").value();
-#endif
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          xla::PlatformUtil::GetPlatform("GPU"));
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   auto stream = executor->CreateStream().value();
 

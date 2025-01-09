@@ -344,6 +344,14 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
     }
   }
 
+  if (info.SupportsExtension("cl_arm_scheduling_controls")) {
+    auto capabilities =
+        GetDeviceInfo<cl_device_scheduling_controls_capabilities_arm>(
+            id, CL_DEVICE_SCHEDULING_CONTROLS_CAPABILITIES_ARM);
+    info.opencl_info.supports_register_allocation_arm =
+        capabilities & CL_DEVICE_SCHEDULING_REGISTER_ALLOCATION_ARM;
+  }
+
   if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
     size_t sub_groups_ret_size;
     cl_int status =

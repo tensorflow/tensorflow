@@ -108,7 +108,7 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   }
 
   // Shape inference for the op.
-  static tensorflow::Status ShapeInference(
+  static absl::Status ShapeInference(
       ::tensorflow::shape_inference::InferenceContext* c) {
     TfShapeInferenceContext ctx(c);
     return ImplType::ShapeInference(&ctx);

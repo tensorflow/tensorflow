@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/nnapi_hardware.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

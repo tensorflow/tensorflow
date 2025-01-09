@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,8 +29,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,7 +53,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
 
 absl::StatusOr<OpSharding> ToOpSharding(
     const ShardingParam& sharding_param,
-    const xla::ifrt::DeviceList& device_mapping) {
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping) {
   OpSharding op_sharding;
   {
     bool all_dim_replicated = true;
@@ -89,15 +92,18 @@ absl::StatusOr<OpSharding> ToOpSharding(
   sharding_param.minor_to_major().ToDeviceList(logical_device_ids);
   auto* tile_assignment_devices = op_sharding.mutable_tile_assignment_devices();
   tile_assignment_devices->Reserve(logical_device_ids.size());
+  const absl::Span<Device* const> device_mapping_devices =
+      device_mapping->devices();
   for (const int logical_device_id : logical_device_ids) {
-    if (logical_device_id < 0 || logical_device_id >= device_mapping.size()) {
+    if (logical_device_id < 0 ||
+        logical_device_id >= device_mapping_devices.size()) {
       return absl::OutOfRangeError(
           absl::StrCat("Can't map device with logical id ", logical_device_id,
                        ". The logical device id should be within [0, ",
-                       device_mapping.size(), ")."));
+                       device_mapping_devices.size(), ")."));
     }
     tile_assignment_devices->Add(
-        device_mapping[logical_device_id]->Id().value());
+        device_mapping_devices[logical_device_id]->Id().value());
   }
 
   return op_sharding;
@@ -155,10 +161,10 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
        num_devices == 1)) {
     // Convert replicated or TileMaximal. Only single-device TileMaximal
     // conversion is supported.
-    llvm::SmallVector<int64_t> dim_shards(rank, 1);
+    std::vector<int64_t> dim_shards(rank, 1);
     minor_to_major.permutation.push_back(0);
     minor_to_major.axis_sizes.push_back(num_devices);
-    return ShardingParam(dim_shards, std::move(minor_to_major));
+    return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
   } else if (hlo_sharding.IsTiled()) {
     const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
     if (!tile_assignment.iota()) {
@@ -183,8 +189,8 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
           hlo_sharding.ToString()));
     }
     // Get the `dim_shards` from the tile assignment.
-    llvm::SmallVector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
-                                          tile_assignment.dimensions().end());
+    std::vector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
+                                    tile_assignment.dimensions().end());
     if (hlo_sharding.ReplicateOnLastTileDim() ||
         (hlo_sharding.subgroup_types().size() == 1 &&
          hlo_sharding.subgroup_types()[0] == xla::OpSharding::REPLICATED)) {
@@ -211,7 +217,7 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
         minor_to_major.permutation.push_back(num_axis - axis_id - 1);
       }
     }
-    return ShardingParam(dim_shards, std::move(minor_to_major));
+    return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
   }
   return absl::UnimplementedError(
       absl::StrCat("Unsupported conversion to `ShardingParam` from "

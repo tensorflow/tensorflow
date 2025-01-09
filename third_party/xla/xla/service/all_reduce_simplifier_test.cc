@@ -20,17 +20,13 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
-#include "xla/window_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -80,7 +76,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -116,7 +112,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
@@ -157,7 +153,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -187,7 +183,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
@@ -217,7 +213,7 @@ test {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  AllReduceSimplifier simplifier(/*replica_count=*/1);
+  AllReduceSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
@@ -252,7 +248,7 @@ test {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  AllReduceSimplifier simplifier(/*replica_count=*/1);
+  AllReduceSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
@@ -279,7 +275,7 @@ test {
                                                 /*num_partitions=*/1));
   // Mark as MPMD.
   module->mutable_config().set_use_spmd_partitioning(false);
-  AllReduceSimplifier simplifier(/*replica_count=*/2);
+  AllReduceSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 }  // namespace

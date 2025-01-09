@@ -99,12 +99,12 @@ class SimplePropagatorState {
     // TODO(b/152925936): Re-evaluate these constants with current usage
     // patterns.
     static constexpr int kSpillThreshold = 16384;
-    gtl::InlinedVector<TaggedNode, 16> ready_;
+    absl::InlinedVector<TaggedNode, 16UL> ready_;
     int front_index_;
   };
 
   // TODO(b/152925936): Re-evaluate this constant with current usage patterns.
-  typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
+  typedef absl::InlinedVector<TaggedNode, 8UL> TaggedNodeSeq;
 
   // Creates and adds a `TaggedNode` for each node in `roots` to `*ready`.
   void ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,

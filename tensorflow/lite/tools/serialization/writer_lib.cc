@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/lite/core/model_builder.h"
 #endif
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {

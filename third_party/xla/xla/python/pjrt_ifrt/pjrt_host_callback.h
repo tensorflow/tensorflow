@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/host_callback.h"
 

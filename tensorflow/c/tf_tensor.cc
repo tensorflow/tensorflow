@@ -249,8 +249,10 @@ void TensorInterface::SetShape(const int64_t* dims, int num_dims) {
   tensor_.set_shape(s);
 }
 
-Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
-                                    const int64_t* new_dims, int num_new_dims) {
+absl::Status TensorInterface::BitcastFrom(const TensorInterface& from,
+                                          DataType type,
+                                          const int64_t* new_dims,
+                                          int num_new_dims) {
   tensorflow::TensorShape s;
   for (int i = 0; i < num_new_dims; ++i) {
     TF_RETURN_IF_ERROR(s.AddDimWithStatus(new_dims[i]));
@@ -258,7 +260,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
-Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
+absl::Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
   if (success) return absl::OkStatus();
   return errors::InvalidArgument("Unparseable tensor proto");
@@ -295,7 +297,7 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
 namespace tensorflow {
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
-                                                   Status* status) {
+                                                   absl::Status* status) {
   *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
@@ -318,12 +320,13 @@ AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
 }
 
 // Non-static for testing.
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
+                               absl::Status* status) {
   return new TF_Tensor{TensorInterfaceFromTensor(src, status)};
 }
 
 TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
-                                      Status* status) {
+                                      absl::Status* status) {
   *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
@@ -336,12 +339,12 @@ TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
   return new TF_Tensor{new tensorflow::TensorInterface(src)};
 }
 
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
+absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   return tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor)
       ->ToTensor(dst);
 }
 
-Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
+absl::Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   *dst = tensor_;
   return absl::OkStatus();
 }

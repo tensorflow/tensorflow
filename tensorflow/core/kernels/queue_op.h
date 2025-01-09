@@ -43,7 +43,7 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
   DataTypeVector component_types_;
 
  private:
-  Status VerifyResource(QueueInterface* queue) override;
+  absl::Status VerifyResource(QueueInterface* queue) override;
 };
 
 class TypedQueueOp : public QueueOp {
@@ -52,7 +52,7 @@ class TypedQueueOp : public QueueOp {
 
  protected:
   template <typename TypedQueue>
-  Status CreateTypedQueue(TypedQueue* queue, QueueInterface** ret) {
+  absl::Status CreateTypedQueue(TypedQueue* queue, QueueInterface** ret) {
     if (queue == nullptr) {
       return errors::ResourceExhausted("Failed to allocate queue.");
     }

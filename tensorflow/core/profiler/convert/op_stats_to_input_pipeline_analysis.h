@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -30,6 +31,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+StepSummary GetStepSummaryForSampleStats(const tsl::Stat<double>& sample_stats);
 
 // If the percent of input-time spent on host-to-device transfer is greater than
 // kHostToDeviceTimePercentAsSignificant, we should advise the

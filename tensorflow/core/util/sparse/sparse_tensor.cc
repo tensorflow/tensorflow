@@ -27,21 +27,21 @@ int UnsafeGetDimsFromIx(const Tensor& ix) {
   return ix.dim_size(1);
 }
 
-Status GetDimsFromIx(const Tensor& ix, int* result) {
+absl::Status GetDimsFromIx(const Tensor& ix, int* result) {
   if (!TensorShapeUtils::IsMatrix(ix.shape())) {
     return errors::InvalidArgument("indices must be a matrix, but got: ",
                                    ix.shape().DebugString());
   }
   *result = UnsafeGetDimsFromIx(ix);
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace
 
-/* static */ Status SparseTensor::Create(Tensor ix, Tensor vals,
-                                         const VarDimArray shape,
-                                         const VarDimArray order,
-                                         SparseTensor* result) {
+/* static */ absl::Status SparseTensor::Create(Tensor ix, Tensor vals,
+                                               const VarDimArray shape,
+                                               const VarDimArray order,
+                                               SparseTensor* result) {
   if (ix.dtype() != DT_INT64) {
     return errors::InvalidArgument("indices must be type int64 but got: ",
                                    ix.dtype());
@@ -73,24 +73,24 @@ Status GetDimsFromIx(const Tensor& ix, int* result) {
   return absl::OkStatus();
 }
 
-/* static */ Status SparseTensor::Create(Tensor ix, Tensor vals,
-                                         const TensorShape& shape,
-                                         SparseTensor* result) {
+/* static */ absl::Status SparseTensor::Create(Tensor ix, Tensor vals,
+                                               const TensorShape& shape,
+                                               SparseTensor* result) {
   return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                 UndefinedOrder(TensorShapeToVector(shape)), result);
 }
 
-/* static */ Status SparseTensor::Create(Tensor ix, Tensor vals,
-                                         const VarDimArray shape,
-                                         SparseTensor* result) {
+/* static */ absl::Status SparseTensor::Create(Tensor ix, Tensor vals,
+                                               const VarDimArray shape,
+                                               SparseTensor* result) {
   return Create(std::move(ix), std::move(vals), shape, UndefinedOrder(shape),
                 result);
 }
 
-/* static */ Status SparseTensor::Create(Tensor ix, Tensor vals,
-                                         const TensorShape& shape,
-                                         const VarDimArray order,
-                                         SparseTensor* result) {
+/* static */ absl::Status SparseTensor::Create(Tensor ix, Tensor vals,
+                                               const TensorShape& shape,
+                                               const VarDimArray order,
+                                               SparseTensor* result) {
   return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                 order, result);
 }
@@ -222,7 +222,7 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
 }
 
 template <bool standard_order>
-Status SparseTensor::IndicesValidHelper() const {
+absl::Status SparseTensor::IndicesValidHelper() const {
   const auto ix_t = ix_.matrix<int64_t>();
   const int64_t* const shape_ptr = shape_.data();
 
@@ -275,7 +275,7 @@ Status SparseTensor::IndicesValidHelper() const {
   return absl::OkStatus();
 }
 
-Status SparseTensor::IndicesValid() const {
+absl::Status SparseTensor::IndicesValid() const {
   if (shape_.size() == 1 && IndicesValidVectorFastPath()) {
     return absl::OkStatus();
   }

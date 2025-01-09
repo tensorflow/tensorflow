@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/loop_schedule_linearizer.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/algorithm/container.h"
@@ -24,14 +25,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/graphcycles/graphcycles.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -83,7 +84,7 @@ class ComputationInstructionOrdering {
 
  private:
   absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id_;
-  tensorflow::GraphCycles graph_cycles_;
+  GraphCycles graph_cycles_;
 };
 
 }  // namespace

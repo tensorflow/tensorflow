@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/str_format.h"
+#include "absl/log/log.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Pass/Pass.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/path.h"
 
 namespace mlir {
 namespace interpreter {

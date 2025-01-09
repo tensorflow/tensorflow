@@ -17,6 +17,10 @@ limitations under the License.
 // --output_file_path=/tmp/output.pbtxt
 // --optimization_pass=NameOfGraphOptimizationPass
 
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -30,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-Status RealMain(int argc, char** argv) {
+absl::Status RealMain(int argc, char** argv) {
   string input_file_path;
   string output_file_path;
   string optimization_pass;

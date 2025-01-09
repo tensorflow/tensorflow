@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
 
@@ -760,6 +761,48 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithData) {
   EXPECT_EQ(output_value, input_value);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+TEST(TestTfLiteOpaqueContext, TestGetMetadata) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/with_metadata.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "NPU_OP", /*version=*/1,
+                           /*user_data=*/nullptr);
+
+  TfLiteOperatorSetInit(
+      reg,
+      [](auto context, auto buffer, auto length) -> void* { return nullptr; });
+
+  TfLiteOperatorSetPrepare(reg,
+                           [](auto context, auto node) { return kTfLiteOk; });
+
+  TfLiteOperatorSetFree(reg, [](auto context, auto data) -> void {});
+
+  TfLiteOperatorSetInvoke(reg, [](auto context, auto node) {
+    const char* data;
+    size_t bytes;
+    EXPECT_EQ(
+        TfLiteOpaqueContextGetMetadata(context, "NPU_BYTE_CODE", &data, &bytes),
+        kTfLiteOk);
+    EXPECT_NE(bytes, 0);
+    EXPECT_NE(data, nullptr);
+    return kTfLiteOk;
+  });
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
   TfLiteOperatorDelete(reg);
   TfLiteModelDelete(model);
 }

@@ -21,10 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -37,7 +41,9 @@ absl::StatusOr<bool> ShardingRemover::Run(
   bool changed = false;
 
   const absl::flat_hash_set<absl::string_view> to_remove_sharding_ops = {
-      "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"};
+      "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape",
+      sdy::kShardingGroupCustomCallTargetName,
+      sdy::kFuncResultShardingTargetName};
 
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
@@ -52,13 +58,23 @@ absl::StatusOr<bool> ShardingRemover::Run(
       }
       CHECK(instruction->operand_count() == 1)
           << "Sharding instruction must have exactly one operand";
+
+      // ShardingGroupOp is dangling so we just remove it.
+      if (instruction->custom_call_target() ==
+          sdy::kShardingGroupCustomCallTargetName) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        continue;
+      }
+
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
           instruction->mutable_operand(0), name()));
       changed = true;
 
       // We do not DCE sharding custom-call, so replace sharding custom-call
       // with a copy instead, so that it can be DCE-ed in later passes.
-      if (instruction->custom_call_target() == "Sharding") {
+      if (instruction->custom_call_target() == "Sharding" ||
+          instruction->custom_call_target() ==
+              sdy::kFuncResultShardingTargetName) {
         auto copy = computation->AddInstruction(
             HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
                                         instruction->mutable_operand(0)));

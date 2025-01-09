@@ -34,8 +34,8 @@ constexpr char kOptionsDataset[] = "OptionsDataset";
 constexpr char kParallelMapDataset[] = "ParallelMapDatasetV2";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-Status Optimize(InjectPrefetch &optimizer, const GrapplerItem &item,
-                GraphDef *output, bool autotune) {
+absl::Status Optimize(InjectPrefetch &optimizer, const GrapplerItem &item,
+                      GraphDef *output, bool autotune) {
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {
     (*config.mutable_parameter_map())["autotune"].set_s("true");
@@ -46,8 +46,8 @@ Status Optimize(InjectPrefetch &optimizer, const GrapplerItem &item,
   return optimizer.Optimize(nullptr, item, output);
 }
 
-Status OptimizeWithInjectPrefetch(const GrapplerItem &item, GraphDef *output,
-                                  bool autotune) {
+absl::Status OptimizeWithInjectPrefetch(const GrapplerItem &item,
+                                        GraphDef *output, bool autotune) {
   InjectPrefetch optimizer;
   return Optimize(optimizer, item, output, autotune);
 }

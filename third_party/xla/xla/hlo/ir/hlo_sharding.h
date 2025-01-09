@@ -34,7 +34,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
+#include "xla/printer.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

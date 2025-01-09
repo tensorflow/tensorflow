@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "xla/client/lib/broadcast.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/broadcast.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -37,7 +37,7 @@ absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
   return xla::BroadcastTo(input, output_dims);
 }
 
-Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
+absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
   TF_ASSIGN_OR_RETURN(auto lhs_xla_shape, lhs->builder()->GetShape(*lhs));
   TF_ASSIGN_OR_RETURN(auto rhs_xla_shape, rhs->builder()->GetShape(*rhs));
   tensorflow::TensorShape lhs_tf_shape;

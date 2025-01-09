@@ -34,27 +34,27 @@ namespace tensorflow {
 class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  public:
   // Returns number of dimensions.
-  virtual Status NumDims(int* num_dims) const = 0;
+  virtual absl::Status NumDims(int* num_dims) const = 0;
   // Returns number of elements across all dimensions.
-  virtual Status NumElements(int64_t* num_elements) const = 0;
+  virtual absl::Status NumElements(int64_t* num_elements) const = 0;
   // Returns size of specified dimension
   //
   // -1 indicates an unknown axis length; this is unreachable for most standard
   // ImmediateExecutionTensorHandles, but comes up for example when computing
   // the shape of a parallel tensor with component shapes differing across
   // devices.
-  virtual Status Dim(int dim_index, int64_t* dim) const = 0;
+  virtual absl::Status Dim(int dim_index, int64_t* dim) const = 0;
 
   // Returns the device which created the handle.
-  virtual const char* DeviceName(Status* status) const = 0;
+  virtual const char* DeviceName(absl::Status* status) const = 0;
   // Returns the device where the tensor was placed.
-  virtual const char* BackingDeviceName(Status* status) const = 0;
+  virtual const char* BackingDeviceName(absl::Status* status) const = 0;
   // Returns the device type which created the handle.
-  virtual const char* DeviceType(Status* status) const = 0;
+  virtual const char* DeviceType(absl::Status* status) const = 0;
   // Returns the device ID which created the handle.
-  virtual int DeviceId(Status* status) const = 0;
+  virtual int DeviceId(absl::Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
-  virtual AbstractTensorInterface* Resolve(Status* status) = 0;
+  virtual AbstractTensorInterface* Resolve(absl::Status* status) = 0;
 
   std::string DebugString() const override;
 
@@ -73,7 +73,7 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // debugging. Does not include a shape or dtype.
   //
   // Included in the default implementation of DebugString.
-  virtual Status SummarizeValue(std::string& summary) const;
+  virtual absl::Status SummarizeValue(std::string& summary) const;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {

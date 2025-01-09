@@ -1,0 +1,49 @@
+# Requirements for NumPy 1.x
+numpy ~= 1.26.0
+wheel ~= 0.41.2
+h5py >= 3.10.0
+lit ~= 17.0.2
+opt_einsum == 3.3.0
+astunparse == 1.6.3
+dill == 0.3.7
+astor == 0.7.1
+typing_extensions == 4.8.0
+gast == 0.4.0
+termcolor == 2.3.0
+wrapt == 1.16.0
+tblib == 2.0.0
+ml_dtypes >= 0.4.0, < 0.5.0
+auditwheel ~= 6.1.0
+# Install tensorboard, and keras
+# Note that here we want the latest version that matches TF major.minor version
+# Note that we must use nightly here as these are used in nightly jobs
+# For release jobs, we will pin these on the release branch
+keras-nightly ~= 3.0.0.dev
+tb-nightly ~= 2.18.0.a
+# Test dependencies
+grpcio >= 1.24.3, < 2.0
+portpicker == 1.6.0
+scipy == 1.11.3
+requests >= 2.31.0
+packaging==23.2
+setuptools==70.0.0
+jax==0.4.7
+# NVIDIA CUDA dependencies
+# Note that the wheels are downloaded only when the targets in bazel command
+# contain dependencies on these wheels.
+nvidia-cublas-cu12 == 12.5.3.2
+nvidia-cuda-cupti-cu12 == 12.5.82
+nvidia-cuda-nvrtc-cu12 == 12.5.82
+nvidia-cuda-runtime-cu12 == 12.5.82
+nvidia-cudnn-cu12 == 9.3.0.75
+nvidia-cufft-cu12 == 11.2.3.61
+nvidia-curand-cu12 == 10.3.6.82
+nvidia-cusolver-cu12 == 11.6.3.83
+nvidia-cusparse-cu12 == 12.5.1.3
+nvidia-nccl-cu12 == 2.23.4
+nvidia-nvjitlink-cu12 == 12.5.82
+# The dependencies below are needed for TF wheel testing.
+tensorflow-io-gcs-filesystem==0.37.1
+libclang >= 13.0.0
+google_pasta ~= 0.2
+flatbuffers ~= 24.3.25

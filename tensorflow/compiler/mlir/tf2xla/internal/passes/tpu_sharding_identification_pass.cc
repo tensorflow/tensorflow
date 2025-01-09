@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -103,6 +103,62 @@ mlir::Operation* NullUnlessSharded(PartitionedOp op) {
   return op.get_XlaSharding() ? op : nullptr;
 }
 
+// Returns true if unitary op has one of the traits that meets the requirements
+// for sharding, otherwise returns false.
+bool UnaryOpHasTraitsForSharding(Operation* op) {
+  // Trait "SameOperandsAndResultTypeResolveRef" for Cast, real/imag, etc.
+  if (op->hasTrait<mlir::OpTrait::TF::SameOperandsAndResultTypeResolveRef>())
+    return true;
+  // Trait "SameOperandsAndResultType" for Exp, ceil, etc.
+  if (op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>()) return true;
+  // Trait "OperandsSameAsResultsTypeOrRef" for Identity.
+  if (op->hasTrait<mlir::OpTrait::TF::OperandsSameAsResultsTypeOrRef>())
+    return true;
+  return false;
+}
+
+// Returns true if binary op has one of the traits that meets the requirements
+// for sharding, otherwise returns false.
+bool BinaryOpHasTraitsForSharding(Operation* op) {
+  // Trait "CwiseBinary" and "SameOperandsAndResultElementTypeResolveRef" for
+  // AddV2, Sub, etc.
+  if (op->hasTrait<
+          mlir::OpTrait::TF::SameOperandsAndResultElementTypeResolveRef>() &&
+      op->hasTrait<mlir::OpTrait::TF::CwiseBinary>())
+    return true;
+  return false;
+}
+
+bool DoTypesHavePartialSameShape(Value value_0, Value value_1) {
+  auto shape_0 =
+      mlir::dyn_cast_or_null<mlir::RankedTensorType>(value_0.getType());
+  auto shape_1 =
+      mlir::dyn_cast_or_null<mlir::RankedTensorType>(value_1.getType());
+  if (shape_0 && shape_1) {
+    if (shape_0.hasStaticShape() && shape_1.hasStaticShape())
+      return shape_0.getShape() == shape_1.getShape();
+    int i = 0, j = 0;
+    while (i < shape_0.getShape().size() && j < shape_1.getShape().size()) {
+      if (shape_0.getShape()[i] != shape_1.getShape()[j] &&
+          !shape_0.isDynamicDim(i) && !shape_1.isDynamicDim(j)) {
+        return false;
+      }
+      if (shape_0.getShape()[i] == shape_1.getShape()[j]) {
+        i++;
+        j++;
+      } else {
+        if (shape_0.isDynamicDim(i)) {
+          i++;
+        }
+        if (shape_1.isDynamicDim(j)) {
+          j++;
+        }
+      }
+    }
+    return i == shape_0.getShape().size() && j == shape_1.getShape().size();
+  }
+  return false;
+}
 // Returns a TPUPartitionedInput op connected to a `tf_device.cluster_func`
 // operand value if it has an XLA sharding. If value is a resource type then
 // TPUPartitionedInput op will be connected to a ReadVariable op that feeds into
@@ -295,7 +351,20 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
           continue;
         }
 
-        if (llvm::isa<mlir::TF::IdentityOp, mlir::TF::CastOp,
+        if (UnaryOpHasTraitsForSharding(owner)) {
+          next_values_to_visit.push_back(use.getOwner()->getResult(0));
+          continue;
+        }
+
+        if (BinaryOpHasTraitsForSharding(owner)) {
+          if (DoTypesHavePartialSameShape(value_to_visit,
+                                          owner->getResult(0))) {
+            next_values_to_visit.push_back(use.getOwner()->getResult(0));
+            continue;
+          }
+        }
+
+        if (llvm::isa<mlir::TF::CastOp, mlir::TF::XlaAllReduceOp,
                       mlir::TF::ReadVariableOp>(owner)) {
           next_values_to_visit.push_back(use.getOwner()->getResult(0));
           continue;
@@ -456,17 +525,7 @@ std::optional<StringRef> GetXlaShardingFromRetval(
       return logical_device;
     }
 
-    if (  // Cast, real/imag, etc.
-        def->hasTrait<
-            mlir::OpTrait::TF::SameOperandsAndResultTypeResolveRef>() ||
-        // Exp, ceil, etc.
-        def->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
-        // Identity
-        def->hasTrait<mlir::OpTrait::TF::OperandsSameAsResultsTypeOrRef>() ||
-        // AddV2, Sub, etc.
-        (def->hasTrait<
-             mlir::OpTrait::TF::SameOperandsAndResultElementTypeResolveRef>() &&
-         def->hasTrait<mlir::OpTrait::TF::CwiseBinary>())) {
+    if (UnaryOpHasTraitsForSharding(def) || BinaryOpHasTraitsForSharding(def)) {
       for (auto operand : def->getOperands()) {
         values_to_visit.push_back(operand);
       }

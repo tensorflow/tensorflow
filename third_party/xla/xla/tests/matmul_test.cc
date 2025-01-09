@@ -28,7 +28,7 @@ namespace {
 class MatmulTestWithCublas : public HloTestBase,
                              public ::testing::WithParamInterface<bool> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
     return debug_options;

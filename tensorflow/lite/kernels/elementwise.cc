@@ -31,13 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-#include "xnnpack.h"  // from @XNNPACK
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-#endif  // TFLITE_KERNEL_USE_XNNPACK
-
 namespace tflite {
 namespace ops {
 namespace builtin {
@@ -347,30 +340,6 @@ TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
-  if (input->type == kTfLiteFloat32) {
-    xnn_status status;
-    const size_t channel_dim = 1;
-    const size_t batch_size = NumElements(input->dims);
-    TfLiteTensor* output;
-    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-    CpuBackendContext* cpu_backend_context =
-        CpuBackendContext::GetFromContext(context);
-    pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-    status = xnn_run_square_root_nc_f32(
-        channel_dim, channel_dim, channel_dim, batch_size,
-        GetTensorData<float>(input), GetTensorData<float>(output),
-        /*flags*/ XNN_FLAG_YIELD_WORKERS, threadpool);
-    if (status == xnn_status_success) {
-      return kTfLiteOk;
-    }
-    TFLITE_LOG(TFLITE_LOG_INFO,
-               "Failed to run xnnpack xnn_run_sqrt_nc_f32. Error code: %d",
-               status);
-  }
-#endif  // TFLITE_KERNEL_USE_XNNPACK
   return EvalNumeric(context, node, std::sqrt);
 }
 
@@ -415,6 +384,12 @@ TfLiteStatus RsqrtEvalQuantizedInt16(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  const int64_t num_elements = NumElements(input);
+  const int16_t* in_data = GetTensorData<int16_t>(input);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    TF_LITE_ENSURE_MSG(context, in_data[i] >= op_data->input_offset,
+                       "Rsqrt is only defined for positive values");
+  }
   reference_integer_ops::LookupTable(
       GetTensorData<int16_t>(input),
       MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
@@ -440,29 +415,6 @@ TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
-  if (input->type == kTfLiteFloat32) {
-    const size_t channel_dim = 1;
-    const size_t batch_size = NumElements(input->dims);
-    TfLiteTensor* output;
-    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-    CpuBackendContext* cpu_backend_context =
-        CpuBackendContext::GetFromContext(context);
-    pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-    xnn_status status = xnn_run_square_nc_f32(
-        channel_dim, channel_dim, channel_dim, batch_size,
-        GetTensorData<float>(input), GetTensorData<float>(output),
-        /*flags*/ XNN_FLAG_YIELD_WORKERS, threadpool);
-    if (status == xnn_status_success) {
-      return kTfLiteOk;
-    }
-    TFLITE_LOG(TFLITE_LOG_INFO,
-               "Failed to run xnnpack xnn_run_square_nc_f32. Error code: %d",
-               status);
-  }
-#endif  // TFLITE_KERNEL_USE_XNNPACK
   return EvalNumeric(context, node, [](float f) { return f * f; });
 }
 

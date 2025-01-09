@@ -84,7 +84,7 @@ class Iterator {
 
   // Returns the next element of the input pipeline (if there is one) and an
   // indication of whether the end of the input pipeline has been reached.
-  Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
+  absl::Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
@@ -92,7 +92,7 @@ class Iterator {
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
-  Status Restore(const std::vector<Tensor>& saved_iterator);
+  absl::Status Restore(const std::vector<Tensor>& saved_iterator);
 
   // Returns the dataset model for performance analysis.
   std::shared_ptr<model::Model> model() const;
@@ -119,20 +119,20 @@ class Dataset {
   };
 
   // Creates a new `Dataset` instance by running the given dataset graph.
-  static Status FromGraph(Params params, const GraphDef& graph_def,
-                          std::unique_ptr<Dataset>* result);
+  static absl::Status FromGraph(Params params, const GraphDef& graph_def,
+                                std::unique_ptr<Dataset>* result);
 
   ~Dataset();
 
   // Creates an iterator for this dataset.
-  Status MakeIterator(std::unique_ptr<Iterator>* result);
+  absl::Status MakeIterator(std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
-  Status MakeIterator(
+  absl::Status MakeIterator(
       std::vector<std::unique_ptr<SplitProvider>> split_providers,
       std::unique_ptr<Iterator>* result);
 
   // Creates split providers for this dataset.
-  Status MakeSplitProviders(
+  absl::Status MakeSplitProviders(
       std::vector<std::unique_ptr<SplitProvider>>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;

@@ -12,7 +12,6 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
         ":error_reporter.h",
-        ":op_resolver.cc",
         ":op_resolver.h",
         ":op_resolver_internal.h",
         ":verifier.h",
@@ -67,10 +66,9 @@ cc_library(
     ],
     deps = [
         ":error_reporter",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -123,8 +121,13 @@ cc_test(
     srcs = ["op_resolver_test.cc"],
     deps = [
         ":api",
-        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -135,7 +138,6 @@ cc_test(
     deps = [
         ":op_resolver",
         ":op_resolver_internal",
-        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -150,6 +152,7 @@ cc_test(
     srcs = ["flatbuffer_conversions_test.cc"],
     deps = [
         ":api",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_types",

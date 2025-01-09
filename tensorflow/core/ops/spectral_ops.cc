@@ -92,7 +92,8 @@ REGISTER_OP("IFFTND")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     });
 
-Status RFFTShape(InferenceContext* c, const bool forward, const int rank) {
+absl::Status RFFTShape(InferenceContext* c, const bool forward,
+                       const int rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
 

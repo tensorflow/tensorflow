@@ -83,21 +83,21 @@ GroupedEdges GroupTensorsForOutputPacking(Graph* graph,
                                           EdgeShapes& tpu_output_shapes,
                                           GraphShapeInfo* shape_info);
 
-Status CreateConcatAndSplitNodesForInputTensor(
+absl::Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
     int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
     const XlaShardingInfoMap& xla_sharding_info,
     const TpuReplicatedInputInfoMap& tpu_replicated_input_info);
-Status CreateConcatAndSplitNodesForOutputTensor(
+absl::Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
     int32_t minimum_output_tensors_packing);
 
-Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
-                              EdgeShapes* tpu_input_shapes,
-                              int num_cores_per_replica);
+absl::Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
+                                    EdgeShapes* tpu_input_shapes,
+                                    int num_cores_per_replica);
 
 }  // namespace tpu_functional_internal
 
@@ -171,17 +171,18 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   };
 
   // This method is thread-safe.
-  Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
-                           int64_t* ordinal_selector_req_id,
-                           int32_t* core_ordinal);
+  absl::Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
+                                 int64_t* ordinal_selector_req_id,
+                                 int32_t* core_ordinal);
 
   // Helper to create and initialize a TPU variable given a CPU variable
   // var: the CPU variable created by the user
   // ndef: the node def of the corresponding TPU var handle that we created
   // device_ordinal: TPU device ordinal on which to initialize this variable
-  Status InitializeVarOnTPU(OpKernelContext* ctx,
-                            const core::RefCountPtr<Var>& var, NodeDef* ndef,
-                            int device_ordinal, bool fast_mem)
+  absl::Status InitializeVarOnTPU(OpKernelContext* ctx,
+                                  const core::RefCountPtr<Var>& var,
+                                  NodeDef* ndef, int device_ordinal,
+                                  bool fast_mem)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Helper to create and initialize partitioned TPU variables given a CPU
@@ -194,10 +195,11 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // device_ordinal: The index of the TPU core that is scheduled to run
   //   the computation. In the case of XLA SPMD, it is the "primary" core, which
   //   is the smallest index of all the cores.
-  Status InitializeShardedVarOnTPU(OpKernelContext* ctx,
-                                   const core::RefCountPtr<Var>& var,
-                                   std::vector<NodeDef>& ndefs, int split_dim,
-                                   const std::vector<string>& tpu_devices)
+  absl::Status InitializeShardedVarOnTPU(OpKernelContext* ctx,
+                                         const core::RefCountPtr<Var>& var,
+                                         std::vector<NodeDef>& ndefs,
+                                         int split_dim,
+                                         const std::vector<string>& tpu_devices)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Check if any of the immediate successors of node has attribute
@@ -205,52 +207,52 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   bool IsInputToTPUReplicate(Node* node) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Replace an _Arg node of type DT_RESOURCE by a VarHandleOp on TPU
-  Status ReplaceResourceArgsWithVarHandleOps(Graph* graph, OpKernelContext* ctx,
-                                             int device_ordinal,
-                                             bool enable_spmd_xla_partitioning,
-                                             const TPUMetadata& tpu_metadata)
+  absl::Status ReplaceResourceArgsWithVarHandleOps(
+      Graph* graph, OpKernelContext* ctx, int device_ordinal,
+      bool enable_spmd_xla_partitioning, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Replace a _Arg node indicates a variable on CPU host by sharded/replicated
   // variables on all logical TPU devices.
-  Status ReplaceAndPartitionXLAShardingVariable(
+  absl::Status ReplaceAndPartitionXLAShardingVariable(
       Graph* graph, OpKernelContext* ctx, int device_ordinal,
       ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status ShardInputsWithXlaSharding(Graph* graph,
-                                    const std::string& cluster_name,
-                                    int num_cores_per_replica,
-                                    OpKernelContext* ctx)
+  absl::Status ShardInputsWithXlaSharding(Graph* graph,
+                                          const std::string& cluster_name,
+                                          int num_cores_per_replica,
+                                          OpKernelContext* ctx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Rewrite the graph for input and output optimiazations.
   // TODO(ylc): Move this function to Graph optimization pass.
-  Status OptimizeTpuInputOutputTensors(
+  absl::Status OptimizeTpuInputOutputTensors(
       Graph* graph, bool enable_spmd_xla_partitioning,
       int num_cores_per_replica,
       std::map<std::string, std::vector<int>>& named_input_shapes,
       OpKernelContext* ctx) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status InferShapesWithResourceVar(Graph* graph, OpKernelContext* ctx,
-                                    std::map<int, InferredShape>& arg_shapes,
-                                    GraphShapeInfo* tpu_inferred_info);
+  absl::Status InferShapesWithResourceVar(
+      Graph* graph, OpKernelContext* ctx,
+      std::map<int, InferredShape>& arg_shapes,
+      GraphShapeInfo* tpu_inferred_info);
 
   // Copies the graph backing `func_` into `graph`.
-  Status GetGraphFromFunction(Graph* graph, int device_ordinal,
-                              bool* use_spmd_for_xla_partitioning,
-                              TPUMetadata* tpu_metadata)
+  absl::Status GetGraphFromFunction(Graph* graph, int device_ordinal,
+                                    bool* use_spmd_for_xla_partitioning,
+                                    TPUMetadata* tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Places the graph carried by `optimization_options` and runs graph
   // optimization passes (pre-placement, post-placement, and post-rewrite).
-  Status PlacementHelper(
+  absl::Status PlacementHelper(
       const DeviceSet& device_set,
       const GraphOptimizationPassOptions& optimization_options,
       const string& function_name);
   // Partitions `graph`, populates `subgraphs` with the partitions, and runs
   // the post-partitioning graph optimization passes.
-  Status PartitionHelper(
+  absl::Status PartitionHelper(
       const DeviceSet& device_set,
       const GraphOptimizationPassOptions& optimization_options, Graph* graph,
       std::unordered_map<std::string, std::unique_ptr<Graph>>* subgraphs);
@@ -259,7 +261,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // `function_name` on device `target_device`, storing the handle in `handle`.
   // If `out_flib_def` is not null, it will be set to a copy of `flib_def_` and
   // used for instantiation.
-  Status InstantiatePartition(
+  absl::Status InstantiatePartition(
       const Graph& graph, const string& function_name,
       const string& target_device, FHandle* handle,
       std::unique_ptr<FunctionLibraryDefinition>* out_flib_def)
@@ -267,7 +269,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Adds and instantiates functions for each subgraph in `subgraphs` after
   // rewriting nodes' `device_ordinal` attributes to match `replica_id` when
   // num_cores_per_replica == 1.
-  Status InstantiateFunctionsFromSubgraphs(
+  absl::Status InstantiateFunctionsFromSubgraphs(
       const DeviceSet& device_set, int replica_id, uint64 cache_hash,
       int num_cores_per_replica,
       std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs)
@@ -283,8 +285,8 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   //       with name "device_ordinal", or
   //   (2) the set of device ordinals found among the graph's nodes has
   //       cardinality greater than 1.
-  Status SetDeviceOrdinal(const DeviceSet& device_set, int device_ordinal,
-                          Graph* graph, bool* modified)
+  absl::Status SetDeviceOrdinal(const DeviceSet& device_set, int device_ordinal,
+                                Graph* graph, bool* modified)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void ExecuteRemoteFunction(const FunctionLibraryRuntime::Options& opts,
@@ -300,8 +302,8 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
                         int64_t ordinal_selector_req_id, DoneCallback done)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  Status ShouldUseRemoteExecutionForFn(const std::string& target_device,
-                                       bool* remote_execution) {
+  absl::Status ShouldUseRemoteExecutionForFn(const std::string& target_device,
+                                             bool* remote_execution) {
     DeviceNameUtils::ParsedName target_device_parsed;
     DeviceNameUtils::ParsedName local_device_parsed;
 

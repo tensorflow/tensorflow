@@ -121,6 +121,17 @@ class CPUAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
+  void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
+    if (cpu_allocator_collect_stats) {
+      const std::size_t alloc_size =
+          port::MallocExtension_GetAllocatedSize(ptr);
+      mutex_lock l(mu_);
+      stats_.bytes_in_use -= alloc_size;
+      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
+    }
+    port::AlignedSizedFree(ptr, alignment, num_bytes);
+  }
+
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
                   std::size_t req_bytes, std::size_t alloc_bytes) {
     tsl::profiler::TraceMe::InstantActivity(

@@ -29,7 +29,6 @@ package_group(
 tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
@@ -43,7 +42,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = ["@local_tsl//tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],
@@ -59,7 +57,6 @@ exports_files(
 tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto",
@@ -72,7 +69,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto",
@@ -90,7 +86,6 @@ tf_proto_library(
         "tfprof_options.proto",
         "tfprof_output.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profile_proto",
     ] + tf_additional_all_protos(),
@@ -110,10 +105,10 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
-        "@local_tsl//tsl/profiler/backends/cpu:threadpool_listener",
-        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "@local_tsl//tsl/profiler/utils:time_utils_impl",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
+        "@local_xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -152,6 +147,11 @@ cc_library(
     deps = [
         ":protos_all_cc",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -179,14 +179,12 @@ filegroup(
 # py_proto_library(
 #     name = "profiler_analysis_proto_py_pb2",
 #     has_services = 1,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":profiler_analysis_proto"],
 # )
 #
 # py_proto_library(
 #     name = "protos_all_py_pb2",
-#     api_version = 2,
 #     visibility = [":friends"],
 #     deps = [":protos_all"],
 # )

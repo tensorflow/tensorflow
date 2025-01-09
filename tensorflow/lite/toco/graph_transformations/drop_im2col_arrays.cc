@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {

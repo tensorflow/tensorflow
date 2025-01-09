@@ -39,9 +39,11 @@ namespace {
 
 using ::tsl::testing::StatusIs;
 
+struct TestNumberSerializeOptions;
 struct TestNumberDeserializeOptions;
 
 struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
+  using SerializeOptions = TestNumberSerializeOptions;
   using DeserializeOptions = TestNumberDeserializeOptions;
 
   int number;
@@ -52,6 +54,15 @@ struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
 };
 
 [[maybe_unused]] char TestNumber::ID = 0;  // NOLINT
+
+struct TestNumberSerializeOptions
+    : llvm::RTTIExtends<TestNumberSerializeOptions, SerializeOptions> {
+  absl::Status injected_failure;
+
+  static char ID;  // NOLINT
+};
+
+[[maybe_unused]] char TestNumberSerializeOptions::ID = 0;  // NOLINT
 
 struct TestNumberDeserializeOptions
     : llvm::RTTIExtends<TestNumberDeserializeOptions, DeserializeOptions> {
@@ -68,7 +79,14 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
     return "xla::ifrt::TestNumber";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) override {
+    if (options != nullptr) {
+      auto* serialize_options =
+          llvm::cast<TestNumberSerializeOptions>(options.get());
+      TF_RETURN_IF_ERROR(serialize_options->injected_failure);
+    }
     const TestNumber& obj = llvm::cast<TestNumber>(serializable);
     return absl::StrCat(obj.number);
   }
@@ -103,16 +121,26 @@ class TestNumberTest : public testing::Test {
 
 TEST_F(TestNumberTest, RoundTrip) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*obj, /*options=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
       Deserialize<TestNumber>(serialized, /*options=*/nullptr));
   EXPECT_EQ(obj->number, deserialized->number);
 }
 
-TEST_F(TestNumberTest, WithOptions) {
+TEST_F(TestNumberTest, WithSerializeOptions) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
+  auto options = std::make_unique<TestNumberSerializeOptions>();
+  options->injected_failure = absl::InternalError("injected failure");
+  EXPECT_THAT(Serialize(*obj, std::move(options)),
+              StatusIs(absl::StatusCode::kInternal, "injected failure"));
+}
+
+TEST_F(TestNumberTest, WithDeserializeOptions) {
+  auto obj = std::make_unique<TestNumber>(1234);
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*obj, /*options=*/nullptr));
 
   auto options = std::make_unique<TestNumberDeserializeOptions>();
   options->injected_failure = absl::InternalError("injected failure");

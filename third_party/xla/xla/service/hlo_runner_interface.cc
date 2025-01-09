@@ -15,7 +15,23 @@ limitations under the License.
 
 #include "xla/service/hlo_runner_interface.h"
 
-#include "xla/service/hlo_parser.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

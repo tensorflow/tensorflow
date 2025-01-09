@@ -45,7 +45,7 @@ int Run(int argc, char** argv) {
 
   // Read the input file --in.
   string in_contents;
-  Status s = ReadFileToString(Env::Default(), FLAGS_in, &in_contents);
+  absl::Status s = ReadFileToString(Env::Default(), FLAGS_in, &in_contents);
   if (!s.ok()) {
     printf("Error reading file %s: %s\n", FLAGS_in.c_str(),
            s.ToString().c_str());

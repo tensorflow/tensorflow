@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -565,6 +566,46 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Slice(m::Parameter(0)))));
+}
+
+TEST_F(GpuReduceScatterCreatorTest,
+       ReduceScatterCreatorPreservesBackendConfig) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduce
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %AllReduce {
+  %param = f32[32,8,128]{2,1,0} parameter(0)
+  %all-reduce = f32[32,8,128]{2,1,0} all-reduce(%param),
+    replica_groups={}, to_apply=%sum, backend_config={"collective_backend_config":{"is_pipelined":true}}
+  %table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  %rid = u32[] replica-id()
+  %id = s32[1] dynamic-slice(%table, %rid), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%id)
+  %slice_size = s32[] constant(4)
+  %offset = s32[] multiply(%reshape, %slice_size)
+  %zero = s32[] constant(0)
+  ROOT %dynamic-slice = f32[4,8,128] dynamic-slice(%all-reduce, %offset, %zero, %zero),
+    dynamic_slice_sizes={4,8,128}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/8,
+                                               /*num_partitions=*/1,
+                                               /*expect_change=*/true));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
+  const auto *rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_TRUE(rs->backend_config<GpuBackendConfig>()
+                  ->collective_backend_config()
+                  .is_pipelined());
 }
 
 }  // namespace

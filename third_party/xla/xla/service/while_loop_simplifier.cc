@@ -28,19 +28,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -437,7 +437,7 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   absl::flat_hash_map<HloInstruction*, InputIndicesSet> inst_input_deps;
   // Find disjoint sets of connected instruction groups. This helps finding a
   // group of inter-dependent indices that can be removed together. For case 2).
-  absl::flat_hash_map<HloInstruction*, tensorflow::UnionFind<HloInstruction*>>
+  absl::flat_hash_map<HloInstruction*, UnionFind<HloInstruction*>>
       disjoint_sets;
   // Initialize.
   for (HloComputation* comp : {while_body, while_cond}) {

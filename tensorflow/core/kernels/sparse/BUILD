@@ -58,7 +58,6 @@ tf_kernel_library(
         "zeros_op.h",
     ],
     gpu_deps = [
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
         "//tensorflow/core/kernels:gpu_device_array",
     ],
     gpu_srcs = [
@@ -80,6 +79,7 @@ tf_kernel_library(
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:sparse_csr_matrix_ops_op_lib",
         "//tensorflow/core:state_ops_op_lib",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:cwise_op",
@@ -91,6 +91,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/kernels:sparse_utils",
         "//tensorflow/core/kernels:transpose_functor",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/util:cuda_solvers",
@@ -113,6 +114,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:status_matchers",
     ],

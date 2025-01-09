@@ -45,7 +45,7 @@ class SparseTensorSliceDatasetParams : public DatasetParams {
     return {indices_, values_, dense_shape_};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back("indices");
     input_names->emplace_back("values");
@@ -53,7 +53,7 @@ class SparseTensorSliceDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("Tvalues", tvalues_);
     return absl::OkStatus();

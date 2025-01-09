@@ -91,7 +91,6 @@ tf_proto_library(
     srcs = [
         "function_type.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/function/trace_type:serialization_proto",
     ],
@@ -101,7 +100,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "function_type_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:private"],
 #     deps = [":function_type_proto"],
 # )

@@ -65,13 +65,12 @@ class CTCLossCalculator {
 
   template <typename VectorIn, typename VectorOut, typename MatrixIn,
             typename MatrixOut>
-  Status CalculateLoss(const VectorIn& seq_len, const LabelSequences& labels,
-                       const std::vector<MatrixIn>& inputs,
-                       bool preprocess_collapse_repeated,
-                       bool ctc_merge_repeated,
-                       bool ignore_longer_outputs_than_inputs, VectorOut* loss,
-                       std::vector<MatrixOut>* gradients,
-                       DeviceBase::CpuWorkerThreads* workers = nullptr) const;
+  absl::Status CalculateLoss(
+      const VectorIn& seq_len, const LabelSequences& labels,
+      const std::vector<MatrixIn>& inputs, bool preprocess_collapse_repeated,
+      bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
+      VectorOut* loss, std::vector<MatrixOut>* gradients,
+      DeviceBase::CpuWorkerThreads* workers = nullptr) const;
 
  private:
   void CalculateForwardVariables(const std::vector<int>& l_prime,
@@ -94,11 +93,13 @@ class CTCLossCalculator {
   // batch.  Return value:
   //    max_{b in batch_size} l_primes[b].size()
   template <typename Vector>
-  Status PopulateLPrimes(bool preprocess_collapse_repeated,
-                         bool ignore_longer_outputs_than_inputs, int batch_size,
-                         int num_classes, const Vector& seq_len,
-                         const LabelSequences& labels, size_t* max_u_prime,
-                         LabelSequences* l_primes) const;
+  absl::Status PopulateLPrimes(bool preprocess_collapse_repeated,
+                               bool ignore_longer_outputs_than_inputs,
+                               int batch_size, int num_classes,
+                               const Vector& seq_len,
+                               const LabelSequences& labels,
+                               size_t* max_u_prime,
+                               LabelSequences* l_primes) const;
 
   // Utility indices for the CTC algorithm.
   int blank_index_;
@@ -111,7 +112,7 @@ class CTCLossCalculator {
 template <class T>
 template <typename VectorIn, typename VectorOut, typename MatrixIn,
           typename MatrixOut>
-Status CTCLossCalculator<T>::CalculateLoss(
+absl::Status CTCLossCalculator<T>::CalculateLoss(
     const VectorIn& seq_len, const LabelSequences& labels,
     const std::vector<MatrixIn>& inputs, bool preprocess_collapse_repeated,
     bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
@@ -164,7 +165,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
   // and calculate the maximum necessary allocation size.
   LabelSequences l_primes(batch_size);
   size_t max_u_prime = 0;
-  Status l_p_ret = PopulateLPrimes(
+  absl::Status l_p_ret = PopulateLPrimes(
       preprocess_collapse_repeated, ignore_longer_outputs_than_inputs,
       batch_size, num_classes, seq_len, labels, &max_u_prime, &l_primes);
   if (!l_p_ret.ok()) {
@@ -188,7 +189,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
                    "target output (CTC works only with shorter target sequence "
                    "than input sequence). You can turn this into a warning by "
                    "using the flag ignore_longer_outputs_than_inputs - "
-                << b << ": " << str_util::Join(labels[b], " ");
+                << b << ": " << absl::StrJoin(labels[b], " ");
         continue;
       }
 
@@ -284,7 +285,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
 
 template <class T>
 template <typename Vector>
-Status CTCLossCalculator<T>::PopulateLPrimes(
+absl::Status CTCLossCalculator<T>::PopulateLPrimes(
     bool preprocess_collapse_repeated, bool ignore_longer_outputs_than_inputs,
     int batch_size, int num_classes, const Vector& seq_len,
     const LabelSequences& labels, size_t* max_u_prime,
@@ -305,7 +306,7 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
 
     // If debugging: output the labels coming into training.
     //
-    VLOG(2) << "label for batch: " << b << ": " << str_util::Join(label, " ");
+    VLOG(2) << "label for batch: " << b << ": " << absl::StrJoin(label, " ");
 
     // Target indices, length = U.
     std::vector<int> l;
@@ -324,8 +325,8 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
                 "Saw a non-null label (index >= num_classes - 1) "
                 "following a ",
                 "null label, batch: ", b, " num_classes: ", num_classes,
-                " labels: ", str_util::Join(label, ","),
-                " labels seen so far: ", str_util::Join(l, ","));
+                " labels: ", absl::StrJoin(label, ","),
+                " labels seen so far: ", absl::StrJoin(l, ","));
           }
           l.push_back(label[i]);
         }
@@ -336,12 +337,12 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
       if (l_i < 0) {
         return errors::InvalidArgument(
             "All labels must be nonnegative integers, batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            " labels: ", absl::StrJoin(l, ","));
       } else if (l_i >= num_classes) {
         return errors::InvalidArgument(
             "No label may be greater than num_classes. ",
             "num_classes: ", num_classes, ", batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            " labels: ", absl::StrJoin(l, ","));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 
 #include <memory>
-#include <string_view>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -69,6 +68,10 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
       p0 = f32[2,2] parameter(0)
       ROOT add = f32[2,2] add(p0, p0)
     }
+    leaf3 {
+      p0 = f32[2,2] parameter(0)
+      ROOT add = f32[2,2] add(p0, p0)
+    }
 
     // Entry computation that calls each of the leaves asynchronously.
     ENTRY entry {
@@ -77,36 +80,52 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
           kind=kLoop, calls=leaf1
       start2 = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
           kind=kLoop, calls=leaf2
+      start3 = ((f32[2,2]), f32[2,2], s32[]) fusion-start(p0),
+          kind=kLoop, calls=leaf3
       update1 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start1)
       update2 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start2)
+      update3 = ((f32[2,2]), f32[2,2], s32[]) fusion-update(start3)
       done1 = f32[2,2] fusion-done(update1)
       done2 = f32[2,2] fusion-done(update2)
-      ROOT done = f32[2,2] add(done1, done2)
+      done3 = f32[2,2] fusion-done(update3)
+      ROOT done = f32[2,2] custom-call(done1, done2, done3),
+          custom_call_target="target"
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  ExecutionStreamAssignment assignment(module.get());
+  ExecutionStreamAssignment assignment(
+      module.get(),
+      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/2});
 
   // The outermost computation should run on `ExecutionStreamId(0)`. The two
   // asynchronous branches should be launched on `ExecutionStreamId(1)` and
-  // `ExecutionStreamId(2)`, respectively.
+  // `ExecutionStreamId(2)`, respectively. The third asynchronous branch should
+  // reuse `ExecutionStreamId(1)` because we set `number_of_execution_streams`
+  // to `2`.
   ExpectExecutionStreamForSyncInstructions(
       assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
-  for (std::string_view instruction : {"start1", "update1", "done1"}) {
+  for (absl::string_view instruction : {"start1", "update1", "done1"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
-  for (std::string_view instruction : {"start2", "update2", "done2"}) {
+  for (absl::string_view instruction : {"start2", "update2", "done2"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(2)}));
+  }
+  for (absl::string_view instruction : {"start3", "update3", "done3"}) {
+    EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
+                    FindInstruction(module.get(), instruction))),
+                IsOkAndHolds(AsyncExecutionStreamIds{
+                    /*source_stream_id=*/ExecutionStreamId(0),
+                    /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
 
   // Leaf computations should run on the respective asynchronous
@@ -121,6 +140,31 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
       Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start2"))
           ->async_wrapped_computation(),
       ExecutionStreamId(2));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
+  const char* const hlo_copy_start_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_copy_start_string));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  for (absl::string_view instruction : {"copy-start"}) {
+    EXPECT_THAT(
+        assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
+            FindInstruction(module.get(), instruction))),
+        IsOkAndHolds(AsyncExecutionStreamIds{
+            /*source_stream_id=*/ExecutionStreamId(0),
+            /*destination_stream_id=*/ExecutionStreamId(1)}));
+  }
 }
 
 TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
@@ -155,7 +199,7 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
 
   // Computations only reachable through fusion nodes should have no assigned
   // `ExecutionStreamId`.
-  for (std::string_view computation : {"reduce", "fusion"}) {
+  for (absl::string_view computation : {"reduce", "fusion"}) {
     for (const HloInstruction* instruction :
          FindComputation(module.get(), computation)->instructions()) {
       EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),

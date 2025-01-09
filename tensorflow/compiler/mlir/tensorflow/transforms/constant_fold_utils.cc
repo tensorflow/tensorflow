@@ -40,7 +40,7 @@ namespace TF {
 using tensorflow::tfrt_stub::FallbackState;
 using tensorflow::tfrt_stub::OpKernelRunner;
 
-static bool IsOk(const tensorflow::Status& s) {
+static bool IsOk(const absl::Status& s) {
   if (s.ok()) return true;
   VLOG(2) << s.message();
   return false;

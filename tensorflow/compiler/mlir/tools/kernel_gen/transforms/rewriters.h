@@ -47,10 +47,10 @@ namespace transforms {
 /// Collects a set of patterns that bufferize operations from the standard and
 /// other dialects.
 void populateExtraBufferizeDialects(DialectRegistry &registry);
-void populateExtraBufferizePatterns(
-    ConversionTarget &target, MLIRContext *context,
-    bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
+void populateExtraBufferizePatterns(ConversionTarget &target,
+                                    MLIRContext *context,
+                                    TypeConverter *converter,
+                                    RewritePatternSet *patterns);
 
 }  // namespace transforms
 }  // namespace kernel_gen

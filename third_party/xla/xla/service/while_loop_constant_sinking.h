@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -66,7 +66,7 @@ class WhileLoopConstantSinking : public HloModulePass {
 
  private:
   absl::StatusOr<bool> TrySinkingConstantsIntoWhileLoop(
-      HloInstruction* while_instr);
+      HloModule* module, HloInstruction* while_instr);
 
   const bool sink_broadcast_of_constants_;
   const bool sink_only_scalar_constants_;

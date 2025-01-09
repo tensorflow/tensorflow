@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -44,15 +45,17 @@ limitations under the License.
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -61,7 +64,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -1495,10 +1499,203 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   }
 };
 
+// Quantizes Concat ops where the inputs are quantized with fake quant but the
+// result is not explicitly quantized. Without this, later quantization passes
+// handle the quantization of the concat op incorrectly.
+class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
+ public:
+  QuantizeConcatResult(MLIRContext *context, bool use_fake_quant_num_bits)
+      : OpRewritePattern<TF::ConcatV2Op>(context),
+        use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
+
+  LogicalResult matchAndRewrite(TF::ConcatV2Op concat,
+                                PatternRewriter &rewriter) const override {
+    // Skip concat ops where the output is already quantized.
+    for (auto *user : concat->getUsers()) {
+      if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
+          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
+        return failure();
+      }
+    }
+
+    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
+    // had qdq ops generated so we'll need to follow up the chain to get to the
+    // fake quants.
+    llvm::SmallVector<TF::FakeQuantWithMinMaxVarsOp> fake_quant_ops;
+    for (Value operand_value : concat.getValues()) {
+      auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
+          operand_value.getDefiningOp());
+
+      if (!dq) {
+        return failure();
+      }
+
+      auto q = mlir::dyn_cast_or_null<TFL::QuantizeOp>(
+          dq.getInput().getDefiningOp());
+
+      if (!q) {
+        return failure();
+      }
+
+      auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
+          q.getInput().getDefiningOp());
+
+      if (!fq) {
+        return failure();
+      }
+
+      fake_quant_ops.emplace_back(fq);
+    }
+
+    float min = std::numeric_limits<float>::max();
+    float max = std::numeric_limits<float>::min();
+    Value min_v;
+    Value max_v;
+
+    // Extract min/max from across the fake quants.
+    for (TF::FakeQuantWithMinMaxVarsOp fq : fake_quant_ops) {
+      DenseFPElementsAttr min_attr;
+      DenseFPElementsAttr max_attr;
+      if (!matchPattern(fq.getMin(), m_Constant(&min_attr))) {
+        return failure();
+      }
+      if (!matchPattern(fq.getMax(), m_Constant(&max_attr))) {
+        return failure();
+      }
+      if (min_attr.size() > 1) {
+        return failure();
+      }
+      if (max_attr.size() > 1) {
+        return failure();
+      }
+      if (float new_min = min_attr.getValues<float>()[0]; new_min <= min) {
+        min = new_min;
+        min_v = fq.getMin();
+      }
+      if (float new_max = max_attr.getValues<float>()[0]; new_max >= max) {
+        max = new_max;
+        max_v = fq.getMax();
+      }
+    }
+
+    if (!min_v || !max_v) {
+      return failure();
+    }
+
+    Value concat_result = concat.getResult();
+    llvm::SmallVector<OpOperand *> uses;
+    for (OpOperand &use : concat_result.getUses()) {
+      uses.push_back(&use);
+    }
+
+    llvm::SmallVector<Value, 4> inputs{concat_result, min_v, max_v};
+
+    rewriter.setInsertionPointAfter(concat.getOperation());
+    auto new_fake_quant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
+        concat.getLoc(), concat->getResultTypes(), inputs,
+        (*fake_quant_ops.begin())->getAttrs());
+
+    for (OpOperand *use : uses) {
+      use->assign(new_fake_quant_op);
+    }
+
+    // Rather than directly generating qdq ops ourselves we leverage existing
+    // logic to do it for us.
+    (void)InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
+        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>(
+        use_fake_quant_num_bits_)
+        .matchAndRewrite(new_fake_quant_op, rewriter);
+
+    return success();
+  }
+
+ private:
+  bool use_fake_quant_num_bits_;
+};
+
+// Quantizes Mean ops where the inputs are quantized with fake quant but the
+// result is not explicitly quantized. Propagating the quant parameters from the
+// input to the output allow proper quantization later.
+// Note that this pass is intended to work around a shortcoming of TF QAT in
+// which some models do not have FQ ops generated for the output of this op.
+class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
+ public:
+  QuantizeMeanResult(MLIRContext *context, bool use_fake_quant_num_bits)
+      : OpRewritePattern<TF::MeanOp>(context),
+        use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
+
+  LogicalResult matchAndRewrite(TF::MeanOp mean,
+                                PatternRewriter &rewriter) const override {
+    // Skip ops where the output is already quantized.
+    for (auto *user : mean->getUsers()) {
+      if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
+          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
+        return failure();
+      }
+    }
+
+    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
+    // had qdq ops generated so we'll need to follow up the chain to get to the
+    // fake quants.
+    Value operand_value = mean.getInput();
+    auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
+        operand_value.getDefiningOp());
+
+    if (!dq) {
+      return failure();
+    }
+
+    auto q =
+        mlir::dyn_cast_or_null<TFL::QuantizeOp>(dq.getInput().getDefiningOp());
+
+    if (!q) {
+      return failure();
+    }
+
+    auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
+        q.getInput().getDefiningOp());
+
+    if (!fq) {
+      return failure();
+    }
+
+    Value mean_result = mean.getResult();
+    llvm::SmallVector<OpOperand *> uses;
+    for (OpOperand &use : mean_result.getUses()) {
+      uses.push_back(&use);
+    }
+
+    llvm::SmallVector<Value, 4> inputs{mean_result, fq.getMin(), fq.getMax()};
+
+    rewriter.setInsertionPointAfter(mean.getOperation());
+    auto new_fake_quant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
+        mean.getLoc(), mean->getResultTypes(), inputs, fq->getAttrs());
+
+    for (OpOperand *use : uses) {
+      use->assign(new_fake_quant_op);
+    }
+
+    // Rather than directly generating qdq ops ourselves we leverage existing
+    // logic to do it for us.
+    (void)InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
+        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>(
+        use_fake_quant_num_bits_)
+        .matchAndRewrite(new_fake_quant_op, rewriter);
+
+    return success();
+  }
+
+ private:
+  bool use_fake_quant_num_bits_;
+};
+
 void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   RewritePatternSet phase_2_patterns(ctx);
+  RewritePatternSet phase_3_patterns(ctx);
   auto func = getOperation();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
@@ -1566,6 +1763,10 @@ void PrepareTFPass::runOnOperation() {
   TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+
+  phase_3_patterns.add<QuantizeConcatResult>(ctx, use_fake_quant_num_bits_);
+  phase_3_patterns.add<QuantizeMeanResult>(ctx, use_fake_quant_num_bits_);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_3_patterns));
 }
 
 }  // namespace

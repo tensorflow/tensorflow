@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -100,7 +102,7 @@ Expected<StringHostTensor> CopyTfStringTensorToStringHostTensor(
 // TODO(jingdong): Format the tensor in more user-friendly format, especially
 // for large tensors. See tensorflow::Tensor::DebugString().
 void RuntimeFallbackTensor::Print(tfrt::raw_ostream& os) const {
-  tensorflow::Status status;
+  absl::Status status;
   OwnedAbstractTensorInterface tensor_interface{
       tensor_handle_->Resolve(&status)};
   assert(status.ok());
@@ -149,7 +151,7 @@ tfrt::Expected<RuntimeFallbackTensor>
 CreateRuntimeFallbackTensorFromTfTensorHandle(OwnedTensorHandle owned_th,
                                               HostContext* host) {
   int rank;
-  tensorflow::Status status = owned_th->NumDims(&rank);
+  absl::Status status = owned_th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeStringError(tfrt::StrCat(
         "error getting rank from TF tensor handle: ", status.message()));

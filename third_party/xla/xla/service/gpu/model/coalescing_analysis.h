@@ -20,10 +20,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -69,8 +70,30 @@ class CoalescingAnalysis {
 // producer and consumer are considered as one fusion, otherwise it's only the
 // producer.
 bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                              const se::DeviceDescription& device_info,
                               const HloInstruction* producer,
                               const HloInstruction* consumer = nullptr);
+
+// Returns the bandwidth utilization rate of the memory access for the given
+// tiled HLO instruction. Naturally, values are between 0 and 1, where a
+// perfectly coalesced read has a utilization rate of 1.
+//
+// Note: the assumption is that the tile sizes do not include padding beyond
+// the end of the shape.
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info);
+
+// Returns true if read of this tiled hlo operand is coalesced.
+//
+// We consider a read coalesced if the operand tile consist of contiguous chunk
+// of memory that saturate DRAM->L2 cache line. For post-V100 NVIDIA GPUs, that
+// is 64 bytes by default.
+//
+// TODO(b/332714755): check whether we should bump up the granularity of
+// memory transactions.
+bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
+                                   const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

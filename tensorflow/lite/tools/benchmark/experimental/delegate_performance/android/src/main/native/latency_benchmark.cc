@@ -29,9 +29,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto/delegate_performance.pb.h"
 
@@ -108,18 +111,18 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
               /*value=*/inference_us.std_deviation());
     AddMetric(/*name=*/"initialization_memory_max_rss_mebibyte",
               /*value=*/init_mem_usage.mem_footprint_kb / 1024.0);
-    AddMetric(/*name=*/"initialization_memory_total_allocated_mebibyte",
+    AddMetric(/*name=*/"initialization_memory_total_non_mmapped_heap_mebibyte",
               /*value=*/init_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(
-        /*name=*/"initialization_memory_in_use_mebibyte",
+        /*name=*/"initialization_memory_in_use_heap_mebibyte",
         /*value=*/init_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(/*name=*/"overall_memory_max_rss_mebibyte",
               /*value=*/overall_mem_usage.mem_footprint_kb / 1024.0);
     AddMetric(
-        /*name=*/"overall_memory_total_allocated_mebibyte",
+        /*name=*/"overall_memory_total_non_mmapped_heap_mebibyte",
         /*value=*/overall_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(
-        /*name=*/"overall_memory_in_use_mebibyte",
+        /*name=*/"overall_memory_in_use_heap_mebibyte",
         /*value=*/overall_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
     results_proto_.set_event_type(proto::benchmark::BENCHMARK_EVENT_TYPE_END);
     TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Benchmark finished.");

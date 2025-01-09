@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
@@ -68,7 +69,7 @@ class RestoredResource : TensorHandleConvertible {
                    TFConcreteFunction* destroy_resource,
                    ImmediateTensorHandlePtr resource_handle);
 
-  Status Initialize() const;
+  absl::Status Initialize() const;
 
   // RestoredResource is movable, but not copyable.
   RestoredResource(RestoredResource&& other) = default;

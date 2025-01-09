@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
-#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tsl {
 
@@ -54,9 +54,10 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
 
 inline std::string SerializePayloads(const absl::Status& s) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
-  s.ForEachPayload([&container](StringPiece key, const absl::Cord& value) {
-    (*container.mutable_payloads())[std::string(key)] = std::string(value);
-  });
+  s.ForEachPayload(
+      [&container](absl::string_view key, const absl::Cord& value) {
+        (*container.mutable_payloads())[std::string(key)] = std::string(value);
+      });
   return container.SerializeAsString();
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/array.h"
 
 #include <complex>
+#include <cstdint>
 #include <random>
 
 #include "xla/types.h"

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -115,11 +114,12 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
 
 // Takes a sharded logits and compute both the shifted exponentiation of the
 // logits and its sum. Assumes that builder's insertion point is after logits.
-Status ComputeExpAndSum(mlir::OpBuilder& builder, const mlir::Value& logits,
-                        const Layout& logits_layout,
-                        mlir::Value& shifted_logits,
-                        mlir::Value& exp_of_shifted_logits,
-                        mlir::Value& sum_of_exp) {
+absl::Status ComputeExpAndSum(mlir::OpBuilder& builder,
+                              const mlir::Value& logits,
+                              const Layout& logits_layout,
+                              mlir::Value& shifted_logits,
+                              mlir::Value& exp_of_shifted_logits,
+                              mlir::Value& sum_of_exp) {
   auto loc = logits.getLoc();
 
   if (logits_layout.rank() == 0)

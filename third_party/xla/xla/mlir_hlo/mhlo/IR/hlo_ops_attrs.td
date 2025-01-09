@@ -53,6 +53,32 @@ def MHLO_GatherDimensionNumbers : AttrDef<MHLO_Dialect, "GatherDimensionNumbers"
   let hasCustomAssemblyFormat = 1;
 }
 
+def MHLO_DotAlgorithmAttr : AttrDef<MHLO_Dialect, "DotAlgorithm"> {
+  let mnemonic = "dot_algorithm";
+  let summary = "Attribute that models the algorithm constraints to use for computing dot.";
+  let parameters = (ins
+      "Type":$lhsPrecisionType,
+      "Type":$rhsPrecisionType,
+      "Type":$accumulationType,
+      "int64_t":$lhsComponentCount,
+      "int64_t":$rhsComponentCount,
+      "int64_t":$numPrimitiveOperations,
+      "bool":$allowImpreciseAccumulation
+  );
+  let assemblyFormat = [{
+    `<`
+      `lhs_precision_type` `=` $lhsPrecisionType `,`
+      `rhs_precision_type` `=` $rhsPrecisionType `,`
+      `accumulation_type` `=` $accumulationType `,`
+      `lhs_component_count` `=` $lhsComponentCount `,`
+      `rhs_component_count` `=` $rhsComponentCount `,`
+      `num_primitive_operations` `=` $numPrimitiveOperations `,`
+      `allow_imprecise_accumulation` `=` $allowImpreciseAccumulation
+    `>`
+  }];
+  let genVerifyDecl = 1;
+}
+
 def MHLO_DotDimensionNumbers : AttrDef<MHLO_Dialect, "DotDimensionNumbers"> {
   let mnemonic = "dot";
   let summary = "Attribute that models the dimension information for dot.";
@@ -278,6 +304,17 @@ def MHLO_SparsityDescriptor : AttrDef<MHLO_Dialect, "SparsityDescriptor"> {
     "int64_t":$n,
     "int64_t":$m);
   let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def MHLO_RaggedDotDimensionNumbers : AttrDef<MHLO_Dialect, "RaggedDotDimensionNumbers"> {
+  let mnemonic = "ragged_dot";
+  let summary = "Attribute that models the dimension information for ragged dot.";
+  let parameters = (ins
+      MHLO_DotDimensionNumbers:$dotDimensionNumbers,
+      MHLO_Dims:$lhsRaggedDimensions,
+      MHLO_Dims:$rhsGroupDimensions
+  );
+  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//

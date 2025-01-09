@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PROTOBUF_UTIL_H_
 #define XLA_PROTOBUF_UTIL_H_
 
+#include <cstddef>
 #include <functional>
 #include <string>
 
@@ -55,11 +56,6 @@ class ProtobufHashWrapper {
     return ProtobufHash(m);
   }
 };
-
-// Registers a function that may either expand a dirpath or forward the original
-// dirpath along as-is.
-void RegisterDirectoryExpander(
-    const std::function<std::string(std::string)>& expander);
 
 }  // namespace protobuf_util
 }  // namespace xla

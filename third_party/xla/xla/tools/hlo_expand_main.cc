@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/tools/hlo_expand.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/util/command_line_flags.h"

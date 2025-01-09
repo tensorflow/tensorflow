@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -159,7 +160,8 @@ TEST(HostKernelTest, Addition3D) {
   TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(stream->Launch(ThreadDim(2, 2, 3), BlockDim(1), *add, kargs));
+  TF_ASSERT_OK(
+      add->Launch(ThreadDim(2, 2, 3), BlockDim(1), stream.get(), kargs));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};
@@ -185,7 +187,7 @@ TEST(HostKernelTest, JitAddition) {
   TF_ASSERT_OK_AND_ASSIGN(auto add, executor->LoadKernel(spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(stream->Launch(ThreadDim(4), BlockDim(1), *add, kargs));
+  TF_ASSERT_OK(add->Launch(ThreadDim(4), BlockDim(1), stream.get(), kargs));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
   EXPECT_EQ(out, expected);

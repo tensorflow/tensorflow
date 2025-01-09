@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/interpreter/executor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -47,38 +48,27 @@ XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
   return XlaInterpreterExecutor::CreateDeviceDescription(ordinal);
 }
 
-absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
-    int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
-}
-
 absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::FindExisting(
     int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return executor_cache_.Get(config);
+  return executor_cache_.Get(ordinal);
 }
 
-absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
+    int ordinal) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-XlaInterpreterPlatform::GetUncachedExecutor(
-    const StreamExecutorConfig& config) {
-  auto executor =
-      std::make_unique<XlaInterpreterExecutor>(config.ordinal, this);
+XlaInterpreterPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<XlaInterpreterExecutor>(ordinal, this);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{
         absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString())};
+            ordinal, init_status.ToString())};
   }
 
   return std::move(executor);

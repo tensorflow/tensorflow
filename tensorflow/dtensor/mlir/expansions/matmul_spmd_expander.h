@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -62,11 +63,11 @@ class MatMulSPMDExpander : public SPMDExpanderBase {
   // matmul_layout will be set to the layout of the output of the local matmul
   // (after the above reduction). This may be different from the desired output
   // layout.
-  Status MaybeRelayoutInputs(mlir::Operation* op, const Layout& left_layout,
-                             bool left_transposed, const Layout& right_layout,
-                             bool right_transposed, const Layout& output_layout,
-                             std::string& reduced_dim, Layout& matmul_layout,
-                             mlir::Value& left, mlir::Value& right);
+  absl::Status MaybeRelayoutInputs(
+      mlir::Operation* op, const Layout& left_layout, bool left_transposed,
+      const Layout& right_layout, bool right_transposed,
+      const Layout& output_layout, std::string& reduced_dim,
+      Layout& matmul_layout, mlir::Value& left, mlir::Value& right);
 };
 
 }  // namespace dtensor

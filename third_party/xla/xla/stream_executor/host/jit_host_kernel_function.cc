@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -38,6 +37,8 @@ limitations under the License.
 #include "llvm/ExecutionEngine/ObjectCache.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/CoreContainers.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
@@ -176,7 +177,7 @@ class ExecutionEngine {
   static absl::StatusOr<std::unique_ptr<ExecutionEngine>> CreateFromModule(
       std::unique_ptr<llvm::LLVMContext> ctx,
       std::unique_ptr<llvm::Module> module, Options options,
-      absl::Span<const std::string_view> exported);
+      absl::Span<const absl::string_view> exported);
 
   // Returns a pointer to the exported function.
   absl::Span<const ExportedFunctionPtr> exported() const { return exported_; }
@@ -232,10 +233,10 @@ static std::string ToString(const llvm::Error &err) {
 }
 
 absl::StatusOr<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
-                                  std::unique_ptr<llvm::Module> module,
-                                  Options options,
-                                  absl::Span<const std::string_view> exported) {
+ExecutionEngine::CreateFromModule(
+    std::unique_ptr<llvm::LLVMContext> ctx,
+    std::unique_ptr<llvm::Module> module, Options options,
+    absl::Span<const absl::string_view> exported) {
   auto engine = std::unique_ptr<ExecutionEngine>(new ExecutionEngine(
       options.enable_gdb_listener, options.enable_perf_listener));
 
@@ -295,9 +296,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
         "failed to create executor process control: %s", ToString(err)));
   }
 
-  // TODO(b/286475799): Concurrent compilation leads to spurious memory
-  // corruptions and segfaults at run time, however nothing shows up in tsan
-  // or asan builds. This is a hack that for some unknown reason helps.
   static auto *lljit_mu = new absl::Mutex();
   std::optional<absl::MutexLock> lljit_lock(lljit_mu);
 
@@ -326,7 +324,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
 
   // Resolve all exported functions to function pointers.
-  for (std::string_view name : exported) {
+  for (absl::string_view name : exported) {
     // Trigger compilation by looking up the exported function.
     // TODO(tsilytskyi):
     //   - Do we need to mangle function name?
@@ -420,7 +418,7 @@ JitHostKernelFunction::CreateFromLlvmIr(absl::string_view name,
   engine_options.target_machine = std::move(target_machine.get());
   engine_options.make_optimizing_transformer = MakeOptimizingTransformerForJit;
 
-  std::vector<std::string_view> exported = {entry};
+  std::vector<absl::string_view> exported = {entry};
 
   // Compile input module to the native function.
   TF_ASSIGN_OR_RETURN(auto engine,
@@ -441,9 +439,9 @@ static void RegisterJitKernelFunctionLoader() {
         if (!spec.has_llvm_host_kernel()) return std::nullopt;
 
         const LlvmHostKernel &llvm_host_kernel = spec.llvm_host_kernel();
-        std::string_view name = llvm_host_kernel.kernel_name();
-        std::string_view entry = llvm_host_kernel.entrypoint();
-        std::string_view ir = llvm_host_kernel.ir();
+        absl::string_view name = llvm_host_kernel.kernel_name();
+        absl::string_view entry = llvm_host_kernel.entrypoint();
+        absl::string_view ir = llvm_host_kernel.ir();
         absl::Span<const std::string> options = llvm_host_kernel.options();
 
         return JitHostKernelFunction::CreateFromLlvmIr(name, entry, ir,

@@ -30,13 +30,13 @@ static bool IsAlphaNumOrUnderscore(char c) {
 }
 
 // Returns true iff "in" is a valid job name.
-static bool IsJobName(StringPiece in) {
+static bool IsJobName(absl::string_view in) {
   return !in.empty() && IsAlpha(in.front()) &&
          std::all_of(in.begin(), in.end(), IsAlphaNumOrUnderscore);
 }
 
-static bool ConsumePrefix(StringPiece* in, string* out,
-                          StringPiece prefix_terminators) {
+static bool ConsumePrefix(absl::string_view* in, string* out,
+                          absl::string_view prefix_terminators) {
   if (in->empty() || !IsAlpha(in->front())) return false;
   const auto end_it =
       std::find_first_of(in->begin(), in->end(), prefix_terminators.begin(),
@@ -50,19 +50,19 @@ static bool ConsumePrefix(StringPiece* in, string* out,
 }
 
 // Returns true and fills in "*job" iff "*in" starts with a job name.
-static bool ConsumeJobName(StringPiece* in, string* job) {
+static bool ConsumeJobName(absl::string_view* in, string* job) {
   return ConsumePrefix(in, job, "/");
 }
 
 // Returns true and fills in "*device_type" iff "*in" starts with a device type
 // name.
-static bool ConsumeDeviceType(StringPiece* in, string* device_type) {
+static bool ConsumeDeviceType(absl::string_view* in, string* device_type) {
   return ConsumePrefix(in, device_type, "/:");
 }
 
 // Returns true and fills in "*val" iff "*in" starts with a decimal
 // number.
-static bool ConsumeNumber(StringPiece* in, int* val) {
+static bool ConsumeNumber(absl::string_view* in, int* val) {
   uint64 tmp;
   if (str_util::ConsumeLeadingDigits(in, &tmp)) {
     *val = tmp;
@@ -98,7 +98,7 @@ string LegacyName(const string& job, int replica, int task, const string& type,
 }
 }  // anonymous namespace
 
-bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
+bool DeviceNameUtils::ParseFullName(absl::string_view fullname, ParsedName* p) {
   p->Clear();
   if (fullname == "/") {
     return true;
@@ -171,7 +171,7 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   return true;
 }
 
-bool DeviceNameUtils::ParseFullOrLocalName(StringPiece fullname,
+bool DeviceNameUtils::ParseFullOrLocalName(absl::string_view fullname,
                                            ParsedName* p) {
   return ParseFullName(fullname, p) || ParseLocalName(fullname, p);
 }
@@ -205,8 +205,8 @@ void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
 }  // namespace
 
 /* static */
-absl::Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
-                                                     StringPiece basename,
+absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
+                                                     absl::string_view basename,
                                                      string* canonical_name) {
   *canonical_name = "";
   ParsedName parsed_basename;
@@ -479,7 +479,8 @@ bool DeviceNameUtils::IsSameAddressSpace(const ParsedName& a,
 }
 
 /* static */
-bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
+bool DeviceNameUtils::IsSameAddressSpace(absl::string_view src,
+                                         absl::string_view dst) {
   ParsedName x;
   ParsedName y;
   return ParseFullName(src, &x) && ParseFullName(dst, &y) &&
@@ -508,27 +509,27 @@ const DeviceNameUtils::ParsedName DeviceNameUtils::AddressSpace(
 }
 
 /* static */
-string DeviceNameUtils::LocalName(StringPiece type, int id) {
+string DeviceNameUtils::LocalName(absl::string_view type, int id) {
   return strings::StrCat("/device:", type, ":", id);
 }
 
 namespace {
 // Returns the legacy local device name given its "type" and "id" (which is
 // '/device:type:id').
-string LegacyLocalName(StringPiece type, int id) {
+string LegacyLocalName(absl::string_view type, int id) {
   return strings::StrCat(type, ":", id);
 }
 }  // anonymous namespace
 
 /* static */
-string DeviceNameUtils::LocalName(StringPiece fullname) {
+string DeviceNameUtils::LocalName(absl::string_view fullname) {
   ParsedName x;
   CHECK(ParseFullName(fullname, &x)) << fullname;
   return LocalName(x.type, x.id);
 }
 
 /* static */
-bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
+bool DeviceNameUtils::ParseLocalName(absl::string_view name, ParsedName* p) {
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }
@@ -544,7 +545,7 @@ bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
 }
 
 /* static */
-bool DeviceNameUtils::SplitDeviceName(StringPiece name, string* task,
+bool DeviceNameUtils::SplitDeviceName(absl::string_view name, string* task,
                                       string* device) {
   ParsedName pn;
   if (ParseFullName(name, &pn) && pn.has_type && pn.has_id) {

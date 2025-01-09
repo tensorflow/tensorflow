@@ -140,7 +140,6 @@ cc_library(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels:test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
-        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
 )

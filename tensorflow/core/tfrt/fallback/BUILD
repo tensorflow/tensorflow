@@ -30,6 +30,7 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
         # copybara:uncomment "//learning/infra/mira/distributed/...",
+        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
     ],
 )
 
@@ -40,15 +41,22 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tpu:virtual_device",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:refcount",
     ],
 )
 
@@ -62,10 +70,16 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -75,13 +89,19 @@ cc_library(
     hdrs = ["op_kernel_runner.h"],
     features = tf_features_nolayering_check_if_ios(),
     visibility = [
-        ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/graph_executor:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__pkg__",
+        "//visibility:public",
     ],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -101,6 +121,11 @@ cc_library(
     deps = [
         ":op_kernel_runner",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
     ],
@@ -116,6 +141,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -165,5 +192,4 @@ tf_cuda_cc_test(
 tf_proto_library(
     name = "op_cost_map_proto",
     srcs = ["op_cost_map.proto"],
-    cc_api_version = 2,
 )

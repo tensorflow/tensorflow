@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_transfer_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
@@ -49,7 +50,8 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(2) << "Outfeeding from GPU";
 
-  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(stream.parent());
+  OutfeedManager* outfeed_manager =
+      GpuTransferManager::GetOrCreateOutfeedManager(stream.parent());
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();
 

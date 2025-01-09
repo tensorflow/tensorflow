@@ -20,11 +20,11 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

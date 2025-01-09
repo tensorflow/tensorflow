@@ -47,7 +47,7 @@ class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
   CompiledSubgraph* InitializeEntry(
       const std::string& key,
-      const std::function<Status(TpuProgramGroupInterface*)>&
+      const std::function<absl::Status(TpuProgramGroupInterface*)>&
           initialize_program,
       const TpuCompilationCacheKey& subgraph_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(TpuCompilationCacheInterface::mu_) override;

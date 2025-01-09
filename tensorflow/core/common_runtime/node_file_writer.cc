@@ -102,7 +102,7 @@ tensorflow::NodeFileWriter::GetNodeFileWriterIfEnabled(
   mutex_lock l(mu);
   auto it = device_name_to_writer->find(device_name);
   if (it == device_name_to_writer->end()) {
-    Status s = env->CreateDir(*node_dir);
+    absl::Status s = env->CreateDir(*node_dir);
     if (!s.ok() && s.code() != error::ALREADY_EXISTS) {
       return s;
     }
@@ -124,8 +124,8 @@ tensorflow::NodeFileWriter::GetNodeFileWriterIfEnabled(
   return it->second;
 }
 
-Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
-                                           OpKernelContext* context) {
+absl::Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
+                                                 OpKernelContext* context) {
   if (kOpsToSkipWriting->count(op_kernel->type_string())) {
     return absl::OkStatus();
   }
@@ -161,7 +161,7 @@ Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
   return MaybeWriteNodeDefToFile(def);
 }
 
-Status NodeFileWriter::MaybeWriteNodeDefToFile(const NodeDef& def) {
+absl::Status NodeFileWriter::MaybeWriteNodeDefToFile(const NodeDef& def) {
   std::string def_str = def.SerializeAsString();
   uint64 size = def_str.size();
   std::string size_as_str;

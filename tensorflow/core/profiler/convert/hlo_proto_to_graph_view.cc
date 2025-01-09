@@ -23,9 +23,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#ifdef PLATFORM_GOOGLE
+#include "third_party/json/src/json.hpp"
+#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
+#endif  // PLATFORM_GOOGLE
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -51,6 +59,8 @@ using ::xla::HloProto;
 using ::xla::HloRenderOptions;
 using ::xla::RenderedGraphFormat;
 
+constexpr char kCenterNodeKey[] = "centerNode";
+
 void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   // Infeed config is escaped serialized proto, and graphviz server complains.
   for (HloComputation* computation : hlo_module->computations()) {
@@ -62,6 +72,94 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
       }
     }
   }
+}
+
+#ifdef PLATFORM_GOOGLE
+// Add a custom group node on the graph level, for the center node chosen by the
+// user set its attributes like `id`, `name` or `opcode` in `graph_json`.
+void AddCenterNodeMetadata(nlohmann::json& graph_json, std::string id,
+                           absl::string_view name, absl::string_view opcode) {
+  nlohmann::json centerGroupNodeAttributes;
+  centerGroupNodeAttributes["name"] = name;
+  centerGroupNodeAttributes["id"] = id;
+  if (!opcode.empty()) {
+    centerGroupNodeAttributes["opcode"] = opcode;
+  }
+  // Follow ModelExplorer's Graph typing: GraphCollectionFromBuiltinAdapters
+  graph_json[0]["subgraphs"][0]["groupNodeAttributes"][kCenterNodeKey] =
+      centerGroupNodeAttributes;
+}
+#endif  // PLATFORM_GOOGLE
+
+void AddGraphMetadata(std::string& graph_json_str,
+                      const HloInstruction& instr) {
+#ifdef PLATFORM_GOOGLE
+  nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
+  // 1. Fusion instruction is represented as a layer on client, use its
+  // pinned node as the center node, id of the pinned node is the fusion name.
+  // 2. Other instructions are represented as nodes on client, use iteself as
+  // the center node, where node id is the instruction name.
+  std::string id = absl::StrCat(instr.name());
+  AddCenterNodeMetadata(graph_json, id, instr.name(),
+                        HloOpcodeString(instr.opcode()));
+  graph_json_str = graph_json.dump();
+#endif  // PLATFORM_GOOGLE
+}
+
+void AddGraphMetadata(std::string& graph_json_str, const HloComputation& comp) {
+#ifdef PLATFORM_GOOGLE
+  nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
+  // Computation is represented as a layer on client, use its pinned node as the
+  // center node,id of the pinned node is the computation name.
+  AddCenterNodeMetadata(graph_json, absl::StrCat(comp.name()), comp.name(), "");
+  graph_json_str = graph_json.dump();
+#endif  // PLATFORM_GOOGLE
+}
+
+// This function does the same thing as Plot() but uses the ModelExplorer
+// instead of graphviz.
+absl::StatusOr<std::string> PlotMe(std::unique_ptr<HloModule> module,
+                                   const std::string& node_name,
+                                   int graph_width) {
+  if (node_name.empty()) {
+    // This should not happen.
+    return InvalidArgument("node_name should not be empty");
+  }
+  // Find the node with the given name.
+  const HloInstruction* instr = FindInstruction(*module, node_name);
+  const HloComputation* comp = FindComputation(*module, node_name);
+
+  if (!instr && !comp) {
+    return InvalidArgument(
+        absl::StrCat("Couldn't find HloInstruction or HloComputation named ",
+                     node_name, "."));
+  }
+  // Generate the graph and print the resulting string.
+  absl::StatusOr<std::string> graph_handle;
+  std::string graph_json_str;
+// b/360874576: Enable when the adapter is open sourced.
+#ifdef PLATFORM_GOOGLE
+  if (comp) {
+    graph_handle = tooling::visualization_client::HloGraphAdapter(*comp);
+  } else {
+    graph_handle =
+        tooling::visualization_client::HloGraphAdapter(*instr, graph_width);
+  }
+#endif  // PLATFORM_GOOGLE
+  if (graph_handle.ok()) {
+    VLOG(1) << graph_handle.value();
+    graph_json_str = graph_handle.value();
+    if (comp) {
+      AddGraphMetadata(graph_json_str, *comp);
+    } else {
+      AddGraphMetadata(graph_json_str, *instr);
+    }
+    return graph_json_str;
+  } else {
+    LOG(ERROR) << "Unable to render graph: " << graph_handle.status();
+  }
+
+  return graph_handle;
 }
 
 absl::StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
@@ -111,6 +209,92 @@ static constexpr int kDefaultShowMetadata = 0;
 static constexpr int kDefaultMergeFusion = 0;
 
 }  // namespace
+
+absl::StatusOr<std::string> GetNodeStyles() {
+  std::vector<xla::HloOpcode> async_op_codes = {xla::HloOpcode::kAsyncStart,
+                                                xla::HloOpcode::kAsyncUpdate,
+                                                xla::HloOpcode::kAsyncDone};
+  std::vector<xla::HloOpcode> brown_op_codes = {
+      xla::HloOpcode::kAllGather,
+      xla::HloOpcode::kAllGatherStart,
+      xla::HloOpcode::kAllGatherDone,
+      xla::HloOpcode::kAllReduce,
+      xla::HloOpcode::kReduceScatter,
+      xla::HloOpcode::kAllReduceStart,
+      xla::HloOpcode::kAllReduceDone,
+      xla::HloOpcode::kAllToAll,
+      xla::HloOpcode::kCollectiveBroadcast,
+      xla::HloOpcode::kCollectivePermute,
+      xla::HloOpcode::kCollectivePermuteStart,
+      xla::HloOpcode::kCollectivePermuteDone,
+      xla::HloOpcode::kInfeed,
+      xla::HloOpcode::kOutfeed,
+      xla::HloOpcode::kPartitionId,
+      xla::HloOpcode::kRecv,
+      xla::HloOpcode::kRecvDone,
+      xla::HloOpcode::kSend,
+      xla::HloOpcode::kSendDone,
+      xla::HloOpcode::kReplicaId};
+  std::vector<xla::HloOpcode> dark_blue_op_codes = {
+      xla::HloOpcode::kConvolution, xla::HloOpcode::kDot, xla::HloOpcode::kFft,
+      xla::HloOpcode::kTriangularSolve, xla::HloOpcode::kCholesky};
+  std::vector<xla::HloOpcode> dark_green_op_codes = {
+      xla::HloOpcode::kCall, xla::HloOpcode::kConditional,
+      xla::HloOpcode::kCustomCall, xla::HloOpcode::kWhile};
+  std::vector<xla::HloOpcode> gray_op_codes = {
+      xla::HloOpcode::kDomain, xla::HloOpcode::kFusion, xla::HloOpcode::kMap,
+      xla::HloOpcode::kGetDimensionSize, xla::HloOpcode::kSetDimensionSize};
+  std::vector<xla::HloOpcode> green_op_codes = {
+      xla::HloOpcode::kConcatenate, xla::HloOpcode::kDynamicSlice,
+      xla::HloOpcode::kReshape,     xla::HloOpcode::kDynamicReshape,
+      xla::HloOpcode::kReverse,     xla::HloOpcode::kTranspose,
+      xla::HloOpcode::kCopy,        xla::HloOpcode::kCopyStart,
+      xla::HloOpcode::kCopyDone};
+  std::vector<xla::HloOpcode> orange_op_codes = {xla::HloOpcode::kParameter};
+  std::vector<xla::HloOpcode> purple_op_codes = {
+      xla::HloOpcode::kBatchNormGrad,     xla::HloOpcode::kBatchNormInference,
+      xla::HloOpcode::kBatchNormTraining, xla::HloOpcode::kReduce,
+      xla::HloOpcode::kReduceWindow,      xla::HloOpcode::kScatter,
+      xla::HloOpcode::kSelectAndScatter,  xla::HloOpcode::kGather};
+  std::vector<xla::HloOpcode> yellow_op_codes = {
+      xla::HloOpcode::kBroadcast, xla::HloOpcode::kDynamicUpdateSlice};
+
+  auto OpCodesToNames =
+      [&](std::vector<xla::HloOpcode> op_codes) -> std::string {
+    std::string op_names = "";
+    for (const auto& op_code : op_codes) {
+      if (!op_names.empty()) {
+        op_names += ",";
+      }
+      op_names += std::string(xla::HloOpcodeString(op_code));
+    }
+    return op_names;
+  };
+
+  return absl::StrReplaceAll(
+      R"json({
+      "kBlue": "$asyncOpNames",
+      "kBrown": "$brownOpNames",
+      "kDarkBlue": "$darkBlueOpNames",
+      "kDarkGreen": "$darkGreenOpNames",
+      "kGray": "$grayOpNames",
+      "kGreen": "$greenOpNames",
+      "kOrange": "$orangeOpNames",
+      "kPurple": "$purpleOpNames",
+      "kYellow": "$yellowOpNames"
+    })json",
+      {
+          {"$asyncOpNames", OpCodesToNames(async_op_codes)},
+          {"$brownOpNames", OpCodesToNames(brown_op_codes)},
+          {"$darkBlueOpNames", OpCodesToNames(dark_blue_op_codes)},
+          {"$darkGreenOpNames", OpCodesToNames(dark_green_op_codes)},
+          {"$grayOpNames", OpCodesToNames(gray_op_codes)},
+          {"$greenOpNames", OpCodesToNames(green_op_codes)},
+          {"$orangeOpNames", OpCodesToNames(orange_op_codes)},
+          {"$purpleOpNames", OpCodesToNames(purple_op_codes)},
+          {"$yellowOpNames", OpCodesToNames(yellow_op_codes)},
+      });
+}
 
 absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
     const ToolOptions& options) {
@@ -175,6 +359,13 @@ absl::StatusOr<std::string> ConvertHloProtoToGraph(
                       ConvertHloProtoToModule(hlo_proto));
   return Plot(std::move(hlo_module), node_name, graph_width, render_options,
               format);
+}
+
+absl::StatusOr<std::string> ConvertHloProtoToMeGraph(
+    const HloProto& hlo_proto, const std::string& node_name, int graph_width) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      ConvertHloProtoToModule(hlo_proto));
+  return PlotMe(std::move(hlo_module), node_name, graph_width);
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToStringView(

@@ -29,10 +29,10 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declarations so we don't need a public header.
-Status SparsifyGather(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def);
-Status ReadTensorFromCheckpoint(
+absl::Status SparsifyGather(const GraphDef& input_graph_def,
+                            const TransformFuncContext& context,
+                            GraphDef* output_graph_def);
+absl::Status ReadTensorFromCheckpoint(
     const string& tensor_name, const std::unique_ptr<BundleReader>& ckpt_reader,
     const string& shape_and_slice, Tensor* tensor);
 

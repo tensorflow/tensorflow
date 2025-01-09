@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_GL_BUFFER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_GL_BUFFER_H_
 
+#include <cstdint>
 #include <cstring>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"

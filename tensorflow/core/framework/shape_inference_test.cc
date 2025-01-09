@@ -1106,7 +1106,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
     InferenceContext c(kVersion, def, MakeOpDef(1, 0), {Unknown()}, {t}, {},
                        {});
     ShapeHandle out;
-    Status s = c.MakeShapeFromShapeTensor(0, &out);
+    absl::Status s = c.MakeShapeFromShapeTensor(0, &out);
     if (s.ok()) {
       return c.DebugString(out);
     } else {

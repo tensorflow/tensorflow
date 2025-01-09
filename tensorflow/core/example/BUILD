@@ -109,7 +109,6 @@ tf_proto_library(
         "example.proto",
         "feature.proto",
     ],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
@@ -117,7 +116,6 @@ tf_proto_library(
 tf_proto_library(
     name = "example_parser_configuration_proto",
     srcs = ["example_parser_configuration.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:tensor_shape_proto",
@@ -128,7 +126,6 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all",
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":example_protos",

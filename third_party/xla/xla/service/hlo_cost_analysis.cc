@@ -35,17 +35,21 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
 HloCostAnalysis::HloCostAnalysis(const Options& options) : options_(options) {}
+// TODO(mehrdadk): merge all constructors into HloCostAnalysis(const Options&
+// options)
 HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
-                                 const Properties& per_second_rates)
-    : HloCostAnalysis(Options{shape_size, per_second_rates}) {}
+                                 const Properties& per_second_rates,
+                                 const Properties& min_latencies_seconds)
+    : HloCostAnalysis(
+          Options{shape_size, per_second_rates, min_latencies_seconds}) {}
 
 absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
@@ -82,7 +86,9 @@ absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       }
       float per_second_rate = options_.per_second_rate(key);
       if (per_second_rate != 0) {
-        optimal_seconds = std::max(optimal_seconds, val / per_second_rate);
+        float time_for_key =
+            std::max(val / per_second_rate, options_.min_latency_seconds(key));
+        optimal_seconds = std::max(optimal_seconds, time_for_key);
       }
     });
     current_properties_[kOptimalSecondsKey] = optimal_seconds;
@@ -455,6 +461,23 @@ int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
 absl::Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   current_properties_[kFlopsKey] = GetDotFlops(
       dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleRaggedDot(
+    const HloInstruction* ragged_dot) {
+  RaggedDotDimensionNumbers ragged_dnum =
+      ragged_dot->ragged_dot_dimension_numbers();
+  Shape result_shape = ragged_dot->shape();
+
+  // Get a new output shape with the group dimension(s) removed.
+  for (int64_t i = 0; i < ragged_dnum.rhs_group_dimensions_size(); ++i) {
+    result_shape = ShapeUtil::DeleteDimension(i, result_shape);
+  }
+
+  current_properties_[kFlopsKey] =
+      GetDotFlops(ragged_dot->operand(0)->shape(), result_shape,
+                  ragged_dnum.dot_dimension_numbers());
   return absl::OkStatus();
 }
 
@@ -1033,6 +1056,10 @@ absl::Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleRaggedAllToAll(const HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleCollectiveBroadcast(
     const HloInstruction* /*hlo*/) {
   return absl::OkStatus();
@@ -1520,6 +1547,10 @@ std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {
 bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {
   return !absl::StartsWith(key, kBytesAccessedKey) &&
          !absl::StartsWith(key, kUtilizationKey);
+}
+
+int64_t HloCostAnalysis::DefaultShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kDefaultPointerSize);
 }
 
 }  // namespace xla

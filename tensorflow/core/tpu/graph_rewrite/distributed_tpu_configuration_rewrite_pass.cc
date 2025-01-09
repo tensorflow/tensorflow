@@ -57,10 +57,10 @@ constexpr char kTpuCancellationClosesChipsAttr[] =
     "tpu_cancellation_closes_chips";
 constexpr int kDefaultStartupTimeout = 20;
 
-Status AddConfigurationNode(const std::string& configuration_device_name,
-                            int number_of_hosts, Graph* graph,
-                            bool enable_whole_mesh_compilations,
-                            Node** configuration_node) {
+absl::Status AddConfigurationNode(const std::string& configuration_device_name,
+                                  int number_of_hosts, Graph* graph,
+                                  bool enable_whole_mesh_compilations,
+                                  Node** configuration_node) {
   NodeDef config_def;
   config_def.set_name(graph->NewName("configure_distributed_tpu"));
   config_def.set_op(kInternalConfigureOp);
@@ -75,11 +75,11 @@ Status AddConfigurationNode(const std::string& configuration_device_name,
   return absl::OkStatus();
 }
 
-Status AddHostConfigNode(const std::string& host_device_name,
-                         Node* configuration_node, Graph* graph,
-                         bool enable_whole_mesh_compilations,
-                         int tpu_cancellation_closes_chips,
-                         Node** host_configuration_node) {
+absl::Status AddHostConfigNode(const std::string& host_device_name,
+                               Node* configuration_node, Graph* graph,
+                               bool enable_whole_mesh_compilations,
+                               int tpu_cancellation_closes_chips,
+                               Node** host_configuration_node) {
   NodeDef host_config_def;
   host_config_def.set_name(graph->NewName("configure_tpu_host"));
   host_config_def.set_op(kHostConfigureOp);
@@ -97,9 +97,9 @@ Status AddHostConfigNode(const std::string& host_device_name,
   return absl::OkStatus();
 }
 
-Status AddWaitNode(const std::string& configuration_device_name,
-                   const std::vector<Node*>& host_configuration_nodes,
-                   Graph* graph, Node** wait_node) {
+absl::Status AddWaitNode(const std::string& configuration_device_name,
+                         const std::vector<Node*>& host_configuration_nodes,
+                         Graph* graph, Node** wait_node) {
   NodeDef wait_def;
   wait_def.set_name(graph->NewName("wait_for_distributed_tpu_system"));
   wait_def.set_op(kWaitOp);
@@ -121,9 +121,9 @@ Status AddWaitNode(const std::string& configuration_device_name,
   return absl::OkStatus();
 }
 
-Status AddGlobalTPUArrayNode(const std::string& host_device_name,
-                             Node* wait_node, Graph* graph,
-                             Node** global_tpu_array_node) {
+absl::Status AddGlobalTPUArrayNode(const std::string& host_device_name,
+                                   Node* wait_node, Graph* graph,
+                                   Node** global_tpu_array_node) {
   NodeDef global_tpu_array_def;
   global_tpu_array_def.set_name(graph->NewName("set_global_tpu_array"));
   global_tpu_array_def.set_op(kGlobalTPUArrayOp);
@@ -137,7 +137,7 @@ Status AddGlobalTPUArrayNode(const std::string& host_device_name,
   return absl::OkStatus();
 }
 
-Status AddSynchronizationNode(
+absl::Status AddSynchronizationNode(
     const NodeDef& sync_node_def, const std::string& device_name,
     const std::vector<Node*>& global_array_id_nodes, Node* wait_node,
     const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
@@ -170,7 +170,7 @@ Status AddSynchronizationNode(
   return absl::OkStatus();
 }
 
-Status AddShutdownNode(
+absl::Status AddShutdownNode(
     const NodeDef& shutdown_node_def, const std::string& shutdown_device_name,
     const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
         output_dependencies,
@@ -194,10 +194,10 @@ Status AddShutdownNode(
   return absl::OkStatus();
 }
 
-Status AddHostDisconnectNode(const std::string& host_device_name,
-                             const std::vector<Node*>& input_dependencies,
-                             Node* post_disconnect_node, int output_index,
-                             Graph* graph) {
+absl::Status AddHostDisconnectNode(const std::string& host_device_name,
+                                   const std::vector<Node*>& input_dependencies,
+                                   Node* post_disconnect_node, int output_index,
+                                   Graph* graph) {
   NodeDef host_disconnect_def;
   host_disconnect_def.set_name(graph->NewName("disconnect_tpu_host"));
   host_disconnect_def.set_op(kHostDisconnectOp);
@@ -222,7 +222,7 @@ Status AddHostDisconnectNode(const std::string& host_device_name,
 
 }  // namespace
 
-Status DistributedTPUConfigurationRewritePass::Run(
+absl::Status DistributedTPUConfigurationRewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPUConfigurationRewritePass::Run";
 
@@ -246,7 +246,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
                  output_dependencies,
-             Graph* graph) -> Status {
+             Graph* graph) -> absl::Status {
             const std::string& embedding_attr_string = GetNodeAttrString(
                 AttrSlice(configuration_node_def), kEmbeddingConfigurationAttr);
 
@@ -342,7 +342,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
   return absl::OkStatus();
 }
 
-Status DistributedTPUShutdownRewritePass::Run(
+absl::Status DistributedTPUShutdownRewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPUShutdownRewritePass::Run";
 
@@ -366,7 +366,7 @@ Status DistributedTPUShutdownRewritePass::Run(
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
                  output_dependencies,
-             Graph* graph) -> Status {
+             Graph* graph) -> absl::Status {
             Node* shutdown_node;
             TF_RETURN_IF_ERROR(
                 AddShutdownNode(shutdown_node_def, shutdown_device_name,

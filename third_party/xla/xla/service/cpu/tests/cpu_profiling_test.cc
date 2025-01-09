@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"

@@ -1,0 +1,36 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -split-input-file %s -o - | FileCheck %s
+
+HloModule ragged_dot_non_contracting, entry_computation_layout={(f32[11,5]{1,0}, f32[3,5,7]{2,1,0}, s64[3]{0})->f32[11,7]{1,0}}
+
+// CHECK: ragged_dot_dimension_numbers = #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [1]>, lhs_ragged_dimensions = [0], rhs_group_dimensions = [0]>
+ENTRY %main.5 (Arg_0.1: f32[11,5], Arg_1.2: f32[3,5,7], Arg_2.3: s64[3]) -> f32[11,7] {
+  %Arg_0.1 = f32[11,5] parameter(0)
+  %Arg_1.2 = f32[3,5,7] parameter(1)
+  %Arg_2.3 = s64[3] parameter(2)
+  ROOT %ragged-dot.4 = f32[11,7] ragged-dot(f32[11,5] %Arg_0.1, f32[3,5,7] %Arg_1.2, s64[3] %Arg_2.3), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+
+// -----
+
+HloModule ragged_dot_contracting, entry_computation_layout={(f32[11,5]{1,0}, f32[5,7]{1,0}, s64[3]{0})->f32[3,11,7]{2,1,0}}
+
+// CHECK: ragged_dot_dimension_numbers = #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, lhs_ragged_dimensions = [1]>
+ENTRY %main.5 (Arg_0.1: f32[11,5], Arg_1.2: f32[5,7], Arg_2.3: s64[3]) -> f32[3,11,7] {
+  %Arg_0.1 = f32[11,5] parameter(0)
+  %Arg_1.2 = f32[5,7] parameter(1)
+  %Arg_2.3 = s64[3] parameter(2)
+  ROOT %ragged-dot.4 = f32[3,11,7] ragged-dot(f32[11,5] %Arg_0.1, f32[5,7] %Arg_1.2, s64[3] %Arg_2.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}, lhs_ragged_dims={1}
+}
+
+// -----
+
+HloModule ragged_dot_batch, entry_computation_layout={(f32[3,11,5]{2,1,0}, f32[3,5,7]{2,1,0}, s64[3]{0})->f32[3,11,7]{2,1,0}}
+
+// CHECK: ragged_dot_dimension_numbers = #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>, lhs_ragged_dimensions = [0]>
+ENTRY %main.5 (Arg_0.1: f32[3,11,5], Arg_1.2: f32[3,5,7], Arg_2.3: s64[3]) -> f32[3,11,7] {
+  %Arg_0.1 = f32[3,11,5] parameter(0)
+  %Arg_1.2 = f32[3,5,7] parameter(1)
+  %Arg_2.3 = s64[3] parameter(2)
+  ROOT %ragged-dot.4 = f32[3,11,7] ragged-dot(f32[3,11,5] %Arg_0.1, f32[3,5,7] %Arg_1.2, s64[3] %Arg_2.3), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, lhs_ragged_dims={0}
+}
+

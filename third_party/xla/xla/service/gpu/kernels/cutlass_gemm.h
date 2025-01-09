@@ -59,9 +59,6 @@ template <Arch arch>
 struct Bf16xBf16ToF32 {};
 
 template <Arch arch>
-struct Bf16xF32ToF32 {};
-
-template <Arch arch>
 struct F32xBf16ToF32 {};
 
 template <Arch arch>

@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,8 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "xla/status_macros.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -46,8 +53,8 @@ template <typename ContainerT,
           typename = typename std::enable_if<
               std::is_same<mlir::Type, decltype(*std::declval<ContainerT>()
                                                      .begin())>::value>::type>
-Status SetTypeAttribute(absl::string_view name, ContainerT types,
-                        AttrValueMap* values) {
+absl::Status SetTypeAttribute(absl::string_view name, ContainerT types,
+                              AttrValueMap* values) {
   AttrValue value;
   auto& type_list = *value.mutable_list();
   for (auto type : types) {
@@ -93,7 +100,7 @@ void SetShapeAttribute(absl::string_view name, ContainerT shapes,
 // Collects all the unregistered attributes for an TF dialect operation.
 // Attributes "name" and "device" are not included because they are not part
 // of an TF op attributes.
-Status GetUnregisteredAttrs(
+absl::Status GetUnregisteredAttrs(
     mlir::Operation* inst, const tensorflow::OpRegistrationData* op_reg_data,
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
@@ -166,10 +173,11 @@ absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
 
 // Populates all derived attributes of a MLIR operation in a proto
 // map<string, AttrValue>.
-Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
-                                 mlir::DictionaryAttr derived_attrs,
-                                 bool ignore_unregistered_attrs,
-                                 AttrValueMap* attributes) {
+absl::Status PopulateDerivedAttributes(mlir::Operation* inst,
+                                       llvm::StringRef name,
+                                       mlir::DictionaryAttr derived_attrs,
+                                       bool ignore_unregistered_attrs,
+                                       AttrValueMap* attributes) {
   if (derived_attrs) {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         ConvertAttributes(derived_attrs.getValue(), /*attrs_to_ignore=*/{},
@@ -219,7 +227,7 @@ void RemoveIdentityCast(NodeDef* node_def) {
 
 }  // namespace
 
-Status GetAttrValuesFromOperation(
+absl::Status GetAttrValuesFromOperation(
     mlir::Operation* inst, llvm::StringRef name,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs, AttrValueMap* attributes) {
@@ -269,6 +277,10 @@ absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
                                                 ignore_unregistered_attrs,
                                                 node_def->mutable_attr()));
   RemoveIdentityCast(node_def.get());
+  if (op_reg_data) {
+    ::tensorflow::AddDefaultsToNodeDef(op_reg_data->op_def, node_def.get());
+  }
+
   return node_def;
 }
 

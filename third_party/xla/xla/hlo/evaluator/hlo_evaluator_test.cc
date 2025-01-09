@@ -38,26 +38,28 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/hlo_element_type_converter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/types.h"
@@ -76,7 +78,7 @@ static std::array<bool, 2> use_bf16_params{true, false};
 // Test fixture for the HloEvaluator.
 //
 // In bf16 mode, all f32 shapes are converted to bf16 before running.
-class HloEvaluatorTest : public HloTestBase {
+class HloEvaluatorTest : public HloHardwareIndependentTestBase {
  public:
   HloEvaluatorTest() : use_bfloat16_(false) { InitializeFftData(); }
 
@@ -89,8 +91,9 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   // Evaluate function that takes in a local module instead of using m_
-  // that is in HloTestBase. Once m_ in HloTestBase is
-  // removed, this should be the default Evaluate function.
+  // that is in HloHardwareIndependentTestBase. Once m_ in
+  // HloHardwareIndependentTestBase is removed, this should be the default
+  // Evaluate function.
   Literal EvaluateWithModule(
       HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
@@ -167,14 +170,15 @@ class HloEvaluatorTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(
         Literal result,
         evaluator_.Evaluate(
-            instruction,
+            instruction, /*precomputed_analyses=*/{},
             /*recursively_evaluate_nonconstant_operands=*/true));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
   void TestRecursiveEvaluationFailure(HloInstruction* instruction) {
-    absl::StatusOr<Literal> result = evaluator_.Evaluate(
-        instruction, /*recursively_evaluate_nonconstant_operands=*/true);
+    absl::StatusOr<Literal> result =
+        evaluator_.Evaluate(instruction, /*precomputed_analyses=*/{},
+                            /*recursively_evaluate_nonconstant_operands=*/true);
     EXPECT_TRUE(!result.ok());
   }
 
@@ -851,6 +855,30 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Pad2DFloatArrayDifferentTypes) {
+  HloComputation::Builder b(TestName());
+  b.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(BF16, {5, 2}),
+      /*operand=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<bfloat16>({{}, {}}))),
+      /*padding_value=*/
+      b.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(10.0f))),
+      CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}})));
+  m_->AddEntryComputation(b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  bfloat16 bf16_c(10.0f);
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<bfloat16>({{bf16_c, bf16_c},
+                                       {bf16_c, bf16_c},
+                                       {bf16_c, bf16_c},
+                                       {bf16_c, bf16_c},
+                                       {bf16_c, bf16_c}}),
+      result));
 }
 
 TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
@@ -2576,7 +2604,7 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, fft_error_));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloTestBase {};
+class HloEvaluatorPreciseReduceTest : public HloHardwareIndependentTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).
@@ -3330,6 +3358,55 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
+  const char* hlo = R"(
+  HloModule test
+
+  ENTRY main {
+    param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    c2 = s32[] constant(2)
+    add.1 = s32[] add(c1, c2)
+    ROOT add.2 = s32[] add(param, add.1)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  Literal param_value = LiteralUtil::CreateR0(PrimitiveType::S32, 3);
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      evaluator_.EvaluateWithSubstitutions(
+          /*instruction=*/module->entry_computation()->root_instruction(),
+          /*substitutions=*/{{param, &param_value}},
+          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 1 + 2 + 3));
+}
+
+TEST_F(HloEvaluatorTest,
+       EvaluateWithSubstitutionsRecursiveWithDeepSubstitutions) {
+  const char* hlo = R"(
+  HloModule test
+  ENTRY main {
+    param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    c2 = s32[] constant(2)
+    add.1 = s32[] add(param, c1)
+    add.2 = s32[] add(add.1, c2)
+    ROOT add.3 = s32[] add(add.2, c1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  Literal param_value = LiteralUtil::CreateR0(PrimitiveType::S32, 4);
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.EvaluateWithSubstitutions(
+          /*instruction=*/module->entry_computation()->root_instruction(),
+          /*substitutions=*/{{param, &param_value}},
+          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 4 + 1 + 2 + 1));
+}
+
 // Check that EvaluateWithSubstitutions works if one of the operands to the op
 // we're evaluating is a constant.
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
@@ -3353,6 +3430,27 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
       evaluator.EvaluateWithSubstitutions(add, {{square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(S64, {3});
+
+  HloInstruction* param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* square = b.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kMultiply, param0, param0));
+
+  int64_t int64_values[] = {1, 2, 3};
+  const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
+
+  BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values),
+                           literal_shape);
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, evaluator.EvaluateWithSubstitutions(
+                                              square, {{param0, &literal}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int64_t>({1, 4, 9}),
+                                     result));
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV1) {
@@ -3576,6 +3674,63 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand, &start_indices}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 1}}), result));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateGather_ExplicitBatchDims) {
+  const std::string hlo_text = R"(
+HloModule gather
+
+ENTRY main {
+  operand = s32[3,2,1,3] parameter(0)
+  indices = s32[3,2] parameter(1)
+  ROOT gather = s32[3,2,2] gather(operand, indices),
+      offset_dims={2},
+      collapsed_slice_dims={2},
+      start_index_map={0},
+      index_vector_dim=2,
+      slice_sizes={2,1,1,1},
+      operand_batching_dims={1,3},
+      start_indices_batching_dims={1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal operand =
+      LiteralUtil::CreateR4<int32_t>({{{{1, 2, 3}}, {{4, 5, 6}}},
+                                      {{{7, 8, 9}}, {{10, 11, 12}}},
+                                      {{{13, 14, 15}}, {{16, 17, 18}}}});
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32_t>({{1, 0}, {0, 1}, {1, 0}});
+  Literal expected_result = LiteralUtil::CreateR3<int32_t>(
+      {{{7, 13}, {4, 10}}, {{2, 8}, {11, 17}}, {{9, 15}, {6, 12}}});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand, &start_indices}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateGather_GetDiagonal) {
+  const std::string hlo_text = R"(
+HloModule module
+
+ENTRY %module {
+  %operand = f32[4,4] parameter(0)
+  %indices = s32[4,1] iota(), iota_dimension=0
+  ROOT %gather = f32[4,1] gather(%operand, %indices), offset_dims={},
+    collapsed_slice_dims={1}, start_index_map={1}, operand_batching_dims={0},
+    start_indices_batching_dims={0}, index_vector_dim=2, slice_sizes={1,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal operand = LiteralUtil::CreateR2<float>({{0.0, 0.1, 0.2, 0.3},
+                                                  {1.0, 1.1, 1.2, 1.3},
+                                                  {2.0, 2.1, 2.2, 2.3},
+                                                  {3.0, 3.1, 3.2, 3.3}});
+  Literal expected_result =
+      LiteralUtil::CreateR2<float>({{0.0}, {1.1}, {2.2}, {3.3}});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
@@ -4189,6 +4344,67 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateScatter_ExplicitBatchDims) {
+  const char* hlo_text = R"(
+  HloModule ScatterExplicitBatchDims
+  add_s32 {
+    x = s32[] parameter(0)
+    y = s32[] parameter(1)
+    ROOT s = s32[] add(x,y)
+  }
+
+  ENTRY main {
+    indices = s32[2,3,5] parameter(0)
+    update = s32[2,3,2,5] parameter(1)
+    z = s32[] constant(0)
+    input = s32[5,3,2,2] broadcast(z), dimensions={}
+    ROOT s = s32[5,3,2,2] scatter(input, indices, update),
+      update_window_dims={2},
+      inserted_window_dims={1},
+      scatter_dims_to_operand_dims={1},
+      index_vector_dim=3,
+      input_batching_dims={0,3},
+      scatter_indices_batching_dims={2,0},
+      to_apply=add_s32
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto indices =
+      std::make_unique<Literal>(ShapeUtil::MakeShape(S32, {2, 3, 5}));
+  indices
+      ->Populate<int>([](absl::Span<const int64_t> indices) {
+        return static_cast<int>((indices[1] + 1) % 3);
+      })
+      .IgnoreError();
+  auto updates =
+      std::make_unique<Literal>(ShapeUtil::MakeShape(S32, {2, 3, 2, 5}));
+  updates
+      ->Populate<int>([](absl::Span<const int64_t> indices) {
+        return static_cast<int>(indices[0] * 1000 + indices[1] * 100 +
+                                indices[2] * 10 + indices[3]);
+      })
+      .IgnoreError();
+  Literal expected =
+      LiteralUtil::CreateR4<int32_t>({{{{200, 1200}, {210, 1210}},
+                                       {{0, 1000}, {10, 1010}},
+                                       {{100, 1100}, {110, 1110}}},
+                                      {{{201, 1201}, {211, 1211}},
+                                       {{1, 1001}, {11, 1011}},
+                                       {{101, 1101}, {111, 1111}}},
+                                      {{{202, 1202}, {212, 1212}},
+                                       {{2, 1002}, {12, 1012}},
+                                       {{102, 1102}, {112, 1112}}},
+                                      {{{203, 1203}, {213, 1213}},
+                                       {{3, 1003}, {13, 1013}},
+                                       {{103, 1103}, {113, 1113}}},
+                                      {{{204, 1204}, {214, 1214}},
+                                       {{4, 1004}, {14, 1014}},
+                                       {{104, 1104}, {114, 1114}}}});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          Evaluate({indices.get(), updates.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise comparison with 2 bfloat16 operands.
 TEST_F(HloEvaluatorTest, DoesCompareBF16) {
@@ -4697,6 +4913,21 @@ TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, CopyDifferentTypes) {
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(/*hlo_text=*/R"(
+  HloModule test
+
+  ENTRY CopyDifferentTypes {
+    c = bf16[3] constant({1, 2, 3})
+    ROOT copy = f32[3] copy(bf16[3] c)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({1.f, 2.f, 3.f}), result));
+}
+
 TEST_F(HloEvaluatorTest, AsyncOps) {
   const absl::string_view hlo_text = R"(
   HloModule test
@@ -5035,7 +5266,80 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   TestRecursivelyEvaluateInstruction(gte2, expected);
 }
 
-class PatternMatchParseWhileLoopTest : public HloTestBase {};
+// Tests that we can evaluate a parameter instruction through the call graph.
+TEST_F(HloEvaluatorTest, ParameterThroughCallSucceeds) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule parameter_through_call
+
+    %identity {
+      ROOT %param = s32[] parameter(0)
+    }
+
+    ENTRY parameter_through_call {
+      %constant = s32[] constant(42)
+      ROOT %call = s32[] call(s32[] %constant), to_apply=%identity
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* parameter_instruction = nullptr;
+  for (const auto* computation : hlo_module->computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        parameter_instruction = instruction;
+      }
+    }
+  }
+  ASSERT_NE(parameter_instruction, nullptr);
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(42);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(parameter_instruction, /*precomputed_analyses=*/{},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+// As above, but with analyses precomputed.
+TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule parameter_through_call
+
+    %identity {
+      ROOT %param = s32[] parameter(0)
+    }
+
+    ENTRY parameter_through_call {
+      %constant = s32[] constant(42)
+      ROOT %call = s32[] call(s32[] %constant), to_apply=%identity
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* parameter_instruction = nullptr;
+  for (const auto* computation : hlo_module->computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        parameter_instruction = instruction;
+      }
+    }
+  }
+  ASSERT_NE(parameter_instruction, nullptr);
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(42);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
+      TuplePointsToAnalysis::Run(hlo_module.get()));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(parameter_instruction,
+                          {tuple_points_to.get(), call_graph.get()},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
   constexpr absl::string_view kHloModule = R"(
@@ -5075,6 +5379,59 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_FALSE(parsed_while_loop->is_dynamic());
+  EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
+  EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
+}
+
+TEST_F(PatternMatchParseWhileLoopTest,
+       LoopBoundDefinedInsideOfCondWithPrecomputation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %while_condition {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %loop_bound = s32[] constant(5)
+      ROOT result = pred[] compare(%gte.0, %loop_bound), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[1024, 1024] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.1, f32[1024, 1024] %gte.2)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %constant.0 = s32[] constant(0)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %result = f32[1024, 1024] get-tuple-element((s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
+      TuplePointsToAnalysis::Run(hlo_module.get()));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
+
+  HloInstruction* while_op =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  std::optional<ParsedWhileLoop> parsed_while_loop = PatternMatchParseWhileLoop(
+      while_op, {tuple_points_to.get(), call_graph.get()});
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
   EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);

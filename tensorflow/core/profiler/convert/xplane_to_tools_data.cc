@@ -21,17 +21,23 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/compute_inference_latency.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/multi_xspace_to_inference_stats.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_hlo_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_roofline_model.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
@@ -47,11 +53,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
@@ -60,7 +68,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -153,8 +160,13 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
   OpStats combined_op_stats;
   TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
       session_snapshot, options, &combined_op_stats));
-  // TODO(profiler): xspace should tell whether this is sampling mode.
-  return ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString();
+  OverviewPage overview_page = ConvertOpStatsToOverviewPage(combined_op_stats);
+  InferenceStats inference_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToInferenceStats(session_snapshot, "",
+                                                        "", &inference_stats));
+  *overview_page.mutable_inference_latency() =
+      ComputeInferenceLatencyResult(inference_stats);
+  return overview_page.SerializeAsString();
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
@@ -257,6 +269,32 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
   return combined_tf_data_stats.SerializeAsString();
 }
 
+absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
+    const SessionSnapshot& session_snapshot) {
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+  return ConvertOpStatsToHloStats(combined_op_stats).SerializeAsString();
+}
+
+absl::StatusOr<std::string> ConvertMultiXSpacesToRooflineModel(
+    const SessionSnapshot& session_snapshot) {
+  OpStatsOptions op_stats_options;
+  op_stats_options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, op_stats_options, &combined_op_stats));
+  RooflineModelDatabase result =
+      ConvertOpStatsToRooflineModel(combined_op_stats, true);
+  RooflineModelDatabase result_without_infeed_outfeed =
+      ConvertOpStatsToRooflineModel(combined_op_stats, false);
+  result.mutable_roofline_model_record()->MergeFrom(
+      result_without_infeed_outfeed.roofline_model_record());
+  return result.SerializeAsString();
+}
+
 absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
     const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
@@ -318,6 +356,18 @@ absl::StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
   return dcnSlackAnalysis.SerializeAsString();
 }
 
+absl::StatusOr<std::string> ConvertMultiXSpacesToInferenceStats(
+    const SessionSnapshot& session_snapshot, const ToolOptions& options) {
+  InferenceStats inference_stats;
+  std::string request_column =
+      GetParamWithDefault<std::string>(options, "request_column", "");
+  std::string batch_column =
+      GetParamWithDefault<std::string>(options, "batch_column", "");
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToInferenceStats(
+      session_snapshot, request_column, batch_column, &inference_stats));
+  return inference_stats.SerializeAsString();
+}
+
 }  // namespace
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -343,6 +393,10 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
+  } else if (tool_name == "hlo_stats") {
+    return ConvertMultiXSpacesToHloStats(session_snapshot);
+  } else if (tool_name == "roofline_model") {
+    return ConvertMultiXSpacesToRooflineModel(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "dcn_collective_stats") {
@@ -351,6 +405,8 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.
     return PreprocessXSpace(session_snapshot);
+  } else if (tool_name == "inference_profile") {
+    return ConvertMultiXSpacesToInferenceStats(session_snapshot, options);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

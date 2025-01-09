@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TF_OP_REGISTRY_H_
 #define TENSORFLOW_CORE_IR_TF_OP_REGISTRY_H_
 
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/ir/interfaces.h"
 
 // Forward declaration of TensorFlow types.

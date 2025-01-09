@@ -7,6 +7,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 # Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_strict_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
@@ -154,6 +155,7 @@ pytype_strict_library(
     deps = [
         ":topology",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -211,6 +213,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -1002,7 +1005,6 @@ py_strict_library(
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
     ],
@@ -1012,7 +1014,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "tensor_tracer_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":tensor_tracer_proto"],
 # )
@@ -1027,7 +1028,6 @@ tf_python_pybind_extension(
         "_pywrap_sparse_core_layout.pyi",
     ],
     deps = [
-        "//tensorflow/core/tpu/kernels:_pywrap_sparse_core_layout_header_only",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_status_headers",
@@ -1035,7 +1035,14 @@ tf_python_pybind_extension(
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
+    ] + if_pywrap(
+        if_false = [
+            "//tensorflow/core/tpu/kernels:_pywrap_sparse_core_layout_header_only",
+        ],
+        if_true = [
+            "//tensorflow/core/tpu/kernels:sparse_core_layout",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(

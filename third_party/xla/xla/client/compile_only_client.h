@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_COMPILE_ONLY_CLIENT_H_
 #define XLA_CLIENT_COMPILE_ONLY_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -23,7 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"

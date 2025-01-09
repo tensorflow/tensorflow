@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -38,7 +39,7 @@ class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
         .gpu_compute_capability();
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
@@ -143,7 +144,9 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter(GpuComputeComp(), /*toolkit_version=*/12040);
+  GemmRewriter gemm_rewriter(
+      GpuComputeComp(),
+      /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -169,7 +172,9 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter(GpuComputeComp(), /*toolkit_version=*/12040);
+  GemmRewriter gemm_rewriter(
+      GpuComputeComp(),
+      /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -193,7 +198,9 @@ ENTRY %LHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter(GpuComputeComp(), /*toolkit_version=*/12040);
+  GemmRewriter gemm_rewriter(
+      GpuComputeComp(),
+      /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -216,7 +223,9 @@ ENTRY %RHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter gemm_rewriter(GpuComputeComp(), /*toolkit_version=*/12040);
+  GemmRewriter gemm_rewriter(
+      GpuComputeComp(),
+      /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);

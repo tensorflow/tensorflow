@@ -28,7 +28,7 @@ namespace {
 // Write the proto entry to LOG(INFO).
 template <typename T>
 void OutputToLog(const T& proto) {
-  string type_name = proto.GetTypeName();
+  string type_name(proto.GetTypeName());
   const size_t index = type_name.find_last_of('.');
   if (index != string::npos) type_name = type_name.substr(index + 1);
   LOG(INFO) << LogMemory::kLogMemoryLabel << " " << type_name << " { "

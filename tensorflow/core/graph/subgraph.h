@@ -56,8 +56,8 @@ class PruneRewrite {
 
   // Creates a new node whose output replaces the given `tensor` in graph `g`.
   // The node will be assigned to the device named in `device_info`.
-  virtual Status AddNode(Graph* g, NodeBuilder::NodeOut tensor,
-                         Node** out_node) = 0;
+  virtual absl::Status AddNode(Graph* g, NodeBuilder::NodeOut tensor,
+                               Node** out_node) = 0;
 
   // Returns the name of the tensor to which this rewrite applies.
   const string& endpoint_name() { return *endpoint_name_; }
@@ -97,7 +97,7 @@ class PruneRewrite {
 //    - fed output "node:output_index" does not exist in "*g"
 //    - fetch output "node:output_index" does not exist in "*g"
 //    - target node "node" does not exist in "*g"
-Status RewriteGraphForExecution(
+absl::Status RewriteGraphForExecution(
     Graph* g, const absl::Span<const string>& fed_outputs,
     const absl::Span<const string>& fetch_outputs,
     const absl::Span<const string>& target_node_names,
@@ -106,7 +106,7 @@ Status RewriteGraphForExecution(
 
 // A more general version of the above function that supports
 // customizable rewriting actions for each fed and fetched tensor.
-Status RewriteGraphForExecution(
+absl::Status RewriteGraphForExecution(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
     const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
     const absl::Span<const string>& target_node_names,
@@ -122,8 +122,8 @@ class ArgFeedRewrite : public PruneRewrite {
   ArgFeedRewrite(const string* endpoint_name,
                  const DeviceAttributes* device_info, int32_t arg_index)
       : PruneRewrite(endpoint_name, device_info), arg_index_(arg_index) {}
-  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
-                 Node** out_node) override;
+  absl::Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                       Node** out_node) override;
 
  private:
   const int32 arg_index_;
@@ -133,8 +133,8 @@ class ArgFeedRewrite : public PruneRewrite {
 class RecvFeedRewrite : public PruneRewrite {
  public:
   using PruneRewrite::PruneRewrite;
-  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
-                 Node** out_node) override;
+  absl::Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                       Node** out_node) override;
 };
 
 // A rewrite action that adds a _Retval node for a fetched tensor.
@@ -143,8 +143,8 @@ class RetvalFetchRewrite : public PruneRewrite {
   RetvalFetchRewrite(const string* endpoint_name,
                      const DeviceAttributes* device_info, int32_t retval_index)
       : PruneRewrite(endpoint_name, device_info), retval_index_(retval_index) {}
-  Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
-                 Node** out_node) override;
+  absl::Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
+                       Node** out_node) override;
 
  private:
   const int32 retval_index_;
@@ -155,8 +155,8 @@ class RetvalFetchRewrite : public PruneRewrite {
 class SendFetchRewrite : public PruneRewrite {
  public:
   using PruneRewrite::PruneRewrite;
-  Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
-                 Node** out_node) override;
+  absl::Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
+                       Node** out_node) override;
 };
 
 }  // namespace subgraph

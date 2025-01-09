@@ -180,9 +180,9 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 ![](images/ops_alltoall.png)
 
 In this example, there are 4 cores participating in the Alltoall. On each core,
-the operand is split into 4 parts along dimension 0, so each part has shape
+the operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order of core 0-4. So the output on
+the received parts along dimension 0, in the order of core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad
@@ -464,6 +464,45 @@ Invokes a computation with the given arguments.
 
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
+
+## CompositeCall
+
+See also
+[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+
+Encapsulates an operation made up (composed) of other StableHLO operations,
+taking inputs and composite_attributes and producing results. The semantics of
+the op are implemented by the decomposition attribute. The composite op can be
+replaced with its decomposition without changing program semantics. In cases
+where inlining the decomposition does not provide the same op semantics, prefer
+using custom_call.
+
+The version field (defaults to 0) is used to denote when a composite's semantics
+change.
+
+This op is implemented as a `kCall` with attribute `is_composite=true`. The
+`decomposition` field is specified by the `computation` attribute. The frontend
+attributes store the remaining attributes prefixed with `composite.`.
+
+Example CompositeCall op:
+```cpp
+f32[] call(f32[] %cst), to_apply=%computation, is_composite=true,
+frontend_attributes = {
+  composite.name="foo.bar",
+  composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+  composite.version="1"
+}
+```
+
+<b> `Call(computation, args..., name, composite_attributes, version)` </b>
+
+| Arguments                   | Type                   | Semantics                                                                             |
+| --------------------------- | ---------------------- | ------------------------------------------------------------------------------------- |
+| `inputs`                    | `XlaOp`                | variadic number of values                                                             |
+| `name`                      | `string`               | name of the composite                                                                 |
+| `composite_attributes`      | optional `string`      | optional stringified dictionary of attributes                                         |
+| `decomposition`             | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
+| `version`                   | `int64`.               | number to version updates to semantics of the composite op                            |
 
 ## Cholesky
 
@@ -1500,8 +1539,9 @@ if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
 `1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
-are sorted (in ascending `start_index_map` order) by the user. If they are not
-then the semantics is implementation defined.
+are sorted (in ascending order, _after_ scattering its values according to
+`start_index_map`) by the user. If they are not then the semantics are
+implementation defined.
 
 ### Informal Description and Examples
 
@@ -2493,9 +2533,10 @@ always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
 
-If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
-are sorted (in ascending `start_index_map` order) by the user. If they are not
-then the semantics is implementation defined.
+If `indices_are_sorted` is set to true then XLA can assume that `scatter_indices`
+are sorted (in ascending order, _after_ scattering its values according to
+`scatter_dims_to_operand_dims`) by the user. If they are not then the semantics
+are implementation defined.
 
 If `unique_indices` is set to true then XLA can assume that all elements
 scattered to are unique. So XLA could use non-atomic operations. If

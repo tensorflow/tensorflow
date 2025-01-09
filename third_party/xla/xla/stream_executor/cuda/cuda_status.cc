@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 
 namespace stream_executor::cuda::internal {
 
@@ -46,6 +48,25 @@ absl::Status ToStatusSlow(CUresult result, absl::string_view detail) {
   } else {
     return absl::InternalError(absl::StrCat("CUDA error: ", error_detail));
   }
+}
+
+absl::Status ToStatusSlow(cudaError_t result, absl::string_view detail) {
+  std::string error_detail(detail);
+  const char* error_name = cudaGetErrorName(result);
+  const char* error_string = cudaGetErrorString(result);
+  if (error_name == nullptr) {
+    absl::StrAppend(&error_detail, ": UNKNOWN ERROR (",
+                    static_cast<int>(result), ")");
+  } else {
+    absl::StrAppend(&error_detail, ": ", error_name);
+  }
+
+  if (error_string != nullptr) {
+    absl::StrAppend(&error_detail, ": ", error_string);
+  }
+
+  return absl::InternalError(
+      absl::StrCat("CUDA Runtime error: ", error_detail));
 }
 
 }  // namespace stream_executor::cuda::internal

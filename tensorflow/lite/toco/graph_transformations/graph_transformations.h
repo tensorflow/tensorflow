@@ -30,8 +30,8 @@ namespace toco {
 
 class GraphTransformation {
  public:
-  virtual ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                                   bool* modified) = 0;
+  virtual absl::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) = 0;
   virtual const char* Name() const = 0;
   virtual ~GraphTransformation() {}
   // Returns the list of messages that this graph transformation
@@ -105,7 +105,7 @@ class GraphTransformationsSet {
 // construct GraphTransformation objects by using 'new', pass us
 // the resulting raw pointers, and this RunGraphTransformations
 // takes care of delete'ing these pointers.
-tensorflow::Status RunGraphTransformationsWithStatus(
+absl::Status RunGraphTransformationsWithStatus(
     Model* model, const std::string& msg,
     const GraphTransformationsSet& transformations);
 
@@ -222,8 +222,7 @@ DECLARE_GRAPH_TRANSFORMATION(IdentifyNearestUpsample)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:
-  ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                           bool* modified) override;
+  absl::Status Run(Model* model, std::size_t op_index, bool* modified) override;
   const char* Name() const override { return "PropagateDefaultMinMax"; }
 
   bool has_any_ranges_defined() const { return !type_ranges_.empty(); }
@@ -241,8 +240,7 @@ class PropagateDefaultMinMax : public GraphTransformation {
 
 class RemoveTrivialReshape : public GraphTransformation {
  public:
-  ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                           bool* modified) override;
+  absl::Status Run(Model* model, std::size_t op_index, bool* modified) override;
   const char* Name() const override { return "RemoveTrivialReshape"; }
   bool treat_expand_dims_as_trivial() const {
     return treat_expand_dims_as_trivial_;
@@ -257,8 +255,7 @@ class RemoveTrivialReshape : public GraphTransformation {
 
 class ResolveConstantFakeQuant : public GraphTransformation {
  public:
-  ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                           bool* modified) override;
+  absl::Status Run(Model* model, std::size_t op_index, bool* modified) override;
   const char* Name() const override { return "ResolveConstantFakeQuant"; }
 
   // True if the num_bits should adjust the final data type.
@@ -275,8 +272,7 @@ class ResolveConstantFakeQuant : public GraphTransformation {
 
 class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
  public:
-  ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                           bool* modified) override;
+  absl::Status Run(Model* model, std::size_t op_index, bool* modified) override;
   const char* Name() const override {
     return "EnsureUint8WeightsSafeForFastInt8Kernels";
   }
@@ -293,8 +289,7 @@ class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
 
 class IdentifyDilatedConv : public GraphTransformation {
  public:
-  ::tensorflow::Status Run(Model* model, std::size_t op_index,
-                           bool* modified) override;
+  absl::Status Run(Model* model, std::size_t op_index, bool* modified) override;
   const char* Name() const override { return "IdentifyDilatedConv"; }
   bool identify_depthwise_conv() const { return identify_depthwise_conv_; }
   void set_identify_depthwise_conv(bool val) { identify_depthwise_conv_ = val; }

@@ -74,7 +74,7 @@ class ExternalKVSingleOpModel : public SingleOpModel {
     v_cache_2_.resize(get_padded_cache_size(v_cache), 0.0);
   }
 
-  TfLiteStatus Run(absl::Span<const int64_t> position,
+  TfLiteStatus Run(absl::Span<const int32_t> position,
                    absl::Span<const float> k_slice,
                    absl::Span<const float> v_slice) {
     if (test_type_ == TestType::kSharedKV) {
@@ -175,7 +175,7 @@ class EKVCacheTest : public TestWithParam<TestType> {};
 TEST_P(EKVCacheTest, SingleSliceUpdateTest) {
   ExternalKVSingleOpModel m(
       {TensorType_FLOAT32, {1, 3, 2, 2}}, {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_INT64, {1}}, {TensorType_FLOAT32, {1, 1, 2, 2}},
+      {TensorType_INT32, {1}}, {TensorType_FLOAT32, {1, 1, 2, 2}},
       {TensorType_FLOAT32, {1, 1, 2, 2}}, GetParam());
   {
     ASSERT_EQ(m.Run(/*position=*/{0}, /*k_slice=*/{10, 11, 12, 13},
@@ -232,7 +232,7 @@ TEST_P(EKVCacheTest, SingleSliceUpdateTest) {
 TEST_P(EKVCacheTest, MultipleSliceUpdateTest) {
   ExternalKVSingleOpModel m(
       {TensorType_FLOAT32, {1, 3, 2, 2}}, {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_INT64, {2}}, {TensorType_FLOAT32, {1, 2, 2, 2}},
+      {TensorType_INT32, {2}}, {TensorType_FLOAT32, {1, 2, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 2}}, GetParam());
   {
     ASSERT_EQ(m.Run(/*position=*/{0, 1}, /*k_slice=*/{1, 1, 1, 1, 2, 2, 2, 2},
@@ -264,7 +264,7 @@ TEST_P(EKVCacheTest, MultipleSliceUpdateTest) {
 TEST_P(EKVCacheTest, FailsOnOutOfBoundPosition) {
   ExternalKVSingleOpModel m(
       {TensorType_FLOAT32, {1, 3, 2, 2}}, {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_INT64, {1}}, {TensorType_FLOAT32, {1, 1, 2, 2}},
+      {TensorType_INT32, {1}}, {TensorType_FLOAT32, {1, 1, 2, 2}},
       {TensorType_FLOAT32, {1, 1, 2, 2}}, GetParam());
   ASSERT_EQ(m.Run(/*position=*/{3}, /*k_slice=*/{1, 2, 3, 4},
                   /*v_slice=*/{1, 2, 3, 4}),

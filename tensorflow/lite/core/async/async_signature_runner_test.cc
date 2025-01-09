@@ -183,7 +183,7 @@ TEST_F(AsyncSignatureRunnerNoSignatureDefTest, GetAsyncSignatureRunner) {
 TEST_F(AsyncSignatureRunnerNoSignatureDefTest, InputsTest) {
   signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
   EXPECT_EQ(1, signature_runner_->input_size());
-  EXPECT_EQ(0, signature_runner_->input_names().size());
+  EXPECT_EQ(1, signature_runner_->input_names().size());
 
   EXPECT_EQ(1, signature_runner_->inputs().size());
   EXPECT_NE(nullptr, signature_runner_->tensor(signature_runner_->inputs()[0]));
@@ -192,7 +192,7 @@ TEST_F(AsyncSignatureRunnerNoSignatureDefTest, InputsTest) {
 TEST_F(AsyncSignatureRunnerNoSignatureDefTest, OutputsTest) {
   signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
   EXPECT_EQ(1, signature_runner_->output_size());
-  EXPECT_EQ(0, signature_runner_->output_names().size());
+  EXPECT_EQ(1, signature_runner_->output_names().size());
 
   EXPECT_EQ(1, signature_runner_->outputs().size());
   EXPECT_NE(nullptr,

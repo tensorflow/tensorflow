@@ -387,7 +387,7 @@ class OpSideEffectCollector {
       AddRegionSideEffectsForOp(func.getBody(), op);
     } else if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
       func::FuncOp func_op = dyn_cast<func::FuncOp>(
-          call.resolveCallable(&symbol_table_collection_));
+          call.resolveCallableInTable(&symbol_table_collection_));
       if (func_op) {
         AddRegionSideEffectsForOp(func_op.getBody(), op);
       }
@@ -517,7 +517,7 @@ bool OpSideEffectCollector::IsCallToPureFunction(Operation* callOp) const {
   auto call = llvm::dyn_cast<CallOpInterface>(callOp);
   if (!call)
     return false;  // not a call
-  func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
+  func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallableInTable(
       &symbol_table_collection_));
   return IsPureFunction(func_op);
 }

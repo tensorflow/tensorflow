@@ -40,7 +40,7 @@ tf_cuda_library(
     srcs = [
         "core.cc",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":context",
         ":eager_operation",
@@ -91,7 +91,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -103,7 +103,7 @@ tf_cuda_library(
     hdrs = [
         "context.h",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":custom_device",
         ":eager_executor",

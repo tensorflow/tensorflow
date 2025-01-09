@@ -393,9 +393,9 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
 
 }  // namespace
 
-void populateExtraBufferizePatterns(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns) {
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    TypeConverter *converter,
+                                    RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<
       BufferizeAndConvertMinimumBroadcastShapesOp,

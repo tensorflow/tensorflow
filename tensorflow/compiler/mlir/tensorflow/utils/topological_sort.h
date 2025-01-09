@@ -20,7 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {

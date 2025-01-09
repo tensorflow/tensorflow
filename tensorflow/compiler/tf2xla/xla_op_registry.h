@@ -22,16 +22,25 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -191,9 +200,9 @@ class XlaOpRegistry {
   // registered.
   //
   // `result` is sorted.
-  static Status CompileTimeConstantInputs(const NodeDef& node_def,
-                                          const OpDef& op_def,
-                                          std::vector<int>* result) {
+  static absl::Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                                const OpDef& op_def,
+                                                std::vector<int>* result) {
     return CompileTimeConstantInputs(node_def, /*op_kernel=*/nullptr, &op_def,
                                      result);
   }
@@ -209,8 +218,8 @@ class XlaOpRegistry {
   // compile-time constants.
   //
   // `result` is sorted.
-  static Status CompileTimeConstantInputs(const OpKernel& op_kernel,
-                                          std::vector<int>* result) {
+  static absl::Status CompileTimeConstantInputs(const OpKernel& op_kernel,
+                                                std::vector<int>* result) {
     return CompileTimeConstantInputs(op_kernel.def(), /*op_kernel=*/&op_kernel,
                                      /*op_def=*/nullptr, result);
   }
@@ -305,10 +314,10 @@ class XlaOpRegistry {
   // their allowlists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
-  static Status CompileTimeConstantInputs(const NodeDef& node_def,
-                                          const OpKernel* op_kernel,
-                                          const OpDef* op_def,
-                                          std::vector<int>* result);
+  static absl::Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                                const OpKernel* op_kernel,
+                                                const OpDef* op_def,
+                                                std::vector<int>* result);
 
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,

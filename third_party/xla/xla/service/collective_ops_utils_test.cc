@@ -20,17 +20,22 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -142,6 +147,37 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
                                    HloInstruction::FusionKind::kOutput,
                                    {param_1}, computation2.get(), "fusion2");
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
+}
+
+TEST(CollectiveOpsUtilsTest, IsForwardCycle) {
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {3, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 0}})) << "Self link is not a cycle!";
+  EXPECT_FALSE(IsForwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {2, 0}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsForwardCycle({{1, 0}, {0, 1}})) << "Backward cycle";
+  EXPECT_FALSE(IsForwardCycle({{3, 0}, {0, 1}, {1, 2}, {2, 3}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
+}
+
+TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
+  EXPECT_TRUE(IsBackwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsBackwardCycle({{0, 3}, {1, 0}, {2, 1}, {3, 2}}));
+  EXPECT_FALSE(IsBackwardCycle({{0, 0}})) << "Self link is a backward cycle!";
+  EXPECT_FALSE(IsBackwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{1, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{2, 1}, {0, 2}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsBackwardCycle({{3, 2}, {0, 3}, {1, 0}, {2, 1}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
 }
 
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
@@ -276,12 +312,136 @@ TEST_P(GetCollectOpGroupModeTest, Test) {
 
 INSTANTIATE_TEST_SUITE_P(GetCollectOpGroupMode, GetCollectOpGroupModeTest,
                          testing::ValuesIn(GetTestCases()));
+
+// Tests for GetCollectiveOpGroupMode(HloInstruction*)
+struct TestCaseForInstruction {
+  HloOpcode op_code;
+  bool has_channel_id;
+  std::optional<bool> use_global_device_ids;
+  xla::CollectiveOpGroupMode expected_group_mode;
+};
+
+std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
+  return std::vector<TestCaseForInstruction>{
+      //  opcode, has_channel_id, use_global_device_ids, expected_group_mode
+      {HloOpcode::kAllGather, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllGather, true, false,
+       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+      {HloOpcode::kAllGather, false, false,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kAllReduce, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllReduce, true, false,
+       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+      {HloOpcode::kAllReduce, false, false,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kAllToAll, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kAllToAll, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kCollectiveBroadcast, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kCollectivePermute, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kCollectivePermute, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica}};
+}
+
+class GetCollectOpGroupModeTestForInstruction
+    : public testing::TestWithParam<TestCaseForInstruction> {};
+
+absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
+  Shape scalar = ShapeUtil::MakeScalarShape(F32);
+  auto builder_max = HloComputation::Builder("max");
+  TF_ASSIGN_OR_RETURN(HloInstruction * a,
+                      builder_max.AddParameter(
+                          HloInstruction::CreateParameter(0, scalar, "a")));
+  TF_ASSIGN_OR_RETURN(HloInstruction * b,
+                      builder_max.AddParameter(
+                          HloInstruction::CreateParameter(1, scalar, "b")));
+  HloInstruction *max = builder_max.AddInstruction(
+      HloInstruction::CreateBinary(scalar, HloOpcode::kMaximum, a, b), "max");
+  return builder_max.Build(max);
+}
+
+TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
+  const TestCaseForInstruction &test_case = GetParam();
+  ReplicaGroup group;
+  for (int k = 0; k < 4; ++k) {
+    group.add_replica_ids(k);
+  }
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}, {2, 3}};
+
+  Shape two_elements = ShapeUtil::MakeShape(F32, {2});
+  Shape eight_elements = ShapeUtil::MakeShape(F32, {8});
+
+  auto channel_id = [&test_case]() -> std::optional<int64_t> {
+    return test_case.has_channel_id ? std::make_optional<int64_t>(1)
+                                    : std::nullopt;
+  };
+
+  auto use_global_device_ids = [&test_case]() -> bool {
+    return test_case.use_global_device_ids.value();
+  };
+
+  // Create the entry computation for testing the group mode of the collectives.
+  auto builder = HloComputation::Builder("entry");
+  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * parameter,
+                          builder.AddParameter(HloInstruction::CreateParameter(
+                              0, two_elements, "parameter")));
+
+  HloInstruction *collective;
+  switch (test_case.op_code) {
+    case HloOpcode::kAllGather:
+      collective = builder.AddInstruction(HloInstruction::CreateAllGather(
+          eight_elements, {parameter}, 1, {group}, /*constrain_layout=*/true,
+          channel_id(), use_global_device_ids()));
+      break;
+    case HloOpcode::kAllReduce: {
+      // Create a computation to be applied by the all-reduce instruction.
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
+                              CreateMaxComputation());
+
+      collective = builder.AddInstruction(HloInstruction::CreateAllReduce(
+          two_elements, {parameter}, max_computation.get(), {group},
+          /*constrain_layout=*/true, channel_id(), use_global_device_ids()));
+      break;
+    }
+    case HloOpcode::kAllToAll:
+      collective = builder.AddInstruction(HloInstruction::CreateAllToAll(
+          eight_elements, {parameter}, {group}, /*constrain_layout=*/true,
+          channel_id(), std::nullopt));
+      break;
+    case HloOpcode::kCollectiveBroadcast:
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectiveBroadcast(
+              two_elements, {parameter}, {group}, /*constrain_layout=*/true,
+              channel_id()));
+      break;
+    case HloOpcode::kCollectivePermute:
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectivePermute(
+              two_elements, parameter, source_target_pairs, channel_id()));
+      break;
+    default:
+      LOG(FATAL) << "Unexpected opcode.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(auto collective_group_mode,
+                          GetCollectiveOpGroupMode(collective));
+  EXPECT_EQ(collective_group_mode, test_case.expected_group_mode);
+}
+
+INSTANTIATE_TEST_SUITE_P(GetCollectOpGroupModeForInstruction,
+                         GetCollectOpGroupModeTestForInstruction,
+                         testing::ValuesIn(GetTestCasesForInstruction()));
+
 }  // namespace GetCollectiveOpGroupModeTest
 
-// Tests for GetParticipatingDevices
-namespace GetParticipatingDevicesTest {
+// Tests for GetParticipating* related functions.
+namespace GetParticipatingTest {
 
-// Test case for GetParticipatingDevices. Describes all the inputs to the
+// Test case for GetParticipating* functions. Describes all the inputs to the
 // function and for a given "setup", multiple "current_id" values and the
 // expected output corresponding to those values.
 struct TestCase {
@@ -297,7 +457,14 @@ struct TestCase {
   };
   std::vector<CurrentIdAndOutput> subtests;
 
-  std::vector<std::vector<int>> participating_device_groups;
+  // Expected output for GetParticipatingDevicesGroups.
+  std::vector<std::vector<int64_t>> participating_device_groups;
+  // Expected output for GetParticipatingFlattenedIdGroups.
+  std::vector<std::vector<int64_t>> participating_flattened_id_groups;
+  // Expected output for GetPariticipantCountsForReplicaGroups.
+  std::vector<int64_t> participant_counts_for_replica_groups;
+  // Expected output for GetReplicaGroupCountAndSize.
+  std::optional<std::pair<int64_t, int64_t>> replica_group_count_and_size;
   bool expected_failure;
 
   std::string ToString() const;
@@ -341,8 +508,12 @@ std::vector<TestCase> GetTestCases() {
         {33, {33, 44, 55}},
         {44, {33, 44, 55}},
       },
-      {{33, 44, 55}},          // participating device groups
-      false                    // expected_failure
+      {{33, 44, 55}},         // participating device groups
+      {{0, 1, 2}},            // participating flattened id groups
+      {3},                    // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({1, 3}),
+                             // replica group count and size
+      false                   // expected_failure
     },
 
     // empty replica groups, > 1 partition
@@ -359,6 +530,10 @@ std::vector<TestCase> GetTestCases() {
         {45, {34, 45, 56}},
       },
       {{33, 44, 55}, {34, 45, 56}},    // participating device groups
+      {{0, 2, 4}, {1, 3, 5}},          // participating flattened id groups
+      {3, 3},                          // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({2, 3}),
+                                      // replica group count and size
       false                            // expected_failure
     },
 
@@ -375,6 +550,9 @@ std::vector<TestCase> GetTestCases() {
         {44, {44, 55}},
       },
       {{ 33 }, {44, 55}},    // participating device groups
+      {{0}, {1, 2}},         // participating flattened id groups
+      {1, 2},                // participant counts for replica groups
+      std::nullopt,          // replica group count and size
       false                  // expected_failure
     },
 
@@ -392,8 +570,12 @@ std::vector<TestCase> GetTestCases() {
         // 45 is r1p1, so should get r1p1 and r2p1.
         {45, {45, 56}},
       },
-      {{33}, {34}, {44, 55}, {45, 56}},  // participating device groups
-      false                              // expected_failure
+      {{33}, {34}, {44, 55}, {45, 56}},
+                                        // participating device groups
+      {{0}, {1}, {2, 4}, {3, 5}},       // participating flattened id groups
+      {1, 1, 2, 2},                     // participant counts for replica groups
+      std::nullopt,                     // replica group count and size
+      false                             // expected_failure
     },
   };
 
@@ -406,7 +588,7 @@ std::vector<TestCase> GetTestCases() {
       },
       {{0, 1}, {2, 3}},          // replica groups
       true,                      // has_channel_id
-      std::nullopt,             // use_global_device_ids
+      std::nullopt,              // use_global_device_ids
       {                          // subtests
         // 33 is r0p0, p0 group has p0, p1 so we get r0p0 and r0p1.
         {33, {33, 34}},
@@ -418,6 +600,11 @@ std::vector<TestCase> GetTestCases() {
       },
       {{33, 34}, {44, 45}, {55, 56},
        {35, 36}, {46, 47}, {57, 58}},  // participating device groups
+      {{0, 1}, {4, 5}, {8, 9},
+       {2, 3}, {6, 7}, {10, 11}},      // participating flattened id groups
+      {2, 2},                          // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({2, 8}),
+                                       // replica group count and size
       false                            // expected_failure
     }
   };
@@ -438,6 +625,9 @@ std::vector<TestCase> GetTestCases() {
         {45, {44, 45, 55, 56}},
       },
       {{33, 34}, {44, 45, 55, 56}},   // participating device groups
+      {{0, 1}, {2, 3, 4, 5}},         // participating flattened id groups
+      {2, 4},                         // participant counts for replica groups
+      std::nullopt,                   // replica group count and size
       false
     },
 
@@ -452,8 +642,12 @@ std::vector<TestCase> GetTestCases() {
         {34, {33, 34, 44, 45, 55, 56}},
         {56, {33, 34, 44, 45, 55, 56}},
       },
-      {{33, 34, 44, 45, 55, 56}},        // participating device groups
-      false                              // expected_failure
+      {{33, 34, 44, 45, 55, 56}},       // participating device groups
+      {{0, 1, 2, 3, 4, 5}},             // participating flattened id groups
+      {6},                              // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({1, 6}),
+                                        // replica group count and size
+      false                             // expected_failure
     },
   };
 
@@ -481,6 +675,9 @@ std::vector<TestCase> GetTestCases() {
         {56, {45, 55, 56}},
       },
       {{33}, {34, 44}, {45, 55, 56}},  // participating device groups
+      {{0}, {1, 2}, {3, 4, 5}},        // participating flattened id groups
+      {1, 2, 3},                       // participant counts for replica groups
+      std::nullopt,                    // replica group count and size
       false                            // expected_failure
     },
     {
@@ -492,6 +689,10 @@ std::vector<TestCase> GetTestCases() {
         {33, {33}},
       },
       {{33}},      // participating device groups
+      {{0}},       // participating flattened id groups
+      {1},         // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({1, 1}),
+                   // replica group count and size
       true         // expected_failure
     },
   };
@@ -507,6 +708,10 @@ std::vector<TestCase> GetTestCases() {
         {33, {}},
       },
       {{33, 44, 55}},       // participating device groups
+      {{0, 1, 2}},          // participating flattened id groups
+      {3},                  // participant counts for replica groups
+      std::optional<std::pair<int64_t, int64_t>>({1, 3}),
+                            // replica group count and size
       true                  // expected_failure
     },
   };
@@ -534,9 +739,9 @@ std::vector<TestCase> GetTestCases() {
   return test_cases;
 }
 
-class GetParticipatingDevicesTest : public testing::TestWithParam<TestCase> {};
+class GetParticipatingTest : public testing::TestWithParam<TestCase> {};
 
-TEST_P(GetParticipatingDevicesTest, Test) {
+TEST_P(GetParticipatingTest, Test) {
   const TestCase &tc = GetParam();
 
   int64_t num_replicas = tc.device_assignment.n1();
@@ -562,7 +767,7 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     return;
   }
 
-  // Execute each sub-test.
+  // Test GetParticipatingDevices.
   for (const TestCase::CurrentIdAndOutput &subtest : tc.subtests) {
     absl::StatusOr<std::vector<GlobalDeviceId>> actual =
         GetParticipatingDevices(GlobalDeviceId(subtest.current_id),
@@ -578,6 +783,7 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     EXPECT_EQ(*actual, expected);
   }
 
+  // Test GetParticipatingDevicesGroups.
   absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
       actual_device_groups = GetParticipatingDevicesGroups(
           device_assignment, replica_groups, *group_mode);
@@ -601,12 +807,87 @@ TEST_P(GetParticipatingDevicesTest, Test) {
 
   EXPECT_THAT(*actual_device_groups,
               testing::UnorderedElementsAreArray(expect_device_groups));
+
+  // Test GetParticipatingFlattenedIdGroups.
+  absl::StatusOr<std::vector<ReplicaGroup>> actual_flattened_id_groups =
+      GetParticipatingFlattenedIdGroups(device_assignment, replica_groups,
+                                        *group_mode);
+  if (!actual_flattened_id_groups.ok()) {
+    EXPECT_TRUE(tc.expected_failure);
+    return;
+  }
+
+  std::vector<std::vector<int64_t>> actual_flattened_id_groups_int;
+  actual_flattened_id_groups_int.reserve(actual_flattened_id_groups->size());
+
+  for (auto subgroup : *actual_flattened_id_groups) {
+    std::vector<int64_t> replica_group;
+    for (int id : subgroup.replica_ids()) {
+      replica_group.push_back(id);
+    }
+    actual_flattened_id_groups_int.push_back(replica_group);
+  }
+
+  EXPECT_EQ(actual_flattened_id_groups_int,
+            tc.participating_flattened_id_groups);
+
+  // Test GetPariticipantCountsForReplicaGroups.
+  absl::StatusOr<std::vector<int64_t>> actual_participant_counts =
+      GetPariticipantCountsForReplicaGroups(num_replicas, num_partitions,
+                                            replica_groups, *group_mode);
+  if (!actual_participant_counts.ok()) {
+    EXPECT_TRUE(tc.expected_failure);
+    return;
+  }
+  EXPECT_EQ(*actual_participant_counts,
+            tc.participant_counts_for_replica_groups);
+
+  // Test GetReplicaGroupCountAndSize.
+  HloModuleConfig config;
+  config.set_replica_count(num_replicas);
+  config.set_num_partitions(num_partitions);
+  config.set_static_device_assignment(device_assignment);
+  HloModule hlo_module("AllReduce", config);
+  HloComputation::Builder sum_builder("test_reduction");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
+  HloComputation *reduction =
+      hlo_module.AddEmbeddedComputation(sum_builder.Build());
+  HloComputation::Builder entry_builder("test_entry");
+  HloInstruction *operand = entry_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  std::optional<int64_t> channel_id = std::nullopt;
+  if (tc.has_channel_id) {
+    channel_id = 0;
+  }
+  HloInstruction *ar =
+      entry_builder.AddInstruction(HloInstruction::CreateAllReduce(
+          operand->shape(), {operand}, reduction, replica_groups,
+          /*constrain_layout=*/false,
+          /*channel_id=*/channel_id,
+          /*use_global_device_ids=*/tc.use_global_device_ids.has_value()
+              ? tc.use_global_device_ids.value()
+              : false));
+  hlo_module.AddEntryComputation(entry_builder.Build());
+
+  absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
+      actual_replica_group_count_and_size = GetReplicaGroupCountAndSize(ar);
+  if (!actual_replica_group_count_and_size.ok()) {
+    EXPECT_TRUE(tc.expected_failure);
+    return;
+  }
+  EXPECT_EQ(*actual_replica_group_count_and_size,
+            tc.replica_group_count_and_size);
 }
 
-INSTANTIATE_TEST_SUITE_P(GetParticipatingDevices, GetParticipatingDevicesTest,
+INSTANTIATE_TEST_SUITE_P(GetParticipating, GetParticipatingTest,
                          testing::ValuesIn(GetTestCases()));
 
-}  // namespace GetParticipatingDevicesTest
+}  // namespace GetParticipatingTest
 
 namespace GetPariticipantCountsForReplicaGroupsTest {
 

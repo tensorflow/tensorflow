@@ -260,8 +260,11 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser& parser) {
   // Parse variable 'attr'
   Attribute attr;
   parser.parseOptionalAttribute(attr);
-  return FullTypeAttr::get(parser.getContext(), static_cast<int32_t>(*type_id),
-                           args, attr);
+  return FullTypeAttr::get(
+      parser.getContext(),
+      mlir::IntegerAttr::get(mlir::IntegerType::get(parser.getContext(), 32),
+                             static_cast<int32_t>(*type_id)),
+      args, attr);
 }
 
 Attribute FullTypeAttr::parse(AsmParser& parser, Type odsType) {
@@ -272,7 +275,8 @@ Attribute FullTypeAttr::parse(AsmParser& parser, Type odsType) {
 }
 
 static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter& printer) {
-  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getTypeId()));
+  printer << stringifyFullTypeId(
+      tf_type::FullTypeId(tfattr.getTypeId().getInt()));
   if (!tfattr.getArgs().empty()) {
     printer << "<";
     llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {

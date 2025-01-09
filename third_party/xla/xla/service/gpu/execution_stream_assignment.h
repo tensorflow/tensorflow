@@ -26,6 +26,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
+struct ExecutionStreamAssignmentOptions {
+  // The `ExecutionStreamAssignment` will round-robin across this many
+  // `ExecutionStreams`.
+  int number_of_execution_streams = 4;
+};
+
 // `ExecutionStreamAssignments` represent a mapping from `HloInstructions` to
 // `ExecutionStreamIds`. Asynchronous calls (`async-start`, `async-update`, and
 // `async-done`) result in the target computations being assigned new
@@ -37,7 +43,8 @@ class ExecutionStreamAssignment {
   // pass the module through the `FlattenCallGraph` pass.
   //
   // The ExecutionStreamAssignment does not take ownership of the `HloModule`.
-  explicit ExecutionStreamAssignment(const HloModule* module);
+  explicit ExecutionStreamAssignment(
+      const HloModule* module, ExecutionStreamAssignmentOptions options = {});
 
   // Returns the `ExecutionStreamId` for the given instruction, which *must* be
   // synchronous. Returns an error if the instruction is either not reachable
@@ -58,7 +65,7 @@ class ExecutionStreamAssignment {
     ExecutionStreamId destination_stream_id;
   };
   absl::StatusOr<AsyncExecutionStreamIds> GetAsyncExecutionStreamIds(
-      const HloAsyncInstruction* instruction) const;
+      const HloInstruction* instruction) const;
 
  private:
   // Maps from `HloInstructions` to `ExecutionStreamIds` for synchronous and

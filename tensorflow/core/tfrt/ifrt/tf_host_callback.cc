@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -158,8 +159,8 @@ absl::StatusOr<std::unique_ptr<TfHostCallback>> TfHostCallback::Create(
                          result_type_and_shapes, std::move(ctx)));
 }
 
-absl::StatusOr<std::unique_ptr<tensorflow::StaticDeviceMgr>>
-CreateTfStaticDeviceMgr() {
+absl::StatusOr<std::unique_ptr<tensorflow::DynamicDeviceMgr>>
+CreateTfDynamicDeviceMgr() {
   // Share the same TF devices across all host callbacks in a single
   // computation. This makes it possible to share states (e.g., TF resources)
   // across host callbacks in a single computation.
@@ -167,7 +168,7 @@ CreateTfStaticDeviceMgr() {
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddCpuDevices(
       tensorflow::SessionOptions(), "/job:localhost/replica:0/task:0",
       &devices));
-  return std::make_unique<tensorflow::StaticDeviceMgr>(std::move(devices));
+  return std::make_unique<tensorflow::DynamicDeviceMgr>(std::move(devices));
 }
 
 }  // namespace ifrt_serving

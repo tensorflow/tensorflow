@@ -11,6 +11,8 @@ def if_rocm(if_true, if_false = []):
         "//conditions:default": if_false
     })
 
+def select_threshold(value, above_or_eq, threshold, below):
+    return below if value < threshold else above_or_eq
 
 def rocm_default_copts():
     """Default options for all ROCm compilations."""
@@ -52,15 +54,15 @@ def if_cuda_or_rocm(if_true, if_false = []):
     """
     return select({"//conditions:default": %{cuda_or_rocm}})
 
-def if_rocm_is_configured(x):
+def if_rocm_is_configured(if_true, if_false = []):
     """Tests if the ROCm was enabled during the configure process.
 
     Unlike if_rocm(), this does not require that we are building with
     --config=rocm. Used to allow non-ROCm code to depend on ROCm libraries.
     """
     if %{rocm_is_configured}:
-      return select({"//conditions:default": x})
-    return select({"//conditions:default": []})
+      return select({"//conditions:default": if_true})
+    return select({"//conditions:default": if_false})
 
 def rocm_hipblaslt():
     return %{rocm_is_configured} and %{rocm_hipblaslt}

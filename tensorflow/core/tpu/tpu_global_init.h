@@ -56,14 +56,15 @@ namespace tensorflow {
 // "TPU_SYSTEM" devices across all tasks.
 // For example, device_set should contain two "TPU_SYSTEM" devices on 2 tasks
 // for a 4x2 (2 TPU workers) setup, and other non "TPU_SYSTEM" devices.
-Status InitializeTPUSystemGlobally(absl::string_view job_name,
-                                   absl::string_view session_target,
-                                   const DeviceSet& device_set, Env* env,
-                                   tpu::TopologyProto* tpu_topology);
+absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
+                                         absl::string_view session_target,
+                                         const DeviceSet& device_set, Env* env,
+                                         tpu::TopologyProto* tpu_topology);
 
-Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology);
+absl::Status InitializeTPUSystemGlobally(Env* env,
+                                         tpu::TopologyProto* tpu_topology);
 
-Status InitializeTPUSystemGlobally();
+absl::Status InitializeTPUSystemGlobally();
 
 }  // namespace tensorflow
 

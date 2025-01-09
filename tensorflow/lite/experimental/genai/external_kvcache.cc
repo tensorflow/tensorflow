@@ -63,7 +63,7 @@ TfLiteStatus ExternalKVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, k_cache->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, v_cache->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, position->type, kTfLiteInt64);
+  TF_LITE_ENSURE_EQ(context, position->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, k_slice->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, v_slice->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, updated_k_cache->type, kTfLiteFloat32);
@@ -109,13 +109,10 @@ TfLiteStatus ExternalKVCacheEval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kKeyTensor, &updated_k_cache));
   TF_LITE_ENSURE_OK(
       context, GetOutputSafe(context, node, kValueTensor, &updated_v_cache));
-  TF_LITE_ENSURE_EQ(context, k_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, v_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, updated_k_cache->allocation_type, kTfLiteCustom);
-  TF_LITE_ENSURE_EQ(context, updated_v_cache->allocation_type, kTfLiteCustom);
 
-  // If input and output buffers are not the same, copy the input buffer to the
-  // output buffer before inserting the new slice.
+  // Note: For the best performance, the following memcpys should be avoided.
+  // The way to avoid that is to take advantage of CustomAllocation and use
+  // the same buffer for both input and output.
   if (k_cache->data.raw != updated_k_cache->data.raw) {
     memcpy(updated_k_cache->data.data, k_cache->data.data, k_cache->bytes);
   }
@@ -128,8 +125,8 @@ TfLiteStatus ExternalKVCacheEval(TfLiteContext* context, TfLiteNode* node) {
       GetTensorShape(k_cache).Dims(2) * GetTensorShape(k_cache).Dims(3);
   const int32_t cache_size = GetTensorShape(k_cache).Dims(1);
   int32_t last_update_position = -1;
-  for (int i = 0; i < position->bytes / sizeof(int64_t); ++i) {
-    const int32_t update_position = static_cast<int32_t>(position->data.i64[i]);
+  for (int i = 0; i < position->bytes / sizeof(int32_t); ++i) {
+    const int32_t update_position = position->data.i32[i];
     // We are making the assumption that the positions are in increasing order
     // and a decrease or equal value shows exhaustion of update slices.
     // This assumption can be relaxed once we switch to dynamic shapes.

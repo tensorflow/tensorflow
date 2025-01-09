@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-Status ConvertMultiXSpacesToCombinedOpStats(
+absl::Status ConvertMultiXSpacesToCombinedOpStats(
     const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
     OpStats* combined_op_stats) {
   // Read multiple XSpaces and convert to multiple OpStats.
@@ -41,7 +41,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
     PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
-                               /*derived_timeline=*/false);
+                               /*derived_timeline=*/true);
     all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
   }
 

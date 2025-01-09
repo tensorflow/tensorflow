@@ -16,54 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
 
-#include <unordered_map>
-
-#include "absl/status/status.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/SymbolTable.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-class HloModule;
-class HloModuleProto;
-class HloComputation;
-class HloInstruction;
-class Shape;
-
-// Importer that takes an HloModule and imports it as an MLIR module in the XLA
-// dialect. HloModuleImporter does not take ownership.
-class HloModuleImporter {
- public:
-  explicit HloModuleImporter(mlir::ModuleOp module,
-                             bool import_all_computation = false,
-                             bool flatten_computation_args_result = false);
-
-  // Import the HloModule into the MLIR Module.
-  absl::Status Import(const xla::HloModule& module);
-
-  // Import the HloModuleProto into the MLIR Module.
-  absl::Status Import(const xla::HloModuleProto& module);
-
- private:
-  void ImportFrontendAttributes(const xla::HloModule& hlo_module,
-                                mlir::ModuleOp module);
-
-  bool import_all_computation_;
-  bool flatten_computation_args_result_;
-  mlir::SymbolTable symbol_table_;
-  mlir::Builder builder_;
-
-  // Map for tracking which MLIR function map to which HLO Computation. This
-  // tracks functions as they are imported and provides a quick lookup for
-  // functions invoked by control flow related operations (e.g. while, call).
-  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>
-      function_map_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 #endif  // XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_

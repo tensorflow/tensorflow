@@ -11,7 +11,7 @@ load(
     _tsl_extra_config_settings_targets = "tsl_extra_config_settings_targets",
     _tsl_google_bzl_deps = "tsl_google_bzl_deps",
     _tsl_grpc_cc_dependencies = "tsl_grpc_cc_dependencies",
-    _tsl_pybind_extension = "tsl_pybind_extension_opensource",
+    _tsl_pybind_extension = "tsl_pybind_extension",
 )
 
 get_compatible_with_portable = _get_compatible_with_portable

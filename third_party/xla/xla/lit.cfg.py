@@ -19,9 +19,17 @@ import tempfile
 
 import lit.formats
 
+# copybara:uncomment_begin(google-only)
+# from xla.lit_google_cfg import ENV_FLAGS as google_env_flags
+# copybara:uncomment_end
 
 # pylint: disable=undefined-variable
 
+extra_env_flags = []
+
+# copybara:uncomment_begin(google-only)
+# extra_env_flags += google_env_flags
+# copybara:uncomment_end
 
 config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py"]
@@ -42,7 +50,7 @@ for env in [
     "LLVM_COVERAGE_FILE",
     "GCOV_PREFIX",
     "GCOV_PREFIX_STRIP",
-]:
+] + extra_env_flags:
   value = os.environ.get(env)
   if value:
     config.environment[env] = value
@@ -56,7 +64,7 @@ config.test_exec_root = (
 )
 
 config.substitutions.extend([
-    ("%PYTHON", os.getenv("PYTHON", sys.executable)),
+    ("%PYTHON", os.getenv("PYTHON", sys.executable) or ""),
 ])
 
 if lit_config.params.get("PTX") == "GCN":

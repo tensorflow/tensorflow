@@ -278,10 +278,8 @@ cc_library(
     hdrs = ["pre_calibration.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
-        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":component",

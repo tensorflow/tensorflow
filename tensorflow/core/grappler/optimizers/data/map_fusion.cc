@@ -90,7 +90,6 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
 // optimizing each function in that graph and later aggregating any new
 // functions introduced during these individual optimizations into that single
 // graph's collective function library).
-// TODO(mpcallanan): Look at deduping names in a more generic fashion upstream.
 string GetFusedName(const NodeDef& parent, const NodeDef& child) {
   return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
 }
@@ -156,10 +155,10 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
 
 }  // namespace
 
-Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                          const GrapplerItem& item,
-                                          GraphDef* output,
-                                          OptimizationStats* stats) {
+absl::Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;

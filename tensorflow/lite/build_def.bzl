@@ -1,7 +1,7 @@
 """Build macros for TF Lite."""
 
 load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
@@ -10,6 +10,17 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 # buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
+
+def clean_dep(target):
+    """Returns string to 'target' in @litert repository.
+
+    Use this function when referring to targets in the @litert
+    repository from macros that may be called from external repositories.
+    """
+
+    # A repo-relative label is resolved relative to the file in which the
+    # Label() call appears, i.e. @tsl.
+    return str(Label(target))
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -204,6 +215,7 @@ def tflite_jni_binary(
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
         exported_symbols = EXPORTED_SYMBOLS,
+        stamp = -1,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
@@ -211,7 +223,8 @@ def tflite_jni_binary(
         tags = [],
         srcs = [],
         visibility = None,  # 'None' means use the default visibility.
-        local_defines = []):
+        local_defines = [],
+        exec_properties = {}):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -232,6 +245,7 @@ def tflite_jni_binary(
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
+        stamp = stamp,
         deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         tags = tags,
@@ -239,6 +253,7 @@ def tflite_jni_binary(
         testonly = testonly,
         visibility = visibility,
         local_defines = local_defines,
+        exec_properties = exec_properties,
     )
 
 def tflite_cc_shared_object(
@@ -858,7 +873,7 @@ def _label(target):
     Args:
       target: (string) a relative or absolute build target.
     """
-    if target[0:2] == "//":
+    if target[0:2] == "//" or "@org_tensorflow//" in target:
         return Label(target)
     if target[0] == ":":
         return Label("//" + native.package_name() + target)

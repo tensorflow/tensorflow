@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 
 namespace tensorflow {
 
@@ -29,7 +29,7 @@ namespace tensorflow {
 // variables. If the `saved_model_dir` directory path is provided, then the
 // `tf_saved_model.asset` ops will be freezed.
 void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
-                                const toco::TocoFlags& toco_flags,
+                                const tflite::ConverterFlags& converter_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager);
 
@@ -63,7 +63,8 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
 // to resume the conversion after injecting more information in the middle of
 // it.
 void AddPostVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    llvm::StringRef saved_model_dir,
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 
@@ -71,6 +72,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 // mutable global tensors. `pass_config` is used to determine whether to freeze
 // variables and `pass_manager` will be populated with the passes to run.
 void AddVariableFreezingFromGlobalTensorsPasses(
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 
