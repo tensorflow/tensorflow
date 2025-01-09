@@ -110,7 +110,8 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
     // Copy begin, end, and stride values from src_begin_indices and
     // src_size_indices to range_tensor_data. Stride is always 1.
     range_tensor_data[i * kRangesParamArgSize] = src_begin_indices->at(i);
-    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices->at(i);
+    range_tensor_data[i * kRangesParamArgSize + 1] =
+        src_begin_indices->at(i) + src_size_indices->at(i);
     range_tensor_data[i * kRangesParamArgSize + 2] = 1;
   }
 
