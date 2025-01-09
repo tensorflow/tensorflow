@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 
 #include "absl/status/status.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

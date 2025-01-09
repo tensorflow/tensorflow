@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
-#include "tsl/platform/status.h"
 
 namespace tsl {
 

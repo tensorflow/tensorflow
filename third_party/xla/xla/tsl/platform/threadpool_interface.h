@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 
 #include "unsupported/Eigen/CXX11/ThreadPool"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace thread {

@@ -25,9 +25,9 @@ limitations under the License.
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {
@@ -86,10 +86,10 @@ class Counter {
 
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {

@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/retrying_utils.h"
-#include "tsl/platform/status.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>

@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "json/json.h"
 #include "xla/tsl/platform/cloud/http_request.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 

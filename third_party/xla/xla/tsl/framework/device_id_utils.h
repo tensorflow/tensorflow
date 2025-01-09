@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tsl {
 

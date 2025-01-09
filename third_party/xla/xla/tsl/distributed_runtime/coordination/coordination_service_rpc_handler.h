@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {

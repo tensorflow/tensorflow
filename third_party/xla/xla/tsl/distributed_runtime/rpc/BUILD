@@ -36,11 +36,11 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
+        "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
     ] + tsl_grpc_cc_dependencies(),
@@ -56,12 +56,12 @@ tsl_cc_test(
     deps = [
         ":grpc_util",
         ":test_request_proto_cc_impl",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -70,8 +70,8 @@ cc_library(
     hdrs = ["grpc_channel_common.h"],
     deps = [
         ":grpc_util",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:mutex",
     ],
 )
@@ -84,19 +84,19 @@ cc_library(
         ":grpc_channel_common",
         ":grpc_util",
         "//xla/tsl/lib/gtl:map_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:rpc_options_proto_cc",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -109,12 +109,12 @@ tsl_cc_test(
     deps = [
         ":grpc_channel",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",
-        "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -125,11 +125,11 @@ cc_library(
         ":grpc_client_cq_tag",
         ":grpc_util",
         "//xla/tsl/distributed_runtime:call_options",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:strcat",
     ] + tsl_grpc_cc_dependencies(),
 )
@@ -139,7 +139,7 @@ cc_library(
     srcs = [],
     hdrs = ["grpc_client_cq_tag.h"],
     deps = [
-        "@local_tsl//tsl/platform:macros",
+        "//xla/tsl/platform:macros",
     ],
 )
 

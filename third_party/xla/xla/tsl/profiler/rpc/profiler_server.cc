@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/profiler_service_impl.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tsl {

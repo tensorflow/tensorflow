@@ -28,9 +28,9 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 
