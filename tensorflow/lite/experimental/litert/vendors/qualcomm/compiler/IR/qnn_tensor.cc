@@ -22,9 +22,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 namespace litert::qnn {
@@ -35,6 +34,15 @@ LiteRtStatus LegalizeShapeInfo(const litert::Layout& src, Qnn_Tensor_t& dest) {
   LITERT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
 
   dest.v2.rank = src.Rank();
+  // Ad-hoc fix: rank 0 tensor needs to be single element 1D tensor in QNN.
+  if (dest.v2.rank == 0) {
+    LITERT_LOG(LITERT_INFO, "Setting rank 0 tensor to single element tensor");
+    dest.v2.rank = 1;
+    dest.v2.dimensions = new uint32_t[1];
+    dest.v2.dimensions[0] = 1;
+    return kLiteRtStatusOk;
+  }
+
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {
     const auto src_dim = src.Dimensions()[i];
@@ -55,6 +63,15 @@ void FreeTensorDims(Qnn_Tensor_t& tensor) {
   }
 }
 
+void FreePerChannelQuantization(Qnn_Tensor_t& tensor) {
+  if (tensor.v2.quantizeParams.quantizationEncoding ==
+      QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+    delete[] tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset;
+    tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset = nullptr;
+    tensor.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets = 0;
+  }
+}
+
 }  // namespace
 
 void SetInputTensorAttrs(Qnn_Tensor_t& tensor) {
@@ -71,15 +88,18 @@ void SetOutputTensorAttrs(Qnn_Tensor_t& tensor) {
 
 void SetResultTensorAttrs(Qnn_Tensor_t& tensor) {
   ABSL_DCHECK(tensor.version == QNN_TENSOR_VERSION_2);
+  tensor.v2.memType = QNN_TENSORMEMTYPE_RAW;
   tensor.v2.type = QNN_TENSOR_TYPE_NATIVE;
 }
 
 void ResetTensor(Qnn_Tensor_t& tensor) {
   FreeTensorDims(tensor);
+  FreePerChannelQuantization(tensor);
   tensor = QNN_TENSOR_INIT;
   tensor.version = QNN_TENSOR_VERSION_2;
   tensor.v2 = QNN_TENSOR_V2_INIT;
   tensor.v2.dataFormat = QNN_TENSOR_DATA_FORMAT_DENSE;
+  tensor.v2.memType = QNN_TENSORMEMTYPE_RAW;
 }
 
 Qnn_Tensor_t BuildDefaultTensor(uint32_t id) {
@@ -117,6 +137,57 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor) {
   return id;
 }
 
+void SetPerChannelQuantization(
+    Qnn_Tensor_t& tensor,
+    const LiteRtQuantizationPerChannel& lite_rt_quantization_per_channel) {
+  tensor.v2.quantizeParams.quantizationEncoding =
+      QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET;
+
+  tensor.v2.quantizeParams.axisScaleOffsetEncoding = QNN_AXIS_SCALE_OFFSET_INIT;
+  tensor.v2.quantizeParams.axisScaleOffsetEncoding.axis =
+      lite_rt_quantization_per_channel.quantized_dimension;
+  tensor.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets =
+      lite_rt_quantization_per_channel.num_channels;
+
+  // Allocates memory for scaleOffset array.
+  tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset =
+      new Qnn_ScaleOffset_t[lite_rt_quantization_per_channel.num_channels];
+
+  for (int i = 0; i < lite_rt_quantization_per_channel.num_channels; ++i) {
+    tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset[i].scale =
+        lite_rt_quantization_per_channel.scales[i];
+    tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset[i].offset =
+        lite_rt_quantization_per_channel.zero_points[i];
+  }
+}
+
+void SetPerTensorQuantization(
+    Qnn_Tensor_t& tensor,
+    const LiteRtQuantizationPerTensor& lite_rt_quantization_per_tensor) {
+  tensor.v2.quantizeParams.quantizationEncoding =
+      QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+  tensor.v2.quantizeParams.scaleOffsetEncoding.scale =
+      lite_rt_quantization_per_tensor.scale;
+  tensor.v2.quantizeParams.scaleOffsetEncoding.offset =
+      lite_rt_quantization_per_tensor.zero_point;
+}
+
+LiteRtStatus LegalizeQuntizationParameter(const litert::Tensor& src,
+                                          Qnn_Tensor_t& dest) {
+  LiteRtQuantizationTypeId lite_rt_quantization_type_id = src.QTypeId();
+  switch (lite_rt_quantization_type_id) {
+    case kLiteRtQuantizationPerTensor:
+      SetPerTensorQuantization(dest, src.PerTensorQuantization());
+      return kLiteRtStatusOk;
+    case kLiteRtQuantizationPerChannel:
+      SetPerChannelQuantization(dest, src.PerChannelQuantization());
+      return kLiteRtStatusOk;
+    default:
+      LITERT_LOG(LITERT_ERROR, "Unsupported quantization type.");
+      return kLiteRtStatusErrorInvalidArgument;
+  }
+}
+
 LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
   if (src.TypeId() != kLiteRtRankedTensorType) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -124,12 +195,23 @@ LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
 
   ResetTensor(dest);
 
+  if (src.HasQuantization()) {
+    LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeQuntizationParameter(src, dest));
+  }
+
+  auto src_ranked_tensor_type = src.RankedTensorType();
+  if (!src_ranked_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_ranked_tensor_type.Error().Message().data());
+    return src_ranked_tensor_type.Error().Status();
+  }
+
   Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeElementType(src.RankedTensorType().ElementType(), qnn_data_type));
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeElementType(
+      src_ranked_tensor_type->ElementType(), qnn_data_type));
 
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeShapeInfo(src.RankedTensorType().Layout(), dest));
+      LegalizeShapeInfo(src_ranked_tensor_type->Layout(), dest));
 
   const bool is_subgraph_in = src.IsSubgraphInput();
   const bool is_subgraph_out = src.IsSubgraphOutput();
@@ -153,12 +235,15 @@ LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
   }
 
   if (is_subgraph_in) {
+    LITERT_LOG(LITERT_INFO, "Adding subgraph input tensor to qnn graph");
     SetInputTensorAttrs(dest);
   }
   if (is_subgraph_out) {
+    LITERT_LOG(LITERT_INFO, "Adding subgraph output tensor to qnn graph");
     SetOutputTensorAttrs(dest);
   }
   if (!is_constant && !is_subgraph_in && !is_subgraph_out) {
+    LITERT_LOG(LITERT_INFO, "Adding result tensor to qnn graph");
     SetResultTensorAttrs(dest);
   }
 

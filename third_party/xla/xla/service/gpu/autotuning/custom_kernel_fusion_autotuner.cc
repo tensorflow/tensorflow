@@ -97,13 +97,12 @@ absl::StatusOr<std::vector<std::tuple<int, absl::Duration>>> ProfileKernels(
                             *fusion_instruction, autotune_config, debug_options,
                             RedzoneBuffers::kAllInputs));
 
-    std::optional<ScopedShapedBuffer> reference_buffer;
-    std::optional<AutotunerCompileUtil::ProfilingOutput> profiling_output;
-    TF_ASSIGN_OR_RETURN(profiling_output, compile_util.ProfileExecutable(
-                                              executable->get(), stream,
-                                              rz_buffers.input_buffers(),
-                                              rz_buffers.input_shapes()));
-    results.push_back({i, profiling_output->duration});
+    TF_ASSIGN_OR_RETURN(
+        AutotunerCompileUtil::ProfilingOutput profiling_output,
+        compile_util.ProfileExecutable(executable->get(), stream,
+                                       rz_buffers.input_buffers(),
+                                       rz_buffers.input_shapes()));
+    results.push_back({i, profiling_output.duration});
   }
   return results;
 }
@@ -225,9 +224,8 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
   }
 
   const DebugOptions& debug_options = module->config().debug_options();
-  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> compile_util,
+  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
-  TF_RET_CHECK(compile_util.has_value());
 
   bool hlo_changed = false;
   for (const HloComputation* computation : module->computations()) {
@@ -235,7 +233,7 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
       TF_ASSIGN_OR_RETURN(
           bool instruction_changed,
           AutotuneCustomKernelFusion(computation->FusionInstruction(), config_,
-                                     compile_util.value(), debug_options));
+                                     compile_util, debug_options));
       if (instruction_changed) {
         hlo_changed = true;
       }

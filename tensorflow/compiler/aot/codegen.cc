@@ -51,7 +51,7 @@ bool IsAlpha(char c) {
 bool IsAlphaNum(char c) { return IsAlpha(c) || (c >= '0' && c <= '9'); }
 
 // Convert an XLA type into a C++ type.
-Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
+absl::Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
   switch (type) {
     case xla::PRED:
       *str = "bool";
@@ -127,8 +127,9 @@ std::vector<BufferInfo> ExtractTempBufferInfos(
 
 // Add (from,to) rewrite pairs based on the given shape.  These rewrite pairs
 // are used to generate methods for args and results.
-Status AddRewritesForShape(int i, const xla::Shape& shape,
-                           std::vector<std::pair<string, string>>* rewrites) {
+absl::Status AddRewritesForShape(
+    int i, const xla::Shape& shape,
+    std::vector<std::pair<string, string>>* rewrites) {
   string type;
   TF_RETURN_IF_ERROR(XLATypeToCpp(shape.element_type(), &type));
   std::vector<string> dim_vars;
@@ -171,9 +172,10 @@ string RewriteWithName(const string& name, string code,
 }
 
 // Generate methods for args (inputs).
-Status GenArgMethods(const tf2xla::Config& config,
-                     const xla::ProgramShapeProto& ps,
-                     const CompileResult& compile_result, string* methods) {
+absl::Status GenArgMethods(const tf2xla::Config& config,
+                           const xla::ProgramShapeProto& ps,
+                           const CompileResult& compile_result,
+                           string* methods) {
   const int num_args = ps.parameters_size();
   // feed_size() + variable_size() is the maximum number of args as an
   // implementation may not create an argument for an unused variable.
@@ -220,8 +222,9 @@ Status GenArgMethods(const tf2xla::Config& config,
 }
 
 // Generate methods for results (outputs).
-Status GenResultMethods(const tf2xla::Config& config,
-                        const xla::ProgramShapeProto& ps, string* methods) {
+absl::Status GenResultMethods(const tf2xla::Config& config,
+                              const xla::ProgramShapeProto& ps,
+                              string* methods) {
   if (ps.result().element_type() != xla::TUPLE) {
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and we rely on this to simplify code generation.
@@ -274,8 +277,9 @@ Status GenResultMethods(const tf2xla::Config& config,
 }
 
 // Generate methods for variables.
-Status GenVariableMethods(const tf2xla::Config& config,
-                          const xla::ProgramShapeProto& ps, string* methods) {
+absl::Status GenVariableMethods(const tf2xla::Config& config,
+                                const xla::ProgramShapeProto& ps,
+                                string* methods) {
   const int num_args = ps.parameters_size();
   for (int i = config.feed_size(); i < num_args; ++i) {
     std::vector<std::pair<string, string>> rewrites;
@@ -315,7 +319,7 @@ Status GenVariableMethods(const tf2xla::Config& config,
 }
 
 // Generate shape infos for args (inputs).
-Status GenArgShapeInfos(const xla::ProgramShapeProto& ps, string* infos) {
+absl::Status GenArgShapeInfos(const xla::ProgramShapeProto& ps, string* infos) {
   for (int i = 0; i < ps.parameters_size(); ++i) {
     const xla::ShapeProto& shape = ps.parameters(i);
     if (shape.element_type() == xla::TUPLE) {
@@ -352,7 +356,8 @@ $1
 }
 
 // Generate shape infos for results.
-Status GenResultShapeInfos(const xla::ProgramShapeProto& ps, string* infos) {
+absl::Status GenResultShapeInfos(const xla::ProgramShapeProto& ps,
+                                 string* infos) {
   if (ps.result().element_type() != xla::TUPLE) {
     return absl::InternalError("codegen requires the XLA result to be a tuple");
   }
@@ -417,7 +422,7 @@ string GenNameToIndexCode(const T& entries, bool generate) {
   return code;
 }
 
-Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
+absl::Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
   for (const tf2xla::Feed& feed : config.feed()) {
     if (!feed.name().empty()) {
       TF_RETURN_IF_ERROR(ValidateCppIdent(feed.name(), "feed name"));
@@ -462,7 +467,7 @@ std::vector<string> BufferInfosToCppExpression(
   return buffer_infos_as_strings;
 }
 
-Status CheckEqual(size_t a, size_t b, absl::string_view error_msg) {
+absl::Status CheckEqual(size_t a, size_t b, absl::string_view error_msg) {
   if (a != b) {
     return absl::InternalError(
         absl::StrCat(error_msg, ". Expected ", a, ", got ", b, "."));
@@ -471,9 +476,11 @@ Status CheckEqual(size_t a, size_t b, absl::string_view error_msg) {
 }
 }  // namespace
 
-Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
-                      const CompileResult& compile_result,
-                      const MetadataResult& metadata_result, string* header) {
+absl::Status GenerateHeader(const CodegenOpts& opts,
+                            const tf2xla::Config& config,
+                            const CompileResult& compile_result,
+                            const MetadataResult& metadata_result,
+                            string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
   const int64_t result_index = compile_result.aot->result_buffer_index();
@@ -858,9 +865,9 @@ static string CreateUniqueIdentifier(const CodegenOpts& opts,
   return result;
 }
 
-Status GenerateMetadata(const CodegenOpts& opts,
-                        const CompileResult& compile_result,
-                        MetadataResult* metadata_result) {
+absl::Status GenerateMetadata(const CodegenOpts& opts,
+                              const CompileResult& compile_result,
+                              MetadataResult* metadata_result) {
   std::unique_ptr<xla::ProgramShapeProto> program_shape;
 
   if (opts.gen_program_shape) {
@@ -904,8 +911,8 @@ Status GenerateMetadata(const CodegenOpts& opts,
   return absl::OkStatus();
 }
 
-Status ParseCppClass(const string& cpp_class, string* class_name,
-                     std::vector<string>* namespaces) {
+absl::Status ParseCppClass(const string& cpp_class, string* class_name,
+                           std::vector<string>* namespaces) {
   class_name->clear();
   namespaces->clear();
   if (cpp_class.empty()) {
@@ -930,7 +937,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
   return absl::OkStatus();
 }
 
-Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
+absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   if (ident.empty()) {
     return errors::InvalidArgument("empty identifier: ", msg);
   }

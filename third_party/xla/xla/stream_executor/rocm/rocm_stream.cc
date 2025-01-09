@@ -326,13 +326,12 @@ absl::Status RocmStream::DoHostCallbackWithStatus(
 }
 
 namespace {
-absl::Status LaunchKernel(StreamExecutor* executor,
-                          absl::string_view kernel_name, hipFunction_t function,
-                          unsigned int grid_dim_x, unsigned int grid_dim_y,
-                          unsigned int grid_dim_z, unsigned int block_dim_x,
-                          unsigned int block_dim_y, unsigned int block_dim_z,
-                          unsigned int shared_mem_bytes, hipStream_t stream,
-                          void** kernel_params, void** extra) {
+absl::Status LaunchRocmKernel(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes, hipStream_t stream,
+    void** kernel_params, void** extra) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
@@ -366,21 +365,20 @@ absl::Status LaunchKernel(StreamExecutor* executor,
   return absl::OkStatus();
 }
 
-absl::Status LaunchKernel(StreamExecutor* executor,
-                          absl::string_view kernel_name, hipFunction_t function,
-                          unsigned int cluster_dim_x,
-                          unsigned int cluster_dim_y,
-                          unsigned int cluster_dim_z, unsigned int grid_dim_x,
-                          unsigned int grid_dim_y, unsigned int grid_dim_z,
-                          unsigned int block_dim_x, unsigned int block_dim_y,
-                          unsigned int block_dim_z,
-                          unsigned int shared_mem_bytes, hipStream_t stream,
-                          void** kernel_params, void** extra) {
+absl::Status LaunchRocmKernel(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    hipFunction_t function, unsigned int cluster_dim_x,
+    unsigned int cluster_dim_y, unsigned int cluster_dim_z,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes, hipStream_t stream,
+    void** kernel_params, void** extra) {
   if (cluster_dim_x != 1 || cluster_dim_y != 1 || cluster_dim_z != 1)
     return absl::UnimplementedError("Not implemented for ROCm");
-  return LaunchKernel(executor, kernel_name, function, grid_dim_x, grid_dim_y,
-                      grid_dim_z, block_dim_x, block_dim_y, block_dim_z,
-                      shared_mem_bytes, stream, kernel_params, extra);
+  return LaunchRocmKernel(executor, kernel_name, function, grid_dim_x,
+                          grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+                          block_dim_z, shared_mem_bytes, stream, kernel_params,
+                          extra);
 }
 
 }  // namespace
@@ -389,62 +387,24 @@ absl::Status RocmStream::BlockHostUntilDone() {
   return SynchronizeStream(executor_, stream_handle_);
 }
 
-absl::Status RocmStream::Launch(const ThreadDim& thread_dims,
-                                const BlockDim& block_dims,
-                                const std::optional<ClusterDim>& cluster_dims,
-                                const Kernel& kernel, const KernelArgs& args) {
-  const RocmKernel* gpu_kernel = static_cast<const RocmKernel*>(&kernel);
-  hipFunction_t function = gpu_kernel->gpu_function();
-
-  // Launch kernels with packed arguments.
-  auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
-                 &function](const KernelArgsPackedArrayBase& packed) {
-    int32_t expected_number_of_arguments =
-        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
-
-    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
-        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
-        << " arguments, but expected " << expected_number_of_arguments
-        << "; arity=" << kernel.Arity()
-        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
-
-    void** params = const_cast<void**>(packed.argument_addresses().data());
-
-    if (cluster_dims.has_value()) {
-      return LaunchKernel(
-          executor_, kernel.name(), function, cluster_dims->x, cluster_dims->y,
-          cluster_dims->z, block_dims.x, block_dims.y, block_dims.z,
-          thread_dims.x, thread_dims.y, thread_dims.z,
-          packed.number_of_shared_bytes(), stream_handle_, params,
-          /*extra=*/nullptr);
-    } else {
-      return LaunchKernel(
-          executor_, kernel.name(), function, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          packed.number_of_shared_bytes(), stream_handle_, params,
-          /*extra=*/nullptr);
-    }
-  };
-
-  // If arguments are already packed we can just launch the kernel.
-  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return launch(*packed);
+absl::Status RocmStream::LaunchKernel(
+    const ThreadDim& thread_dims, const BlockDim& block_dims,
+    const std::optional<ClusterDim>& cluster_dims, void* function,
+    absl::string_view name, void** args, int64_t shmem_bytes) {
+  if (cluster_dims.has_value()) {
+    return LaunchRocmKernel(
+        executor_, name, static_cast<hipFunction_t>(function), cluster_dims->x,
+        cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
+        block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z, shmem_bytes,
+        stream_handle_, args,
+        /*extra=*/nullptr);
+  } else {
+    return LaunchRocmKernel(
+        executor_, name, static_cast<hipFunction_t>(function), block_dims.x,
+        block_dims.y, block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+        shmem_bytes, stream_handle_, args,
+        /*extra=*/nullptr);
   }
-
-  // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.args_packing();
-    if (!pack) {
-      return absl::InternalError(
-          "Kernel is missing a custom arguments packing function for device "
-          "memory arguments array");
-    }
-
-    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return launch(*packed);
-  }
-
-  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 }  // namespace stream_executor::gpu

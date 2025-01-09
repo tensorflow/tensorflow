@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
 
 #include <memory>
-#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

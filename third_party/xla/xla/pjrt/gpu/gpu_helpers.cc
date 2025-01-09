@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -236,7 +235,7 @@ int TopologySizes::GetDeviceCount() {
 
 // static
 absl::StatusOr<TopologySizes> TopologySizes::FromString(
-    std::string_view topology_string) {
+    absl::string_view topology_string) {
   TopologySizes sizes;
   std::vector<std::string> topology_components =
       absl::StrSplit(topology_string, 'x');

@@ -340,12 +340,6 @@ class TfPjRtClient : public PjRtClient {
     return wrapped_->MakeCrossHostReceiveBuffersForGather(
         shapes, std::move(gather_details), device, std::move(notifier));
   }
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return wrapped_->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return wrapped_->CreateDeviceToHostChannelHandle();
-  }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return wrapped_->GetTopologyDescription();

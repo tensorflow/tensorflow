@@ -44,10 +44,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/profile_utils/cpu_utils.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/profile_utils/cpu_utils.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 

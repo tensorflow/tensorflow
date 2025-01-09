@@ -117,7 +117,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   TensorShape shape(shape_vector);
 
   // Create the variable.
-  Status status;
+  absl::Status status;
   std::unique_ptr<Variable> var;
   TF_EXPECT_OK(Variable::CreateUninitialized(context(), dtype, shape,
                                              absl::nullopt, nullptr, {}, &var));

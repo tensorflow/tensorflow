@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -502,6 +501,8 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
     profile_info_proto.set_fingerprint(profile_info.fingerprint());
+    profile_info_proto.set_profile_generation_strategy(
+        profile_info.profile_generation_strategy());
   }
   if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;

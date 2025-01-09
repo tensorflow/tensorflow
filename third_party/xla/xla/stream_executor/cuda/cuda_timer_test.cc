@@ -66,8 +66,7 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
     ASSERT_THAT(stream->Memset32(&b, 2, byte_length), IsOk());
     ASSERT_THAT(stream->MemZero(&c, byte_length), IsOk());
 
-    ASSERT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c),
-                IsOk());
+    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c), IsOk());
   }
 
   StreamExecutor* executor_;

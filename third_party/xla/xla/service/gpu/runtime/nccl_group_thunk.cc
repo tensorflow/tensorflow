@@ -16,38 +16,73 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_group_thunk.h"
 
 #include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-NcclGroupThunk::NcclGroupThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-                               NcclApi* nccl_api,
-                               const HloInstruction* instruction,
-                               int64_t replica_count, int64_t partition_count)
-    : NcclCollectiveThunk(kind, thunk_info, nccl_api,
-                          /*is_sync=*/false),
-      config_() {
-  nccl_api_ = NcclApi::Default();
+NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
+                               Thunk::Kind kind,
+                               std::vector<std::unique_ptr<Thunk>> thunks,
+                               AsyncStreamKind stream_kind)
+    : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)),
+      stream_kind_(stream_kind),
+      async_events_(new NcclCollectiveThunk::AsyncEvents()) {
+  for (auto& thunk : thunks) {
+    thunks_.emplace_back(std::move(thunk));
+  }
+}
+absl::Status NcclGroupThunk::Prepare(const PrepareParams& params,
+                                     ResourceRequests& resource_requests) {
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+  }
+  return absl::OkStatus();
+}
+absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
+  if (async_events_) {
+    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+  }
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(params));
+  }
+  return absl::OkStatus();
 }
 
-absl::Status NcclGroupThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
-  return absl::UnimplementedError(
-      "RunNcclCollective not implemented for NcclGroupThunk");
+absl::Status NcclGroupThunk::ExecuteOnStream(
+    const Thunk::ExecuteParams& params) {
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
+  // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
+  // async_streams is therefore guaranteed to be non-null and to have enough
+  // elements to index by the AsyncStreamKind enum.
+  se::Stream* async_stream =
+      params.collective_params->async_streams.at(async_stream_idx);
+  TF_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
+  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+  }
+  TF_RETURN_IF_ERROR(collectives->GroupEnd());
+  TF_ASSIGN_OR_RETURN(se::Event * event,
+                      async_events_->GetEvent(params.stream->parent()));
+  TF_RETURN_IF_ERROR(async_stream->RecordEvent(event));
+
+  return absl::OkStatus();
 }
 
-AsyncStreamKind NcclGroupThunk::GetAsyncStreamKind() const {
-  return AsyncStreamKind::kCollective;
-}
 }  // namespace gpu
 }  // namespace xla

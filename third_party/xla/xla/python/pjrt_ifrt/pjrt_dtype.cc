@@ -58,6 +58,7 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     CASE(DType::kC64, xla::PrimitiveType::C64);
     CASE(DType::kC128, xla::PrimitiveType::C128);
     CASE(DType::kToken, xla::PrimitiveType::TOKEN);
+    CASE(DType::kOpaque, xla::PrimitiveType::OPAQUE_TYPE);
 #undef CASE
     case DType::kString:
       return InvalidArgument("Not supported as XLA PrimitiveType: %d",
@@ -96,6 +97,7 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::C64:
     case xla::PrimitiveType::C128:
     case xla::PrimitiveType::TOKEN:
+    case xla::PrimitiveType::OPAQUE_TYPE:
       return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
     default:
       return InvalidArgument("Invalid XLA PrimitiveType: %d",

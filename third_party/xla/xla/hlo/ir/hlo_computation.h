@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -289,24 +291,30 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
-  // users. Instruction is deallocated with this call.
+  // users. This call does not yet deallocate the instruction, but marks it as
+  // deleted, so that the next call to Cleanup() will deallocate it. If the
+  // instruction is a constant, its literal is cleared.
   absl::Status RemoveInstruction(HloInstruction* instruction);
 
   // Removes an instruction from the computation. The instruction must have no
-  // users. Instruction is deallocated with this call. The instruction will be
-  // removed even if it is marked as not removable.
+  // users. The instruction will be removed even if it is marked as not
+  // removable. This call does not yet deallocate the instruction, but marks it
+  // as deleted, so that the next call to Cleanup() will deallocate it. If the
+  // instruction is a constant, its literal is cleared.
   absl::Status ForceRemoveInstruction(HloInstruction* instruction);
 
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
-  // removing an instruction. The instruction must have no users. Instruction is
-  // deallocated with this call. If given, the cleanup routine is executed on a
-  // removed instruction before its deallocation. If ignore_control_dependencies
-  // is set to true, if will remove the unused operands even when they have
-  // control dependencies, and transitively pass the control dependencies from
-  // the predecessors to the succesors of the removed instructions, so that the
-  // logical exeuction order of the remaining unremoved instructions are
-  // preserved.
+  // removing an instruction. The instruction must have no users. This call does
+  // not yet deallocate the instruction, but marks it as deleted, so that the
+  // next call to Cleanup() will deallocate it. If the instruction is a
+  // constant, its literal is cleared. If given, the cleanup routine is executed
+  // on a removed instruction before its marked as deleted. If
+  // ignore_control_dependencies is set to true, if will remove the unused
+  // operands even when they have control dependencies, and transitively pass
+  // the control dependencies from the predecessors to the succesors of the
+  // removed instructions, so that the logical exeuction order of the remaining
+  // unremoved instructions are preserved.
   absl::Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
@@ -414,11 +422,23 @@ class HloComputation {
   // with respect to HloComputation::Equal() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloComputation& computation) {
+    // Walk the computation in post-order, computing (and caching) the
+    // Absl::Hash after each instruction to use to as an operand for
+    // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
+    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
+    instruction_hash_cache.reserve(instructions.size());
     for (auto* instruction : instructions) {
-      h = H::combine(std::move(h), *instruction);
+      absl::InlinedVector<size_t, 2> operand_hashes;
+      for (auto* operand : instruction->operands()) {
+        operand_hashes.push_back(instruction_hash_cache[operand]);
+      }
+      instruction_hash_cache.emplace(
+          instruction, absl::HashOf(*instruction, operand_hashes));
     }
-    return H::combine(std::move(h), instructions.size());
+    return H::combine(std::move(h),
+                      instruction_hash_cache[computation.root_instruction()],
+                      instructions.size());
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<

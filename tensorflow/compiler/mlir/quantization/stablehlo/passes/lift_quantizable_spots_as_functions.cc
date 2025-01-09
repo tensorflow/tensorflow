@@ -210,7 +210,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 
   // Iterate over the sorted list of functions to keep order deterministic.
   for (func::FuncOp func : GetSortedFunctions(module_op)) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError()
           << "quant-stablehlo-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

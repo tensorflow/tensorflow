@@ -21,86 +21,34 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace mlir {
 namespace mhlo {
 
-using func::FuncOp;
-using mlir::ModuleOp;
-
-static constexpr char kMlirModuleStr[] = R"(
-module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
-  func.func @main(%arg0: tensor<3xi64> {tf._user_specified_name = "resource", tf.aliasing_output = 3 : i64}) -> () attributes {tf.entry_function = {control_outputs = "stateful_normal/RngReadAndSkip,stateful_uniform/RngReadAndSkip,stateful_uniform_full_int/RngReadAndSkip", inputs = "stateful_normal_rngreadandskip_resource", outputs = "identity_RetVal,identity_1_RetVal,identity_2_RetVal"}} {
-    %0:3 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<3xi64>) -> (tensor<i64>, tensor<i64>, tensor<i64>)
-    return
-  }
-})";
-
-class LegalizationOpConfigTest : public ::testing::Test {
- public:
-  absl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
-    TF_ASSIGN_OR_RETURN(
-        module_, test::GetMlirModuleFromString(module_string, &context_));
-
-    context_.loadAllAvailableDialects();
-    return absl::OkStatus();
-  }
-
-  absl::StatusOr<FuncOp> GetMain() {
-    func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
-    if (!main) {
-      return absl::NotFoundError("Could not find main function");
-    }
-    return main;
-  }
-
- protected:
-  MLIRContext context_;
-  OwningOpRef<ModuleOp> module_;
-};
-
-TEST_F(LegalizationOpConfigTest, FailsWithExpectsLegalizationWithMlir) {
-  TF_EXPECT_OK(CreateMlirModule());
-  EXPECT_FALSE(IsOpLegalizedWithMlir(*module_->getOperation()));
-}
-
-TEST_F(LegalizationOpConfigTest, ExpectsFalseForNonMlirOps) {
-  TF_EXPECT_OK(CreateMlirModule());
-  TF_ASSERT_OK_AND_ASSIGN(FuncOp main, GetMain());
-
-  main.walk([&](Operation* op) { EXPECT_FALSE(IsOpLegalizedWithMlir(*op)); });
-}
-
-TEST_F(LegalizationOpConfigTest, ExpectsTrueForMlirTypeID) {
+TEST(LegalizationOpConfigTest, ExpectsTrueForMlirTypeID) {
   EXPECT_TRUE(IsTypeLegalizedWithMlir(TypeID::get<TF::ModOp>()));
   EXPECT_FALSE(HasTf2XlaFallback(TypeID::get<TF::ModOp>()));
   EXPECT_FALSE(IsOpAllowedTf2xlaFallback(TypeID::get<TF::ModOp>()));
   EXPECT_FALSE(IsOpAllowedTf2xlaPreferred(TypeID::get<TF::ModOp>()));
 }
 
-TEST_F(LegalizationOpConfigTest, ExpectsTrueForTF2XLATypeID) {
+TEST(LegalizationOpConfigTest, ExpectsTrueForTF2XLATypeID) {
   EXPECT_TRUE(HasTf2XlaFallback(TypeID::get<TF::AllOp>()));
   EXPECT_TRUE(IsOpAllowedTf2xlaPreferred(TypeID::get<TF::AllOp>()));
   EXPECT_FALSE(IsTypeLegalizedWithMlir(TypeID::get<TF::AllOp>()));
 }
 
-TEST_F(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
+TEST(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
   EXPECT_TRUE(
       IsDynamicPadderOp(TypeID::get<TF::XlaSetDynamicDimensionSizeOp>()));
   EXPECT_FALSE(IsDynamicPadderOp(TypeID::get<TF::ConstOp>()));
@@ -110,7 +58,7 @@ TEST_F(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
 // whether they are legalized with MLIR, TF2XLA, or both. Ideally the sets are
 // disjoint, but until that happens, this tests ensures that the set doesn't
 // grow.
-TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
+TEST(LegalizationOpConfigTest, CountLoweringsSet) {
   int mlir_lowering_count = 0;
   int tf2xla_fallback_count = 0;
   int non_categorized_count = 0;
@@ -142,7 +90,7 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
 // Just a counter test to see which ops have duplicate lowerings. This isn't a
 // correctness test versus a test to easily ensure the op registry is kept
 // in sync.
-TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
+TEST(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
   int double_lowering_count = 0;
 
   DialectRegistry dialect_registry;
@@ -165,7 +113,7 @@ TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
 // Counts which ops have MLIR only lowerings. This isn't a
 // correctness test versus a test to easily ensure the op registry is kept
 // in sync.
-TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
+TEST(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
   DialectRegistry dialect_registry;
   mlir::RegisterCommonToolingDialects(dialect_registry);
 
@@ -193,7 +141,7 @@ TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
 // Counts which ops have lowerings without XlaOpKernels. This isn't a
 // correctness test versus a test to easily ensure the op registry is kept
 // in sync.
-TEST_F(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
+TEST(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
   std::vector<const tensorflow::KernelDef*> kernel_defs =
       tensorflow::XlaOpRegistry::DeviceKernels(

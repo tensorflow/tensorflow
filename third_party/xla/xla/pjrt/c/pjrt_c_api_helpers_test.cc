@@ -108,12 +108,20 @@ TEST(PjRtCApiHelperTest, Callback) {
   auto kv_callback_data = ConvertToCKeyValueCallbacks(kv_store);
   auto converted_kv_store = ToCppKeyValueStore(
       kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func,
+      kv_callback_data->c_kv_try_get, &kv_callback_data->kv_try_get_c_func,
       kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
+
+  auto v_not_found = converted_kv_store->Get("key", absl::Seconds(1));
+  EXPECT_TRUE(absl::IsNotFound(v_not_found.status())) << v_not_found.status();
 
   auto s = converted_kv_store->Set("key", "value");
   TF_EXPECT_OK(s);
 
   auto v = converted_kv_store->Get("key", absl::Seconds(1));
+  TF_EXPECT_OK(v.status());
+  EXPECT_EQ(*v, "value");
+
+  auto v_2 = converted_kv_store->TryGet("key");
   TF_EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
 }
@@ -214,11 +222,8 @@ TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
   }
   EXPECT_TRUE(map.find("xla_version") != map.end());
   PJRT_NamedValue *current = map["stablehlo_current_version"];
-  // TODO: (b/375454646) Uncomment once frameworks have bugfix:
-  // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
-  // mlir::vhlo::Version current_version =
-  //     mlir::vhlo::Version::getCurrentVersion();
-  mlir::vhlo::Version current_version = mlir::vhlo::Version(1, 7, 0);
+  mlir::vhlo::Version current_version =
+      mlir::vhlo::Version::getCurrentVersion();
   EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
   EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
   EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());

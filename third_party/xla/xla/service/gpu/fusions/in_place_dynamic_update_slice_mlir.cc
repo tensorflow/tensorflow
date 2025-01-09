@@ -31,6 +31,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,8 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -128,7 +128,8 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
       fusion.fused_instructions_computation());
   auto result_tensors = mlir_converter::EmitXlaLoopOp(
       b, thread_and_block_ids, output_tensor_args, indexing,
-      [&](ValueRange symbol_values, ValueRange input_indices,
+      [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+          ValueRange input_indices,
           ValueRange output_tensors) -> llvm::SmallVector<Value> {
         llvm::SmallVector<Value> results;
         for (auto [instr, root, output] :
@@ -140,7 +141,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
           auto start_indices = ProvideParameterRange(
               root_computation, dus_instr,
               dus_instr->first_index_operand_number(), update_shape.rank(), {},
-              call_targets, entry_function, b);
+              call_targets, entry_function, nested_b);
           for (int i = 0; i < update_shape.rank(); ++i) {
             int64_t update_size = update_shape.dimensions(i);
             auto start_index = ClampIndex(
@@ -150,23 +151,23 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
                         ->operand(i + dus_instr->first_index_operand_number())
                         ->shape()
                         .element_type()),
-                dus_instr->shape().dimensions(i) - update_size, b);
+                dus_instr->shape().dimensions(i) - update_size, nested_b);
 
             update_indices.push_back(
-                b.create<AddIOp>(input_indices[i], start_index));
+                nested_b.create<AddIOp>(input_indices[i], start_index));
           }
 
-          auto updated_value =
-              ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
-                               input_indices, call_targets, entry_function, b);
+          auto updated_value = ProvideParameter(
+              root_computation, dus_instr, kDUSUpdateIndex, input_indices,
+              call_targets, entry_function, nested_b);
           // Handle bitcasts under the DUS.
           if (dus_instr->shape() != root.shape()) {
             update_indices = ApplyIndexing(
                 GetBitcastMap(dus_instr->shape(), root.shape(), b.getContext()),
-                update_indices, {}, b);
+                update_indices, {}, nested_b);
           }
-          results.push_back(
-              b.create<InsertOp>(updated_value[0], output, update_indices));
+          results.push_back(nested_b.create<InsertOp>(updated_value[0], output,
+                                                      update_indices));
         }
         return results;
       });

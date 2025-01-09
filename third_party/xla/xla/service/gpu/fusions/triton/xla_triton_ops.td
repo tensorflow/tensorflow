@@ -20,7 +20,8 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
-include "triton/Dialect/Triton/IR/TritonTypeInterfaces.td"
+include "triton/Dialect/Triton/IR/TritonInterfaces.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
 include "xla/service/gpu/fusions/triton/xla_triton_dialect.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
 
@@ -29,13 +30,13 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
 }
 
 def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
-        Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
         TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
     let summary = "sparse dot";
 
     let arguments = (ins
-      TT_TensorOrMemDesc:$a,
-      TT_TensorOrMemDesc:$b,
+      TTG_TensorOrMemDesc:$a,
+      TTG_TensorOrMemDesc:$b,
       TT_FpIntTensor:$c,
       TT_IntTensor: $aMeta);
     let results = (outs TT_FpIntTensor:$d);

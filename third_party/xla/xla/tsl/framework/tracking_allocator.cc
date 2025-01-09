@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/framework/tracking_allocator.h"
 
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 

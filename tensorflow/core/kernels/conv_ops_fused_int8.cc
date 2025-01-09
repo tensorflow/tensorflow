@@ -371,8 +371,7 @@ void operator()(
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::GpuAsmOpts());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
 
     const int batch_size = GetTensorDim(input_param, data_format, 'N');
     int conv_input_rows = GetTensorDim(input_param, data_format, 'H');

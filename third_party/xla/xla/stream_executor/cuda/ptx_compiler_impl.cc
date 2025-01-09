@@ -19,7 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -32,17 +31,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-static std::string_view ToString(nvPTXCompileResult status) {
+static absl::string_view ToString(nvPTXCompileResult status) {
   switch (status) {
     case NVPTXCOMPILE_SUCCESS:
       return "SUCCESS";
@@ -81,19 +83,22 @@ static std::string_view ToString(nvPTXCompileResult status) {
   } while (false)
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill) {
+    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    GpuAsmOpts options, bool cancel_if_reg_spill) {
+  TF_ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
+  WarnIfBadPtxasVersion("nvPTXCompiler", cc, version);
+
   nvPTXCompilerHandle compiler_handle{};
   RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerCreate(
-      &compiler_handle, std::strlen(ptx_contents), ptx_contents));
+      &compiler_handle, ptx_contents.size(), ptx_contents.data()));
   absl::Cleanup compiler_cleaner = [&compiler_handle] {
     nvPTXCompilerDestroy(&compiler_handle);
   };
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string_view extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
-  std::string architecture = absl::StrCat("sm_", cc_major, cc_minor, extension);
+  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
 
   options.extra_flags.emplace_back(absl::StrCat("-arch=", architecture));
   options.extra_flags.emplace_back("--warn-on-spills");
@@ -136,7 +141,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
           "Linked libnvptxcompiler is too old for %s.", architecture));
     }
     if (IsPtxRegisterAllocationError(error_log)) {
-      return absl::ResourceExhaustedError(error_log);
+      return PtxRegisterAllocationError(error_log);
     }
 
     return absl::InternalError(

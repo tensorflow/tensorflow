@@ -22,16 +22,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
-using MemoryAwareScheduler = std::function<absl::StatusOr<HloSchedule>(
-    const HloModule*, int64_t, int64_t*)>;
-
 namespace {
 
 int64_t GetDefaultValue(HloOpcode opcode) {
@@ -51,13 +49,13 @@ int64_t GetDefaultValue(HloOpcode opcode) {
 
 int64_t ComputeSuggestedCombinerThreshold(
     const HloModule& module, const se::DeviceDescription& device_info,
-    MemoryAwareScheduler scheduler, HloOpcode collective_opcode,
-    int64_t pointer_size) {
+    HloOpcode collective_opcode, int64_t pointer_size) {
   int64_t base_limit = module.config().device_memory_size() != 0
                            ? module.config().device_memory_size()
                            : device_info.device_memory_size();
   int64_t peak_memory_bytes = -1;
-  auto mem_schedule = scheduler(&module, pointer_size, &peak_memory_bytes);
+  auto mem_schedule = ScheduleGpuModuleWithMemoryScheduler(
+      &module, pointer_size, &peak_memory_bytes);
 
   if (!mem_schedule.ok() || peak_memory_bytes == -1) {
     VLOG(1) << "Cannot schedule module: " << mem_schedule.status().message();
@@ -70,10 +68,29 @@ int64_t ComputeSuggestedCombinerThreshold(
 }
 
 absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
-  auto config = instr->backend_config<gpu::GpuBackendConfig>();
-  config->mutable_collective_backend_config()->set_is_pipelined(true);
-  TF_RETURN_IF_ERROR(instr->set_backend_config(*config));
-  return absl::OkStatus();
+  if (!IsCollective(instr)) {
+    return absl::OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(auto config,
+                      instr->backend_config<gpu::GpuBackendConfig>());
+  config.mutable_collective_backend_config()->set_is_pipelined(true);
+  return instr->set_backend_config(config);
+}
+
+bool ContainsPipelinedInstruction(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      auto backend_config = instr->backend_config<GpuBackendConfig>();
+      if (!backend_config.ok()) {
+        VLOG(2) << "Cannot read backend config for: " << instr->ToString();
+        continue;
+      }
+      if (backend_config->collective_backend_config().is_pipelined()) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace xla::gpu

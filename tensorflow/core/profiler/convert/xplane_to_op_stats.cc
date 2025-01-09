@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,8 +42,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -77,6 +80,22 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   return result;
 }
 
+PerfEnv MakePerfEnvForTpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws, bool has_merged_vmem,
+                          bool has_megacore) {
+  PerfEnv result = MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+  result.set_has_cmem(peak_bws[MemBwType::MEM_BW_TYPE_CMEM_RD] > 0 ||
+                      peak_bws[MemBwType::MEM_BW_TYPE_CMEM_WR] > 0);
+  result.set_has_merged_vmem(has_merged_vmem);
+  result.set_has_megacore(has_megacore);
+  return result;
+}
+
+PerfEnv MakePerfEnvForGpu(double peak_tera_flops_per_second,
+                          std::vector<double> peak_bws) {
+  return MakePerfEnv(peak_tera_flops_per_second, peak_bws);
+}
+
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
@@ -90,40 +109,78 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         tsl::profiler::UniToGiga(GetSharedMemoryBandwidthPerSM(cap));
     // Note that treat SRAM_RD and SRAM_WR as the same. So in future, we could
     // only use one for shared memory / L1 cache, one for another like L2.
-    return MakePerfEnv(peak_tera_flops_per_second,
-                       {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
-                        /*SRAM_RD=*/shm_giga_bytes_per_second,
-                        /*SRAM_WR=*/shm_giga_bytes_per_second});
+    return MakePerfEnvForGpu(peak_tera_flops_per_second,
+                             {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
+                              /*SRAM_RD=*/shm_giga_bytes_per_second,
+                              /*SRAM_WR=*/shm_giga_bytes_per_second});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
-    auto peak_tera_flops_per_second =
+    std::optional<XStatVisitor> peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
-    auto peak_tera_flops_per_second_val =
+    double peak_tera_flops_per_second_val =
         peak_tera_flops_per_second.has_value()
             ? peak_tera_flops_per_second->DoubleValue()
             : 0.0;
-    auto peak_hbm_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    auto peak_hbm_bw_giga_bytes_per_second_val =
+    double peak_hbm_bw_giga_bytes_per_second_val =
         peak_hbm_bw_giga_bytes_per_second.has_value()
             ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_rd_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_rd_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
-    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+    double peak_sram_rd_bw_giga_bytes_per_second_val =
         peak_sram_rd_bw_giga_bytes_per_second.has_value()
             ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    auto peak_sram_wr_bw_giga_bytes_per_second =
+    std::optional<XStatVisitor> peak_sram_wr_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
-    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+    double peak_sram_wr_bw_giga_bytes_per_second_val =
         peak_sram_wr_bw_giga_bytes_per_second.has_value()
             ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
             : 0.0;
-    return MakePerfEnv(peak_tera_flops_per_second_val,
-                       {peak_hbm_bw_giga_bytes_per_second_val,
-                        peak_sram_rd_bw_giga_bytes_per_second_val,
-                        peak_sram_wr_bw_giga_bytes_per_second_val});
+    std::optional<XStatVisitor> cmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemRdBwGigabytesPerSecond);
+    double cmem_rd_bw_giga_bytes_per_second_val =
+        cmem_rd_bw_giga_bytes_per_second.has_value()
+            ? cmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> cmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakCmemWrBwGigabytesPerSecond);
+    double cmem_wr_bw_giga_bytes_per_second_val =
+        cmem_wr_bw_giga_bytes_per_second.has_value()
+            ? cmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemRdBwGigabytesPerSecond);
+    double vmem_rd_bw_giga_bytes_per_second_val =
+        vmem_rd_bw_giga_bytes_per_second.has_value()
+            ? vmem_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> vmem_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakVmemWrBwGigabytesPerSecond);
+    double vmem_wr_bw_giga_bytes_per_second_val =
+        vmem_wr_bw_giga_bytes_per_second.has_value()
+            ? vmem_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    std::optional<XStatVisitor> has_megacore =
+        visitor.GetStat(StatType::kDevHasMegacore);
+    bool has_megacore_val =
+        has_megacore.has_value() ? has_megacore->BoolValue() : false;
+    std::optional<XStatVisitor> has_merged_vmem =
+        visitor.GetStat(StatType::kDevHasMergedVmem);
+    bool has_merged_vmem_val =
+        has_merged_vmem.has_value() ? has_merged_vmem->BoolValue() : false;
+    return MakePerfEnvForTpu(
+        peak_tera_flops_per_second_val,
+        {/*HBM_RW=*/peak_hbm_bw_giga_bytes_per_second_val,
+         /*SRAM_RD=*/peak_sram_rd_bw_giga_bytes_per_second_val,
+         /*SRAM_WR=*/peak_sram_wr_bw_giga_bytes_per_second_val,
+         /**CMEM_RD=*/cmem_rd_bw_giga_bytes_per_second_val,
+         /**CMEM_WR=*/cmem_wr_bw_giga_bytes_per_second_val,
+         /**VMEM_RD=*/vmem_rd_bw_giga_bytes_per_second_val,
+         /**VMEM_WR=*/vmem_wr_bw_giga_bytes_per_second_val},
+        has_merged_vmem_val, has_megacore_val);
   }
 }
 
@@ -144,6 +201,7 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type("GPU");
     }
     env->set_device_core_count(gpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::GPU);
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
@@ -154,9 +212,11 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
     }
     env->set_device_core_count(tpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::TPU);
   } else {
     env->set_device_type("CPU");
     env->set_device_core_count(0);
+    env->set_hardware_type(tensorflow::profiler::HardwareType::CPU_ONLY);
   }
 }
 
@@ -182,6 +242,13 @@ void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
   auto& program_id_to_name_map = *op_stats.mutable_program_id_to_name_map();
   for (const auto& [program_id, hlo_proto] : hlo_proto_map) {
     program_id_to_name_map[program_id] = hlo_proto->hlo_module().name();
+  }
+}
+
+void UpdateOpMetricsDbFromHloModuleMap(OpMetricsDb& op_metrics_db,
+                                       const HloModuleMap& hlo_module_map) {
+  for (OpMetrics& op_metrics : *op_metrics_db.mutable_metrics_db()) {
+    EnterOpMetadataFromHloModuleMap(&op_metrics, hlo_module_map);
   }
 }
 
@@ -213,6 +280,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
+      HloModuleMap hlo_module_map;
+      ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
       if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
@@ -222,6 +291,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
             ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db, hlo_module_map);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }
@@ -287,11 +357,27 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     }
   }
 
-  // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
   if (!is_tpu) {
     CoreDetails& details =
         (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
     details.set_hostname(Hostname(space));
+  } else {
+    std::string hostname = Hostname(space);
+    auto& core_id_to_details = *op_stats.mutable_core_id_to_details();
+    for (const XPlane* device_plane : device_planes) {
+      XPlaneVisitor visitor =
+          tsl::profiler::CreateTfXPlaneVisitor(device_plane);
+      auto stat = visitor.GetStat(StatType::kCoreDetails);
+      if (stat.has_value()) {
+        CoreDetails core_details;
+        absl::string_view core_details_bytes = stat->BytesValue();
+        if (core_details.ParseFromArray(core_details_bytes.data(),
+                                        core_details_bytes.size())) {
+          core_details.set_hostname(hostname);
+          core_id_to_details[device_plane->id()] = core_details;
+        }
+      }
+    }
   }
 
   // Set program_id_to_name map in OpStats from Xspace

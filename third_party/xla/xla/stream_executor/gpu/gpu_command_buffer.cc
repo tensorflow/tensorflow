@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,12 +31,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -62,7 +61,7 @@ using GraphConditionalHandle = GpuCommandBuffer::GraphConditionalHandle;
 using GraphConditionalHandles = absl::Span<const GraphConditionalHandle>;
 
 namespace {
-std::string_view to_string(State state) {
+absl::string_view to_string(State state) {
   switch (state) {
     case State::kCreate:
       return "create";
@@ -104,9 +103,9 @@ static std::atomic<int64_t> alive_execs(0);
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent)
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, StreamExecutor* parent)
     : mode_(mode), parent_(parent) {
-  execution_scopes_.try_emplace(kDefaulExecutionScope);
+  execution_scopes_.try_emplace(kDefaultExecutionScope);
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
@@ -118,13 +117,13 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
-    CommandBuffer& root_command_buffer) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+    GpuCommandBuffer& root_command_buffer) {
+  ExecutionScope& execution_scope = execution_scopes_[kDefaultExecutionScope];
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
       TF_RETURN_IF_ERROR(
-          SetNodeExecutionEnabled(barrier.handle, root_command_buffer, false));
+          root_command_buffer.SetNodeExecutionEnabled(barrier.handle, false));
     }
   }
   for (ConditionalCommandBuffers& cmd_buffers :
@@ -665,13 +664,13 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                        num_iteration);
   };
 
-  auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
+  auto body = [&](GpuCommandBuffer* body, GraphConditionalHandle conditional) {
     TF_RETURN_IF_ERROR(body_builder(body));
     TF_RETURN_IF_ERROR(body->Barrier());
 
     // Decide if we want to continue loop iteration.
-    return static_cast<GpuCommandBuffer*>(body)->LaunchSetForConditionKernel(
-        kDefaulExecutionScope, conditional, loop_counter, num_iteration);
+    return body->LaunchSetForConditionKernel(
+        kDefaultExecutionScope, conditional, loop_counter, num_iteration);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};
@@ -692,13 +691,13 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
     return LaunchSetWhileConditionKernel(id, handles[0], pred);
   };
 
-  auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
+  auto body = [&](GpuCommandBuffer* body, GraphConditionalHandle conditional) {
     TF_RETURN_IF_ERROR(body_builder(body));
     TF_RETURN_IF_ERROR(body->Barrier());
-    TF_RETURN_IF_ERROR(cond_builder(kDefaulExecutionScope, body));
+    TF_RETURN_IF_ERROR(cond_builder(kDefaultExecutionScope, body));
     TF_RETURN_IF_ERROR(body->Barrier());
-    return static_cast<GpuCommandBuffer*>(body)->LaunchSetWhileConditionKernel(
-        kDefaulExecutionScope, conditional, pred);
+    return body->LaunchSetWhileConditionKernel(kDefaultExecutionScope,
+                                               conditional, pred);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,11 +32,11 @@ namespace xla::gpu {
 // HloModule
 class ModuleAnnotation {
  public:
-  explicit ModuleAnnotation(std::string_view module_name);
+  explicit ModuleAnnotation(absl::string_view module_name);
   explicit ModuleAnnotation(const HloModule& mod);
 
-  std::string_view longest_op_name_prefix() const { return longest_prefix_; }
-  explicit operator std::string_view() const { return title_str_; }
+  absl::string_view longest_op_name_prefix() const { return longest_prefix_; }
+  explicit operator absl::string_view() const { return title_str_; }
   tsl::profiler::StringHandle title() const { return title_; }
   static uint64_t NvtxSchemaId();
   int32_t common_stack_frames() const { return common_stack_frames_; }
@@ -62,7 +61,7 @@ struct KernelAnnotation {
   KernelAnnotation(const ModuleAnnotation& module_annotation,
                    const HloInstruction& inst);
 
-  explicit operator std::string_view() const { return title_str; }
+  explicit operator absl::string_view() const { return title_str; }
   static uint64_t NvtxSchemaId();
 
  private:
@@ -81,11 +80,11 @@ struct KernelAnnotation {
 // Parsed/prepared information for an HloModule that gets propagated to NVTX
 // ranges/profilers/... at execution time.
 struct ModuleAnnotations {
-  explicit ModuleAnnotations(std::string_view module_name);
+  explicit ModuleAnnotations(absl::string_view module_name);
   explicit ModuleAnnotations(const HloModule&);
 
   ModuleAnnotation top_level;
-  absl::flat_hash_map<std::string_view, KernelAnnotation> kernels;
+  absl::flat_hash_map<absl::string_view, KernelAnnotation> kernels;
 };
 
 //===----------------------------------------------------------------------===//
@@ -104,7 +103,7 @@ class ScopedModuleAnnotations {
 const ModuleAnnotations* GetCurrentModuleAnnotations();
 
 std::optional<tsl::profiler::ScopedAnnotation> GetKernelAnnotation(
-    std::string_view profile_annotation);
+    absl::string_view profile_annotation);
 
 }  // namespace xla::gpu
 

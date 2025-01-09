@@ -35,7 +35,7 @@ std::vector<std::pair<string, AttrValue>> GetCommonAttributes() {
   return commonAttributes;
 }
 
-NodeDef *MakeNode(StringPiece node_type, std::vector<int> params,
+NodeDef *MakeNode(absl::string_view node_type, std::vector<int> params,
                   string input_node, MutableGraphView *graph) {
   std::vector<NodeDef *> node_params;
   for (int param : params) {
@@ -50,7 +50,7 @@ NodeDef *MakeNode(StringPiece node_type, std::vector<int> params,
                               graph);
 }
 
-NodeDef *MakeNonConstNode(StringPiece node_type,
+NodeDef *MakeNonConstNode(absl::string_view node_type,
                           std::vector<DataType> param_dtypes, string input_node,
                           MutableGraphView *graph) {
   std::vector<NodeDef *> node_params;
@@ -68,7 +68,7 @@ NodeDef *MakeNonConstNode(StringPiece node_type,
 
 NodeDef *MakeCacheNode(string input_node, MutableGraphView *graph) {
   NodeDef *node_filename =
-      graph_utils::AddScalarConstNode<StringPiece>("", graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("", graph);
   return graph_utils::AddNode("", "CacheDataset",
                               {std::move(input_node), node_filename->name()},
                               GetCommonAttributes(), graph);

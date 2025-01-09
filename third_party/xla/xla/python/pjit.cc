@@ -26,7 +26,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <thread>  // NOLINT
 #include <unordered_map>
 #include <utility>
@@ -35,7 +34,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -131,10 +129,12 @@ class PjitFunctionCache {
 
   // We include as part of the cache key `global_cache_key` (and any other
   // fields that aren't subsumed by the CallSignature we compute for each call).
-  std::shared_ptr<Cache> Lookup(nb::handle function,
-                                nb::object global_cache_key);
+  static std::shared_ptr<Cache> Lookup(
+      xla::nb_class_ptr<PjitFunctionCache> self, nb::handle function,
+      nb::object global_cache_key);
   std::shared_ptr<Cache> DefaultCache();
 
+  // These methods require the GIL or the object's lock in no-GIL mode.
   int Size() const { return lru_list_.Size(); }
   int Capacity() const { return lru_list_.Capacity(); }
   void Clear() {
@@ -192,10 +192,14 @@ class PjitFunctionCache {
     std::optional<nb::weakref> weakref;
   };
 
+  // lru_list_ and functions_ are protected by the GIL in GIL mode, and by the
+  // self object lock in freethreading mode.
   Cache::LRUList lru_list_;
-  absl::Mutex mu_;  // Non-trivial hashes need to be mutex locked.
-  // ABSL containers are not exception safe:
+  // We use std::unordered_map because ABSL containers are not exception safe:
   std::unordered_map<Key, std::unique_ptr<Value>, absl::Hash<Key>> functions_;
+  // mu_ prevents concurrent insertions into functions_ if the gil or critical
+  // section lock is released during insertion.
+  absl::Mutex mu_;
 };
 
 PjitFunctionCache::PjitFunctionCache(int capacity) : lru_list_(capacity) {}
@@ -204,31 +208,38 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
   return std::make_shared<Cache>(&lru_list_);
 }
 
-std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
-    nb::handle function,
+/*static*/ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
+    xla::nb_class_ptr<PjitFunctionCache> self, nb::handle function,
     nb::object global_cache_key) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  // In no-GIL mode, a critical section on self plays the same role that
+  // the GIL plays in GIL mode.
+  nb::ft_object_guard lock(self);
   {
-    // Because the gil can be released during cache insertion, this forces
-    // the lock order to be mu_ then gil so we must release the gil first.
+    // Because the gil (or the critical section lock) can be released during
+    // cache insertion, this forces the lock order to be mu_ then gil so we
+    // must release the gil first.
     nb::gil_scoped_release release;
     // Acquire a mutex to avoid problems where the gil is released during
     // cache insertion and then a second thread invalidates the cache order.
-    mu_.Lock();
+    self->mu_.Lock();
   }
-  absl::Cleanup unlock = [this]() ABSL_UNLOCK_FUNCTION(mu_) { mu_.Unlock(); };
+  absl::Cleanup unlock = [&self]() ABSL_UNLOCK_FUNCTION(self->mu_) {
+    self->mu_.Unlock();
+  };
   Key key;
   key.function = function;
   key.global_cache_key = global_cache_key;
-  auto insert = functions_.emplace(key, nullptr);
+  auto insert = self->functions_.emplace(key, nullptr);
   if (!insert.second) {
     return insert.first->second->cache;
   }
-  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
+  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&self->lru_list_);
   auto callback =
-      nb::cpp_function([this, key{std::move(key)}](nb::handle weakref) {
-        auto it = functions_.find(key);
-        if (it != functions_.end()) {
-          functions_.erase(it);
+      nb::cpp_function([self, key{std::move(key)}](nb::handle weakref) {
+        nb::ft_object_guard lock(self);
+        auto it = self->functions_.find(key);
+        if (it != self->functions_.end()) {
+          self->functions_.erase(it);
         }
       });
   PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
@@ -241,7 +252,7 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
     // `function` is not weak-referenceable. Don't bother adding it to the
     // shared cache in that case; the `jit` object will hold the only shared
     // reference to the cache entry.
-    functions_.erase(insert.first);
+    self->functions_.erase(insert.first);
   }
   return cache;
 }
@@ -254,7 +265,7 @@ class PjitFunction {
                nb::object global_cache_key,
                xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
                nb::callable shard_arg_fallback,
-               std::shared_ptr<PjitFunctionCache> cache);
+               xla::nb_class_ptr<PjitFunctionCache> cache);
   ~PjitFunction();
 
   PjitFunction(const PjitFunction&) = delete;
@@ -301,11 +312,22 @@ class PjitFunction {
     return static_argnames_;
   }
   const nb::object& global_cache_key() const { return global_cache_key_; }
-  const std::shared_ptr<PjitFunctionCache>& cache() const { return cache_; }
+  const xla::nb_class_ptr<PjitFunctionCache>& cache() const { return cache_; }
 
-  int cache_capacity() const { return executables_->Size(); }
+  int cache_capacity() const {
+    nb::ft_object_guard lock(cache_);
+    return executables_->Size();
+  }
 
-  void ClearCache() { executables_->Clear(); }
+  void ClearCache() {
+    nb::ft_object_guard lock(cache_);
+    executables_->Clear();
+  }
+
+  std::shared_ptr<PjitFunctionCache::Cache> executables() {
+    nb::ft_object_guard lock(cache_);
+    return executables_;
+  }
 
   nb::object PythonSignature() {
     if (!fun_.has_value()) {
@@ -337,40 +359,19 @@ class PjitFunction {
 
   xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry_;
   nb::callable shard_arg_fallback_;
-  std::shared_ptr<PjitFunctionCache> cache_;
+  xla::nb_class_ptr<PjitFunctionCache> cache_;
+
+  // In no-GIL mode executables_ is protected by the object lock on cache_,
+  // because it shared an LRU list with cache_.
   std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
-
-// thread-compatible.
-class PjitFunctionStore {
- public:
-  void Insert(PjitFunction* function) { compiled_functions_.insert(function); }
-
-  void Erase(PjitFunction* function) { compiled_functions_.erase(function); }
-
-  void ClearFunctionCache() {
-    for (auto* function : compiled_functions_) {
-      function->ClearCache();
-    }
-    compiled_functions_.clear();
-  }
-
- private:
-  absl::flat_hash_set<PjitFunction*> compiled_functions_;
-};
-
-// Protected by GIL.
-PjitFunctionStore& GetGlobalPjitFunctionStore() {
-  static auto* const store = new PjitFunctionStore();
-  return *store;
-}
 
 PjitFunction::PjitFunction(
     std::string function_name, std::optional<nb::callable> fun,
     nb::callable cache_miss, std::vector<int> static_argnums,
     std::vector<nb::str> static_argnames, nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
-    nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache)
+    nb::callable shard_arg_fallback, xla::nb_class_ptr<PjitFunctionCache> cache)
     : function_name_(std::move(function_name)),
       fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
@@ -386,19 +387,19 @@ PjitFunction::PjitFunction(
     PyUnicode_InternInPlace(&s);
     static_argnames_.push_back(nb::steal<nb::str>(s));
   }
-
-  GetGlobalPjitFunctionStore().Insert(this);
 }
 
 void PjitFunction::InitExecutables() {
+  // Construction of the object hasn't completed yet, so we don't need to hold
+  // the cache lock to mutate executables_.
   if (!fun_.has_value()) {
     executables_ = cache_->DefaultCache();
   } else {
-    executables_ = cache_->Lookup(fun_.value(), global_cache_key_);
+    executables_ = cache_->Lookup(cache_, fun_.value(), global_cache_key_);
   }
 }
 
-PjitFunction::~PjitFunction() { GetGlobalPjitFunctionStore().Erase(this); }
+PjitFunction::~PjitFunction() = default;
 
 void CallShardArgFallback(
     nb::handle arg, nb::handle sharding, nb::handle layout,
@@ -481,7 +482,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         }
         continue;
       } else {
-        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+        CallShardArgFallback(arg, in_shardings[dce_index],
                              in_device_local_layout, shard_arg_fallback,
                              num_args_arrays, keep_alive_objects);
         continue;
@@ -502,8 +503,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       TF_ASSIGN_OR_RETURN(auto arr_layout, py_array.ifrt_array()->layout());
       xla::Layout in_xc_layout = nb::cast<xla::Layout>(
           in_device_local_layout.attr("_to_xla_layout")(py_array.dtype()));
-      if (in_xc_layout != GetXlaLayoutUnsafe(arr_layout)) {
-        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+      if (in_xc_layout != arr_layout->xla_layout()) {
+        CallShardArgFallback(arg, in_shardings[dce_index],
                              in_device_local_layout, shard_arg_fallback,
                              num_args_arrays, keep_alive_objects);
         continue;
@@ -511,16 +512,16 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     }
 
     if (sharding.type().ptr() == jax::PmapSharding::type().ptr()) {
-      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           in_device_local_layout, shard_arg_fallback,
-                           num_args_arrays, keep_alive_objects);
+      CallShardArgFallback(arg, in_shardings[dce_index], in_device_local_layout,
+                           shard_arg_fallback, num_args_arrays,
+                           keep_alive_objects);
       continue;
     }
 
     if (sharding_num_devices != num_global_devices) {
-      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
-                           in_device_local_layout, shard_arg_fallback,
-                           num_args_arrays, keep_alive_objects);
+      CallShardArgFallback(arg, in_shardings[dce_index], in_device_local_layout,
+                           shard_arg_fallback, num_args_arrays,
+                           keep_alive_objects);
       continue;
     }
 
@@ -660,12 +661,15 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
 
   VLOG(2) << "CallSignature:\n" << call_signature.DebugString();
   bool inserted = false;
-  std::shared_ptr<PjitCacheEntry> cache_entry =
-      executables_->GetOrCreateIfAbsent(
-          call_signature, [this, &inserted](const CallSignature& unused) {
-            inserted = true;
-            return std::make_shared<PjitCacheEntry>(pytree_registry_.get());
-          });
+  std::shared_ptr<PjitCacheEntry> cache_entry;
+  {
+    nb::ft_object_guard lock(cache_);
+    cache_entry = executables_->GetOrCreateIfAbsent(
+        call_signature, [this, &inserted](const CallSignature& unused) {
+          inserted = true;
+          return std::make_shared<PjitCacheEntry>(pytree_registry_.get());
+        });
+  }
 
   if (!cache_entry->compilation_complete.HasBeenNotified()) {
     // In case of several threads attempting to compile the executable, only
@@ -698,6 +702,7 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
       cache_entry->compilation_complete.Notify();
 
       if (remove_cache) {
+        nb::ft_object_guard lock(cache_);
         executables_->Remove(call_signature);
       }
 
@@ -749,7 +754,6 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
   }
 
   auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry->executable->client();
 
   // Convert the ifrt::Array objects to PyArray.
   int num_outputs = output_arrays.size();
@@ -806,12 +810,13 @@ absl::Status PjitFunction::ComputeCallSignature(
 
   signature.default_device = GetDefaultDevice();
   signature.jax_enable_x64 = jax_enable_x64;
-  signature.jax_enable_memories = GetEnableMemories();
 
   auto& dynamic_arg_signatures = signature.dynamic_arg_signatures;
   dynamic_arg_signatures.reserve(flat_dynamic_args.size());
   auto& dynamic_arg_shardings = signature.dynamic_arg_shardings;
   dynamic_arg_shardings.reserve(flat_dynamic_args.size());
+  auto& dynamic_arg_layouts = signature.dynamic_arg_layouts;
+  dynamic_arg_layouts.reserve(flat_dynamic_args.size());
 
   for (nb::handle arg : flat_dynamic_args) {
     TF_ASSIGN_OR_RETURN(auto arg_signature,
@@ -823,9 +828,16 @@ absl::Status PjitFunction::ComputeCallSignature(
     if (arg.type().ptr() == xla::PyArray::type().ptr()) {
       auto py_array = nb::borrow<xla::PyArray>(arg);
       signature.dynamic_arg_shardings.push_back(py_array.sharding());
+      auto layout = py_array.layout();
+      if (absl::IsUnimplemented(layout.status())) {
+        signature.dynamic_arg_layouts.push_back(nullptr);
+      } else {
+        signature.dynamic_arg_layouts.push_back(*std::move(layout));
+      }
       signature.committed_args.push_back(py_array.committed());
     } else {
       signature.dynamic_arg_shardings.push_back(nb::none());
+      signature.dynamic_arg_layouts.push_back(nullptr);
       signature.committed_args.push_back(false);
     }
   }
@@ -924,7 +936,63 @@ struct PjitFunctionObject {
 #endif                 // PY_VERSION_HEX < 0x030C0000
   vectorcallfunc vectorcall;
   PjitFunction fun;
+
+  // Doubly-linked list of PjitFunctionObjects, protected by
+  // PjitFunctionStore::mu_ or the GIL in GIL mode.
+  PjitFunctionObject* next;
+  PjitFunctionObject* prev;
 };
+
+// Contains a list of all PjitFunctionObjects.
+// Thread-safe.
+class PjitFunctionStore {
+ public:
+  void Insert(PjitFunctionObject* o) {
+    nb::ft_lock_guard lock(mu_);
+    o->next = compiled_functions_;
+    o->prev = nullptr;
+    if (o->next) {
+      o->next->prev = o;
+    }
+    compiled_functions_ = o;
+  }
+
+  void Remove(PjitFunctionObject* o) {
+    nb::ft_lock_guard lock(mu_);
+    if (o->next) {
+      o->next->prev = o->prev;
+    }
+    if (o->prev) {
+      o->prev->next = o->next;
+    } else {
+      compiled_functions_ = o->next;
+    }
+  }
+
+  void ClearCaches() {
+    std::vector<
+        std::pair<nb::object, std::shared_ptr<PjitFunctionCache::Cache>>>
+        caches;
+    {
+      nb::ft_lock_guard lock(mu_);
+      for (PjitFunctionObject* fn = compiled_functions_; fn != nullptr;
+           fn = fn->next) {
+        caches.emplace_back(fn->fun.cache(), fn->fun.executables());
+      }
+    }
+    for (auto& [cache, executables] : caches) {
+      nb::ft_object_guard lock(cache);
+      executables->Clear();
+    }
+  };
+
+ private:
+  // Protected by the GIL in GIL mode, and by mu_ in freethreading mode.
+  nb::ft_mutex mu_;
+  PjitFunctionObject* compiled_functions_;
+};
+
+PjitFunctionStore pjit_function_store;
 
 PyObject* PjitFunction_Type = nullptr;
 
@@ -991,6 +1059,7 @@ void PjitFunction_tp_dealloc(PyObject* self) {
   PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
+  pjit_function_store.Remove(o);
   PyObject_ClearWeakRefs(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
@@ -1061,8 +1130,8 @@ static PyGetSetDef PjitFunction_tp_getset[] = {
 PyObject* PjitFunction_tp_repr(PyObject* self) {
   try {
     const std::string& repr = absl::StrFormat(
-        "<PjitFunction of %s>",
-        nb::cast<std::string_view>(nb::repr(nb::getattr(self, "__wrapped__"))));
+        "<PjitFunction of %s>", nb::cast<absl::string_view>(nb::repr(
+                                    nb::getattr(self, "__wrapped__"))));
     return PyUnicode_FromString(repr.c_str());
   } catch (...) {
     // Ignore all errors when accessing a repr.
@@ -1078,7 +1147,9 @@ void InitializePjitFunction(
     std::vector<int> static_argnums, std::vector<nb::str> static_argnames,
     nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
-    nb::callable shard_arg_fallback, std::shared_ptr<PjitFunctionCache> cache) {
+    nb::callable shard_arg_fallback,
+    xla::nb_class_ptr<PjitFunctionCache> cache) {
+  fn_obj->next = fn_obj->prev = nullptr;
   if (nb::isinstance<nb::list>(global_cache_key)) {
     global_cache_key = nb::tuple(global_cache_key);
   }
@@ -1090,6 +1161,10 @@ void InitializePjitFunction(
   // Handled separately because it is not exception safe to call this
   // in the constructor because it leaves the object improperly constructed.
   fn_obj->fun.InitExecutables();
+
+  // Only add the executable to the store after executables_ has been
+  // initialized. We want only fully constructed executables in the store.
+  pjit_function_store.Insert(fn_obj);
 }
 
 nb::object MakePjitFunction(
@@ -1098,12 +1173,12 @@ nb::object MakePjitFunction(
     std::vector<nb::str> static_argnames, nb::object global_cache_key,
     xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry,
     nb::callable shard_arg_fallback,
-    std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
+    std::optional<xla::nb_class_ptr<PjitFunctionCache>> cache) {
   nb::object obj = nb::steal<nb::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
   if (!cache) {
-    cache = std::make_shared<PjitFunctionCache>(
+    cache = xla::make_nb_class<PjitFunctionCache>(
         PjitFunctionCache::kDefaultCapacity);
   }
   InitializePjitFunction(
@@ -1152,19 +1227,20 @@ void BuildPjitSubmodule(nb::module_& m) {
   nb::class_<PjitFunctionCache> cache(m, "PjitFunctionCache");
   cache.def(nb::init<int>(),
             nb::arg("capacity") = PjitFunctionCache::kDefaultCapacity);
-  cache.def("size", &PjitFunctionCache::Size);
-  cache.def("capacity", &PjitFunctionCache::Capacity);
-  cache.def("clear", &PjitFunctionCache::Clear);
-  cache.def_static("clear_all",
-                   []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
-  cache.def("__getstate__",
-            // Pickles as an empty cache; the client can repopulate as needed.
-            [](const PjitFunctionCache& cache) {
-              nb::dict pickle;
-              pickle["version"] = kPjitFunctionPickleVersion;
-              pickle["capacity"] = cache.Capacity();
-              return pickle;
-            });
+  cache.def("size", &PjitFunctionCache::Size, nb::lock_self());
+  cache.def("capacity", &PjitFunctionCache::Capacity, nb::lock_self());
+  cache.def("clear", &PjitFunctionCache::Clear, nb::lock_self());
+  cache.def_static("clear_all", []() { pjit_function_store.ClearCaches(); });
+  cache.def(
+      "__getstate__",
+      // Pickles as an empty cache; the client can repopulate as needed.
+      [](const PjitFunctionCache& cache) {
+        nb::dict pickle;
+        pickle["version"] = kPjitFunctionPickleVersion;
+        pickle["capacity"] = cache.Capacity();
+        return pickle;
+      },
+      nb::lock_self());
   cache.def("__setstate__",
             [](PjitFunctionCache* cache, const nb::dict& pickle) {
               int version = nb::cast<int>(pickle["version"]);
@@ -1256,8 +1332,8 @@ void BuildPjitSubmodule(nb::module_& m) {
                 nb::handle(pickle["pytree_registry"].ptr()));
         nb::callable shard_arg_fallback =
             nb::cast<nb::callable>(pickle["shard_arg_fallback"]);
-        std::shared_ptr<PjitFunctionCache> cache =
-            nb::cast<std::shared_ptr<PjitFunctionCache>>(pickle["cache"]);
+        xla::nb_class_ptr<PjitFunctionCache> cache =
+            nb::cast<xla::nb_class_ptr<PjitFunctionCache>>(pickle["cache"]);
         InitializePjitFunction(
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
             std::move(function_name), std::move(fun), std::move(cache_miss),
@@ -1290,7 +1366,7 @@ void BuildPjitSubmodule(nb::module_& m) {
          nb::callable cache_miss, std::vector<int> static_argnums,
          std::vector<nb::str> static_argnames, nb::object global_cache_key,
          nb::object pytree_registry, nb::callable shard_arg_fallback,
-         std::optional<std::shared_ptr<PjitFunctionCache>> cache) {
+         std::optional<xla::nb_class_ptr<PjitFunctionCache>> cache) {
         xla::nb_class_ptr<xla::PyTreeRegistry> registry =
             nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pytree_registry.ptr()));

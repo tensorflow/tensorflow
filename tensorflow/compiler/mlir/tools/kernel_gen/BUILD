@@ -3,12 +3,12 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
     "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
+)
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -119,7 +119,9 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:CodeGen",
@@ -135,6 +137,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@local_xla//xla/service/llvm_ir:llvm_command_line_options",
     ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
@@ -198,7 +201,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -244,7 +247,7 @@ cc_library(
         "@llvm-project//mlir:mlir_runner_utils",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",

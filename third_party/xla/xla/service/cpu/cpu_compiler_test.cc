@@ -10,18 +10,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
-#include "xla/service/platform_util.h"
-#include "xla/shape.h"
-#include "xla/tests/new_hlo_test_base.h"
-#include "xla/tests/pjrt_client_registry.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "tsl/platform/statusor.h"
@@ -31,56 +27,52 @@ namespace xla {
 namespace cpu {
 namespace {
 
-std::unique_ptr<HloRunnerInterface> CreateHloRunner() {
-  if (!ShouldUsePjRt()) {
-    return std::make_unique<HloRunner>(
-        PlatformUtil::GetDefaultPlatform().value());
-  }
+using CpuCompilerTest = HloPjRtTestBase;
 
-  PjRtClientTestFactoryRegistry& pjrt_registry =
-      GetGlobalPjRtClientTestFactory();
-  std::unique_ptr<PjRtClient> client = pjrt_registry.Get()().value();
-  PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFn
-      device_shape_representation_fn =
-          pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
-  PjRtClientTestFactoryRegistry::DeviceShapeSizeFn device_shape_size_fn =
-      pjrt_registry.GetDeviceShapeSizeFn(client.get());
-  return std::make_unique<HloRunnerPjRt>(
-      std::move(client), [](const Shape& host_shape) { return host_shape; },
-      device_shape_size_fn);
-}
-
-class CpuCompilerTest : public NewHloTestBase {
- public:
-  CpuCompilerTest() : NewHloTestBase(CreateHloRunner(), CreateHloRunner()) {}
-};
+constexpr absl::string_view kCpuCompilerStacktraceMetricName =
+    "/xla/service/cpu/compiler_stacktrace_count";
 
 TEST_F(CpuCompilerTest, RecordsStreamzStackTrace) {
-  const char* hlo_text = R"(
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
     HloModule test
     ENTRY main {
       p = f32[10]{0} parameter(0)
       ROOT neg = f32[10]{0} negate(p)
     }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  )"));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
-
-  const std::string kCpuCompilerStacktraceMetricName =
-      "/xla/service/cpu/compiler_stacktrace_count";
 
   tsl::monitoring::CollectionRegistry::CollectMetricsOptions options;
   std::unique_ptr<tsl::monitoring::CollectedMetrics> metrics =
       tsl::monitoring::CollectionRegistry::Default()->CollectMetrics(options);
-  EXPECT_TRUE(metrics->point_set_map.find(kCpuCompilerStacktraceMetricName) !=
-              metrics->point_set_map.end());
+
+  const auto it = metrics->point_set_map.find(
+      std::string(kCpuCompilerStacktraceMetricName));
+  ASSERT_TRUE(it != metrics->point_set_map.end());
 
   // Since Streamz is recorded every call, we expect at least one point.
   // All other callers may increment the counter as well.
-  EXPECT_GT(
-      metrics->point_set_map[kCpuCompilerStacktraceMetricName]->points.size(),
-      0);
+  EXPECT_GT(it->second->points.size(), 0);
+}
+
+TEST_F(CpuCompilerTest, CompilationWithLargeConstants) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1000,1000]{1,0} parameter(0)
+  b = f32[1000,1000]{1,0} constant({...})
+  a_plus_b = f32[1000,1000]{1,0} add(a, b)
+  c = f32[1000,1000]{1,0} constant({...})
+  ROOT result = f32[1000,1000]{1,0} add(a_plus_b, c)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 }  // namespace

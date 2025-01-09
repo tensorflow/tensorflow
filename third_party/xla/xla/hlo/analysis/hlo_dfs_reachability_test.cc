@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -123,13 +122,15 @@ TEST_F(HloDfsReachabilityTest, ChannelReachability) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(param, token0, 1));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      param, token0, /*channel_id=*/1, /*is_host_transfer=*/false));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv =
-      builder.AddInstruction(HloInstruction::CreateRecv(shape, token1, 1));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      shape, token1, /*channel_id=*/1, /*is_host_transfer=*/false));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
+      recv, recv->channel_id(), /*is_host_transfer=*/false));
 
   auto module = CreateNewVerifiedModule();
   module->mutable_config().set_use_spmd_partitioning(false);
@@ -143,7 +144,7 @@ TEST_F(HloDfsReachabilityTest, ChannelReachability) {
 
 class HloDfsReachabilityBenchmark {
  public:
-  HloDfsReachabilityBenchmark(int size, std::string_view name) : name_(name) {
+  HloDfsReachabilityBenchmark(int size, absl::string_view name) : name_(name) {
     Shape r0f32 = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(name);
 

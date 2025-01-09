@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/common/outline_operations.h"
 
-#include <memory>
+#include <cassert>
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"

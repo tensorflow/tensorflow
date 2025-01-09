@@ -29,7 +29,7 @@ namespace tensorflow {
 
 namespace {
 
-absl::Status BuildNoopNode(const Node& source, StringPiece name,
+absl::Status BuildNoopNode(const Node& source, absl::string_view name,
                            const string& device, Graph* graph, Node** node) {
   NodeDefBuilder builder(name, "NoOp", NodeDebugInfo(source));
   if (!device.empty()) {
@@ -45,7 +45,7 @@ absl::Status BuildNoopNode(const Node& source, StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status BuildIdentityNNode(const Node& source, StringPiece name,
+absl::Status BuildIdentityNNode(const Node& source, absl::string_view name,
                                 const string& device, Graph* graph,
                                 std::vector<NodeDefBuilder::NodeOut>& inputs,
                                 Node** node) {
@@ -65,7 +65,7 @@ absl::Status BuildIdentityNNode(const Node& source, StringPiece name,
   return absl::OkStatus();
 }
 
-absl::Status BuildIdentityNode(const Node& source, StringPiece name,
+absl::Status BuildIdentityNode(const Node& source, absl::string_view name,
                                const string& device, Graph* graph,
                                std::vector<NodeDefBuilder::NodeOut>& inputs,
                                Node** node) {

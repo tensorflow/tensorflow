@@ -25,7 +25,6 @@ limitations under the License.
 #include <set>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -33,9 +32,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/printer.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
@@ -61,7 +60,7 @@ StringHandle RegisterString(const std::string& str) {
 
 // Nsight Systems supports some basic HTML markup in annotation strings. This
 // escaping stops things like <module> from disappearing.
-std::ostream& PrintEscaped(std::ostream& os, std::string_view str) {
+std::ostream& PrintEscaped(std::ostream& os, absl::string_view str) {
   for (char c : str) {
     switch (c) {
       case '<':
@@ -92,7 +91,7 @@ HloPrintOptions PrintOptions() {
 // Sortable struct representing a frame in the Python stacktrace attached to a
 // given instruction.
 struct StackFrame {
-  std::string_view file_name, function_name, op_name;
+  absl::string_view file_name, function_name, op_name;
   int line, column;
 
  private:
@@ -126,7 +125,7 @@ struct StackFrame {
 class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
  public:
   explicit SourceLocationVisitor(
-      std::string_view op_name_prefix_to_remove__ = {})
+      absl::string_view op_name_prefix_to_remove__ = {})
       : op_name_prefix_to_remove_{op_name_prefix_to_remove__} {}
 
   std::string AsString(int32_t common_prefix) const {
@@ -161,7 +160,7 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     // sections of the name are common to all operations in the kernel, and the
     // individual call stack frames in the kernel-level annotation show the
     // final parts of the op_name that have not already been shown.
-    std::string_view op_name = meta.op_name();
+    absl::string_view op_name = meta.op_name();
     if (!op_name.empty()) {
       op_name = op_name.substr(op_name_prefix_to_remove_.size());
     }
@@ -234,7 +233,7 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     }
     oss << '\n';
   }
-  std::string_view op_name_prefix_to_remove_{};
+  absl::string_view op_name_prefix_to_remove_{};
   std::set<std::vector<StackFrame>> location_set_{};
 };
 
@@ -255,8 +254,8 @@ absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
 // Split `a` and `b` by `delim` into two lists of possibly-empty tokens, then
 // rejoin the first N of those lists that match by `delim`. Note: it is
 // unspecified which argument the return value points into.
-std::string_view LongestPrefix(std::string_view a, std::string_view b,
-                               char delim = '/') {
+absl::string_view LongestPrefix(absl::string_view a, absl::string_view b,
+                                char delim = '/') {
   auto split_a = absl::StrSplit(a, delim);
   auto split_b = absl::StrSplit(b, delim);
 
@@ -270,7 +269,7 @@ std::string_view LongestPrefix(std::string_view a, std::string_view b,
     common_prefix_len += a_it->size();           // length of a matching token
   }
 
-  return std::string_view(a.data(), common_prefix_len);
+  return absl::string_view(a.data(), common_prefix_len);
 }
 
 // Find the longest prefix among instructions' op_name metadata
@@ -286,15 +285,15 @@ class OpNamePrefixVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
-  std::string_view longest_op_name_prefix() const {
+  absl::string_view longest_op_name_prefix() const {
     return prefix_.value_or("");
   }
 
  private:
-  std::optional<std::string_view> prefix_;
+  std::optional<absl::string_view> prefix_;
 };
 
-std::string_view GetLongestOpNamePrefix(const HloModule& mod) {
+absl::string_view GetLongestOpNamePrefix(const HloModule& mod) {
   // In the presence of (at least) debug callbacks, calling Accept on the root
   // instruction of the module may not reach all instructions in the module.
   OpNamePrefixVisitor visitor{};
@@ -308,7 +307,7 @@ std::string_view GetLongestOpNamePrefix(const HloModule& mod) {
   return visitor.longest_op_name_prefix();
 }
 
-std::string_view GetLongestOpNamePrefix(const HloInstruction& inst) {
+absl::string_view GetLongestOpNamePrefix(const HloInstruction& inst) {
   OpNamePrefixVisitor visitor{};
   if (!VisitInstAndCalledButNotOperands(visitor, inst).ok()) {
     return {};
@@ -316,7 +315,7 @@ std::string_view GetLongestOpNamePrefix(const HloInstruction& inst) {
   return visitor.longest_op_name_prefix();
 }
 
-std::string MakeTitle(const HloModule& mod, std::string_view longest_prefix) {
+std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
   if (longest_prefix.empty()) {
     return absl::StrFormat("XlaModule:#hlo_module=%s,program_id=%d#",
                            mod.name(), mod.unique_id());
@@ -379,7 +378,7 @@ std::pair<StringHandle, int32_t> GetLongestSourceLocationPrefix(
 }
 }  // namespace
 
-ModuleAnnotation::ModuleAnnotation(std::string_view module_name_)
+ModuleAnnotation::ModuleAnnotation(absl::string_view module_name_)
     : title_str_(absl::StrFormat("XlaModule:#hlo_module=%s#", module_name_)),
       title_(RegisterString(title_str_)),
       module_name_(RegisterString(std::string{module_name_})) {}
@@ -441,12 +440,12 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
 }
 
 namespace {
-std::string MakeKernelName(std::string_view prefix,
+std::string MakeKernelName(absl::string_view prefix,
                            const HloInstruction& inst) {
   // Sometimes an instruction doesn't have metadata, but the computations that
   // it calls do have metadata. Consider all of those metadata op_name entries
   // and attach the longest prefix to this launch.
-  std::string_view op_name = GetLongestOpNamePrefix(inst);
+  absl::string_view op_name = GetLongestOpNamePrefix(inst);
   if (op_name.empty()) {
     return absl::StrFormat("Thunk:#hlo_op=%s#", inst.name());
   } else if (op_name.substr(0, prefix.size()) != prefix) {
@@ -477,7 +476,7 @@ KernelAnnotation::KernelAnnotation(const ModuleAnnotation& module_annotation,
       called_hlo_dump(RegisterString("\n" + CalledInstructionsAsString(inst))) {
 }
 
-ModuleAnnotations::ModuleAnnotations(std::string_view module_name)
+ModuleAnnotations::ModuleAnnotations(absl::string_view module_name)
     : top_level(module_name) {}
 
 uint64_t KernelAnnotation::NvtxSchemaId() {
@@ -549,7 +548,7 @@ ScopedModuleAnnotations::~ScopedModuleAnnotations() {
 }
 
 std::optional<ScopedAnnotation> GetKernelAnnotation(
-    std::string_view profile_annotation) {
+    absl::string_view profile_annotation) {
   if (profile_annotation.empty()) {
     return {};
   }

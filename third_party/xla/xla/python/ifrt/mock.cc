@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include <gmock/gmock.h>
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -77,9 +78,10 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
     return delegated_->shared_ptr_sharding();
   });
   ON_CALL(*this, layout)
-      .WillByDefault([this]() -> absl::StatusOr<std::unique_ptr<PjRtLayout>> {
-        return delegated_->layout();
-      });
+      .WillByDefault(
+          [this]() -> absl::StatusOr<std::shared_ptr<const PjRtLayout>> {
+            return delegated_->layout();
+          });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_))
       .WillByDefault([this](ArrayCopySemantics semantics) {
         return delegated_->DisassembleIntoSingleDeviceArrays(semantics);
@@ -109,27 +111,30 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
 MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
     : delegated_(std::move(delegated)) {
   ON_CALL(*this, MakeArrayFromHostBuffer)
-      .WillByDefault([this](
-                         const void* data, DType dtype, Shape shape,
-                         std::optional<absl::Span<const int64_t>> byte_strides,
-                         std::shared_ptr<const Sharding> sharding,
-                         HostBufferSemantics semantics,
-                         std::function<void()> on_done_with_host_buffer) {
-        return delegated_->MakeArrayFromHostBuffer(
-            data, dtype, std::move(shape), byte_strides, std::move(sharding),
-            semantics, std::move(on_done_with_host_buffer));
-      });
+      .WillByDefault(
+          [this](const void* data, DType dtype, Shape shape,
+                 std::optional<absl::Span<const int64_t>> byte_strides,
+                 absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+                 HostBufferSemantics semantics,
+                 std::function<void()> on_done_with_host_buffer) {
+            return delegated_->MakeArrayFromHostBuffer(
+                data, dtype, std::move(shape), byte_strides,
+                std::move(sharding), semantics,
+                std::move(on_done_with_host_buffer));
+          });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _))
-      .WillByDefault([this](Shape shape,
-                            std::shared_ptr<const Sharding> sharding,
-                            absl::Span<tsl::RCReference<Array>> arrays,
-                            ArrayCopySemantics semantics) {
-        return delegated_->AssembleArrayFromSingleDeviceArrays(
-            std::move(shape), std::move(sharding), arrays, semantics);
-      });
+      .WillByDefault(
+          [this](Shape shape,
+                 absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+                 absl::Span<tsl::RCReference<Array>> arrays,
+                 ArrayCopySemantics semantics) {
+            return delegated_->AssembleArrayFromSingleDeviceArrays(
+                std::move(shape), std::move(sharding), arrays, semantics);
+          });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _))
       .WillByDefault(
-          [this](Shape shape, std::shared_ptr<const Sharding> sharding,
+          [this](Shape shape,
+                 absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                  absl::Span<tsl::RCReference<Array>> arrays,
                  ArrayCopySemantics array_copy_semantics,
                  SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -213,11 +218,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
           [this](const tsl::RCReference<xla::ifrt::DeviceList>& devices) {
             return delegated_->GetTopologyForDevices(devices);
           });
-  ON_CALL(*this, GetDefaultLayoutForDevice)
+  ON_CALL(*this, GetDefaultLayout)
       .WillByDefault([this](xla::ifrt::DType dtype,
                             absl::Span<const int64_t> dims,
-                            xla::ifrt::Device* device) {
-        return delegated_->GetDefaultLayoutForDevice(dtype, dims, device);
+                            xla::ifrt::Device* device,
+                            xla::ifrt::MemoryKind memory_kind) {
+        return delegated_->GetDefaultLayout(dtype, dims, device, memory_kind);
       });
 }
 // LINT.ThenChange()

@@ -52,7 +52,6 @@ except ImportError:
 xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
 )
-xla_client._xla.jax_jit.global_state().enable_memories = False
 
 bfloat16 = xla_client.bfloat16
 # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
@@ -204,8 +203,10 @@ def TestFactory(xla_backend,
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
         for name, fn in custom_calls_testlib.registrations().items():
           xla_client.register_custom_call_target(
-              name, {"execute": fn}, platform="cpu", api_version=1
+              name, fn, platform="cpu", api_version=1
           )
+        for name, val in custom_calls_testlib.type_ids().items():
+          xla_client.register_custom_type_id(name, val, platform="cpu")
         _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
@@ -323,7 +324,9 @@ def TestFactory(xla_backend,
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
       if (
-          self.backend.platform == "tpu" or self.backend.platform == "gpu"
+          self.backend.platform == "tpu"
+          or self.backend.platform == "gpu"
+          or self.backend.platform == "cpu"
       ) and not (cloud_tpu or pathways or pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
@@ -616,6 +619,21 @@ def TestFactory(xla_backend,
           api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
       )
       self._ExecuteAndCompareClose(c, expected=[-1.75])
+
+    def testStatefulCustomCall(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+      ops.CustomCallWithLayout(
+          c,
+          b"stateful",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.int32), (), ()),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_TYPED_FFI)
+      self._ExecuteAndCompareClose(c, expected=[42])
 
     def testCustomCallLookup(self):
       if self.backend.platform != "cpu":
@@ -1600,6 +1618,14 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       c = self._NewComputation()
       arr = NumpyArrayF32([3.3, 12.1])
       ops.Exp(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
+
+    def testExpWithResultAccuracy(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([3.3, 12.1])
+      accuracy = xla_client.ResultAccuracy()
+      accuracy.mode = xla_client.ResultAccuracyMode.DEFAULT
+      ops.Exp(ops.Constant(c, arr), accuracy)
       self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
 
     def testExpm1(self):
@@ -2731,6 +2757,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
     def testLocalDevices(self):
       self.assertNotEmpty(self.backend.local_devices())
+      if self.backend.platform == "cpu":
+        self.assertLen(self.backend.local_devices(), 2)
 
     def testGetAllDevices(self):
       # TODO(hyeontaek): Remove this method once we have a unified API for
@@ -3666,7 +3694,7 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
 
 
 backends = {
-    "cpu": xla_client.make_cpu_client,
+    "cpu": functools.partial(xla_client.make_cpu_client, num_devices=2),
     "gpu": xla_client.make_gpu_client,
 }
 

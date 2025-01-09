@@ -29,27 +29,32 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/core/compiler_plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 
 namespace {
 
+static constexpr int kMaxDisplayCount = 16;
+
 void DumpNode(const LiteRtTensorT& tensor, std::ostream& out) {
-  switch (tensor.type_id) {
+  switch (tensor.Type().first) {
     case kLiteRtRankedTensorType:
-      Dump(tensor.type_detail.ranked_tensor_type, out);
+      Dump(tensor.Type().second.ranked_tensor_type, out);
       break;
     case kLiteRtUnrankedTensorType:
-      Dump(tensor.type_detail.unranked_tensor_type.element_type, out);
+      Dump(tensor.Type().second.unranked_tensor_type.element_type, out);
       break;
     default:
-      out << "UKNOWN_TENSOR_TYPE" << tensor.type_id;
+      out << "UKNOWN_TENSOR_TYPE" << tensor.Type().first;
   }
+  Dump(tensor.Qparams(), out);
 }
 
-void DumpNode(const LiteRtOpT& op, std::ostream& out) { Dump(op.op_code, out); }
+void DumpNode(const LiteRtOpT& op, std::ostream& out) {
+  Dump(op.OpCode(), out);
+}
 
 void DumpSignature(const std::vector<LiteRtTensor>& ins,
                    const std::vector<LiteRtTensor>& outs, std::ostream& out) {
@@ -118,6 +123,45 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflConcatenation:
       out << "TFL_CONCATENATION";
       break;
+    case kLiteRtOpCodeTflSoftmax:
+      out << "TFL_SOFTMAX";
+      break;
+    case kLiteRtOpCodeTflCast:
+      out << "TFL_CAST";
+      break;
+    case kLiteRtOpCodeTflTranspose:
+      out << "TFL_TRANSPOSE";
+      break;
+    case kLiteRtOpCodeTflSin:
+      out << "TFL_SIN";
+      break;
+    case kLiteRtOpCodeTflCos:
+      out << "TFL_COS";
+      break;
+    case kLiteRtOpCodeTflSelect:
+      out << "TFL_SELECT";
+      break;
+    case kLiteRtOpCodeTflSelectV2:
+      out << "TFL_SELECT_V2";
+      break;
+    case kLiteRtOpCodeTflFullyConnected:
+      out << "TFL_FULLY_CONNECTED";
+      break;
+    case kLiteRtOpCodeTflEmbeddingLookup:
+      out << "TFL_EMBEDDING_LOOKUP";
+      break;
+    case kLiteRtOpCodeTflLogicalAnd:
+      out << "TFL_LOGICAL_AND";
+      break;
+    case kLiteRtOpCodeTflLess:
+      out << "TFL_LESS";
+      break;
+    case kLiteRtOpCodeTflGreater:
+      out << "TFL_GREATER";
+      break;
+    case kLiteRtOpCodeTflGelu:
+      out << "TFL_GELU";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -172,17 +216,17 @@ void Dump(const LiteRtTensorT& tensor, std::ostream& out) {
   out << "LiteRtTensor : ";
   DumpNode(tensor, out);
   out << " [ ";
-  if (tensor.defining_op == nullptr) {
+  if (tensor.DefiningOp() == nullptr) {
     out << "*";
   } else {
-    DumpNode(*tensor.defining_op, out);
+    DumpNode(*tensor.DefiningOp(), out);
   }
   out << " ] ";
 
   out << "(";
-  for (auto it = tensor.users.begin(); it < tensor.users.end(); ++it) {
+  for (auto it = tensor.Users().begin(); it < tensor.Users().end(); ++it) {
     DumpNode(**it, out);
-    if (it != tensor.users.end() - 1) {
+    if (it != tensor.Users().end() - 1) {
       out << ", ";
     }
   }
@@ -194,16 +238,16 @@ void Dump(const LiteRtOpT& op, std::ostream& out) {
   out << "LiteRtOp : [ ";
   DumpNode(op, out);
   out << " ] ";
-  DumpSignature(op.inputs, op.outputs, out);
+  DumpSignature(op.Inputs(), op.Outputs(), out);
   out << "\n";
 }
 
 void Dump(const LiteRtSubgraphT& subgraph, std::ostream& out) {
   constexpr absl::string_view kSubgraphTpl =
       "LiteRtSubgraph : [ #ops=%d #tensors=%d ] ";
-  out << absl::StreamFormat(kSubgraphTpl, subgraph.ops.size(),
-                            subgraph.tensors.size());
-  DumpSignature(subgraph.inputs, subgraph.outputs, out);
+  out << absl::StreamFormat(kSubgraphTpl, subgraph.Ops().size(),
+                            subgraph.Tensors().size());
+  DumpSignature(subgraph.Inputs(), subgraph.Outputs(), out);
   out << "\n";
 }
 
@@ -224,7 +268,7 @@ void Dump(const CompilerPlugin& plugin, std::ostream& out) {
   out << "}\n";
 }
 
-void Dump(void* lib_handle, std::ostream& out) {
+void DumpDLL(void* lib_handle, std::ostream& out) {
 #ifndef __ANDROID__
   out << "\n--- Lib Info ---\n";
   if (lib_handle == nullptr) {
@@ -274,91 +318,121 @@ void Dump(void* lib_handle, std::ostream& out) {
 
 void Dump(const LiteRtModelT& model, std::ostream& out) {
   out << absl::StreamFormat("LiteRtModel : [ #subgraphs=%d ]\n",
-                            model.subgraphs.size());
+                            model.Subgraphs().size());
 }
 
 void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
-  if (op.option.value == nullptr) {
+  auto& opts = detail::GetTflOptions(op);
+  if (opts.value == nullptr) {
     out << "null options\n";
     return;
   }
-  switch (op.op_code) {
+  switch (op.OpCode()) {
     case kLiteRtOpCodeTflAdd:
       out << "fused_activation_function: "
-          << op.option.AsAddOptions()->fused_activation_function << "\n";
+          << opts.AsAddOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflMul:
       out << "fused_activation_function: "
-          << op.option.AsMulOptions()->fused_activation_function << "\n";
+          << opts.AsMulOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflBatchMatmul:
-      out << "adj_x: " << op.option.AsBatchMatMulOptions()->adj_x << "\n";
-      out << "adj_y: " << op.option.AsBatchMatMulOptions()->adj_y << "\n";
+      out << "adj_x: " << opts.AsBatchMatMulOptions()->adj_x << "\n";
+      out << "adj_y: " << opts.AsBatchMatMulOptions()->adj_y << "\n";
       out << "asymmetric_quantize_input: "
-          << op.option.AsBatchMatMulOptions()->asymmetric_quantize_inputs
-          << "\n";
+          << opts.AsBatchMatMulOptions()->asymmetric_quantize_inputs << "\n";
       break;
     case kLiteRtOpCodeTflConcatenation:
-      out << "axis: " << op.option.AsConcatenationOptions()->axis << "\n";
+      out << "axis: " << opts.AsConcatenationOptions()->axis << "\n";
       out << "fused_activation_function: "
-          << op.option.AsConcatenationOptions()->fused_activation_function
-          << "\n";
+          << opts.AsConcatenationOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflDiv:
       out << "fused_activation_function: "
-          << op.option.AsDivOptions()->fused_activation_function << "\n";
+          << opts.AsDivOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflFullyConnected:
-      out << "fused_activation_function: "
-          << op.option.AsFullyConnectedOptions()->fused_activation_function
-          << "\n";
       out << "weights_format: "
-          << op.option.AsFullyConnectedOptions()->weights_format << "\n";
-      out << "keep_num_dims: "
-          << op.option.AsFullyConnectedOptions()->keep_num_dims << "\n";
-      out << "quantized_bias_type: "
-          << op.option.AsFullyConnectedOptions()->quantized_bias_type << "\n";
-      out << "asymmetric_quantize_input: "
-          << op.option.AsFullyConnectedOptions()->asymmetric_quantize_inputs
+          << opts.AsFullyConnectedOptions()->weights_format << "\n";
+      out << "keep_num_dims: " << opts.AsFullyConnectedOptions()->keep_num_dims
           << "\n";
+      out << "quantized_bias_type: "
+          << opts.AsFullyConnectedOptions()->quantized_bias_type << "\n";
+      out << "asymmetric_quantize_input: "
+          << opts.AsFullyConnectedOptions()->asymmetric_quantize_inputs << "\n";
+      out << "fused_activation_function: "
+          << opts.AsFullyConnectedOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflSoftmax:
-      out << "beta: " << op.option.AsSoftmaxOptions()->beta << "\n";
+      out << "beta: " << opts.AsSoftmaxOptions()->beta << "\n";
       break;
     case kLiteRtOpCodeTflStridedSlice:
-      out << "begin_mask: " << op.option.AsStridedSliceOptions()->begin_mask
+      out << "begin_mask: " << opts.AsStridedSliceOptions()->begin_mask << "\n";
+      out << "end_mask: " << opts.AsStridedSliceOptions()->end_mask << "\n";
+      out << "ellipsis_mask: " << opts.AsStridedSliceOptions()->ellipsis_mask
           << "\n";
-      out << "end_mask: " << op.option.AsStridedSliceOptions()->end_mask
+      out << "new_axis_mask: " << opts.AsStridedSliceOptions()->new_axis_mask
           << "\n";
-      out << "ellipsis_mask: "
-          << op.option.AsStridedSliceOptions()->ellipsis_mask << "\n";
-      out << "new_axis_mask: "
-          << op.option.AsStridedSliceOptions()->new_axis_mask << "\n";
       out << "shrink_axis_mask: "
-          << op.option.AsStridedSliceOptions()->shrink_axis_mask << "\n";
-      out << "offset: " << op.option.AsStridedSliceOptions()->offset << "\n";
+          << opts.AsStridedSliceOptions()->shrink_axis_mask << "\n";
+      out << "offset: " << opts.AsStridedSliceOptions()->offset << "\n";
       break;
     case kLiteRtOpCodeTflSub:
       out << "fused_activation_function: "
-          << op.option.AsSubOptions()->fused_activation_function << "\n";
+          << opts.AsSubOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflReshape:
       out << "new_shape: ";
-      if (op.option.AsReshapeOptions() != nullptr) {
-        const int32_t* new_shape =
-            op.option.AsReshapeOptions()->new_shape.data();
-        int32_t new_shape_size = op.option.AsReshapeOptions()->new_shape.size();
+      if (opts.AsReshapeOptions() != nullptr) {
+        const int32_t* new_shape = opts.AsReshapeOptions()->new_shape.data();
+        int32_t new_shape_size = opts.AsReshapeOptions()->new_shape.size();
         for (int i = 0; i < new_shape_size; ++i) {
           out << new_shape[i] << " ";
         }
       }
       break;
     case kLiteRtOpCodeTflSum:
-      out << "keepdims: " << op.option.AsReducerOptions()->keep_dims << "\n";
+      out << "keepdims: " << opts.AsReducerOptions()->keep_dims << "\n";
       break;
     default:
-      out << "No options for op code: " << op.op_code;
+      out << "No options for op code: " << op.OpCode();
       break;
   }
 }
+
+void Dump(Quantization quantization, std::ostream& out) {
+  int max_display_count;
+  switch (quantization.first) {
+    case kLiteRtQuantizationNone:
+      return;
+    case kLiteRtQuantizationPerTensor:
+      out << absl::StreamFormat(" <q PerTensor [ .z = %ld, .s = %f ]>",
+                                quantization.second.per_tensor.zero_point,
+                                quantization.second.per_tensor.scale);
+      return;
+    case kLiteRtQuantizationPerChannel:
+      max_display_count =
+          kMaxDisplayCount < quantization.second.per_channel.num_channels
+              ? kMaxDisplayCount
+              : quantization.second.per_channel.num_channels;
+      out << absl::StreamFormat(" <q PerChannel [ .z = [ ");
+      for (int i = 0; i < max_display_count; ++i) {
+        out << absl::StreamFormat(
+            "%ld, ", quantization.second.per_channel.zero_points[i]);
+      }
+      out << "...], .s = [ ";
+      for (int i = 0; i < max_display_count; ++i) {
+        out << absl::StreamFormat("%f, ",
+                                  quantization.second.per_channel.scales[i]);
+      }
+      out << "...], ";
+      out << absl::StreamFormat(
+          ".d = %d>", quantization.second.per_channel.quantized_dimension);
+      return;
+    default:
+      out << " <q UNKNOWN>";
+      return;
+  }
+}
+
 }  // namespace litert::internal

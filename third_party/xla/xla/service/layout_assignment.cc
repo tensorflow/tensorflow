@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -658,6 +657,20 @@ absl::Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
   return absl::OkStatus();
 }
 
+absl::Status ResetMemorySpaceInLayout(ShapeLayout& mutable_shape_layout) {
+  Shape shape = mutable_shape_layout.shape();
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
+      &shape, [](Shape* subshape, const ShapeIndex& shape_index) {
+        if (subshape->has_layout() && subshape->IsArray()) {
+          subshape->mutable_layout()->set_memory_space(
+              Layout::kDefaultMemorySpace);
+        }
+        return absl::OkStatus();
+      }));
+  TF_RETURN_IF_ERROR(mutable_shape_layout.CopyLayoutFromShape(shape));
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status LayoutAssignment::AddMandatoryConstraints(
@@ -694,27 +707,18 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
            entry_computation_layout_->AnyLayoutSet()) ||
           (conditional_mismatch_.count(constraints->computation()) == 0 &&
            constraints->computation_constraint().parameter_layout_is_set())) {
-        const ShapeLayout& parameter_layout =
+        ShapeLayout parameter_layout =
             constraints->computation_layout().parameter_layout(
                 instruction->parameter_number());
         // Allow some paramter/result layouts to be unset in the entry
         // computation.
         if (parameter_layout.AnyLayoutIsSet()) {
+          // Clear out memory space in layout. Host offloader will do the
+          // analysis later.
+          TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(parameter_layout));
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
           Shape param_shape = parameter_layout.shape();
-          // Clear out memory space in layout. Host offloader will do the
-          // analysis later.
-          TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
-              &param_shape, [](Shape* subshape, const ShapeIndex& index) {
-                if (!subshape->has_layout() || !subshape->IsArray()) {
-                  return absl::OkStatus();
-                }
-                subshape->mutable_layout()->set_memory_space(
-                    Layout::kDefaultMemorySpace);
-                return absl::OkStatus();
-              }));
-
           TF_RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
           if (reverse_computation_order_) {
             TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
@@ -772,10 +776,6 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           get_channel_constraints(instruction)
               ->LayoutShapeForChannel(buffer_shape, channel_id);
       TF_RETURN_IF_ERROR(SetInstructionLayout(new_buffer_shape, instruction));
-    } else if (instruction->preserve_layout()) {
-      TF_RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction,
-                                              /*mandatory=*/true, /*dfs=*/true,
-                                              /*allow_alias=*/true));
     }
   }
 
@@ -2034,16 +2034,7 @@ absl::Status LayoutAssignment::PropagateResultConstraint(
   // Clear out memory space in layout for entry computation root. Host offloader
   // will do the analysis later and add back the memory space for host outputs.
   if (constraints->computation()->IsEntryComputation()) {
-    Shape result_shape = result_layout.shape();
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
-        &result_shape, [](Shape* subshape, const ShapeIndex& shape_index) {
-          if (subshape->has_layout() && subshape->IsArray()) {
-            subshape->mutable_layout()->set_memory_space(
-                Layout::kDefaultMemorySpace);
-          }
-          return absl::OkStatus();
-        }));
-    TF_RETURN_IF_ERROR(result_layout.CopyLayoutFromShape(result_shape));
+    TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(result_layout));
   }
 
   // Propagate the use constraint of the root instruction up to the logical
@@ -2233,25 +2224,29 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   // layout constraint.
   if (constraints.ResultLayout() != nullptr &&
       constraints.ResultLayout()->LayoutIsSet()) {
+    ShapeLayout result_layout = *constraints.ResultLayout();
+    // Clear out memory space in layout. Host offloader will do the
+    // analysis later.
+    TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(result_layout));
     // Layout assignment at this point only does minor-to-major assignment so
     // tiling info should be ignored here for comparison.
     VLOG(5) << "Computation result layout needs root copying\n";
-    if (!constraints.ResultLayout()->MatchesLayoutInShape(
+    if (!result_layout.MatchesLayoutInShape(
             computation->root_instruction()->shape(),
             /*minor_to_major_only=*/true)) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_root,
-          CreateCopyWithNewLayout(constraints.ResultLayout()->shape(),
+          CreateCopyWithNewLayout(result_layout.shape(),
                                   computation->root_instruction()));
       computation->set_root_instruction(new_root);
     } else {
       // Copy the tiling info/tail_padding_alignment_in_elements specified in
       // result layout.
-      auto copy_tiling = [&constraints](xla::Shape* subshape,
-                                        const xla::ShapeIndex& index) {
+      auto copy_tiling = [&result_layout](xla::Shape* subshape,
+                                          const xla::ShapeIndex& index) {
         if (subshape->IsArray()) {
-          const Shape& result_shape = ShapeUtil::GetSubshape(
-              constraints.ResultLayout()->shape(), index);
+          const Shape& result_shape =
+              ShapeUtil::GetSubshape(result_layout.shape(), index);
           if (result_shape.layout().tiles_size() != 0) {
             subshape->mutable_layout()->mutable_tiles()->assign(
                 result_shape.layout().tiles().begin(),
@@ -2419,8 +2414,7 @@ absl::Status LayoutAssignment::ClearComputationLayouts(
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
-        !IsLayoutConstrainedCollective(instruction) &&
-        !instruction->preserve_layout()) {
+        !IsLayoutConstrainedCollective(instruction)) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -2905,6 +2899,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:

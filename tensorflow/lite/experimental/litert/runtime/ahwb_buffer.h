@@ -17,6 +17,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -31,8 +32,6 @@ typedef struct AHardwareBuffer AHardwareBuffer;
 #endif  // __cplusplus
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
-#include "absl/status/statusor.h"
-
 namespace litert {
 namespace internal {
 
@@ -40,12 +39,12 @@ struct AhwbBuffer {
   AHardwareBuffer* ahwb;
 
   static bool IsSupported();
-  static absl::StatusOr<AhwbBuffer> Alloc(size_t size);
+  static Expected<AhwbBuffer> Alloc(size_t size);
   static void Free(AHardwareBuffer* ahwb);
-  static absl::StatusOr<size_t> GetSize(AHardwareBuffer* ahwb);
-  static absl::StatusOr<void*> Lock(AHardwareBuffer* ahwb,
-                                    LiteRtEvent event = nullptr);
-  static absl::Status Unlock(AHardwareBuffer* ahwb);
+  static Expected<size_t> GetSize(AHardwareBuffer* ahwb);
+  static Expected<void*> Lock(AHardwareBuffer* ahwb,
+                              LiteRtEvent event = nullptr);
+  static Expected<void> Unlock(AHardwareBuffer* ahwb);
 };
 
 }  // namespace internal

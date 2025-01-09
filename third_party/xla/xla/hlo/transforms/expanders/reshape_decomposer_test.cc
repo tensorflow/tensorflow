@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 
-#include <memory>
 #include <optional>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/test.h"

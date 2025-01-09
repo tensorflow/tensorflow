@@ -310,3 +310,53 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
   %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
   return %2 : tensor<20xf32>
 }
+
+// -----
+
+// Breaking test case where tf2xla lowers to a send with a single manual
+// sharding annotation on recv.
+
+// CHECK: HloModule
+
+// CHECK: ENTRY
+func.func @main() -> tensor<1x2xf32> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "", outputs = "_retval0"}} {
+  // CHECK:               %[[AFTER_ALL:.*]] = token[] after-all()
+  // CHECK-NEXT:          %[[RECV:.*]] = (f32[1,2], u32[], token[]) recv(token[] %[[AFTER_ALL]]), channel_id=2, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (f32[1,2], token[]) recv-done((f32[1,2], u32[], token[]) %[[RECV]]), channel_id=2, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = f32[1,2] get-tuple-element((f32[1,2], token[]) %[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]] = token[] get-tuple-element((f32[1,2], token[]) %[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  %0 = mhlo.create_token : !mhlo.token
+  %1:2 = "mhlo.recv"(%0) <{channel_handle = #mhlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_1_retvals_htod_0"}, mhlo.sharding = "\08\04"} : (!mhlo.token) -> (tensor<1x2xf32>, !mhlo.token)
+  return %1#0 : tensor<1x2xf32>
+}
+
+// -----
+
+// Check:
+// - send has a 3 tuple sharding
+// - send-done has a single sharding
+// - recv has a 3 tuple sharding
+// - recv-done has a 2 tuple sharding
+
+// CHECK: HloModule
+
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0", outputs = "_retval0"}} {
+  // CHECK:               %[[ARG0:.*]] = s64[1,2] parameter(0)
+  // CHECK-NEXT:          %[[AFTER_ALL:.*]] = token[] after-all()
+  // CHECK-NEXT:          %[[SEND:.*]] = (s64[1,2], u32[], token[]) send(s64[1,2] %[[ARG0]], token[] %[[AFTER_ALL]]), channel_id=3, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+  // CHECK-NEXT:          %[[SEND_DONE:.*]] = token[] send-done((s64[1,2], u32[], token[]) %[[SEND]]), channel_id=3, is_host_transfer=true, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+  // CHECK-NEXT:          %[[RECV:.*]] = (s64[1,2], u32[], token[]) recv(token[] %[[SEND_DONE]]), channel_id=4, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (s64[1,2], token[]) recv-done((s64[1,2], u32[], token[]) %[[RECV]]), channel_id=4, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = s64[1,2] get-tuple-element((s64[1,2], token[]) %[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]]  = token[] get-tuple-element((s64[1,2], token[]) %[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  %0 = mhlo.create_token : !mhlo.token
+  %1 = "mhlo.send"(%arg0, %0) <{channel_handle = #mhlo.channel_handle<handle = 3, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_0_args_dtoh_0"}, mhlo.sharding = "\08\04"} : (tensor<1x2xi64>, !mhlo.token) -> !mhlo.token
+  %2:2 = "mhlo.recv"(%1) <{channel_handle = #mhlo.channel_handle<handle = 4, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_0_retvals_htod_0"}, mhlo.sharding = "\08\04"} : (!mhlo.token) -> (tensor<1x2xi64>, !mhlo.token)
+  return %2#0 : tensor<1x2xi64>
+}

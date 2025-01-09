@@ -18,9 +18,9 @@
 #include <cstddef>
 #include <map>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 class LiteRtDispatchGraphT {
@@ -53,11 +53,11 @@ class LiteRtDispatchGraphT {
     output_edges_[output_index] = edge_id;
   }
 
-  absl::StatusOr<LiteRtDispatchEdgeId> InputEdge(int input_index) const {
+  litert::Expected<LiteRtDispatchEdgeId> InputEdge(int input_index) const {
     return IoEdge(input_index, input_edges_);
   }
 
-  absl::StatusOr<LiteRtDispatchEdgeId> OutputEdge(int output_index) const {
+  litert::Expected<LiteRtDispatchEdgeId> OutputEdge(int output_index) const {
     return IoEdge(output_index, output_edges_);
   }
 
@@ -71,11 +71,12 @@ class LiteRtDispatchGraphT {
     return map[node_id]++;
   }
 
-  absl::StatusOr<LiteRtDispatchEdgeId> IoEdge(
+  litert::Expected<LiteRtDispatchEdgeId> IoEdge(
       int io_index, const IoIndexToEdgeIdMap& map) const {
     auto iter = map.find(io_index);
     if (iter == map.end()) {
-      return absl::NotFoundError("Unexpected graph input/output index");
+      return litert::Unexpected(kLiteRtStatusErrorNotFound,
+                                "Unexpected graph input/output index");
     }
     return iter->second;
   }

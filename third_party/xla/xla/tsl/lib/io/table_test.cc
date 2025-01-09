@@ -27,10 +27,10 @@ limitations under the License.
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_builder.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace table {

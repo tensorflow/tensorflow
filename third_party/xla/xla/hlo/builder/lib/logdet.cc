@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/logdet.h"
 
+#include <cstdint>
 #include <limits>
-#include <memory>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/lib/arithmetic.h"

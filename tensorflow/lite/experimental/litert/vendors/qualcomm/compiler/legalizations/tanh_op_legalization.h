@@ -33,8 +33,8 @@ class TanhOpLegalization : public Legalization {
  public:
   TanhOpLegalization() = default;
   ~TanhOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<TanhOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<TanhOpLegalization>(); }
+  using Ptr = std::unique_ptr<TanhOpLegalization>;
+  static Ptr Create() { return std::make_unique<TanhOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

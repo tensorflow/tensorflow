@@ -107,7 +107,6 @@ class CudaExecutor : public GpuExecutor {
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;
-  absl::Status TrimGraphMemory() override;
   int cc_major() const { return cc_major_; }
   int cc_minor() const { return cc_minor_; }
 

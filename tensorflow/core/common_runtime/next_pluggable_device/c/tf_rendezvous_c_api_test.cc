@@ -102,7 +102,8 @@ class FakeDeviceManager : public DeviceMgr {
   }
   std::string DebugString() const override { return ""; }
   std::string DeviceMappingString() const override { return ""; }
-  absl::Status LookupDevice(StringPiece name, Device** device) const override {
+  absl::Status LookupDevice(absl::string_view name,
+                            Device** device) const override {
     *device = fake_device_.get();
     return absl::OkStatus();
   }

@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>

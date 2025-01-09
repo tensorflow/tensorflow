@@ -21,7 +21,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdlib>
 
-#include "Eigen/Core"
+#include "xla/backends/cpu/alignment.h"
 
 namespace xla {
 namespace cpu_function_runtime {
@@ -178,10 +178,10 @@ class BufferInfo {
 };
 
 // Align to 64-bytes, to mimic tsl::Allocator::kAllocatorAlignment.
-inline constexpr size_t Align() { return 64; }
+inline constexpr size_t Align() { return xla::cpu::Align(); }
 
 // The minimum alignment of buffers passed to XLA:CPU.
-inline constexpr size_t MinAlign() { return EIGEN_MAX_ALIGN_BYTES; }
+inline constexpr size_t MinAlign() { return xla::cpu::MinAlign(); }
 
 // When declaring variables that will be passed to an XLA instance as input via
 // set_arg_data(), be it a regular input or a resource variable in the graph,

@@ -46,8 +46,6 @@ class TritonFusionNumericsVerifierTest
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(
-        true);
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
     return options;
   }
@@ -84,11 +82,10 @@ class TritonFusionNumericsVerifierTest
   }
 
   AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
-    auto opt_compile_util_or =
+    auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
-    TF_EXPECT_OK(opt_compile_util_or);
-    EXPECT_TRUE(opt_compile_util_or->has_value());
-    return std::move(opt_compile_util_or->value());
+    TF_EXPECT_OK(compile_util_or);
+    return std::move(compile_util_or).value();
   }
 };
 

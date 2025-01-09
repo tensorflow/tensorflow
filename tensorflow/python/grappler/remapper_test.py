@@ -105,7 +105,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     ops.add_to_collection('train_op', model_fn)
     mg = meta_graph.create_meta_graph_def(graph=model_fn.graph)
 
-    # Compute referene
+    # Compute reference
     config = _get_config(remapping_on=False)
     gdef_ref = tf_optimizer.OptimizeGraph(config, mg)
 

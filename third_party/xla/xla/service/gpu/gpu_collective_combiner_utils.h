@@ -17,10 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_COLLECTIVE_COMBINER_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -36,15 +34,15 @@ namespace xla::gpu {
 // `collective_opcode`.
 int64_t ComputeSuggestedCombinerThreshold(
     const HloModule& module, const se::DeviceDescription& device_info,
-    std::function<absl::StatusOr<HloSchedule>(const HloModule*, int64_t,
-                                              int64_t*)>
-        scheduler,
     HloOpcode collective_opcode, int64_t pointer_size);
 
 // Adds information that `instr` has been pipelined to the
 // `CollectiveBackendInfo`. It is up to the caller to decide when to invoke
 // this.
 absl::Status AppendPipelinedInstruction(HloInstruction* instr);
+
+// Returns true if module contains any pipelined instruction. False otherwise.
+bool ContainsPipelinedInstruction(const HloModule& module);
 
 }  // namespace xla::gpu
 

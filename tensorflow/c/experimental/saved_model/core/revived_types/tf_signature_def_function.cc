@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_signature_def_function.h"
 
 #include <memory>
-#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
@@ -37,7 +39,7 @@ TFSignatureDefFunction::TFSignatureDefFunction(
     SignatureDefFunctionMetadata metadata)
     : func_(std::move(func)), metadata_(std::move(metadata)) {}
 
-Status TFSignatureDefFunction::Create(
+absl::Status TFSignatureDefFunction::Create(
     const FunctionDef* function_def,
     std::vector<ImmediateExecutionTensorHandle*> captures,
     SignatureDefFunctionMetadata metadata, ImmediateExecutionContext* ctx,
@@ -47,7 +49,7 @@ Status TFSignatureDefFunction::Create(
       function_def, std::move(captures), ctx, &func));
 
   out->reset(new TFSignatureDefFunction(std::move(func), std::move(metadata)));
-  return Status();
+  return absl::Status();
 }
 
 const SignatureDefFunctionMetadata&
@@ -55,7 +57,7 @@ TFSignatureDefFunction::GetFunctionMetadata() const {
   return metadata_;
 }
 
-Status TFSignatureDefFunction::MakeCallOp(
+absl::Status TFSignatureDefFunction::MakeCallOp(
     absl::Span<AbstractTensorHandle* const> inputs, ImmediateOpPtr* out) const {
   return func_->MakeCallOp(inputs, out);
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -37,21 +38,23 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/coordination/test_device.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/random.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {
 using ::testing::Each;
+using ::testing::Eq;
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedPointwise;
 using ::testing::status::StatusIs;
 
 using tensorflow::CoordinatedJob;
@@ -110,7 +113,8 @@ class TestCoordinationClient : public CoordinationClient {
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
                      method##Response* response, StatusCallback done) \
-      override{done(absl::UnimplementedError(#method "Async"));       \
+      override {                                                      \
+    done(absl::UnimplementedError(#method "Async"));                  \
   }
 
   UNIMPLEMENTED(WaitForAllTasks);
@@ -121,8 +125,8 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
-  UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
+  UNIMPLEMENTED(GetAliveTasks);
 #undef UNIMPLEMENTED
 
 #define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
@@ -133,6 +137,7 @@ class TestCoordinationClient : public CoordinationClient {
   }
 
   UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
+  UNIMPLEMENTED_WITH_CALL_OPTS(Barrier);
   UNIMPLEMENTED_WITH_CALL_OPTS(Heartbeat);
   UNIMPLEMENTED_WITH_CALL_OPTS(ShutdownTask);
   UNIMPLEMENTED_WITH_CALL_OPTS(PollForError);
@@ -202,6 +207,7 @@ class CoordinationBarrierTest : public ::testing::Test {
     return coord_service_.get();
   }
   CoordinatedTask GetTask(int i) { return tasks_[i]; }
+  const std::vector<CoordinatedTask>& GetTasks() { return tasks_; }
 
   // TODO(b/286141652) Refactor this method into a util file.
   std::string GetTaskName(const CoordinatedTask& task) {
@@ -955,6 +961,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
   absl::Status status = absl::OkStatus();
+  absl::Status initial_wait_for_all_tasks_status;
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
@@ -971,8 +978,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
       CreateTestDevice("task1_device0"));
   // Task0 sends device info.
   DeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [](absl::Status s) { ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(
+      task_0, local_devices_0,
+      [&initial_wait_for_all_tasks_status](absl::Status s) {
+        initial_wait_for_all_tasks_status = s;
+      });
 
   // Task0 sends device info again.
   coord_service->WaitForAllTasks(task_0, local_devices_0,
@@ -996,28 +1006,31 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   expected_devices->Add(local_devices_1.device().begin(),
                         local_devices_1.device().end());
   EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
+  EXPECT_THAT(initial_wait_for_all_tasks_status,
+              StatusIs(absl::StatusCode::kCancelled));
 }
 
 TEST_F(CoordinationBarrierTest, Barrier) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Status barrier_status_2;
-  absl::Notification n_0;
-  absl::Notification n_1;
-  absl::Notification n_2;
+  absl::Status barrier_status_0, barrier_status_1, barrier_status_2;
+  int64_t counter_0, counter_1, counter_2;
+  absl::Notification n_0, n_1, n_2;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{}, [&barrier_status_0, &n_0](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &counter_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
+        counter_0 = counter;
         n_0.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
-      /*participating_tasks=*/{}, [&barrier_status_1, &n_1](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &counter_1, &n_1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
+        counter_1 = counter;
         n_1.Notify();
       });
   // Make sure barrier has not been exited prematurely.
@@ -1027,9 +1040,11 @@ TEST_F(CoordinationBarrierTest, Barrier) {
 
   // Last task calls the barrier.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(2),
-      /*participating_tasks=*/{}, [&barrier_status_2, &n_2](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2, &counter_2, &n_2](absl::Status s, int64_t counter) {
         barrier_status_2 = s;
+        counter_2 = counter;
         n_2.Notify();
       });
 
@@ -1039,28 +1054,32 @@ TEST_F(CoordinationBarrierTest, Barrier) {
   TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
   TF_EXPECT_OK(barrier_status_2);
+  EXPECT_EQ(counter_0, 0);
+  EXPECT_EQ(counter_1, 0);
+  EXPECT_EQ(counter_2, 0);
 }
 
 TEST_F(CoordinationBarrierTest, BarrierWithSubsetOfTasks) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Notification n_0;
-  absl::Notification n_1;
+  absl::Status barrier_status_0, barrier_status_1;
+  int64_t counter_0, counter_1;
+  absl::Notification n_0, n_1;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_0, &n_0](absl::Status s) {
+      [&barrier_status_0, &counter_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
+        counter_0 = counter;
         n_0.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_1, &n_1](absl::Status s) {
+      [&barrier_status_1, &counter_1, &n_1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
+        counter_1 = counter;
         n_1.Notify();
       });
 
@@ -1069,24 +1088,29 @@ TEST_F(CoordinationBarrierTest, BarrierWithSubsetOfTasks) {
   EXPECT_TRUE(n_1.HasBeenNotified());
   TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
+  EXPECT_EQ(counter_0, 0);
+  EXPECT_EQ(counter_1, 0);
 }
 
 TEST_F(CoordinationBarrierTest, BarrierWithMismatchedTasks) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
+  absl::Status barrier_status_0, barrier_status_1;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_0](absl::Status s) { barrier_status_0 = s; });
+      [&barrier_status_0](absl::Status s, int64_t counter) {
+        barrier_status_0 = s;
+      });
   // task_1's barrier call specified a conflicting set of tasks (task_2 instead
   // of task_0).
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{GetTask(1), GetTask(2)},
-      [&barrier_status_1](absl::Status s) { barrier_status_1 = s; });
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
 
   EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1095,20 +1119,22 @@ TEST_F(CoordinationBarrierTest, BarrierWithMismatchedTasks) {
 TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTask) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Notification n_0;
-  absl::Notification n_1;
+  absl::Status barrier_status_0, barrier_status_1;
+  absl::Notification n_0, n_1;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_0](absl::Status s) { barrier_status_0 = s; });
+      [&barrier_status_0](absl::Status s, int64_t counter) {
+        barrier_status_0 = s;
+      });
   // Task 2 unexpectedly calls a barrier that it is not participating in.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(2),
+      barrier_id, 0, timeout, GetTask(2),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_1](absl::Status s) { barrier_status_1 = s; });
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
 
   // Barrier should fail for all tasks with the unexpected call.
   EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1118,23 +1144,20 @@ TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTask) {
 TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTaskThreeTasks) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Status barrier_status_2;
-  absl::Notification n_0;
-  absl::Notification n_1;
+  absl::Status barrier_status_0, barrier_status_1, barrier_status_2;
+  absl::Notification n_0, n_1;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_0, &n_0](absl::Status s) {
+      [&barrier_status_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n_0.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_1, &n_1](absl::Status s) {
+      [&barrier_status_1, &n_1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
         n_1.Notify();
       });
@@ -1148,9 +1171,11 @@ TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTaskThreeTasks) {
 
   // Task 2 unexpectedly calls a barrier that it is not participating in.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(2),
+      barrier_id, 0, timeout, GetTask(2),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_2](absl::Status s) { barrier_status_2 = s; });
+      [&barrier_status_2](absl::Status s, int64_t counter) {
+        barrier_status_2 = s;
+      });
 
   // Barrier should fail for task 2 which is not participating in the barrier.
   EXPECT_THAT(barrier_status_2, StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1168,9 +1193,9 @@ TEST_F(CoordinationBarrierTest, BarrierByNonClusterTask) {
   unspecified_task.set_task_id(2);
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), unspecified_task},
-      [&barrier_status_0, &n_0](absl::Status s) {
+      [&barrier_status_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n_0.Notify();
       });
@@ -1187,14 +1212,16 @@ TEST_F(CoordinationBarrierTest, BarrierTimeout) {
   absl::Notification n_0, n_1;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
-      /*participating_tasks=*/{}, [&barrier_status_1, &n_1](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &n_1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
         n_1.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{}, [&barrier_status_0, &n_0](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n_0.Notify();
       });
@@ -1226,8 +1253,9 @@ TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {
   absl::Notification n_0;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{}, [&barrier_status_0, &n_0](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n_0.Notify();
       });
@@ -1237,12 +1265,189 @@ TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {
   n_0.WaitForNotification();
   // Same response should be returned immediately.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{},
-      [&barrier_status_1](absl::Status s) { barrier_status_1 = s; });
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
 
   EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInternal));
   EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(CoordinationBarrierTest, TwoConsecutiveBarriers_Succeed) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  // Corresponds to first barrier for each node.
+  absl::Status barrier_status_0, barrier_status_1, barrier_status_2,
+      // Corresponds to second barrier for each node.
+      barrier_status_0_2, barrier_status_1_2,
+      barrier_status_2_2 = absl::UnknownError("Unknown");
+  int64_t counter_0, counter_1, counter_2, counter_0_2, counter_1_2,
+      counter_2_2 = -1;
+
+  // First barrier.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &counter_0](const absl::Status& s, int64_t counter) {
+        barrier_status_0 = s;
+        counter_0 = counter;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &counter_1](const absl::Status& s, int64_t counter) {
+        barrier_status_1 = s;
+        counter_1 = counter;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2, &counter_2](const absl::Status& s, int64_t counter) {
+        barrier_status_2 = s;
+        counter_2 = counter;
+      });
+
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+  EXPECT_EQ(counter_0, 0);
+  EXPECT_EQ(counter_1, 0);
+  EXPECT_EQ(counter_2, 0);
+
+  // Second barrier.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0_2, &counter_0_2](const absl::Status& s,
+                                          int64_t counter) {
+        barrier_status_0_2 = s;
+        counter_0_2 = counter;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1_2, &counter_1_2](const absl::Status& s,
+                                          int64_t counter) {
+        barrier_status_1_2 = s;
+        counter_1_2 = counter;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2_2, &counter_2_2](const absl::Status& s,
+                                          int64_t counter) {
+        barrier_status_2_2 = s;
+        counter_2_2 = counter;
+      });
+
+  TF_EXPECT_OK(barrier_status_0_2);
+  TF_EXPECT_OK(barrier_status_1_2);
+  TF_EXPECT_OK(barrier_status_2_2);
+  EXPECT_EQ(counter_0_2, 1);
+  EXPECT_EQ(counter_1_2, 1);
+  EXPECT_EQ(counter_2_2, 1);
+}
+
+TEST_F(CoordinationBarrierTest,
+       Barrier_OngoingButMismatchedCounter_InternalError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Status barrier_status_0, barrier_status_1,
+      barrier_status_2 = absl::UnknownError("Unknown");
+  int64_t counter_0, counter_1, counter_2 = -1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &counter_0](const absl::Status& s, int64_t counter) {
+        barrier_status_0 = s;
+        counter_0 = counter;
+      });
+  // Task 1 specifies different counter!
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &counter_1](const absl::Status& s, int64_t counter) {
+        barrier_status_1 = s;
+        counter_1 = counter;
+      });
+
+  EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_EQ(counter_0, 0);
+  EXPECT_EQ(counter_1, 0);  // Specifies the service-side barrier counter.
+
+  // Try failed barrier with correct counter, return same internal error
+  // immediately.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2, &counter_2](const absl::Status& s, int64_t counter) {
+        barrier_status_2 = s;
+        counter_2 = counter;
+      });
+
+  EXPECT_THAT(barrier_status_2, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_EQ(counter_2, 0);
+}
+
+TEST_F(CoordinationBarrierTest, SecondBarrier_UseWrongCounter_InternalError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Status barrier_status_0, barrier_status_1,
+      barrier_status_2 = absl::UnknownError("Unknown");
+  int64_t counter_0, counter_1, counter_2 = -1;
+  absl::Notification timeout_n;
+
+  // First barrier.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [](const absl::Status& s, int64_t counter) {});
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [](const absl::Status& s, int64_t counter) {});
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [](const absl::Status& s, int64_t counter) {});
+
+  // Second barrier.
+  // Specify same as previous barrier: return same result.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &counter_0](const absl::Status& s, int64_t counter) {
+        barrier_status_0 = s;
+        counter_0 = counter;
+      });
+  EXPECT_EQ(counter_0, 0);
+  TF_EXPECT_OK(barrier_status_0);
+
+  // Specify a counter that is too low: fail!
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, -1, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &counter_1](const absl::Status& s, int64_t counter) {
+        barrier_status_1 = s;
+        counter_1 = counter;
+      });
+  EXPECT_EQ(counter_1, 0);  // Specifies the service-side barrier counter.
+  EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInternal));
+
+  // Specify a counter that is too high: fail!
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 2, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_2, &counter_2](const absl::Status& s, int64_t counter) {
+        barrier_status_2 = s;
+        counter_2 = counter;
+      });
+  EXPECT_EQ(counter_2, 0);  // Specifies the service-side barrier counter.
+  EXPECT_THAT(barrier_status_2, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinationBarrierTest, BarrierCancelled) {
@@ -1251,60 +1456,114 @@ TEST_F(CoordinationBarrierTest, BarrierCancelled) {
   absl::Status barrier_status;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{},
-      [&barrier_status](absl::Status s) { barrier_status = s; });
+      [&barrier_status](absl::Status s, int64_t counter) {
+        barrier_status = s;
+      });
   absl::Status cancelled_status =
-      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+      GetCoordinationService()->CancelBarrier(barrier_id, 0, GetTask(0));
 
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kCancelled));
   TF_EXPECT_OK(cancelled_status);
 }
 
-TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier_FutureBarrierFails) {
-  const std::string barrier_id = "cancelled_barrier_id";
-  absl::Duration timeout = absl::Seconds(1);
-  absl::Status barrier_status;
-
-  // Cancel barrier should still succeed.
-  ASSERT_OK(GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0)));
-  // Calling a cancelled barrier should fail instantly.
-  GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{},
-      [&barrier_status](absl::Status s) { barrier_status = s; });
-
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kCancelled));
-}
-
 TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Status barrier_status_2;
+  absl::Status barrier_status_0 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_1 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_2 = absl::UnknownError("Uninitialized error.");
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{},
-      [&barrier_status_0](absl::Status s) { barrier_status_0 = s; });
+      [&barrier_status_0](absl::Status s, int64_t counter) {
+        barrier_status_0 = s;
+      });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{},
-      [&barrier_status_1](absl::Status s) { barrier_status_1 = s; });
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(2),
+      barrier_id, 0, timeout, GetTask(2),
       /*participating_tasks=*/{},
-      [&barrier_status_2](absl::Status s) { barrier_status_2 = s; });
+      [&barrier_status_2](absl::Status s, int64_t counter) {
+        barrier_status_2 = s;
+      });
   // Cancel barrier should fail if barrier has already been passed.
   absl::Status cancelled_status =
-      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+      GetCoordinationService()->CancelBarrier(barrier_id, 0, GetTask(0));
 
-  EXPECT_THAT(cancelled_status,
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(cancelled_status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                                         HasSubstr("already been passed")));
   TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
   TF_EXPECT_OK(barrier_status_2);
+}
+
+TEST_F(CoordinationBarrierTest, CancelBarrier_WrongCounter_FailedPrecondition) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Status barrier_status_0 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_1 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_2 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_cancelled =
+      absl::UnknownError("Uninitialized error.");
+
+  // First barrier passes (counter: 0).
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0](absl::Status s, int64_t counter) {
+        barrier_status_0 = s;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2](absl::Status s, int64_t counter) {
+        barrier_status_2 = s;
+      });
+  TF_ASSERT_OK(barrier_status_0);
+  TF_ASSERT_OK(barrier_status_1);
+  TF_ASSERT_OK(barrier_status_2);
+  // Second barrier (counter: 1)
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_cancelled](absl::Status s, int64_t counter) {
+        barrier_status_cancelled = s;
+      });
+  // Specify low counter (e.g. due to restart on client-side).
+  absl::Status cancelled_status_low_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 0, GetTask(0));
+  EXPECT_THAT(barrier_status_cancelled,
+              StatusIs(absl::StatusCode::kUnknown, HasSubstr("Uninitialized")));
+  // Specify high counter (e.g. due to restart on service-side).
+  absl::Status cancelled_status_high_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 2, GetTask(0));
+  EXPECT_THAT(barrier_status_cancelled,
+              StatusIs(absl::StatusCode::kUnknown, HasSubstr("Uninitialized")));
+  // Specify correct counter.
+  absl::Status cancelled_status_correct_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 1, GetTask(1));
+
+  EXPECT_THAT(barrier_status_cancelled, StatusIs(absl::StatusCode::kCancelled));
+  EXPECT_THAT(cancelled_status_low_counter,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("likely due to a restart")));
+  EXPECT_THAT(cancelled_status_high_counter,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("likely due to a restart")));
+  TF_EXPECT_OK(cancelled_status_correct_counter);
 }
 
 TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
@@ -1320,28 +1579,31 @@ TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
   absl::Notification n_repeat;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{}, [&barrier_status_0, &n0](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0, &n0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n0.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
-      /*participating_tasks=*/{}, [&barrier_status_1, &n1](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1, &n1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
         n1.Notify();
       });
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(2),
-      /*participating_tasks=*/{}, [&barrier_status_2, &n2](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2, &n2](absl::Status s, int64_t counter) {
         barrier_status_2 = s;
         n2.Notify();
       });
   // Repeated call should return the same result.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{},
-      [&barrier_status_repeat, &n_repeat](absl::Status s) {
+      [&barrier_status_repeat, &n_repeat](absl::Status s, int64_t counter) {
         barrier_status_repeat = s;
         n_repeat.Notify();
       });
@@ -1365,9 +1627,11 @@ TEST_F(CoordinationBarrierTest, BarrierFailsIfTaskIsAlreadyInError) {
   absl::Status barrier_status;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{},
-      [&barrier_status](absl::Status s) { barrier_status = s; });
+      [&barrier_status](absl::Status s, int64_t counter) {
+        barrier_status = s;
+      });
 
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
 }
@@ -1379,8 +1643,9 @@ TEST_F(CoordinationBarrierTest, BarrierFailsUponTaskError) {
   absl::Status barrier_status;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
-      /*participating_tasks=*/{}, [&barrier_status, &n0](absl::Status s) {
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status, &n0](absl::Status s, int64_t counter) {
         barrier_status = s;
         n0.Notify();
       });
@@ -1403,32 +1668,33 @@ TEST_F(CoordinationBarrierTest,
   absl::Notification n_2;
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_0, &n_0](absl::Status s) {
+      [&barrier_status_0, &n_0](absl::Status s, int64_t counter) {
         barrier_status_0 = s;
         n_0.Notify();
       });
   // Duplicate call.
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(0),
+      barrier_id, 0, timeout, GetTask(0),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_1, &n_1](absl::Status s) {
+      [&barrier_status_1, &n_1](absl::Status s, int64_t counter) {
         barrier_status_1 = s;
         n_1.Notify();
       });
   // All listed tasks passed the barrier.
-  EXPECT_FALSE(n_0.HasBeenNotified());
+  // Second call should cancel the first.
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kCancelled));
   EXPECT_FALSE(n_1.HasBeenNotified());
 
   GetCoordinationService()->BarrierAsync(
-      barrier_id, timeout, GetTask(1),
+      barrier_id, 0, timeout, GetTask(1),
       /*participating_tasks=*/{GetTask(0), GetTask(1)},
-      [&barrier_status_2, &n_2](absl::Status s) {
+      [&barrier_status_2, &n_2](absl::Status s, int64_t counter) {
         barrier_status_2 = s;
         n_2.Notify();
       });
-  TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
   TF_EXPECT_OK(barrier_status_2);
 }
@@ -1465,13 +1731,13 @@ TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
-  coord_service_->BarrierAsync("ongoing_barrier", absl::InfiniteDuration(),
-                               task_0_,
-                               /*participating_tasks=*/{},
-                               [&barrier_status, &barrier_n](absl::Status s) {
-                                 barrier_status = s;
-                                 barrier_n.Notify();
-                               });
+  coord_service_->BarrierAsync(
+      "ongoing_barrier", 0, absl::InfiniteDuration(), task_0_,
+      /*participating_tasks=*/{},
+      [&barrier_status, &barrier_n](absl::Status s, int64_t counter) {
+        barrier_status = s;
+        barrier_n.Notify();
+      });
 
   TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
 
@@ -1509,13 +1775,13 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
-  coord_service_->BarrierAsync("ongoing_barrier", absl::InfiniteDuration(),
-                               task_0_,
-                               /*participating_tasks=*/{},
-                               [&barrier_status, &barrier_n](absl::Status s) {
-                                 barrier_status = s;
-                                 barrier_n.Notify();
-                               });
+  coord_service_->BarrierAsync(
+      "ongoing_barrier", 0, absl::InfiniteDuration(), task_0_,
+      /*participating_tasks=*/{},
+      [&barrier_status, &barrier_n](absl::Status s, int64_t counter) {
+        barrier_status = s;
+        barrier_n.Notify();
+      });
 
   absl::Notification shutdown_n;
   coord_service_->ShutdownTaskAsync(task_0_, [&shutdown_n](absl::Status s) {
@@ -1569,7 +1835,8 @@ TEST_F(CoordinateTwoTasksTest,
   // Block until barrier times out.
   n.WaitForNotification();
 
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(barrier_status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")));
   // Task 0 should not be allowed to silently register again to the
   // same service instance, regardless of incarnation (same process or
   // restarted).
@@ -1603,7 +1870,8 @@ TEST_F(CoordinateTwoTasksTest,
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(absl::Seconds(1)));
 
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(barrier_status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")));
 
   // Task 1 sends unexpected heartbeat that is aborted because it is in error.
   absl::Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
@@ -1622,8 +1890,9 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfTaskIsInError) {
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
   // Barrier should fail when called after stale task is set to error.
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
-                               /*participating_tasks=*/{}, [&](absl::Status s) {
+  coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(5), task_0_,
+                               /*participating_tasks=*/{},
+                               [&](absl::Status s, int64_t counter) {
                                  barrier_status = s;
                                  n0.Notify();
                                });
@@ -1643,9 +1912,9 @@ TEST_F(CoordinateTwoTasksTest,
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
+  coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{task_0_},
-                               [&](absl::Status s) {
+                               [&](absl::Status s, int64_t counter) {
                                  barrier_status = s;
                                  n0.Notify();
                                });
@@ -1686,8 +1955,9 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
   absl::Notification n_barrier;
   absl::Status barrier_status;
   // Barrier should fail when called after the error is propagated.
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
-                               /*participating_tasks=*/{}, [&](absl::Status s) {
+  coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(5), task_0_,
+                               /*participating_tasks=*/{},
+                               [&](absl::Status s, int64_t counter) {
                                  barrier_status = s;
                                  n_barrier.Notify();
                                });
@@ -1709,51 +1979,15 @@ TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfTaskIsStale) {
   // Barrier should fail if task is in error.
   // Note that this is same as above test, but the barrier only blocks for task
   // 0.
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
+  coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{task_0_},
-                               [&](absl::Status s) {
+                               [&](absl::Status s, int64_t counter) {
                                  barrier_status = s;
                                  n0.Notify();
                                });
 
   n0.WaitForNotification();
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
-}
-
-TEST_F(CoordinateTwoTasksTest,
-       BarrierWithNonParticipatingTaskFailsIfTaskIsStale) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
-  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  absl::Notification n0, n1;
-  absl::Status barrier_status_0, barrier_status_1;
-  // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
-      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
-
-  // Barrier should fail if task is in error.
-  // Note that this is same as above test, but the barrier only blocks for task
-  // 1.
-
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
-                               /*participating_tasks=*/{task_1_},
-                               [&](absl::Status s) {
-                                 barrier_status_0 = s;
-                                 n0.Notify();
-                               });
-  n0.WaitForNotification();
-  coord_service_->BarrierAsync("barrier_id_2", absl::Seconds(5), task_1_,
-                               /*participating_tasks=*/{task_1_},
-                               [&](absl::Status s) {
-                                 barrier_status_1 = s;
-                                 n1.Notify();
-                               });
-  n1.WaitForNotification();
-
-  // Non-participating task can't invoke the barrier.
-  EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInvalidArgument));
-  // Participating task is in error and can't invoke the barrier.
-  EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
@@ -2160,8 +2394,8 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_RestartAfterBarrier_Fails) {
   // All tasks should be set to error and unable to start any barriers.
   absl::Notification n;
   absl::Status barrier_status;
-  coord_service_->BarrierAsync("barrier_id", absl::Seconds(10), task_0_, {},
-                               [&](const absl::Status& s) {
+  coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(10), task_0_, {},
+                               [&](const absl::Status& s, int64_t counter) {
                                  n.Notify();
                                  barrier_status = s;
                                });
@@ -2178,4 +2412,129 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_Timeout) {
   EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kDeadlineExceeded));
 }
+
+using GetAliveTasksTest = CoordinationBarrierTest;
+
+TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
+  // This test has three tasks successfully call GetAliveTasks.
+  absl::BlockingCounter finished(3);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), GetTasks(), done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Task 2 is failed. Then, tasks
+  // 0 and 1 call GetAliveTasks on tasks [0, 1, 2], which should return [0, 1].
+  absl::BlockingCounter finished(2);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks,
+                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    finished.DecrementCount();
+  };
+  ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(2), absl::InternalError("failed")));
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Tasks 0 and 1 call
+  // GetAliveTasks on tasks [0, 1, 2]. Then, task 2 is failed, which should
+  // cause GetAliveTasks to return [0, 1].
+  absl::BlockingCounter finished(2);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks,
+                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(2), absl::InternalError("failed")));
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
+  // This test involves three tasks: 0, 1, and 2. Tasks 0 and 1 call
+  // GetAliveTasks on tasks [0, 1], and concurrently tasks 1 and 2 call
+  // GetAliveTasks on tasks [1, 2].
+
+  // GetAliveTasks on tasks 0 and 1.
+  std::vector tasks_01{GetTask(0), GetTask(1)};
+  absl::BlockingCounter finished_01(2);
+  auto done_01 = [&](const absl::Status& status,
+                     const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_01));
+    finished_01.DecrementCount();
+  };
+
+  // GetAliveTasks on tasks 1 and 2.
+  std::vector tasks_12{GetTask(1), GetTask(2)};
+  absl::BlockingCounter finished_12(2);
+  auto done_12 = [&](const absl::Status& status,
+                     const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_12));
+    finished_12.DecrementCount();
+  };
+
+  // Run both GetAliveTasks concurrently.
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), tasks_01, done_01);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), tasks_12, done_12);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), tasks_01, done_01);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), tasks_12, done_12);
+  finished_01.Wait();
+  finished_12.Wait();
+}
+
+TEST_F(GetAliveTasksTest, CallingGetAliveTasksWithoutBeingAMember) {
+  // This test includes calls to GetAliveTasks where the requesting task is not
+  // included in the specified set of tasks. This should return an error.
+  absl::BlockingCounter finished(3);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>&) {
+    EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+    finished.DecrementCount();
+  };
+
+  CoordinationServiceInterface* s = GetCoordinationService();
+  s->GetAliveTasksAsync(GetTask(0), {GetTask(1), GetTask(2)}, done);
+  s->GetAliveTasksAsync(GetTask(1), {GetTask(0), GetTask(2)}, done);
+  s->GetAliveTasksAsync(GetTask(2), {GetTask(0), GetTask(1)}, done);
+  finished.Wait();
+}
+
+TEST_F(GetAliveTasksTest, RedundantGetAliveTasks) {
+  // This test has three tasks call GetAliveTasks, with the twist that some
+  // tasks call GetAliveTasks multiple times.
+  absl::BlockingCounter finished(6);
+  auto done = [&](const absl::Status& status,
+                  const std::vector<CoordinatedTask>& alive_tasks) {
+    EXPECT_OK(status);
+    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    finished.DecrementCount();
+  };
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(1), GetTasks(), done);
+  GetCoordinationService()->GetAliveTasksAsync(GetTask(2), GetTasks(), done);
+  finished.Wait();
+}
+
 }  // namespace tsl

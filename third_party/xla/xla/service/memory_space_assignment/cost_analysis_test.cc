@@ -44,7 +44,7 @@ class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
                           float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
-    options_.async_copy_bandwidth_bytes_per_second = 32;
+    options_.default_mem_bandwidth_bytes_per_second = 32;
     options_.pipeline_overhead_window_size_mib =
         pipeline_overhead_window_size_mib;
     options.set_flops_per_second(8);

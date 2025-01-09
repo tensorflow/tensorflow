@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
@@ -2896,7 +2897,7 @@ absl::StatusOr<bool> HloRematerialization::Run(
     // at the same time, as that will cause the asynchronous callee usage to be
     // added to the main thread callers usage. The callee's memory is
     // preallocated, so the caller doesn't pay for it.
-    absl::flat_hash_set<std::string_view> async_threads;
+    absl::flat_hash_set<absl::string_view> async_threads;
     for (const auto& [computation, _] :
          options_.async_computation_parallelism) {
       async_threads.insert(computation->execution_thread());

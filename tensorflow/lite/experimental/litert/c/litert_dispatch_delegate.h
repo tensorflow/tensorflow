@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_DISPATCH_DELEGATE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_DISPATCH_DELEGATE_H_
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -40,11 +40,6 @@ LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions();
 TfLiteStatus LiteRtAddDispatchDelegateOption(
     LiteRtDispatchDelegateOptions* options, LiteRtDispatchOption option);
 
-// Add NPU executable information keyed by a provided tag.
-TfLiteStatus LiteRtAddDispatchDelegateExecInfoOption(
-    LiteRtDispatchDelegateOptions* options, const char* exec_tag,
-    const void* bytecode_addr, size_t bytecode_size, const char* function_name);
-
 void LiteRtDestroyDispatchDelegateOptions(
     LiteRtDispatchDelegateOptions* options);
 
@@ -55,6 +50,15 @@ TfLiteOpaqueDelegate* LiteRtCreateDispatchDelegate(
 
 // Do any needed cleanup and delete 'delegate'.
 void LiteRtDestroyDispatchDelegate(TfLiteOpaqueDelegate* delegate);
+
+//
+// Common option helpers
+//
+
+// Alloc base is the address of the first byte of flatbuffer model in memory. It
+// is used by ops to find the start of npu byte code appended to the file.
+TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
+    LiteRtDispatchDelegateOptions* options, const void* alloc_base);
 
 #ifdef __cplusplus
 }

@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_MEMORY_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_MEMORY_H_
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/memory.h"
 
 namespace xla {
@@ -53,6 +57,30 @@ class PjRtMemory final
  private:
   PjRtClient* client_;
   xla::PjRtMemorySpace* pjrt_memory_;
+  MemoryKind kind_;
+  std::vector<Device*> devices_;
+};
+
+class PjRtMemoryDescription final
+    : public llvm::RTTIExtends<PjRtMemoryDescription, PjRtCompatibleMemory> {
+ public:
+  PjRtMemoryDescription(PjRtClient* client, absl::Span<Device*> devices,
+                        const xla::PjRtMemorySpaceDescription* desc);
+
+  PjRtClient* client() const { return client_; }
+  xla::PjRtMemorySpace* pjrt_memory() override { return nullptr; }
+
+  MemoryId Id() const override;
+  const MemoryKind& Kind() const override;
+  absl::string_view ToString() const override;
+  absl::string_view DebugString() const override;
+  absl::Span<Device* const> Devices() const override { return devices_; }
+
+  static char ID;  // NOLINT
+
+ private:
+  PjRtClient* client_;
+  const xla::PjRtMemorySpaceDescription* desc_;
   MemoryKind kind_;
   std::vector<Device*> devices_;
 };

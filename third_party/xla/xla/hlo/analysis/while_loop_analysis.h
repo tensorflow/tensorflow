@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/value_range.h"
 
 namespace xla {
 
@@ -43,20 +44,25 @@ std::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
 std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
     const HloInstruction *while_op);
 // Returns the tuple index of the loop induction variable if there is such an
-// induction variable detected. Otherwise returns nullopt.
+// induction variable detected. It is also checked that all ops that depend on
+// the induction variable have scalar shape. Otherwise returns nullopt.
 std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
 
 // Checks the following conditions:
-//  - `i`, the induction varaiable, is initialized to a scalar constant K
+//  - `i`, the induction variable, is initialized to a scalar constant K
 //    (namely, `indvar_init`),
-//  - the while condition does `i < N` or `i <= N` (where N is a know constant)
-//  - the while body does `i++`.
-// If so, it's trivial to compute the loop bound as `N - k` or `N - k + 1`,
-// respectively.
+//  - the while condition does `i < N` or `i <= N` (where N is a known constant)
+//  - the while body does `i += C` (where C is a positive constant)
+// If so, it's trivial to compute the loop bound as `(N - K) div C` or
+// `(N - K + 1) div C`, respectively.
 std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
                                                  int64_t indvar_tuple_idx,
                                                  const Literal &indvar_init);
+
+// Same as above, but returns the loop range, i.e., start (inclusive), end
+// (inclusive) and step instead of the trip count.
+std::optional<Range> MatchTrivialLoopRange(const HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_

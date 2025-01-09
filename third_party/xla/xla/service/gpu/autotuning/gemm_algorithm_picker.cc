@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -119,7 +120,10 @@ class GemmAutotuner {
     deterministic_ops_ = RequireDeterminism(gemm->GetModule()->config());
     solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
-    TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
+    TF_ASSIGN_OR_RETURN(auto gemm_config,
+                        GemmConfig::For(gemm, stream_->parent()
+                                                  ->GetDeviceDescription()
+                                                  .gpu_compute_capability()));
 
     // Don't run autotuning concurrently on the same GPU.
     absl::MutexLock gpu_lock(&GetGpuMutex(stream_->parent()));

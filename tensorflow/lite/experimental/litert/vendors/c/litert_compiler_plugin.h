@@ -43,6 +43,11 @@ LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin);
 
 void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin);
 
+// Return the HW supported by this plugin (e.g., GPU, NPU)
+LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
+    LiteRtCompilerPlugin compiler_plugin,
+    LiteRtHwAccelerators* supported_hardware);
+
 // Number of SoC models supported by this plugin.
 LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
     LiteRtCompilerPlugin compiler_plugin,
@@ -54,19 +59,19 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
     const char** soc_model_name);
 
-// Select desired ops for compilation. This will be called only once
-// during the plugin application flow, all ops should be selected during this
-// call.
-LiteRtStatus LiteRtCompilerPluginPartitionModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
-    LiteRtOpList selected_ops);
+// Select desired ops for compilation. This will only be called once
+// per subgraph, plugins should select all supportable ops.
+LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           LiteRtSubgraph subgraph,
+                                           LiteRtOpList selected_ops);
 
 // Prepare result to pass to the runtime for given partition and, optionally,
-// for a given SoC model (parameter `soc_model` can be NULL). The given
-// subgraphs are valid sub-DAG within the ops selected in partition step.
+// for a given SoC model (parameter `soc_model` can be NULL to specify a default
+// SoC model). The given subgraphs are valid sub-DAG within the ops selected in
+// partition step.
 LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
                                          const char* soc_model,
-                                         LiteRtSubgraphArray partitions,
+                                         LiteRtSubgraph* partitions,
                                          LiteRtParamIndex num_partitions,
                                          LiteRtCompiledResult* compiled_result);
 

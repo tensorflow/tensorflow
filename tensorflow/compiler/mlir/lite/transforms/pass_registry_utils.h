@@ -21,6 +21,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pipeline.h"
 
 namespace mlir {
 namespace TFL {
@@ -31,7 +33,22 @@ namespace TFL {
 
 template <typename PassType>
 std::unique_ptr<mlir::Pass> Create() {
-  return std::make_unique<PassType>();
+  if constexpr (std::is_base_of_v<Pipeline<PassType, EmptyPassOptions>,
+                                  PassType>) {
+    return std::make_unique<PipelinePass<PassType>>();
+  } else {
+    return std::make_unique<PassType>();
+  }
+}
+
+template <typename PassType, typename PassOptionsType>
+std::unique_ptr<mlir::Pass> Create() {
+  if constexpr (std::is_base_of_v<Pipeline<PassType, PassOptionsType>,
+                                  PassType>) {
+    return std::make_unique<PipelinePass<PassType, PassOptionsType>>();
+  } else {
+    return std::make_unique<PassType>(PassOptionsType());
+  }
 }
 
 template <typename PassType>
@@ -55,11 +72,24 @@ void Register() {
   auto pass_argument = PassType::GetArgument();
   auto pass_description = PassType::GetDescription();
 
-  PassPipelineRegistration<PassOptionsType>(
-      pass_argument, pass_description,
-      [](OpPassManager& pm, const PassOptionsType& options) {
-        pm.addPass(std::move(Create<PassType>(options)));
-      });
+  if constexpr (std::is_base_of_v<Pipeline<PassType, PassOptionsType>,
+                                  PassType>) {
+    // PassType is derived from PipelinePass, proceed with registration
+    // of the pipeline.
+    PassPipelineRegistration<PassOptionsType>(
+        pass_argument, pass_description,
+        [](OpPassManager& pm, const PassOptionsType& options) {
+          auto pipeline = PassType();
+          pipeline.AddPasses();
+          pipeline.GetPipeline(pm, options);
+        });
+  } else {
+    PassPipelineRegistration<PassOptionsType>(
+        pass_argument, pass_description,
+        [](OpPassManager& pm, const PassOptionsType& options) {
+          pm.addPass(std::move(Create<PassType>(options)));
+        });
+  }
 }
 
 }  // namespace TFL

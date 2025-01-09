@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/tools/apply_plugin.h"
+#include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
 using ::litert::internal::Serialization;
 using ::litert::tools::ApplyPlugin;
 using ::litert::tools::ApplyPluginRun;
+using ::litert::tools::UserStream;
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> cmd(
@@ -64,15 +65,16 @@ static llvm::cl::list<std::string> libs(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> out(
     "o",
-    llvm::cl::desc("Path to file for output, \"-\" indicates standard out."),
+    llvm::cl::desc("Path to file for output, \"-\" indicates standard out, "
+                   "\"--\" for standard err, \"none\" for null stream."),
     llvm::cl::init("-"));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> err(
     "err",
-    llvm::cl::desc("Path to file for error output, \"-\" indicates stdandard "
-                   "error and \"none\" indicates silent."),
-    llvm::cl::init("-"));
+    llvm::cl::desc("Path to file for err output, \"-\" indicates standard out, "
+                   "\"--\" for standard err, \"none\" for null stream."),
+    llvm::cl::init("--"));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> serialization(
@@ -101,6 +103,8 @@ ApplyPluginRun::Ptr ParseFlags() {
     res->cmd = ApplyPluginRun::Cmd::INFO;
   } else if (cmd == "noop") {
     res->cmd = ApplyPluginRun::Cmd::NOOP;
+  } else {
+    return nullptr;
   }
 
   if (serialization == "METADATA") {
@@ -122,18 +126,15 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::ofstream file_out;
-  if (out != "-") {
-    file_out.open(out);
-    run->outs.clear();
-    run->outs.push_back(file_out);
-  }
+  auto out_stream = UserStream::MakeFromFlag(out);
+  run->outs.clear();
+  run->outs.push_back(out_stream.Get());
 
-  std::ofstream file_err;
-  if (err != "-") {
-    file_err.open(err);
-    run->dump_out.emplace(file_err);
-  }
+  run->dump_out = UserStream::MakeFromFlag(err);
+
+  run->dump_out.Get() << absl::StreamFormat(
+      "CMD: %s\nMODEL: %s\nSOC_MANUFACTURER: %s\nSOC_MODEL: %s\n", cmd, model,
+      soc_manufacturer, soc_model);
 
   return ApplyPlugin(std::move(run));
 }

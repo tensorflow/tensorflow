@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <ios>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
 

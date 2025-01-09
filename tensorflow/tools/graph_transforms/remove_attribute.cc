@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Deletes a given attribute from the specified nodes.
-Status RemoveAttribute(const GraphDef& input_graph_def,
-                       const TransformFuncContext& context,
-                       GraphDef* output_graph_def) {
+absl::Status RemoveAttribute(const GraphDef& input_graph_def,
+                             const TransformFuncContext& context,
+                             GraphDef* output_graph_def) {
   if (!context.params.count("attribute_name") ||
       (context.params.at("attribute_name").size() != 1)) {
     return errors::InvalidArgument(
@@ -59,7 +59,7 @@ Status RemoveAttribute(const GraphDef& input_graph_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_attribute", RemoveAttribute);

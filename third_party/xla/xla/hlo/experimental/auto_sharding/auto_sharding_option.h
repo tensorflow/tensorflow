@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 
@@ -41,7 +42,7 @@ struct AutoShardingOption {
   enum class PreserveShardingsType {
     // AutoSharding constrains the search space using all user shardings.
     kKeepAllShardings,
-    // AutoSharding constains the search space using input and output shardings
+    // AutoSharding constrains the search space using input and output shardings
     // of HloModule's entry computations and remove shardings of all
     // intermediate tensors.
     kKeepInputOutputShardings,
@@ -217,6 +218,9 @@ struct AutoShardingOption {
   // consistency of different options.
   absl::Status CheckAndSetup();
 };
+
+AutoShardingOption DefaultAutoShardingOptionFromModuleConfig(
+    const HloModuleConfig& config);
 
 }  // namespace xla
 

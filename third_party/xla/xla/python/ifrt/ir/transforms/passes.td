@@ -374,6 +374,16 @@ module {
   let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
 }
 
+def IfrtRemoveAttrsFromOtherDialectsPass :
+    Pass<"ifrt-remove-attrs-from-other-dialects", "mlir::ModuleOp"> {
+  let summary = "Remove attrs from other dialects in IFRT functions";
+  let description = [{
+Remove attributes that are not from IFRT or Builtin dialect from IFRT functions.
+Does not modify atom programs.
+  }];
+  let constructor = "CreateIfrtRemoveAttrsFromOtherDialectsPass()";
+}
+
 def IfrtLowerMpmdReshardToCallPass :
     Pass<"ifrt-lower-mpmd-reshard-to-call", "mlir::ModuleOp"> {
   let summary = "Lowers MPMD `ifrt.Reshard` to `ifrt.Call`";
@@ -462,6 +472,26 @@ This pass fails if
     ListOption<"platform_names", "platform_names", "std::string",
                "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
   ];
+}
+
+def IfrtLegalizeToVifrtPass : Pass<"ifrt-legalize-to-vifrt", "mlir::ModuleOp"> {
+  let summary = "Legalize IFRT to VIFRT.";
+  let dependentDialects = ["xla::ifrt::VifrtDialect"];
+}
+
+def VifrtLegalizeToIfrtPass : Pass<"vifrt-legalize-to-ifrt", "mlir::ModuleOp"> {
+  let summary = "Legalize VIFRT to IFRT.";
+  let dependentDialects = ["xla::ifrt::IfrtDialect"];
+}
+
+def VifrtToVersionPass : Pass<"vifrt-to-version", "mlir::ModuleOp"> {
+  let summary = "Convert between versions of VIFRT.";
+  let options = [
+    Option<"target_version", "target_version", "std::string", "",
+           "The VIFRT target version. Must be a version of the form #.#.#.">,
+  ];
+  let constructor = "CreateVifrtToVersionPass()";
+  let dependentDialects = ["xla::ifrt::VifrtDialect"];
 }
 
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

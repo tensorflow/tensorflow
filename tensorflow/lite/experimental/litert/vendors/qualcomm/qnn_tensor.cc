@@ -19,11 +19,10 @@
 #include <utility>
 
 #include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace qnn {
@@ -31,9 +30,10 @@ namespace qnn {
 QnnTensor::QnnTensor(const QnnTensor& other) : QnnTensor(other.Tensor()) {
   auto status = DeepCopy();
   // This should never fail because the input QnnTensor was already deep-copied.
-  if (!status.ok()) {
-    ABSL_LOG(ERROR) << "Failed to build QnnTensor: " << status;
-    ABSL_CHECK_OK(status);
+  if (!status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to build QnnTensor: %s",
+               status.Error().Message().data());
+    ABSL_CHECK(status);
   }
 }
 
@@ -45,15 +45,15 @@ QnnTensor::QnnTensor(QnnTensor&& other) {
   std::swap(is_dynamic_dimensions_, other.is_dynamic_dimensions_);
 }
 
-absl::StatusOr<QnnTensor> QnnTensor::Create(const Qnn_Tensor_t& tensor) {
+Expected<QnnTensor> QnnTensor::Create(const Qnn_Tensor_t& tensor) {
   QnnTensor qnn_tensor(tensor);
-  if (auto status = qnn_tensor.DeepCopy(); !status.ok()) {
-    return status;
+  if (auto status = qnn_tensor.DeepCopy(); !status) {
+    return Unexpected(status.Error());
   }
   return qnn_tensor;
 }
 
-absl::Status QnnTensor::DeepCopy() {
+Expected<void> QnnTensor::DeepCopy() {
   if (tensor_.version == QNN_TENSOR_VERSION_1) {
     dimensions_.reserve(tensor_.v1.rank);
     std::copy(tensor_.v1.dimensions, tensor_.v1.dimensions + tensor_.v1.rank,
@@ -65,7 +65,8 @@ absl::Status QnnTensor::DeepCopy() {
             QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION ||
         tensor_.v1.quantizeParams.quantizationEncoding ==
             QNN_QUANTIZATION_ENCODING_VECTOR) {
-      return absl::InternalError("Unsupported QNN quantization");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Unsupported QNN quantization");
     }
 
   } else if (tensor_.version == QNN_TENSOR_VERSION_2) {
@@ -87,11 +88,13 @@ absl::Status QnnTensor::DeepCopy() {
             QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION ||
         tensor_.v2.quantizeParams.quantizationEncoding ==
             QNN_QUANTIZATION_ENCODING_VECTOR) {
-      return absl::InternalError("Unsupported QNN quantization");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Unsupported QNN quantization");
     }
 
   } else {
-    return absl::InternalError("Unsupported QNN tensor version");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unsupported QNN tensor version");
   }
 
   return {};

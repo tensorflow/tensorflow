@@ -18,40 +18,70 @@ package(
 )
 
 cc_library(
-    name = "buffer_ref",
+    name = "flatbuffer_tools",
+    srcs = ["flatbuffer_tools.cc"],
     hdrs = [
-        "buffer_ref.h",
+        "flatbuffer_tools.h",
+        "//tensorflow/lite/experimental/litert/cc:litert_consts.h",
     ],
     deps = [
-        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/mlir/lite:allocation",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:filesystem",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
 cc_test(
-    name = "buffer_ref_test",
-    srcs = ["buffer_ref_test.cc"],
+    name = "flatbuffer_tools_test",
+    srcs = ["flatbuffer_tools_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
     deps = [
-        ":buffer_ref",
         ":flatbuffer_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_macros",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "flatbuffer_tools",
-    srcs = ["flatbuffer_tools.cc"],
+    name = "tensor_type_util",
+    srcs = [
+        "tensor_type_util.cc",
+    ],
     hdrs = [
-        "flatbuffer_tools.h",
+        "tensor_type_util.h",
     ],
     deps = [
-        ":buffer_ref",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:string_view",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "tensor_type_util_test",
+    srcs = ["tensor_type_util_test.cc"],
+    deps = [
+        ":tensor_type_util",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

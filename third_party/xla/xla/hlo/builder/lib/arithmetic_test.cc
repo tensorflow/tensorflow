@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/arithmetic.h"
 
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 

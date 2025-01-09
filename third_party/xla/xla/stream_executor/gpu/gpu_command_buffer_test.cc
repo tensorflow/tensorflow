@@ -56,6 +56,10 @@ using tsl::testing::IsOkAndHolds;
 
 using ExecutionScopeId = CommandBuffer::ExecutionScopeId;
 
+static GpuCommandBuffer* CastToGpuCommandBuffer(CommandBuffer* command_buffer) {
+  return static_cast<GpuCommandBuffer*>(command_buffer);
+}
+
 static Platform* GpuPlatform() {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -194,9 +198,9 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer, TraceCommandBufferFactory::Create(
                                                executor,
                                                [&](Stream* stream) {
-                                                 return stream->Launch(
+                                                 return add->Launch(
                                                      ThreadDim(), BlockDim(4),
-                                                     *add, args);
+                                                     stream, args);
                                                },
                                                primary));
 
@@ -403,7 +407,7 @@ TEST(GpuCommandBufferTest, Barriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
   ASSERT_EQ(gpu_cmd_buffer->nodes().size(), 6);
   ASSERT_EQ(gpu_cmd_buffer->barriers().size(), 6);
 
@@ -486,7 +490,7 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -562,7 +566,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -659,7 +663,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1474,7 +1478,7 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1582,7 +1586,7 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   EXPECT_EQ(c_dst, 42);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  GpuCommandBuffer* gpu_cmd_buffer = CastToGpuCommandBuffer(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1659,7 +1663,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   for (auto s : state) {
     auto launch_kernels = [&](Stream* stream) {
       for (int i = 1; i < state.range(0); ++i) {
-        CHECK_OK(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, b, b, b));
+        CHECK_OK(add.Launch(ThreadDim(), BlockDim(4), stream, b, b, b));
       }
       return absl::OkStatus();
     };

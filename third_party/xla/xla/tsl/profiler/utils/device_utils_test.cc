@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {
@@ -38,6 +38,13 @@ TEST(DeviceUtilsTest, GetDeviceType) {
   EXPECT_EQ(GetDeviceType(CreateXPlane(absl::StrCat(kGpuPlanePrefix, 0))),
             DeviceType::kGpu);
   EXPECT_EQ(GetDeviceType(CreateXPlane("unknown")), DeviceType::kUnknown);
+}
+
+TEST(DeviceUtilsTest, GetDeviceTypeFromName) {
+  EXPECT_EQ(GetDeviceType(kHostThreadsPlaneName), DeviceType::kCpu);
+  EXPECT_EQ(GetDeviceType(absl::StrCat(kTpuPlanePrefix, 0)), DeviceType::kTpu);
+  EXPECT_EQ(GetDeviceType(absl::StrCat(kGpuPlanePrefix, 0)), DeviceType::kGpu);
+  EXPECT_EQ(GetDeviceType("unknown"), DeviceType::kUnknown);
 }
 
 }  // namespace

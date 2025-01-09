@@ -112,11 +112,11 @@ struct SpmdPartitionerOptions {
 
   // Partitioning method to prioritize for gather operations.
   PartitioningMethod gather_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
 
   // Partitioning method to prioritize for scatter operations.
   PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatch;
 
   // The minimum size to enable windowed einsum in total bytes.
   // This combines sizes in bytes of both operands.
@@ -543,6 +543,13 @@ class PartitionedHlo {
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
   PartitionedHlo ReshardWithAllToAll(
+      const HloSharding& target,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_dims,
+      bool try_multiple_source_target_dims = true) const;
+
+  // Called by ReshardWithAllToAll if try_multiple_source_target_dims is true.
+  // Try to handle multiple source and target dims in a single AllToAll.
+  PartitionedHlo TryMultipleSourceTargetDims(
       const HloSharding& target,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_dims) const;
 

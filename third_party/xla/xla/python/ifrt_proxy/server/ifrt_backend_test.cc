@@ -17,7 +17,6 @@
 #include <sys/types.h>
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,7 +50,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
@@ -62,6 +60,7 @@
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
@@ -603,6 +602,11 @@ TEST_P(IfrtBackendHandlerTest, DisassembleIntoSingleDeviceArraysSucceeds) {
         proto::SingleDeviceShardSemantics::
             SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
   }
+  if (Version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    disassemble_into_single_device_arrays->add_result_handles(1);
+    disassemble_into_single_device_arrays->add_result_handles(2);
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto disassemble_response,
                           CallBackend(std::move(disassemble_request)));
 
@@ -610,7 +614,7 @@ TEST_P(IfrtBackendHandlerTest, DisassembleIntoSingleDeviceArraysSucceeds) {
   // arrays we injected.
   EXPECT_THAT(
       disassemble_response->disassemble_into_single_device_arrays_response()
-          .single_device_array_handles(),
+          .array_handles(),
       SizeIs(2));
 }
 
@@ -662,12 +666,12 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   // Make a string host buffer.
   const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
                                                  absl::Cord("cd")};
-  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_string_buffer,
                           SerializeStringHostBuffer(input_strings));
 
   const uint64_t kHostBufferHandle = 1234;
   ASSERT_THAT(
-      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      host_buffer_store_->Store(kHostBufferHandle, *serialized_string_buffer),
       IsOk());
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -706,31 +710,24 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
 TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   auto ifrt_request = NewIfrtRequest(NewOpId());
   {
-    if (Version().protocol_version() < 8) {
-      ASSERT_TRUE(TextFormat::ParseFromString(
-          R"pb(
-            shape { dims: [ 2, 2 ] }
-            copy_semantics: ARRAY_COPY_SEMANTICS_ALWAYS_COPY
-          )pb",
-          ifrt_request
-              ->mutable_assemble_array_from_single_device_arrays_request()));
-    } else {
-      ASSERT_TRUE(TextFormat::ParseFromString(
-          R"pb(
-            shape { dims: [ 2, 2 ] }
-            copy_semantics: ARRAY_COPY_SEMANTICS_ALWAYS_COPY
-            single_device_shard_semantics:
-                SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS
-          )pb",
-          ifrt_request
-              ->mutable_assemble_array_from_single_device_arrays_request()));
+    AssembleArrayFromSingleDeviceArraysRequest* req =
+        ifrt_request
+            ->mutable_assemble_array_from_single_device_arrays_request();
+    req->mutable_shape()->add_dims(2);
+    req->mutable_shape()->add_dims(2);
+    req->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
+    if (Version().protocol_version() > 8) {
+      req->set_single_device_shard_semantics(
+          proto::SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
+    }
+    if (Version().protocol_version() >=
+        protocol_version::kClientHandlesOptimization2) {
+      req->set_result_handle(1);
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
     TF_ASSERT_OK_AND_ASSIGN(
-        *ifrt_request
-             ->mutable_assemble_array_from_single_device_arrays_request()
-             ->mutable_sharding(),
+        *req->mutable_sharding(),
         SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
   }
 
@@ -805,12 +802,12 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   // Make a string host buffer.
   const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
                                                  absl::Cord("cd")};
-  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_string_buffer,
                           SerializeStringHostBuffer(input_strings));
 
   const uint64_t kHostBufferHandle = 1234;
   ASSERT_THAT(
-      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      host_buffer_store_->Store(kHostBufferHandle, *serialized_string_buffer),
       IsOk());
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -948,7 +945,8 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
           std::vector<tsl::RCReference<xla::ifrt::Array>>(copied_arrays)));
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* copy_arrays_request = ifrt_request->mutable_copy_arrays_request();
+  CopyArraysRequest* copy_arrays_request =
+      ifrt_request->mutable_copy_arrays_request();
   for (const auto& src_array : src_arrays) {
     TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle, MakeTestArray(src_array));
     copy_arrays_request->add_array_handles(src_array_handle);
@@ -959,6 +957,10 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   copy_arrays_request->set_memory_kind(std::string(*memory_kind.memory_kind()));
   copy_arrays_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
+  if (Version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    copy_arrays_request->add_result_handles(1);
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
 
@@ -966,74 +968,6 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
               IsOk());
   EXPECT_THAT(response->copy_arrays_response().array_handles(),
               SizeIs(copied_arrays.size()));
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardSuccess) {
-  auto src_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(0)));
-  auto src_sharding = SingleDeviceSharding::Create(device, MemoryKind());
-  ON_CALL(*src_mock_array, sharding()).WillByDefault(ReturnRef(*src_sharding));
-  TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle,
-                          MakeTestArray(std::move(src_mock_array)));
-
-  auto copied_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
-      .WillOnce(Return(std::vector<tsl::RCReference<xla::ifrt::Array>>(
-          {copied_mock_array})));
-
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(src_array_handle);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
-
-  EXPECT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
-              IsOk());
-  EXPECT_NE(response->reshard_response().array_handle(), 0);
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWhenTheBackendFails) {
-  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  auto sharding = SingleDeviceSharding::Create(device, MemoryKind());
-  ON_CALL(*mock_array, sharding()).WillByDefault(ReturnRef(*sharding));
-  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
-                          MakeTestArray(std::move(mock_array)));
-
-  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
-      .WillOnce(Return(absl::UnknownError("injected error")));
-
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(array_handle);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWithNonExistentArrayHandle) {
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(0);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  reshard_request->mutable_sharding();
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_P(IfrtBackendHandlerTest, FullyReplicatedShardSuccess) {
@@ -1050,6 +984,10 @@ TEST_P(IfrtBackendHandlerTest, FullyReplicatedShardSuccess) {
       ifrt_request->mutable_fully_replicated_shard_request();
   fully_replicated_shard_request->set_array_handle(
       fully_replicated_array_handle);
+  if (Version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    fully_replicated_shard_request->set_result_handle(1234);
+  }
   fully_replicated_shard_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
 
@@ -1305,16 +1243,16 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_CALL(*executable, GetOutputShardings())
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> parameter_layouts;
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> output_layouts;
-    output_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
+    output_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));

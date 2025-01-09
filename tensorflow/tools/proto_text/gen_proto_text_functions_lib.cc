@@ -276,10 +276,16 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
             field.name(), "\", ", field_expr, ");");
       break;
     case FieldDescriptor::CPPTYPE_STRING: {
+#if (TSL_IS_IN_OSS && GOOGLE_PROTOBUF_VERSION < 6030000)
       const auto ctype = field.options().ctype();
       CHECK(ctype == FieldOptions::CORD || ctype == FieldOptions::STRING)
           << "Unsupported ctype " << ctype;
-
+#else
+      const auto ctype = field.cpp_string_type();
+      CHECK(ctype == FieldDescriptor::CppStringType::kCord ||
+            ctype == FieldDescriptor::CppStringType::kString)
+          << "Unsupported string type " << static_cast<int>(ctype);
+#endif
       Print("o->", omit_default ? "AppendStringIfNotEmpty" : "AppendString",
             "(\"", field.name(), "\", ProtobufStringToString(", field_expr,
             "));");

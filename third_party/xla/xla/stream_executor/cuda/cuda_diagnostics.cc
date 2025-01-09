@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 
+#include <cstdlib>
+#include <set>
+
 #if !defined(PLATFORM_WINDOWS)
 #include <dirent.h>
 #endif
@@ -42,8 +45,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
 
@@ -100,6 +105,29 @@ absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   return result;
 }
 
+void PrintLdLibraryPathIntoVlog() {
+  const char *value = std::getenv("LD_LIBRARY_PATH");
+  std::string library_path = value == nullptr ? "" : value;
+  VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
+
+  std::vector<std::string> pieces = absl::StrSplit(library_path, ':');
+  for (const auto &piece : pieces) {
+    if (piece.empty()) {
+      continue;
+    }
+    std::vector<std::string> dir_children;
+    absl::Status status =
+        tsl::Env::Default()->GetChildren(piece, &dir_children);
+    if (!status.ok()) {
+      VLOG(1) << "could not open \"" << piece << "\": " << status;
+      continue;
+    }
+    for (const std::string &filename : dir_children) {
+      VLOG(1) << piece << " :: " << filename;
+    }
+  }
+}
+
 }  // namespace cuda
 }  // namespace stream_executor
 
@@ -134,6 +162,24 @@ void Diagnostician::LogDiagnosticInformation() {
   }
 #endif
 
+  const char *visible_devices_env = std::getenv("CUDA_VISIBLE_DEVICES");
+  if (visible_devices_env != nullptr) {
+    LOG(INFO) << "env: CUDA_VISIBLE_DEVICES=\"" << visible_devices_env << "\"";
+    std::set<std::string> common_disable_gpu_values = {"", "-1", "none"};
+    if (common_disable_gpu_values.count(visible_devices_env)) {
+      LOG(INFO) << "CUDA_VISIBLE_DEVICES is set to "
+                << (std::string{} == visible_devices_env ? "an empty string"
+                                                         : visible_devices_env)
+                << " - this hides all GPUs from CUDA";
+    }
+  }
+
+  if (!VLOG_IS_ON(1)) {
+    LOG(INFO) << "verbose logging is disabled. Rerun with verbose logging "
+                 "(usually --v=1 or --vmodule=cuda_diagnostics=1) to get more "
+                 "diagnostic output from this module";
+  }
+
   LOG(INFO) << "retrieving CUDA diagnostic information for host: "
             << tsl::port::Hostname();
 
@@ -144,26 +190,9 @@ void Diagnostician::LogDiagnosticInformation() {
   LOG(INFO) << "hostname: " << tsl::port::Hostname();
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
-    const char *value = getenv("LD_LIBRARY_PATH");
-    std::string library_path = value == nullptr ? "" : value;
-    VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
-
-    std::vector<std::string> pieces = absl::StrSplit(library_path, ':');
-    for (const auto &piece : pieces) {
-      if (piece.empty()) {
-        continue;
-      }
-      DIR *dir = opendir(piece.c_str());
-      if (dir == nullptr) {
-        VLOG(1) << "could not open \"" << piece << "\"";
-        continue;
-      }
-      while (dirent *entity = readdir(dir)) {
-        VLOG(1) << piece << " :: " << entity->d_name;
-      }
-      closedir(dir);
-    }
+    cuda::PrintLdLibraryPathIntoVlog();
   }
+
   absl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
   LOG(INFO) << "libcuda reported version is: "
             << cuda::DriverVersionStatusToString(dso_version);
@@ -171,9 +200,7 @@ void Diagnostician::LogDiagnosticInformation() {
   absl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
             << cuda::DriverVersionStatusToString(kernel_version);
-#endif
 
-#if !defined(PLATFORM_WINDOWS)
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
   }
@@ -184,37 +211,42 @@ void Diagnostician::LogDiagnosticInformation() {
 // driver-interfacing DSO version number. Returns it as a string.
 absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   absl::StatusOr<DriverVersion> result(absl::NotFoundError(
-      "was unable to find libcuda.so DSO loaded into this program"));
+      "was unable to find libcuda.so DSO loaded into this program. The library "
+      "may be missing or provided via another object."));
 
 #if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
   auto iterate_phdr = [](struct dl_phdr_info *info, size_t size,
                          void *data) -> int {
-    if (strstr(info->dlpi_name, "libcuda.so.1")) {
-      VLOG(1) << "found DLL info with name: " << info->dlpi_name;
-      char resolved_path[PATH_MAX] = {0};
-      if (realpath(info->dlpi_name, resolved_path) == nullptr) {
-        return 0;
-      }
-      VLOG(1) << "found DLL info with resolved path: " << resolved_path;
-      const char *slash = rindex(resolved_path, '/');
-      if (slash == nullptr) {
-        return 0;
-      }
-      const char *so_suffix = ".so.";
-      const char *dot = strstr(slash, so_suffix);
-      if (dot == nullptr) {
-        return 0;
-      }
-      std::string dso_version = dot + strlen(so_suffix);
-      // TODO(b/22689637): Eliminate the explicit namespace if possible.
-      auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
-      auto result = static_cast<absl::StatusOr<DriverVersion> *>(data);
-      *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
-      return 1;
+    if (!strstr(info->dlpi_name, "libcuda.so.1")) {
+      return 0;
     }
-    return 0;
+
+    VLOG(1) << "found CUDA DLL info with name: " << info->dlpi_name;
+    char resolved_path_buf[PATH_MAX] = {0};
+    if (realpath(info->dlpi_name, resolved_path_buf) == nullptr) {
+      return 0;
+    }
+    absl::string_view resolved_path(resolved_path_buf);
+    VLOG(1) << "found DLL info with resolved path: " << resolved_path;
+    size_t slash = resolved_path.rfind('/');
+    if (slash == absl::string_view::npos) {
+      return 0;
+    }
+    absl::string_view so_suffix = ".so.";
+    size_t dot = resolved_path.find(so_suffix, slash);
+    if (dot == absl::string_view::npos) {
+      return 0;
+    }
+
+    absl::string_view dso_version =
+        resolved_path.substr(dot + so_suffix.size());
+    absl::string_view stripped_dso_version =
+        absl::StripSuffix(dso_version, ".ld64");
+    auto result = static_cast<absl::StatusOr<DriverVersion> *>(data);
+    *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
+    return 1;
   };
 
   dl_iterate_phdr(iterate_phdr, &result);

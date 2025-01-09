@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ERROR_PAYLOADS_H_
 #define TENSORFLOW_CORE_PLATFORM_ERROR_PAYLOADS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 // This file contains macros and payload keys for the error counter in

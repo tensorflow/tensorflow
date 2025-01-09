@@ -24,8 +24,9 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace litert::internal {
 
@@ -53,36 +54,33 @@ static constexpr size_t kByteCodePlaceholderBufSize =
     sizeof(ByteCodePlaceholder) + kByteCodePrefix.size();
 }  // namespace
 
-LiteRtResult<OwningBufferRef<uint8_t>> MakeBuildStamp(
+Expected<OwningBufferRef<uint8_t>> MakeBuildStamp(
     absl::string_view soc_manufacturer, absl::string_view soc_model,
     Serialization serialization) {
-  using ResT = OwningBufferRef<uint8_t>;
   if (soc_manufacturer.size() >= kSocManufacturerMaxLen ||
       soc_model.size() >= kSocModelMaxLen) {
     LITERT_LOG(LITERT_ERROR, "%s", "Soc Make/Model strings too large\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
   BuildStamp stamp;
   soc_manufacturer.copy(stamp.soc_manufacturer, soc_manufacturer.size());
   soc_model.copy(stamp.soc_model, soc_model.size());
   stamp.serialization = serialization;
-  OwningBufferRef<uint8_t> res(reinterpret_cast<const uint8_t*>(&stamp),
-                               sizeof(stamp));
-  return LiteRtResult<ResT>::TakeValue(std::move(res));
+  return OwningBufferRef<uint8_t>(reinterpret_cast<const uint8_t*>(&stamp),
+                                  sizeof(stamp));
 }
 
 // Parse a serialized build stamp from the given buf.
-LiteRtResult<std::tuple<absl::string_view, absl::string_view, Serialization>>
+Expected<std::tuple<absl::string_view, absl::string_view, Serialization>>
 ParseBuildStamp(BufferRef<uint8_t> buf) {
-  using ResT = std::tuple<absl::string_view, absl::string_view, Serialization>;
   if (buf.Size() != sizeof(BuildStamp)) {
     LITERT_LOG(LITERT_ERROR, "%s", "Build stamp size mismatch\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
   const BuildStamp* stamp = reinterpret_cast<const BuildStamp*>(buf.Data());
-  return LiteRtResult<ResT>::FromValue(std::make_tuple(
-      absl::string_view(stamp->soc_manufacturer),
-      absl::string_view(stamp->soc_model), stamp->serialization));
+  return std::make_tuple(absl::string_view(stamp->soc_manufacturer),
+                         absl::string_view(stamp->soc_model),
+                         stamp->serialization);
 }
 
 OwningBufferRef<uint8_t> MakeByteCodePlaceholder() {
@@ -94,14 +92,12 @@ OwningBufferRef<uint8_t> MakeByteCodePlaceholder() {
   return buf;
 }
 
-LiteRtResult<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
+Expected<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
     BufferRef<uint8_t> buf) {
-  using ResT = std::pair<size_t, size_t>;
-
   if (buf.Size() != kByteCodePlaceholderBufSize ||
-      !buf.StrView().starts_with(kByteCodePrefix)) {
+      buf.StrView().compare(0, kByteCodePrefix.size(), kByteCodePrefix) != 0) {
     LITERT_LOG(LITERT_ERROR, "%s", "Byte code placeholder size mismatch\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
 
   const ByteCodePlaceholder* placeholder =
@@ -115,10 +111,10 @@ LiteRtResult<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
       !absl::SimpleAtoi(size_str, &size)) {
     LITERT_LOG(LITERT_ERROR, "%s",
                "Byte code placeholder offset/size invalid\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
 
-  return LiteRtResult<ResT>::FromValue(std::make_pair(offset, size));
+  return std::make_pair(offset, size);
 }
 
 LiteRtStatus FinishByteCodePlaceholders(
@@ -146,33 +142,29 @@ LiteRtStatus FinishByteCodePlaceholders(
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<std::pair<absl::string_view, absl::string_view>> ParseExecInfo(
+Expected<std::pair<absl::string_view, absl::string_view>> ParseExecInfo(
     BufferRef<uint8_t> buf) {
-  using ResT = std::pair<absl::string_view, absl::string_view>;
   if (buf.Size() != sizeof(ExecInfo)) {
     LITERT_LOG(LITERT_ERROR, "%s", "Exec info size mismatch\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
   const ExecInfo* exec_info = reinterpret_cast<const ExecInfo*>(buf.Data());
-  return LiteRtResult<ResT>::FromValue(
-      std::make_pair(absl::string_view(exec_info->entrypoint_name),
-                     absl::string_view(exec_info->metadata_key)));
+  return std::make_pair(absl::string_view(exec_info->entrypoint_name),
+                        absl::string_view(exec_info->metadata_key));
 }
 
-LiteRtResult<OwningBufferRef<uint8_t>> MakeExecInfo(
+Expected<OwningBufferRef<uint8_t>> MakeExecInfo(
     absl::string_view entrypoint_name, absl::string_view metadata_key) {
-  using ResT = OwningBufferRef<uint8_t>;
   if (entrypoint_name.size() >= kEntryPointNameMaxLen ||
       metadata_key.size() >= kMetadataKeyMaxLen) {
     LITERT_LOG(LITERT_ERROR, "%s", "Exec info strings too large\n");
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidArgument);
+    return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }
   ExecInfo exec_info;
   entrypoint_name.copy(exec_info.entrypoint_name, entrypoint_name.size());
   metadata_key.copy(exec_info.metadata_key, metadata_key.size());
-  OwningBufferRef<uint8_t> res(reinterpret_cast<const uint8_t*>(&exec_info),
-                               sizeof(exec_info));
-  return LiteRtResult<ResT>::TakeValue(std::move(res));
+  return OwningBufferRef<uint8_t>(reinterpret_cast<const uint8_t*>(&exec_info),
+                                  sizeof(exec_info));
 }
 
 }  // namespace litert::internal

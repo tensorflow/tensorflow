@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -48,6 +48,8 @@ namespace xla::gpu::triton {
 // non-0D tensor. An attempt to use this class with 0D tensors will CHECK-fail
 // because 0D tensors are not supported by Triton.
 class ScalarOrTensor {
+  using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+
  public:
   ScalarOrTensor() = default;
 
@@ -55,17 +57,17 @@ class ScalarOrTensor {
   // value is a 0D tensor, because Triton does not support 0D tensors.
   explicit ScalarOrTensor(mlir::Value value);
 
-  bool IsScalar() const { return std::holds_alternative<ScalarValue>(value_); }
-  bool IsTensor() const { return std::holds_alternative<TensorValue>(value_); }
+  bool IsScalar() const { return !IsTensor(); }
+  bool IsTensor() const { return mlir::isa<TensorValue>(value_); }
 
-  mlir::Value UnwrapScalar() {
+  mlir::Value UnwrapScalar() const {
     CHECK(IsScalar());
-    return std::get<ScalarValue>(value_).scalar_value;
+    return value_;
   }
 
-  mlir::Value UnwrapTensor() {
+  TensorValue UnwrapTensor() const {
     CHECK(IsTensor());
-    return std::get<TensorValue>(value_).tensor_value;
+    return mlir::cast<TensorValue>(value_);
   }
 
   // Returns the underlying value regardless of whether it is a scalar or a
@@ -73,25 +75,12 @@ class ScalarOrTensor {
   // both needs to use an `mlir::Value` and functions identically for scalars
   // and tensors. In other cases, prefer to use the `UnwrapScalar` or
   // `UnwrapTensor` methods.
-  mlir::Value UnwrapUnsafe() {
-    if (auto* scalar = std::get_if<ScalarValue>(&value_)) {
-      return scalar->scalar_value;
-    }
-    return std::get<TensorValue>(value_).tensor_value;
-  }
+  mlir::Value UnwrapUnsafe() const { return value_; }
 
-  mlir::Type Type() { return UnwrapUnsafe().getType(); }
+  mlir::Type getType() const { return value_.getType(); }
 
  private:
-  struct ScalarValue {
-    mlir::Value scalar_value;
-  };
-
-  struct TensorValue {
-    mlir::Value tensor_value;
-  };
-
-  std::variant<ScalarValue, TensorValue> value_;
+  mlir::Value value_;
 };
 
 // Triton requires that all block dimensions are a power of 2.
@@ -101,9 +90,9 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
     llvm::ArrayRef<int64_t> tile_sizes);
 
 // XLA -> Triton type conversions.
-absl::StatusOr<mlir::Type> TritonType(mlir::OpBuilder b, PrimitiveType t);
+absl::StatusOr<mlir::Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t);
 
-mlir::Type StorageType(mlir::OpBuilder b, mlir::Type t);
+mlir::Type StorageType(EmitterLocOpBuilder& b, mlir::Type t);
 
 // Get the value of the scalar constant's literal in a C++ type.
 template <typename T>
@@ -117,8 +106,7 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
 
 // Create a scalar constant.
 template <typename T>
-ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder b, mlir::Type type,
-                           T value) {
+ScalarOrTensor CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value) {
   if (mlir::isa<mlir::IntegerType>(type)) {
     auto result =
         b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
@@ -134,8 +122,8 @@ ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder b, mlir::Type type,
 
 // Create a tensor constant.
 template <typename T>
-ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
-                           T value, llvm::ArrayRef<int64_t> shape) {
+ScalarOrTensor CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value,
+                           llvm::ArrayRef<int64_t> shape) {
   if (shape.empty()) {
     return CreateConst<T>(b, type, value);
   }
@@ -143,7 +131,9 @@ ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     auto result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value)));
+            tensor_type,
+            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                        /*isSigned=*/false, /*implicitTrunc=*/true)));
     return ScalarOrTensor(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
@@ -157,8 +147,7 @@ ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
 
 // Create a constant of the same shape as `like` but with a new type and value.
 template <typename T>
-mlir::Value ConstLike(mlir::ImplicitLocOpBuilder& b, mlir::Value like,
-                      T new_value) {
+mlir::Value ConstLike(EmitterLocOpBuilder& b, mlir::Value like, T new_value) {
   if (auto src_shaped_ty = mlir::dyn_cast<mlir::ShapedType>(like.getType())) {
     mlir::Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, new_value, src_shaped_ty.getShape())
@@ -167,25 +156,25 @@ mlir::Value ConstLike(mlir::ImplicitLocOpBuilder& b, mlir::Value like,
   return CreateConst(b, like.getType(), new_value).UnwrapUnsafe();
 }
 
-inline mlir::Value ZerosLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
+inline mlir::Value ZerosLike(EmitterLocOpBuilder& b, mlir::Value x) {
   return ConstLike(b, x, 0);
 }
 
-inline mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
+inline mlir::Value OnesLike(EmitterLocOpBuilder& b, mlir::Value x) {
   return ConstLike(b, x, 1);
 }
 
 bool IsFp8Type(mlir::Type t);
 
-ScalarOrTensor Splat(mlir::ImplicitLocOpBuilder& b, ScalarOrTensor value,
+ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
                      llvm::ArrayRef<int64_t> shape);
 
 // Triton type conversions.
-mlir::Value Cast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
+mlir::Value Cast(EmitterLocOpBuilder& b, mlir::Value value,
                  mlir::Type dst_element_ty);
 
 // Emits a scalar constant.
-absl::StatusOr<ScalarOrTensor> EmitConstant(mlir::ImplicitLocOpBuilder& b,
+absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
                                             const HloInstruction& constant);
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo);
@@ -193,12 +182,12 @@ bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo);
 // Should only be called if IsSupportedElementwiseLibdeviceFunction() returns
 // true for `hlo`, otherwise an error is returned.
 absl::StatusOr<mlir::Value> EmitElementwiseLibdeviceFunction(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     mlir::ValueRange inputs);
 
 absl::StatusOr<mlir::Value> EmitElementwise(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     mlir::ValueRange inputs);
 

@@ -55,7 +55,7 @@ TEST_F(MlirReductionBaseTest, TwoGroups) {
   auto* root = module->entry_computation()->root_instruction();
   auto device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   auto analysis = HloFusionAnalysis::Create(*root, device_info);
-  auto reduction_groups = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  auto reduction_groups = GroupDisjointReductions(analysis);
   EXPECT_THAT(reduction_groups.grouped_roots,
               ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
                           ElementsAre(&analysis.fusion_root(1).instruction())));
@@ -86,7 +86,7 @@ TEST_F(MlirReductionBaseTest, OneGroup) {
   auto device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = HloFusionAnalysis::Create(*root, device_info);
-  auto reduction_groups = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  auto reduction_groups = GroupDisjointReductions(analysis);
   EXPECT_THAT(reduction_groups.grouped_roots, SizeIs(1));
 }
 

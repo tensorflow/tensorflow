@@ -23,7 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/cast_test_common.h"
@@ -325,6 +325,60 @@ TEST(CastOpModel, CastInt16ToUInt16) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<uint16_t>(m.output()),
               ElementsAreArray({10, 20, 30, 40, 50, 60}));
+}
+
+TEST(CastOpModel, CastFloatToFloat16) {
+  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_FLOAT16, {3, 2}});
+  m.PopulateTensor<float>(m.input(), {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractVector<Eigen::half>(m.output()),
+      ElementsAreArray(
+          {static_cast<Eigen::half>(100.f), static_cast<Eigen::half>(1.0f),
+           static_cast<Eigen::half>(0.f), static_cast<Eigen::half>(0.4f),
+           static_cast<Eigen::half>(1.999f), static_cast<Eigen::half>(1.1)}));
+}
+
+TEST(CastOpModel, CastFloatToBFloat16) {
+  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_BFLOAT16, {3, 2}});
+  m.PopulateTensor<float>(m.input(), {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray({static_cast<Eigen::bfloat16>(100.f),
+                                static_cast<Eigen::bfloat16>(1.0f),
+                                static_cast<Eigen::bfloat16>(0.f),
+                                static_cast<Eigen::bfloat16>(0.4f),
+                                static_cast<Eigen::bfloat16>(1.999f),
+                                static_cast<Eigen::bfloat16>(1.1f)}));
+}
+
+TEST(CastOpModel, CastFloat16ToFloat) {
+  CastOpModel m({TensorType_FLOAT16, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
+  m.PopulateTensor<Eigen::half>(
+      m.input(),
+      {static_cast<Eigen::half>(100.f), static_cast<Eigen::half>(1.0f),
+       static_cast<Eigen::half>(0.f), static_cast<Eigen::half>(0.4f),
+       static_cast<Eigen::half>(1.999f), static_cast<Eigen::half>(1.1f)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {100.f, 1.0f, 0.f, 0.399902344f, 1.99902344f, 1.09960938f},
+                  /*max_abs_err=*/0.05f)));
+}
+
+TEST(CastOpModel, CastBFloat16ToFloat) {
+  CastOpModel m({TensorType_BFLOAT16, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {static_cast<Eigen::bfloat16>(100.f), static_cast<Eigen::bfloat16>(1.0f),
+       static_cast<Eigen::bfloat16>(0.f), static_cast<Eigen::bfloat16>(0.4f),
+       static_cast<Eigen::bfloat16>(1.999f),
+       static_cast<Eigen::bfloat16>(1.1)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {100.f, 1.0f, 0.f, 0.400390625f, 2.f, 1.1015625f},
+                  /*max_abs_err=*/0.05f)));
 }
 
 TEST(CastOpModel, CastConstInputCachingWorks) {

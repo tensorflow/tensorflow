@@ -12,110 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <stdio.h>
-
-#include <cstddef>
 #include <cstdlib>
-#include <string>
-#include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/examples/example_plugin_common.h"
 
-//
-// Configurations
-//
-
-namespace {
-
-constexpr char kPluginManufacturer[] = "ExampleSocManufacturer";
-constexpr char kPluginSocModel[] = "ExampleSocModel";
-
-}  // namespace
-
-LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
-  if (!api_version) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  api_version->major = LITERT_API_VERSION_MAJOR;
-  api_version->minor = LITERT_API_VERSION_MINOR;
-  api_version->patch = LITERT_API_VERSION_PATCH;
-  return kLiteRtStatusOk;
-}
-
-const char* LiteRtGetCompilerPluginSocManufacturer() {
-  return kPluginManufacturer;
-}
-
-LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
-    LiteRtCompilerPlugin compiler_plugin,
-    LiteRtParamIndex* num_supported_soc_models) {
-  if (!compiler_plugin || !num_supported_soc_models) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  *num_supported_soc_models = 1;
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
-    const char** soc_model_name) {
-  if (!compiler_plugin || !soc_model_name) {
-    return kLiteRtStatusErrorInvalidArgument;
-  } else if (soc_model_idx != 0) {
-    return kLiteRtStatusErrorUnsupported;
-  }
-  *soc_model_name = kPluginSocModel;
-  return kLiteRtStatusOk;
-}
-
-//
-// Compiled Result Definition
-//
-
-struct LiteRtCompiledResultT {
-  std::string byte_code;
-  std::vector<std::string> per_op_data;
-};
-
-LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  *byte_code = compiled_result->byte_code.data();
-  *byte_code_size = compiled_result->byte_code.size();
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetCompiledResultCallInfo(
-    LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
-  if (call_idx >= compiled_result->per_op_data.size()) {
-    return kLiteRtStatusErrorIndexOOB;
-  }
-
-  *call_info = compiled_result->per_op_data.at(call_idx).data();
-  *call_info_size = compiled_result->per_op_data.at(call_idx).size();
-
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtGetNumCompiledResultCalls(
-    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls) {
-  *num_calls = compiled_result->per_op_data.size();
-  return kLiteRtStatusOk;
-}
-
-void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
-  delete compiled_result;
-}
-
-//
-// Plugin Definition
-//
+// A simple compiler plugin example that implements everything directly.
+// This plugin matches on mul ops, and emits "byte code" that is simply
+// a string representative of the ops consumed.
 
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {};
@@ -129,21 +38,15 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
 
-LiteRtStatus LiteRtCompilerPluginPartitionModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
-    LiteRtOpList selected_ops) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto subgraph,
-                                 litert::internal::GetSubgraph(model));
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(subgraph));
-
-  for (auto op : ops) {
-    LiteRtOpCode op_code;
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
-    if (op_code != kLiteRtOpCodeTflMul) {
+LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           LiteRtSubgraph subgraph,
+                                           LiteRtOpList selected_ops) {
+  ::litert::Subgraph main_subgraph(subgraph);
+  for (const auto& op : main_subgraph.Ops()) {
+    if (op.Code() != kLiteRtOpCodeTflMul) {
       continue;
     }
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
   }
   return kLiteRtStatusOk;
 }
@@ -153,18 +56,12 @@ namespace {
 LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
                                     LiteRtSubgraph subgraph,
                                     LiteRtCompiledResultT& result) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(subgraph));
-
+  const litert::Subgraph sg(subgraph);
   int num_muls_in_partition = 0;
-  for (auto op : ops) {
-    LiteRtOpCode op_code;
-
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
-    if (op_code != kLiteRtOpCodeTflMul) {
+  for (const auto& op : sg.Ops()) {
+    if (op.Code() != kLiteRtOpCodeTflMul) {
       return kLiteRtStatusErrorUnsupported;
     }
-
     ++num_muls_in_partition;
   }
 
@@ -191,7 +88,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraphArray partitions, LiteRtParamIndex num_partitions,
+    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
     LiteRtCompiledResult* compiled_result) {
   LiteRtCompiledResult result = new LiteRtCompiledResultT;
 

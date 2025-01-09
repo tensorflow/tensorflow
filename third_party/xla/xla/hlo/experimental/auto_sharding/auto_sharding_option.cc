@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 std::string AutoShardingOption::ToString() const {
@@ -243,6 +244,28 @@ absl::Status AutoShardingOption::CheckAndSetup() {
     }
   }
   return absl::OkStatus();
+}
+
+AutoShardingOption DefaultAutoShardingOptionFromModuleConfig(
+    const HloModuleConfig& config) {
+  AutoShardingOption option;
+  option.enable = true;
+  if (!config.auto_spmd_partitioning_mesh_shape().empty()) {
+    option.device_mesh_shape = config.auto_spmd_partitioning_mesh_shape();
+  } else {
+    // Use a simple mesh shape if not specified.
+    option.device_mesh_shape = {config.num_partitions(), 1};
+  }
+  if (!config.auto_spmd_partitioning_mesh_ids().empty()) {
+    option.device_mesh_ids = config.auto_spmd_partitioning_mesh_ids();
+  }
+  option.memory_budget_per_device =
+      config.debug_options().xla_gpu_auto_spmd_partitioning_memory_budget_gb() *
+      1024 * 1024 * 1024;
+  option.memory_budget_ratio =
+      config.debug_options()
+          .xla_gpu_auto_spmd_partitioning_memory_budget_ratio();
+  return option;
 }
 
 }  // namespace xla

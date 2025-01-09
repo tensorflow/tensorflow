@@ -845,6 +845,17 @@ cc_library(
 )
 
 cc_library(
+    name = "test_data_transfer",
+    testonly = True,
+    srcs = ["test_data_transfer.cc"],
+    deps = [
+        ":data_transfer",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],

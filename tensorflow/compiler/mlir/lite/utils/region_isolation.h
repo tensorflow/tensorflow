@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_REGION_ISOLATION_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_REGION_ISOLATION_H_
 
+#include <optional>
+
 #include "llvm/ADT/SetVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project

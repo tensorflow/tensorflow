@@ -15,7 +15,6 @@ limitations under the License.
 
 // XLA Pack operator.
 
-#include <limits>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

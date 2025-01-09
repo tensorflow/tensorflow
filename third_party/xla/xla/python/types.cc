@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"  // IWYU pragma: keep
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/shape.h"
@@ -175,7 +174,7 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     return custom_it->second;
   }
   return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
-                         nb::cast<std::string_view>(nb::repr(np_type)),
+                         nb::cast<absl::string_view>(nb::repr(np_type)),
                          np_type.char_(), np_type.kind(), np_type.itemsize());
 }
 

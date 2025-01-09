@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/log.h"

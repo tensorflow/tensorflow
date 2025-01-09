@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"

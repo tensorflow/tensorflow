@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_FLAT_MAP_UTILS_H_
 #define TENSORFLOW_CORE_DATA_FLAT_MAP_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"

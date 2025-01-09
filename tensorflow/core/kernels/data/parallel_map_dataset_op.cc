@@ -213,7 +213,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           b->AddScalar(num_parallel_calls_, &num_parallel_calls));
     }
-    std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    std::vector<std::pair<absl::string_view, AttrValue>> attrs;
 
     // Attr: f
     AttrValue f_attr;

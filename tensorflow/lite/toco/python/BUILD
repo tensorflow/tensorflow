@@ -2,19 +2,13 @@ load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow/tools/pip_package:__subpackages__",
-    ],
     licenses = ["notice"],
 )
 
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -82,10 +76,7 @@ py_strict_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//learning/expander/pod/deep_pod/utils:__subpackages__",
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//learning/expander/pod/deep_pod/utils:__subpackages__"],
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
     ],

@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
@@ -118,7 +117,7 @@ struct CompilationTimer {
 };
 
 // Populates input_output_alias field in the HLO Module proto.
-Status PopulateInputOutputAliasing(
+absl::Status PopulateInputOutputAliasing(
     mlir::func::FuncOp main_fn,
     XlaCompiler::CompilationResult* compilation_result, bool use_tuple_args) {
   constexpr char kAliasingAttr[] = "tf.aliasing_output";
@@ -162,8 +161,8 @@ bool failed(const absl::Status& status) { return !status.ok(); }
 
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
-Status PrepareAndExportToLibrary(mlir::ModuleOp module,
-                                 FunctionLibraryDefinition* flib_def) {
+absl::Status PrepareAndExportToLibrary(mlir::ModuleOp module,
+                                       FunctionLibraryDefinition* flib_def) {
   // Pass pipeline is defined here instead of leveraging the phase one export
   // pipeline because only the functional to executor dialect conversion and
   // breakup islands passes are common between the export pipeline and here.
@@ -215,7 +214,7 @@ absl::Status CompileTFFunctionWithoutMlir(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
-  Status comp_status = CompileTFFunctionToHlo(
+  absl::Status comp_status = CompileTFFunctionToHlo(
       *function_computation.flib_def, function_computation.graph_def_version,
       shape_determination_funcs, arg_shapes, device_type,
       function_computation.guaranteed_constants, *function_computation.function,
@@ -233,8 +232,8 @@ absl::Status CompileTFFunctionWithoutMlir(
 }
 
 absl::Status CompileMLIRTFFunction(
-    tpu::MlirToHloArgs mlir_computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    mlir::ModuleOp mlir_module, const tpu::TPUCompileMetadataProto& metadata,
+    bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -243,22 +242,14 @@ absl::Status CompileMLIRTFFunction(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
-  mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-  TF_RETURN_IF_ERROR(DeserializeMlirModule(mlir_computation.mlir_module,
-                                           &context, &mlir_module));
   if (!mlir::SetTPUInfeedLayout(mlir_module))
     return errors::Internal("Failed to set layouts attribute");
 
   if (VLOG_IS_ON(2)) {
-    tensorflow::DumpMlirOpToFile("legalize_with_old_bridge", mlir_module.get());
+    tensorflow::DumpMlirOpToFile("legalize_with_old_bridge", mlir_module);
   }
   constexpr char kEntryFuncName[] = "main";
-  auto main_fn = mlir_module->lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  auto main_fn = mlir_module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
   if (!main_fn) {
     return errors::Internal(
         "TPU compile op requires module with a entry function main");
@@ -267,14 +258,14 @@ absl::Status CompileMLIRTFFunction(
   // Export functions to the library.
   auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), FunctionDefLibrary());
-  TF_RETURN_IF_ERROR(PrepareAndExportToLibrary(*mlir_module, flib_def.get()));
+  TF_RETURN_IF_ERROR(PrepareAndExportToLibrary(mlir_module, flib_def.get()));
 
   if (VLOG_IS_ON(2)) {
     tensorflow::DumpMlirOpToFile("legalize_with_old_bridge_post_transform",
-                                 mlir_module.get());
+                                 mlir_module);
   }
   VersionDef versions;
-  if (mlir::failed(ExtractTfVersions(*mlir_module, &versions))) {
+  if (mlir::failed(ExtractTfVersions(mlir_module, &versions))) {
     return errors::Internal(
         "module attribute in _TPUCompileMlir op is missing tf versions.");
   }
@@ -292,6 +283,39 @@ absl::Status CompileMLIRTFFunction(
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,
                                      use_tuple_args);
+}
+
+absl::Status CompileMLIRTFFunction(
+    tpu::MlirToHloArgs mlir_computation,
+    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns
+        shape_determination_funcs,
+    const std::vector<tensorflow::TensorShape>& arg_shapes,
+    const DeviceType& device_type,
+    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
+    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
+    xla::CompileOnlyClient* client,
+    XlaCompiler::CompilationResult* compilation_result) {
+  if (mlir_computation.mlir_module_op.has_value()) {
+    return CompileMLIRTFFunction(
+        mlir_computation.mlir_module_op.value(), metadata, use_tuple_args,
+        shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
+        per_core_arg_shapes, client, compilation_result);
+  }
+
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  TF_RETURN_IF_ERROR(DeserializeMlirModule(mlir_computation.mlir_module,
+                                           &context, &mlir_module));
+
+  return CompileMLIRTFFunction(*mlir_module, metadata, use_tuple_args,
+                               shape_determination_funcs, arg_shapes,
+                               device_type, arg_core_mapping,
+                               per_core_arg_shapes, client, compilation_result);
 }
 
 }  // namespace

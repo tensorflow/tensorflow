@@ -35,7 +35,7 @@ using mlir::Builder;
 using mlir::ShapedType;
 using mlir::Type;
 
-Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
+absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
   switch (dtype) {
     case DT_HALF:
       *type = builder.getF16Type();
@@ -106,7 +106,7 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
   }
 }
 
-Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
+absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   if (type.isF16()) {
     *dtype = DT_HALF;
     return absl::OkStatus();
@@ -174,7 +174,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
       absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
-Status ConvertToDataType(Type type, DataType* dtype) {
+absl::Status ConvertToDataType(Type type, DataType* dtype) {
   if (auto stype = mlir::dyn_cast<ShapedType>(type)) {
     TF_RETURN_IF_ERROR(
         ConvertScalarTypeToDataType(stype.getElementType(), dtype));
@@ -192,8 +192,8 @@ void ConvertToMlirShape(const TensorShape& input_shape,
   }
 }
 
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
+absl::Status ConvertToMlirShape(const TensorShapeProto& input_shape,
+                                llvm::SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dim_size());
   auto& dims = input_shape.dim();
   for (auto& d : dims) {

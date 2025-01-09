@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/utils.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"

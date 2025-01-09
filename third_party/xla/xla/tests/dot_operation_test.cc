@@ -22,21 +22,21 @@ limitations under the License.
 #include "xla/array3d.h"
 #include "xla/client/local_client.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -311,7 +311,7 @@ class ParametricDotTest : public DotOperationTest,
                                ->GetDeviceDescription()
                                .gpu_compute_capability();
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
-      std::string_view name(
+      absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
         GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
@@ -2031,6 +2031,21 @@ ENTRY SmallIntegerDot {
   arg0 = s8[20,2] parameter(0)
   arg1 = s8[2,20] parameter(1)
   ROOT dot = s8[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_TPU(S4Dot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s4[20,2] parameter(0)
+  arg1 = s4[2,20] parameter(1)
+  ROOT dot = s4[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
 

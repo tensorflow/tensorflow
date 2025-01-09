@@ -149,6 +149,12 @@ tsl::RCReference<DeviceList> DeviceTest::GetDevices(
   return test_util::GetDevices(client_.get(), device_indices).value();
 }
 
+tsl::RCReference<DeviceList> DeviceTest::GetAddressableDevices(
+    absl::Span<const int> device_indices) {
+  return test_util::GetAddressableDevices(client_.get(), device_indices)
+      .value();
+}
+
 }  // namespace test_util
 }  // namespace ifrt
 }  // namespace xla

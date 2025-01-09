@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
 
-#include <string_view>
-
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor::gpu {
@@ -38,7 +36,7 @@ namespace internal {
 //  }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kAddI32KernelPtx = R"(
+inline constexpr absl::string_view kAddI32KernelPtx = R"(
 .version 4.0
 .target sm_50
 .address_size 64

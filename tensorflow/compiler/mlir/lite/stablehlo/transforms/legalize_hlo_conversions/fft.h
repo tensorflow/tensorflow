@@ -22,8 +22,11 @@ limitations under the License.
 namespace mlir::odml {
 
 // Patterns to legalize mhlo.fft to TFL.
-void PopulateFftPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
-                         ConversionTarget& target);
+void PopulateLegalizeFftPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                                 ConversionTarget& target);
+
+// Patterns to prepare mhlo.fft to TFL.
+void PopulatePrepareFftPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 
 }  // namespace mlir::odml
 

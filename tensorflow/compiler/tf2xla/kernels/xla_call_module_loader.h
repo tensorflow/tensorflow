@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -44,7 +45,7 @@ bool IsTokenType(mlir::Type type);
 class XlaCallModuleLoader {
  public:
   static absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
-      mlir::MLIRContext* context, int version, std::string module_str,
+      mlir::MLIRContext* context, int version, mlir::StringRef module_str,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, int num_invocation_args,
       bool main_has_token_input_output);
@@ -103,7 +104,7 @@ class XlaCallModuleLoader {
 
   // Initializes the loader with the given serialized module string.
   absl::Status LoadModule(mlir::MLIRContext* context, int version,
-                          std::string module_str,
+                          mlir::StringRef module_str,
                           std::vector<std::string> disabled_checks,
                           std::vector<std::string> platforms,
                           int num_invocation_args,

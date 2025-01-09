@@ -19,10 +19,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <string_view>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -53,7 +53,6 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
-using ::mlir::sdy::getMeshAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::ManualComputationOp;
 using ::mlir::sdy::MeshAttr;
@@ -76,7 +75,7 @@ MeshAttr removeSizeOneAxes(MeshAttr mesh) {
 TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
                                      const SymbolTable& symbolTable) {
   MeshAttr mesh = sharding.getMesh(symbolTable);
-  CHECK(mesh) << "unknown mesh: " << std::string_view(sharding.getMeshName());
+  CHECK(mesh) << "unknown mesh: " << absl::string_view(sharding.getMeshName());
 
   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -1099,6 +1100,21 @@ TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
                            F32, {128, 24, 48, 48, 4}, {4, 3, 2, 1, 0}));
 }
 
+TEST(ShapeUtilTest,
+     MakeShapeWithDescendingLayoutAndSamePhysicalLayoutWithDynamicDims) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {128, 24, Shape::kUnboundedSize, 48, 48},
+                           {false, false, true, false, false});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  Shape expected_shape =
+      ShapeUtil::MakeShape(F32, {128, 24, 48, 48, Shape::kUnboundedSize},
+                           {false, false, false, false, true});
+  *expected_shape.mutable_layout() = LayoutUtil::MakeLayout({4, 3, 2, 1, 0});
+  EXPECT_EQ(new_shape, expected_shape);
+}
+
 TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcast) {
   Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {1, 0});
   Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 5}, {0, 1});
@@ -1207,6 +1223,25 @@ TEST(ShapeUtilTest, B_251055887) {
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
+TEST(ShapeUtilTest, B_385192799) {
+  // This case failed the fuzzer; see b/385192799.
+  ShapeProto proto;
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: 2000)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: -1)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
+}
+
 TEST(ShapeUtilTest, Int4ShapeSize) {
   Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
   int4_shape.mutable_layout()->set_element_size_in_bits(4);
@@ -1225,9 +1260,11 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
   EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
 
-  // Changing the type to PRED should clear element_size_in_bits.
+  // Changing the type should clear element_size_in_bits.
   Shape pred_shape = ShapeUtil::ChangeElementType(int4_shape, PRED);
   EXPECT_EQ(pred_shape.layout().element_size_in_bits(), 0);
+  Shape u8_shape = ShapeUtil::ChangeElementType(int4_shape, U8);
+  EXPECT_EQ(u8_shape.layout().element_size_in_bits(), 0);
   Shape u4_shape = ShapeUtil::ChangeElementType(int4_shape, U4);
   EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
 }
@@ -1396,6 +1433,15 @@ TEST(ShapeUtilTest, DecomposeBitcastToTrt) {
   EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
   EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
   EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
+}
+
+TEST(ShapeUtilTest, ReorderDimensionsTest) {
+  EXPECT_EQ(ShapeUtil::ReorderLogicalDimensions(
+                ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 3, 12, 17},
+                                                    {1, 2, 0, 3}),
+                {0, 2, 1, 3})
+                .ToString(true),
+            "f32[16,12,3,17]{2,1,0,3}");
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

@@ -281,7 +281,7 @@ void DeferActivationTransposePass::runOnOperation() {
   patterns.add<DeferActivationTransposeForAddOp,
                DeferActivationTransposeForMaxPoolReduceWindowOp,
                DeferActivationTransposeForMaxOp>(&ctx);
-  if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
     func_op->emitWarning() << "Failed to converge patterns: " << getArgument();
   }
 }

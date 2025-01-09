@@ -273,6 +273,7 @@ cc_library(
         ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
         "@com_google_absl//absl/status",
@@ -416,6 +417,7 @@ cc_library(
         ":ifrt_serving_executable",
         ":tf_host_callback",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/framework:tensor",
@@ -524,6 +526,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":ifrt_tensor_utils",
+        ":pjrt_cpu_client_test_lib",
         ":sharding_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -542,7 +545,6 @@ tf_cc_test(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
-        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/tsl/concurrency:ref_count",
     ],
@@ -648,6 +650,7 @@ cc_library(
         ":ifrt_restore_tensor_registry",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:function",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:node_def_util",
@@ -675,4 +678,20 @@ cc_library(
         "@local_xla//xla/python/ifrt",
         "@tf_runtime//:hostcontext",
     ],
+)
+
+cc_library(
+    name = "pjrt_cpu_client_test_lib",
+    testonly = True,
+    srcs = ["pjrt_cpu_client_test_lib.cc"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt",
+    ],
+    alwayslink = True,
 )

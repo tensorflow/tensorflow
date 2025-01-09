@@ -96,7 +96,8 @@ class HloRematerialization : public HloModulePass {
     explicit Options(HloCostAnalysis& hlo_cost_analysis,
                      const RematerializationModeConfig& remat_mode_config,
                      int64_t memory_limit_bytes, int block_size_limit,
-                     int block_rematerialization_factor, int64_t min_remat_size,
+                     float block_rematerialization_factor,
+                     int64_t min_remat_size,
                      CompactShapeFunction compact_shape_function,
                      std::optional<HostMemoryOffloadConfig>
                          host_memory_offload_config = std::nullopt,
@@ -137,7 +138,7 @@ class HloRematerialization : public HloModulePass {
     // Controls the amount of effort spent trying to find large blocks for
     // rematerialization. Larger values leads to longer compilation times in
     // return for potentially reduced memory consumption.
-    int block_rematerialization_factor;
+    float block_rematerialization_factor;
 
     // The minimum size, in bytes, of a tensor to be considered for
     // rematerialization. All tensors smaller than this size will be skipped

@@ -68,7 +68,8 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )"
                                          : R"(
@@ -116,7 +117,8 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )"
                                          : R"(

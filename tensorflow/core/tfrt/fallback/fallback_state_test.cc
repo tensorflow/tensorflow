@@ -19,13 +19,16 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/nullability.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -121,9 +124,10 @@ TEST(FallbackStateTest, CreateGraphExecutionState) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto graph_execution_state,
-      fallback_state->CreateGraphExecutionState(std::move(graphdef)));
+  TF_ASSERT_OK_AND_ASSIGN(auto graph_execution_state,
+                          fallback_state->CreateGraphExecutionState(
+                              std::move(graphdef), /*run_placer=*/true,
+                              /*enable_tf2xla_mlir_bridge=*/false));
 }
 
 TEST(FallbackStateTest, CreateWithMockGpuDevice) {

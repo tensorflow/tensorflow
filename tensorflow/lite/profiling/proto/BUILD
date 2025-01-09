@@ -1,4 +1,5 @@
 # Placeholder: load py_proto_library
+# Placeholder: load proto_library
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",

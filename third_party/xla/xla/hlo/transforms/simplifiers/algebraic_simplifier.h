@@ -322,6 +322,16 @@ class AlgebraicSimplifierOptions {
     return enable_broadcast_degenerate_dimension_;
   }
 
+  void set_enable_remove_no_op_reduce_precision(
+      bool enable_remove_no_op_reduce_precision) {
+    enable_remove_no_op_reduce_precision_ =
+        enable_remove_no_op_reduce_precision;
+  }
+
+  bool enable_remove_no_op_reduce_precision() const {
+    return enable_remove_no_op_reduce_precision_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -364,6 +374,7 @@ class AlgebraicSimplifierOptions {
   bool disable_dynamic_slice_to_slice_conversion_{false};
   bool enable_fast_math_{false};
   bool enable_broadcast_degenerate_dimension_{true};
+  bool enable_remove_no_op_reduce_precision_{false};
   Metadata metadata_;
 };
 
@@ -410,6 +421,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleAbs(HloInstruction* abs) override;
 
   absl::Status HandleAdd(HloInstruction* add) override;
+
+  absl::Status HandleAllGather(HloInstruction* all_gather) override;
 
   absl::Status HandleAllToAll(HloInstruction* all_to_all) override;
 
@@ -481,6 +494,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleReshape(HloInstruction* reshape) override;
 
   absl::Status HandleReduce(HloInstruction* hlo) override;
+
+  absl::Status HandleReducePrecision(HloInstruction* hlo) override;
 
   absl::Status HandleReduceWindow(HloInstruction* hlo) override;
 
@@ -554,6 +569,38 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   const AlgebraicSimplifierOptions& options_;
 
  private:
+  // Returns whether the dot precision config is supported by simplifier.
+  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config);
+
+  // Makes algorithm specific set of instructions for multiply with precision
+  // algorithm in mind. In the trivial case it returns just multiply.
+  // For x3 or x6 algorithms it adds the parameters split instructions and the
+  // corresponding multiply instructions.
+  virtual absl::StatusOr<HloInstruction*> MakeMultiplyForPrecisionAlgorithm(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
+  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
+  enum class RewriteResult {
+    kNoRewrite,
+    kRewritten,
+    kStopRewrites,
+  };
+
+  // Reorder nested dots with associativity using flops as a heuristic
+  // Could return kStopRewrites if the rewrite is too expensive.
+  absl::StatusOr<RewriteResult> AssociativeReorderNestedDot(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
+  // If the lhs or rhs have only batch and contracting dimensions, a dot can be
+  // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
+  absl::Status RewriteBatchPlusContractingAsReduce(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
   // Removes degenerate dimension from dot.
   absl::StatusOr<bool> RemoveDegenerateDimensionFromDot(HloDotInstruction* dot);
 

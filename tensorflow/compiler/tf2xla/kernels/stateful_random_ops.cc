@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
-#include <cmath>
+#include <cstdint>
 #include <functional>
 #include <tuple>
 #include <utility>

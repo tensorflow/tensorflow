@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 
 #include "absl/status/statusor.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -24,19 +26,22 @@ namespace ifrt {
 char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
 
-absl::StatusOr<xla::ifrt::ExecuteOptionsProto> ExecuteOptions::ToProto() const {
+absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   ExecuteOptionsProto proto;
 
   proto.set_launch_id(launch_id);
   proto.mutable_non_donatable_input_indices()->Add(
       non_donatable_input_indices.begin(), non_donatable_input_indices.end());
   proto.set_fill_status(fill_status);
+  if (custom_options.has_value()) {
+    *proto.mutable_custom_options() = custom_options->ToProto();
+  }
 
   return proto;
 }
 
-absl::StatusOr<xla::ifrt::ExecuteOptions> ExecuteOptions::FromProto(
-    const xla::ifrt::ExecuteOptionsProto& proto) {
+absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
+    const ExecuteOptionsProto& proto) {
   ExecuteOptions options;
 
   options.launch_id = proto.launch_id();
@@ -44,7 +49,10 @@ absl::StatusOr<xla::ifrt::ExecuteOptions> ExecuteOptions::FromProto(
       proto.non_donatable_input_indices().begin(),
       proto.non_donatable_input_indices().end());
   options.fill_status = proto.fill_status();
-
+  if (proto.has_custom_options()) {
+    TF_ASSIGN_OR_RETURN(options.custom_options,
+                        AttributeMap::FromProto(proto.custom_options()));
+  }
   return options;
 }
 

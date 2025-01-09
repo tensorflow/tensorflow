@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cctype>
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "flatbuffers/vector.h"  // from @flatbuffers

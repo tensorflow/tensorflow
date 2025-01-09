@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 
+#include <cstdint>
 #include <limits>
 
 #include "absl/status/status.h"

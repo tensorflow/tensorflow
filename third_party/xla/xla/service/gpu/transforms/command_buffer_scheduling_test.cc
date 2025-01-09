@@ -24,12 +24,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -46,7 +46,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
@@ -599,8 +600,8 @@ TEST_F(CommandBufferSchedulingTest, PrepareCommandBuffer) {
   std::vector<HloInstruction*> instructions;
   HloInstructionSequence seq;
   for (HloInstruction* inst : module->entry_computation()->instructions()) {
-    if (inst->opcode() == HloOpcode::kFusion ||
-        inst->opcode() == HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsOp<HloOpcode::kFusion, HloOpcode::kGetTupleElement>(
+            inst)) {
       seq.push_back(inst);
     }
     instructions.push_back(inst);
@@ -1090,7 +1091,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncFusion) {
 TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
   const char* hlo = R"(
     HloModule m, is_scheduled=true
-    
+
     async_computation.1 {
     param.1 = f32[4,8,128]{2,1,0} parameter(0)
     ROOT all-to-all.1 = f32[4,8,128]{2,1,0} all-to-all(param.1), channel_id=1, dimensions={1}
@@ -1098,7 +1099,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
 
     ENTRY main {
     param.0 = f32[4,8,128]{2,1,0} parameter(0)
-    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1 
+    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1
     ROOT all-to-all-done = f32[4,8,128]{2,1,0} async-done(all-to-all-start)
     })";
 

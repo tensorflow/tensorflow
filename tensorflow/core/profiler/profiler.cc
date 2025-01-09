@@ -16,8 +16,9 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cstdint>
+#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -167,7 +168,7 @@ int Run(int argc, char** argv) {
 
   string output_type;
   std::map<string, string> output_options;
-  Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
+  absl::Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
   CHECK(s.ok()) << s;
 
   string cmd = "";
@@ -302,7 +303,7 @@ int Run(int argc, char** argv) {
     linenoiseHistorySave(".tfprof_history.txt");
 
     Options new_opts = opts;
-    Status s = ParseCmdLine(line_s, &cmd, &new_opts);
+    absl::Status s = ParseCmdLine(line_s, &cmd, &new_opts);
     if (!s.ok()) {
       absl::FPrintF(stderr, "E: %s\n", s.ToString());
       continue;

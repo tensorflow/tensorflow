@@ -33,10 +33,8 @@ class ReshapeOpLegalization : public Legalization {
  public:
   ReshapeOpLegalization() = default;
   ~ReshapeOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<ReshapeOpLegalization>;
-  static UniquePtr Create() {
-    return std::make_unique<ReshapeOpLegalization>();
-  }
+  using Ptr = std::unique_ptr<ReshapeOpLegalization>;
+  static Ptr Create() { return std::make_unique<ReshapeOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,6 +66,16 @@ tsl::RCReference<DeviceList> BasicDeviceList::Create(Devices devices) {
   return tsl::MakeRef<BasicDeviceList>(std::move(devices));
 }
 
+tsl::RCReference<DeviceList> BasicDeviceList::Create(
+    absl::Span<Device* const> devices) {
+  return Create(Devices(devices.begin(), devices.end()));
+}
+
+tsl::RCReference<DeviceList> BasicDeviceList::Create(
+    std::initializer_list<Device*> devices) {
+  return Create(Devices(devices.begin(), devices.end()));
+}
+
 BasicDeviceList::BasicDeviceList(Devices devices)
     : devices_(std::move(devices)), hash_(kUnsetHash) {}
 
@@ -109,8 +120,7 @@ std::string BasicDeviceList::ToString() const {
   return absl::StrCat("BasicDeviceList([",
                       absl::StrJoin(devices_, ",",
                                     [](std::string* out, Device* device) {
-                                      absl::StrAppend(out,
-                                                      device->DebugString());
+                                      absl::StrAppend(out, device->ToString());
                                     }),
                       "])");
 }

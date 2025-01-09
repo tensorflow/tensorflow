@@ -24,9 +24,9 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-Status PartitionedCallGrad(const Scope& scope, const Operation& op,
-                           const std::vector<Output>& grad_inputs,
-                           std::vector<Output>* grad_outputs) {
+absl::Status PartitionedCallGrad(const Scope& scope, const Operation& op,
+                                 const std::vector<Output>& grad_inputs,
+                                 std::vector<Output>* grad_outputs) {
   NameAttrList f;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "f", &f));
   for (const auto& attr : op.node()->attrs()) {

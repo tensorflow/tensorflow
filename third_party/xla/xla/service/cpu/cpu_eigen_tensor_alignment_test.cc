@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/service/cpu/ir_emission_utils.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 
@@ -46,14 +46,14 @@ ENTRY ConvOperation {
 
   HloInstruction* conv = module->entry_computation()->root_instruction();
 
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine_with_no_alignment(
+  TargetMachineFeaturesStub target_machine_with_no_alignment(
       [](int64_t size) { return 1; });
 
   EXPECT_FALSE(PotentiallyImplementedAsEigenConvolution(
       *conv, target_machine_with_no_alignment));
 
-  TargetMachineFeaturesWithFakeAlignmentLogic
-      target_machine_with_full_alignment([](int64_t size) {
+  TargetMachineFeaturesStub target_machine_with_full_alignment(
+      [](int64_t size) {
         return TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
 

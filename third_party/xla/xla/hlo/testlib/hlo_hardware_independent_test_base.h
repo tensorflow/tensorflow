@@ -55,6 +55,23 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
  public:
   static PrecisionConfig DefaultPrecisionConfig(int operands);
 
+  // Gets the computation/instruction from the given module with the given name.
+  // Note that it is encouraged to use these functions directly via the
+  // hlo_query.h header instead since they are independent from any test-time
+  // variables or contexts.
+
+  // This is useful for tests which create HLOs from a string and then want to
+  // inspect a particular computation or instruction.
+  static HloComputation* FindComputation(HloModule* module,
+                                         absl::string_view name);
+  static HloInstruction* FindInstruction(HloModule* module,
+                                         absl::string_view name);
+  // Gets the instruction from the given module with the given opcode.
+  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  // Gets all the instructions from the given module with the given opcode.
+  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
+                                                       HloOpcode opcode);
+
  protected:
   explicit HloHardwareIndependentTestBase(
       bool verifier_layout_sensitive = false,
@@ -199,22 +216,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
         ->Clear();
   }
 
-  // Gets the computation/instruction from the given module with the given name.
-  // Note that it is encouraged to use these functions directly via the
-  // hlo_query.h header instead since they are independent from any test-time
-  // variables or contexts.
-
-  // This is useful for tests which create HLOs from a string and then want to
-  // inspect a particular computation or instruction.
-  static HloComputation* FindComputation(HloModule* module,
-                                         absl::string_view name);
-  static HloInstruction* FindInstruction(HloModule* module,
-                                         absl::string_view name);
-  // Gets the instruction from the given module with the given opcode.
-  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
-  // Gets all the instructions from the given module with the given opcode.
-  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
-                                                       HloOpcode opcode);
 
   bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
   void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {

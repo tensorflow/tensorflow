@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
 
 #include "mlir/IR/Dialect.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"

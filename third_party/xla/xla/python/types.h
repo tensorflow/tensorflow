@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "xla/layout.h"
@@ -185,7 +186,7 @@ struct type_caster<xla::BorrowingLiteral> {
   // Pybind appears to keep type_casters alive until the callee has run.
   absl::InlinedVector<nanobind::object, 1> arrays;
 
-  bool from_python(handle input, uint8_t, cleanup_list*) {
+  bool from_python(handle input, uint8_t, cleanup_list*) noexcept {
     // TODO(b/79707221): support nested tuples if/when XLA adds support for
     // nested BorrowingLiterals.
     if (nanobind::isinstance<nanobind::tuple>(input)) {
@@ -226,7 +227,8 @@ struct type_caster<xla::LiteralSlice> {
   // Pybind appears to keep type_casters alive until the callee has run.
   type_caster<xla::BorrowingLiteral> literal_caster;
 
-  bool from_python(handle handle, uint8_t flags, cleanup_list* cleanup) {
+  bool from_python(handle handle, uint8_t flags,
+                   cleanup_list* cleanup) noexcept {
     if (!literal_caster.from_python(handle, flags, cleanup)) {
       return false;
     }

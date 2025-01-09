@@ -1,46 +1,25 @@
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+
+package_group(
+    name = "internal",
+    packages = [
+        "//xla/python/ifrt/ir/tests/...",
+    ],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":internal",
+    ]),
     licenses = ["notice"],
 )
 
 lit_test_suite(
     name = "all_tests",
-    srcs = enforce_glob(
-        [
-            "ifrt_compile_atom_program.mlir",
-            "ifrt_compile_and_propagate_shardings.mlir",
-            "ifrt_duplicated_callee_elimination.mlir",
-            "ifrt_lower_mpmd_reshard_to_call.mlir",
-            "ifrt_lower_atom_program_metadata_to_xla.mlir",
-            "ifrt_merge_reshards.mlir",
-            "ifrt_outline_atom_program_to_module.mlir",
-            "ifrt_populate_atom_program_metadata.mlir",
-            "ifrt_precompile_atom_program_preprocessing.mlir",
-            "ifrt_remove_ifrt_attrs.mlir",
-            "ifrt_reshard_to_copy_arrays.mlir",
-            "ifrt_verify_device_type_consistency.mlir",
-            "ifrt_verify_donation.mlir",
-            "ifrt_verify_sharding_specified.mlir",
-            "spmd_expansion.mlir",
-            "spmd_interface_verification.mlir",
-            "verify_array.mlir",
-            "verify_assemble.mlir",
-            "verify_attrs.mlir",
-            "verify_call.mlir",
-            "verify_call_loaded_executable.mlir",
-            "verify_copy_arrays.mlir",
-            "verify_disassemble.mlir",
-            "verify_loaded_executable.mlir",
-            "verify_remap_arrays.mlir",
-            "verify_reshard.mlir",
-        ],
-        include = [
-            "*.mlir",
-        ],
-    ),
+    srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
     tools = [
         ":ifrt-opt",
@@ -75,6 +54,30 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_binary(
+    name = "ifrt-translate",
+    testonly = True,
+    srcs = ["ifrt-translate.cc"],
+    deps = [
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
+        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
+        "//xla/python/ifrt/ir:version",
+        "//xla/python/ifrt/ir:vifrt",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TranslateLib",
+        "@stablehlo//:register",
+        "@stablehlo//:version",
+    ],
+)
+
 cc_library(
     name = "executable_impl_test_base",
     testonly = True,
@@ -85,8 +88,13 @@ cc_library(
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
+        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",
         "//xla/python/ifrt/ir:sharding_param",
+        "//xla/python/ifrt/ir:version",
+        "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
@@ -96,8 +104,11 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@stablehlo//:version",
     ],
 )
 

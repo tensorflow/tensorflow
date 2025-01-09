@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/rocm/rocm_kernel.h"
+#include <memory>
 
 #include <gtest/gtest.h>
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_runtime.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -35,20 +36,11 @@ TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> rocm_kernel,
+                          executor->LoadKernel(GetAddI32KernelSpec()));
 
-  RocmKernel rocm_kernel(executor);
-  rocm_kernel.set_arity(3);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      hipFunction_t function,
-      RocmRuntime::GetFuncBySymbol(internal::GetAddI32Kernel()));
-
-  rocm_kernel.set_gpu_function(function);
-
-  EXPECT_EQ(rocm_kernel.Arity(), 3);
-  EXPECT_EQ(rocm_kernel.gpu_function(), function);
-
-  EXPECT_THAT(rocm_kernel.GetMaxOccupiedBlocksPerCore(
+  EXPECT_EQ(rocm_kernel->Arity(), 3);
+  EXPECT_THAT(rocm_kernel->GetMaxOccupiedBlocksPerCore(
                   ThreadDim(1, 1, 1), /*dynamic_shared_memory_bytes=*/0),
               IsOkAndHolds(Ge(1)));
 }

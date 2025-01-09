@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string_view>
-
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -26,7 +25,7 @@ namespace {
 class TopkTest : public HloTestBase {};
 
 XLA_TEST_F(TopkTest, LargestTopK) {
-  std::string_view hlo_text_module = R"(
+  absl::string_view hlo_text_module = R"(
     HloModule topk
 
     ENTRY TopK {
@@ -38,7 +37,7 @@ XLA_TEST_F(TopkTest, LargestTopK) {
 }
 
 XLA_TEST_F(TopkTest, SmallestTopK) {
-  std::string_view hlo_text_module = R"(
+  absl::string_view hlo_text_module = R"(
     HloModule topk
 
     ENTRY TopK {
@@ -51,7 +50,7 @@ XLA_TEST_F(TopkTest, SmallestTopK) {
 
 XLA_TEST_F(TopkTest, TopKOfTranspose) {
   // Regression test for b/362565176
-  std::string_view hlo_text_module = R"(
+  absl::string_view hlo_text_module = R"(
     HloModule topk
 
     ENTRY main {

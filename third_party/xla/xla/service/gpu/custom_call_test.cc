@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #if GOOGLE_CUDA
@@ -393,6 +392,23 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
+// Same as the above test but just pass attribute through
+// the backend config proto string instead.
+TEST_F(CustomCallTest, PassAttributesByBackendConfig) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "__xla_test$$always_fail", /*operands=*/{},
+      ShapeUtil::MakeShape(F32, {}), /*opaque=*/
+      R"({"custom_call_backend_config": {"attributes": "{value = 42 : i32}"}})",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
+}
+
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
   se::DeviceMemoryBase dst_mem = dst->device_memory();
@@ -529,7 +545,7 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
 }
 
 static absl::Status CheckTokens(std::vector<PrimitiveType> args,
-                                std::string_view pattern) {
+                                absl::string_view pattern) {
   if (args.size() != pattern.size()) {
     return absl::InternalError("Incorrect number of arguments");
   }
@@ -556,7 +572,7 @@ static absl::Status CheckTokens(std::vector<PrimitiveType> args,
 
 static absl::Status FfiTokens(ffi::RemainingArgs inputs,
                               ffi::RemainingRets outputs,
-                              std::string_view pattern) {
+                              absl::string_view pattern) {
   std::vector<PrimitiveType> types;
   for (auto i = 0; i < inputs.size(); ++i) {
     types.push_back(inputs.get<ffi::AnyBuffer>(i).value().element_type());
@@ -569,7 +585,7 @@ static absl::Status FfiTokens(ffi::RemainingArgs inputs,
 
 XLA_FFI_DEFINE_HANDLER(
     kFfiTokens, FfiTokens,
-    ffi::Ffi::Bind().RemainingArgs().RemainingRets().Attr<std::string_view>(
+    ffi::Ffi::Bind().RemainingArgs().RemainingRets().Attr<absl::string_view>(
         "pattern"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens", PLATFORM,

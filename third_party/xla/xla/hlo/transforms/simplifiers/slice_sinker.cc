@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/slice_sinker.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <iterator>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"

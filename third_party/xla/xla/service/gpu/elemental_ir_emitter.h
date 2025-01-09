@@ -38,7 +38,7 @@ namespace gpu {
 class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   GpuElementalIrEmitter(IrEmitterContext& ir_emitter_context,
-                        llvm::IRBuilder<>* b);
+                        llvm::IRBuilderBase* b);
 
  protected:
   llvm_ir::IrArray::Index GetSourceIndexOfBitcast(

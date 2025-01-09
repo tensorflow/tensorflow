@@ -48,7 +48,7 @@ struct LowerLoadOp : public mlir::OpConversionPattern<LoadOp> {
 };
 }  // namespace
 
-// LLVM structs corresponds to `SE_HOST_KernelCallFrame` struct that defines
+// LLVM structs corresponds to `XLA_CPU_KernelCallFrame` struct that defines
 // XLA:CPU host kernel ABI contract.
 
 static mlir::LLVM::LLVMStructType KernelDim3Type(mlir::MLIRContext* ctx) {

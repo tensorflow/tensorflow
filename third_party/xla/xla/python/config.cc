@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -91,9 +92,11 @@ class GlobalConfigState {
 
   // Adds or removes a thread-local state from the set of thread-local states.
   void AddThreadLocalState(ThreadLocalConfigState* state) {
+    absl::MutexLock lock(&mu_);
     thread_local_states_.insert(state);
   }
   void RemoveThreadLocalState(ThreadLocalConfigState* state) {
+    absl::MutexLock lock(&mu_);
     thread_local_states_.erase(state);
   }
 
@@ -115,7 +118,9 @@ class GlobalConfigState {
 
   // The set of thread-local states. This is used during garbarge collection to
   // visit thread-local values.
-  absl::flat_hash_set<ThreadLocalConfigState*> thread_local_states_;
+  absl::Mutex mu_;
+  absl::flat_hash_set<ThreadLocalConfigState*> thread_local_states_
+      ABSL_GUARDED_BY(mu_);
   std::vector<nb::object> entries_;
   std::vector<int> include_in_jit_key_;
   nb::object unset_ = UnsetObject();
@@ -126,9 +131,12 @@ ThreadLocalConfigState::ThreadLocalConfigState() {
 }
 
 ThreadLocalConfigState::~ThreadLocalConfigState() {
-  // We may not hold the GIL, so we must use deferred destruction.
-  xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(entries_));
+  // It's important that we remove the thread-local state before we access
+  // entries_. This ensures that accesses to entries_ are ordered with respect
+  // any garbage collection.
   GlobalConfigState::Instance().RemoveThreadLocalState(this);
+  // We do not hold the GIL, so we must use deferred destruction.
+  xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(entries_));
 }
 
 void ThreadLocalConfigState::Set(int key, nb::object value) {
@@ -158,6 +166,7 @@ int GlobalConfigState::tp_traverse(int key, PyObject* self, visitproc visit,
     PyObject* value = entries_[key].ptr();
     Py_VISIT(value);
   }
+  absl::MutexLock lock(&mu_);
   for (const auto* state : thread_local_states_) {
     if (key < state->entries_.size()) {
       PyObject* value = state->entries_[key].ptr();
@@ -172,10 +181,16 @@ int GlobalConfigState::tp_clear(int key, PyObject* self) {
     nb::object tmp;
     std::swap(entries_[key], tmp);
   }
+  // We destroy the python objects outside of the lock out of an abundance of
+  // caution.
+  std::vector<nb::object> to_destroy;
+  absl::MutexLock lock(&mu_);
+  to_destroy.reserve(thread_local_states_.size());
   for (auto* state : thread_local_states_) {
     if (key < state->entries_.size()) {
       nb::object tmp;
       std::swap(state->entries_[key], tmp);
+      to_destroy.push_back(std::move(tmp));
     }
   }
   return 0;

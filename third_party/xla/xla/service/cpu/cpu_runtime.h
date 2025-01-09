@@ -37,10 +37,8 @@ namespace runtime {
 
 // Names of runtime functions. These get resolved from the generated code to the
 // right symbol at link time in one of two ways:
-// 1. When using the JIT, the symbol resolver (SimpleResolver in
-//    third_party/tensorflow/compiler/xla/service/cpu/simple_orc_jit.cc) maps
-//    this symbol name to
-//    the actual symbol.
+// 1. When using the JIT, the symbol resolver (xla::cpu::RuntimeSymbolGenerator)
+//    maps this symbol name to the actual symbol.
 // 2. When using ahead-of-time compilation, the linker can resolve the name
 //    because it is a symbol in the cpu_runtime library.
 extern const char* const kEigenMatMulF16SymbolName;

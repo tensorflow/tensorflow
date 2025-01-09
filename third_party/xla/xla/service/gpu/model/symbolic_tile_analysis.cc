@@ -46,13 +46,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -271,7 +271,7 @@ SetSymbolicTilesAndComputeConstraints(
     std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
         tiled_hlo_instructions,
     const HloFusionAdaptor& fusion_adaptor) {
-  ConstraintExpression constraints;
+  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
   for (const std::unique_ptr<SymbolicTiledHloInstruction>&
            tiled_hlo_instruction : tiled_hlo_instructions) {
     const HloInstruction* hlo = tiled_hlo_instruction->hlo();
@@ -301,8 +301,7 @@ SetSymbolicTilesAndComputeConstraints(
              << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
-    constraints = ConstraintExpression::And(std::move(constraints),
-                                            symbolic_tile->constraints());
+    constraints = constraints && symbolic_tile->constraints();
     constraints.Simplify();
 
     if (!constraints.is_satisfiable()) {

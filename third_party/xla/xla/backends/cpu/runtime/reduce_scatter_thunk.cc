@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -89,14 +89,16 @@ ReduceScatterThunk::Execute(const ExecuteParams& params) {
 
   return ExecuteWithCommunicator(
       params.collective_params,
-      [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
+      [&](const RendezvousKey& key, Communicator& comm) {
+        CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
+
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
           TF_RETURN_IF_ERROR(comm.ReduceScatter(
-              key, reduction_kind_, shape.element_type(),
-              ShapeUtil::ElementsIn(shape), data.source[i].opaque(),
-              data.destination[i].opaque(), DefaultCollectiveTimeout()));
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), reduction_kind_, executor));
         }
+
         return absl::OkStatus();
       });
 }

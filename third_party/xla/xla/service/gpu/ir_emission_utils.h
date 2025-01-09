@@ -33,9 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -64,7 +64,10 @@ inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
-inline constexpr int64_t WarpSize() { return 32; }
+inline constexpr int64_t WarpSize(
+    const se::DeviceDescription& gpu_device_info) {
+  return gpu_device_info.threads_per_warp();
+}
 
 // Fusions that implemented with pre-compiled device kernels have
 // FusionBackendConfig.kind requel to this string.
@@ -108,23 +111,9 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
-// Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.sync.down" instruction but works for values that
-// aren't 32 bits in size. The last operand of the emitted "shfl" is
-// `WarpSize() - 1`.
-//
-// This function emits a "full-warp" shuffle, which all threads of a warp
-// participate in.  *Do not use this function from a divergent context:* You
-// can't correctly do so on both Volta and earlier GPUs.
-//
-// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
-    const se::DeviceDescription& gpu_device_info);
-
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
@@ -210,10 +199,7 @@ void VerifyModule(const llvm::Module& module);
 //    range of i32.
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b);
-
-// Whether the module's target is an AMD GPU.
-bool IsAMDGPU(const llvm::Module* module);
+                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR

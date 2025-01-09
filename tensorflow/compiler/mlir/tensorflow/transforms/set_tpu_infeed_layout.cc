@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
@@ -124,7 +125,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
   }
 }
 
-bool SetTPUInfeedLayout(mlir::OwningOpRef<mlir::ModuleOp> &mlir_module) {
+bool SetTPUInfeedLayout(mlir::ModuleOp mlir_module) {
   auto res = mlir_module->walk([&](mlir::TF::InfeedDequeueTupleOp op) {
     mlir::OpBuilder builder(op.getContext());
     std::vector<mlir::Type> result_types;

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
@@ -89,12 +87,14 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     hlo_cost_analysis_costs_ =
         std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
             *hlo_cost_analysis_);
-    CostAnalysisOptions _options;
+    CostAnalysisOptions cost_analysis_options;
     // Assume 2 byte per second for testing.
-    _options.alternate_mem_bandwidth_bytes_per_second = 2;
-    TF_ASSIGN_OR_RETURN(
-        cost_analysis_,
-        CostAnalysis::Create(*hlo_cost_analysis_costs_, _options, *module_));
+    cost_analysis_options.alternate_mem_bandwidth_bytes_per_second = 2;
+    cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
+
+    TF_ASSIGN_OR_RETURN(cost_analysis_,
+                        CostAnalysis::Create(*hlo_cost_analysis_costs_,
+                                             cost_analysis_options, *module_));
 
     TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module_.get()));
     TF_ASSIGN_OR_RETURN(hlo_live_range_,
@@ -104,7 +104,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
         cost_analysis_.get(), kAlternateMemorySpace);
     return absl::OkStatus();
   }
-  absl::flat_hash_map<std::string_view, const HloInstruction*> instruction_map_;
+  absl::flat_hash_map<absl::string_view, const HloInstruction*>
+      instruction_map_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
   std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
       hlo_cost_analysis_costs_;

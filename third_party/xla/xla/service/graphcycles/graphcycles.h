@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
 #define XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 // GraphCycles detects the introduction of a cycle into a directed

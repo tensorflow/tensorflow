@@ -169,7 +169,8 @@ NativeRefT HostDigamma(NativeRefT x) {
 
 DEFINE_UNARY_TEST_OP(LogOp, { return Log; }, { return std::log; });
 DEFINE_UNARY_TEST_OP(Log1pOp, { return Log1p; }, { return std::log1p; });
-DEFINE_UNARY_TEST_OP(ExpOp, { return Exp; }, { return std::exp; });
+DEFINE_UNARY_TEST_OP(
+    ExpOp, { return [](XlaOp x) { return Exp(x); }; }, { return std::exp; });
 DEFINE_UNARY_TEST_OP(Expm1Op, { return Expm1; }, { return std::expm1; });
 DEFINE_UNARY_TEST_OP(
     LogisticOp, { return Logistic; },

@@ -29,7 +29,7 @@ namespace tensorflow {
 // Converts the given saved_model(either v1 or v2) to a TF Lite FlatBuffer
 // string according to the given model flags, converter flags and tags. Returns
 // error status if it fails to convert the input.
-Status ConvertSavedModelToTFLiteFlatBuffer(
+absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);

@@ -89,7 +89,6 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
 # Include if matched after exclude
 INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
-                        r"nsync::|"
                         r"tensorflow::|"
                         r"toco::|"
                         r"tsl::|"
@@ -314,6 +313,7 @@ def main():
     def_fp.write("\t ??1LogMessageFatal@log_internal@lts_20230802@absl@@QEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ??$CopyToEncodedBuffer@$0A@@LogMessage@log_internal@lts_20230802@absl@@AEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z\n") # for _pywrap_tfe
     def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20230802@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
+    def_fp.write("\t ??1Mutex@lts_20230802@absl@@QEAA@XZ\n") # for _pywrap_tfe
 
 
     # Each symbols returned by undname matches the same position in candidates.

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/metrics.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
@@ -82,7 +82,7 @@ void* AllocatorRetry::AllocateRaw(
         tracker.Enable();
         absl::MutexLock l(&mu_);
         memory_returned_.WaitWithTimeout(
-            &mu_, absl::Milliseconds((deadline_micros - now) / 1000));
+            &mu_, absl::Microseconds(deadline_micros - now));
       } else {
         return alloc_func(alignment, num_bytes, true);
       }

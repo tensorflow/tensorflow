@@ -18,21 +18,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -226,6 +226,10 @@ class HloRunnerInterface {
   // This function is used e.g. to create a VerifiedHloModule. It returns an
   // integer representing the size of the shape in bytes as opposed to a Shape.
   virtual DeviceShapeSizeFn device_shape_size_fn() const = 0;
+
+  // Returns the number of devices which are known. Not all of these devices may
+  // be usable by XLA.
+  virtual int device_count() const = 0;
 };
 
 }  // namespace xla

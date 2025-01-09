@@ -16,6 +16,7 @@ limitations under the License.
 #include <sstream>
 #include <unordered_set>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"

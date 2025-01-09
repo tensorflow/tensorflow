@@ -18,7 +18,6 @@ limitations under the License.
 #include <Python.h>  // IWYU pragma: keep
 
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace xla {
 
@@ -34,7 +34,7 @@ namespace nb = nanobind;
 
 PprofProfileBuilder::PprofProfileBuilder() { CHECK_EQ(0, StringId("")); }
 
-int PprofProfileBuilder::StringId(std::string_view s) {
+int PprofProfileBuilder::StringId(absl::string_view s) {
   auto ret = strings_.emplace(s, profile_.string_table_size());
   if (ret.second) {
     profile_.add_string_table(s.data(), s.size());
@@ -48,11 +48,11 @@ int PprofProfileBuilder::FunctionId(PyCodeObject* code) {
   if (ret.second) {
     auto* function = profile_.add_function();
     function->set_id(ret.first->second);
-    int name = StringId(nb::cast<std::string_view>(nb::str(code->co_name)));
+    int name = StringId(nb::cast<absl::string_view>(nb::str(code->co_name)));
     function->set_name(name);
     function->set_system_name(name);
     function->set_filename(
-        StringId(nb::cast<std::string_view>(nb::str(code->co_filename))));
+        StringId(nb::cast<absl::string_view>(nb::str(code->co_filename))));
     function->set_start_line(code->co_firstlineno);
   }
   return ret.first->second;

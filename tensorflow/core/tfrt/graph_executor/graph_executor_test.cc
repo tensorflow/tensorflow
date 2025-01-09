@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
@@ -147,11 +148,15 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
       tensorflow::tfrt_stub::FallbackState::Create(
           CreateDefaultSessionOptions(options), graph_def.library()));
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  tensorflow::tfrt_stub::RuntimeConfig runtime_config;
+  tensorflow::tf2xla::v1::MlirBridgeConfig mlir_bridge_config;
+  mlir_bridge_config.set_enable_tf2xla_mlir_bridge(false);
+  TF_ASSERT_OK(runtime_config.Add(mlir_bridge_config));
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor_base,
       GraphExecutor::Create(std::move(options), std::move(fallback_state),
                             std::move(resource_context), graph_def,
-                            GetKernelRegistry()));
+                            GetKernelRegistry(), &runtime_config));
   auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
       static_cast<GraphExecutorForTestingCostAnalysis*>(
           graph_executor_base.release()));

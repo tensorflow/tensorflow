@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
@@ -113,6 +114,8 @@ struct CanonicalDebugOptions {
         dump_as_url(opts.xla_dump_hlo_as_url()),
         dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
+        dump_unoptimized_snapshots(
+            opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
@@ -133,7 +136,8 @@ struct CanonicalDebugOptions {
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_snapshots();
+        opts.xla_dump_hlo_snapshots() ||
+        opts.xla_gpu_dump_hlo_unoptimized_snapshots();
     bool output_format_specified =
         output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 
@@ -232,6 +236,7 @@ struct CanonicalDebugOptions {
   bool dump_as_url;
   bool dump_fusion_visualization;
   bool dump_snapshots;
+  bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
   bool dump_module_metadata;
@@ -878,6 +883,36 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
     LOG(ERROR) << "Failed to serialize HLO snapshot proto " << filename;
   }
   DumpToFileInDirImpl(filename, pb, canonical_opts);
+}
+
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
+  CanonicalDebugOptions canonical_opts(opts);
+  std::string name = hlo_snapshot.hlo_module().name();
+  if (!canonical_opts.should_dump_module(name) ||
+      !canonical_opts.dump_unoptimized_snapshots) {
+    return;
+  }
+
+  if (hlo_snapshot.partitions_size() == 0) {
+    LOG(ERROR) << "Refusing to write unoptimized HLO snapshot proto for module "
+               << name << ": no partitions input found.";
+    return;
+  }
+  int64_t execution_count;
+  {
+    static absl::Mutex mu(absl::kConstInit);
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(&mu);
+    execution_count =
+        module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
+  }
+  std::string filename = FilenameFor(
+      hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
+      absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
+                      execution_count));
+  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -50,7 +51,7 @@ TEST(AttrUtilTest, TestGetIntAttr) {
   ASSERT_EQ(opattrs.GetAsserting<int32>("bar"), 0);
   ASSERT_EQ(opattrs.GetAsserting<int32>("baz"), 123);
 
-  Status s = AddOpAttr("invalid", "i32$4.5", &opattrs);
+  absl::Status s = AddOpAttr("invalid", "i32$4.5", &opattrs);
   ASSERT_FALSE(s.ok());
 }
 

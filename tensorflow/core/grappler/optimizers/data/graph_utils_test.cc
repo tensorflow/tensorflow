@@ -87,7 +87,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
 TEST(GraphUtilsTest, AddScalarConstNodeString) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* string_node = AddScalarConstNode<StringPiece>("hello", &graph);
+  NodeDef* string_node = AddScalarConstNode<absl::string_view>("hello", &graph);
   EXPECT_TRUE(ContainsGraphNodeWithName(string_node->name(), *graph.graph()));
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");
 }

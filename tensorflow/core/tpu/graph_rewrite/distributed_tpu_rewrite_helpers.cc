@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 
+#include <algorithm>
+#include <functional>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"

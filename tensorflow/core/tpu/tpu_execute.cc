@@ -528,8 +528,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   absl::StatusOr<xla::ExecutionOutput> output =
       tpu_executable->ExecuteAsyncOnStream(&service_run_options,
-                                           std::move(arguments),
-                                           /*hlo_execution_profile=*/nullptr);
+                                           std::move(arguments));
 
   // If !output.ok(), it means we failed to enqueue the program the TPU. This is
   // possibly caused by a failed cancellation callback closing the chips.

@@ -42,6 +42,7 @@ absl::StatusOr<bool> ShardingRemover::Run(
 
   const absl::flat_hash_set<absl::string_view> to_remove_sharding_ops = {
       "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape",
+      sdy::kShardingGroupCustomCallTargetName,
       sdy::kFuncResultShardingTargetName};
 
   for (HloComputation* computation : module->computations(execution_threads)) {
@@ -57,6 +58,14 @@ absl::StatusOr<bool> ShardingRemover::Run(
       }
       CHECK(instruction->operand_count() == 1)
           << "Sharding instruction must have exactly one operand";
+
+      // ShardingGroupOp is dangling so we just remove it.
+      if (instruction->custom_call_target() ==
+          sdy::kShardingGroupCustomCallTargetName) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        continue;
+      }
+
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
           instruction->mutable_operand(0), name()));
       changed = true;

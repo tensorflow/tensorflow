@@ -40,21 +40,21 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -66,6 +66,7 @@ namespace {
 
 using llvm::SmallVector;
 using mlir::AffineExpr;
+using mlir::ImplicitLocOpBuilder;
 using mlir::MLIRContext;
 using mlir::RankedTensorType;
 using mlir::Value;
@@ -75,7 +76,6 @@ using mlir::func::ReturnOp;
 using mlir_converter::ApplyIndexing;
 
 constexpr int kNumRows = 4;
-constexpr int kBaseBlockSize = WarpSize();
 constexpr int kNumThreadsPerBlock = 128;
 constexpr int kMaxVectorizedBytes = 4;
 
@@ -86,7 +86,8 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
-          Permute(transpose_.dimensions, InversePermutation(permutation_))) {
+          Permute(transpose_.dimensions, InversePermutation(permutation_))),
+      base_block_size_(WarpSize(analysis_.device_info())) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -104,7 +105,7 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
         size *= input_shape_.back();
       }
       max_element_bytes = std::max(max_element_bytes, size);
-      shmem_usage += kBaseBlockSize * (kBaseBlockSize + 1) * size;
+      shmem_usage += base_block_size_ * (base_block_size_ + 1) * size;
       shmem_transpose_root_indices_.push_back(index);
     } else {
       side_output_roots_.push_back(&root.instruction());
@@ -118,12 +119,12 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
     vector_size_ = vector_size;
     block_sizes_.assign(input_shape_.size(), 1);
     if (MostMinorDimensionUnchanged()) {
-      block_size_ = kBaseBlockSize;
+      block_size_ = base_block_size_;
       block_sizes_.back() = vector_size_;
       block_sizes_[block_sizes_.size() - 2] = block_size_;
       block_sizes_[permutation_[block_sizes_.size() - 2]] = block_size_;
     } else {
-      block_size_ = kBaseBlockSize * vector_size_;
+      block_size_ = base_block_size_ * vector_size_;
       block_sizes_.back() = block_size_;
       block_sizes_[permutation_.back()] = block_size_;
     }
@@ -295,11 +296,12 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   for (int index : side_output_root_indices_) {
     side_output_inits.push_back(entry_function.getArgument(num_inputs + index));
   }
-  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+  auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
+                          ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
     auto input_indices = [&](const HloInstruction* instr) {
       return ApplyIndexing(GetIndexing(/*input=*/true, instr->shape(), ctx),
-                           thread_and_block_ids, symbol_values, builder);
+                           thread_and_block_ids, symbol_values, nested_b);
     };
 
     SmallVector<Value> side_outputs;
@@ -310,7 +312,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
       ValueRange param_values = mlir_converter::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
-          builder);
+          nested_b);
       side_outputs.append(param_values.begin(), param_values.end());
     }
 
@@ -318,7 +320,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     for (const auto& [value, indices, output] :
          llvm::zip(side_outputs, side_output_indices, output_tensors)) {
       result_tensors.push_back(
-          builder.create<mlir::tensor::InsertOp>(value, output, indices));
+          nested_b.create<mlir::tensor::InsertOp>(value, output, indices));
     }
 
     return result_tensors;
@@ -355,30 +357,31 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
       GetSharedMemoryIndexing(/*read=*/true, mlir_context);
   auto result_tensors = mlir_converter::EmitXlaLoopOp(
       builder, thread_and_block_ids, written.updated_outputs, output_indexing,
-      [&](ValueRange symbol_values, ValueRange map_results,
+      [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+          ValueRange map_results,
           ValueRange output_tensors) -> SmallVector<Value> {
         auto shmem_indices = ApplyIndexing(
-            shmem_read_indexing, thread_and_block_ids, symbol_values, builder);
+            shmem_read_indexing, thread_and_block_ids, symbol_values, nested_b);
         absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
             transpose_values;
         for (auto [transpose, shmem] :
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           transpose_values[transpose].push_back(
-              builder.create<mlir::tensor::ExtractOp>(shmem, shmem_indices));
+              nested_b.create<mlir::tensor::ExtractOp>(shmem, shmem_indices));
         }
         llvm::SmallVector<Value> epilogue_indices = thread_and_block_ids;
         absl::c_copy(symbol_values, std::back_inserter(epilogue_indices));
         auto result_scalars =
             EmitEpilogue(/*epilogue_index=*/0, computations, entry_function,
-                         transpose_values, epilogue_indices, builder);
+                         transpose_values, epilogue_indices, nested_b);
         SmallVector<Value> results = output_tensors;
         for (auto [root, indexing, root_index] :
              llvm::zip(shmem_transpose_roots_,
                        computations.epilogues().front().root_indexing,
                        shmem_transpose_root_indices_)) {
           llvm::SmallVector<Value> indices = ApplyIndexing(
-              indexing, thread_and_block_ids, symbol_values, builder);
-          results[root_index] = builder.create<mlir::tensor::InsertOp>(
+              indexing, thread_and_block_ids, symbol_values, nested_b);
+          results[root_index] = nested_b.create<mlir::tensor::InsertOp>(
               result_scalars.at(root).front(), results[root_index], indices);
         }
         return results;

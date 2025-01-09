@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -45,15 +44,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/service/gpu/stream_executor_util.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
+#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
@@ -127,7 +120,7 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
 
 absl::Status AddResultToFileBasedCacheIfEnabled(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   if (cache_dir.empty() ||
@@ -170,7 +163,7 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
 
 absl::StatusOr<ResultAndInserted> AddResultToCaches(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);
@@ -261,10 +254,12 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 }  // namespace
 
 /*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
-    AutotuneResults* results) {
+    AutotuneResults* results, std::optional<const AutotuneCacheKeySet*> keys) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
-    SerializeAutotuneEntry(results, k, &result);
+    if (!keys.has_value() || keys.value()->contains(k)) {
+      SerializeAutotuneEntry(results, k, &result);
+    }
   }
 
   results->set_version(kVersion);
@@ -295,18 +290,6 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 /*static*/ bool AutotunerUtil::ResultCacheIsEmpty() {
   absl::MutexLock lock(&autotune_cache_mu);
   return autotune_cache.empty();
-}
-
-/* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
-    se::RedzoneAllocator& allocator, const Shape& shape,
-    const AutotuneConfig& config, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
-  if (config.should_init_buffers()) {
-    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
-                     buffer);
-  }
-  return buffer;
 }
 
 namespace {
@@ -574,18 +557,6 @@ bool IsTextProtoPath(absl::string_view file_path) {
   return absl::OkStatus();
 }
 
-/*static*/ absl::StatusOr<se::RedzoneAllocator>
-AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
-                                      const DebugOptions& opts) {
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
-  return se::RedzoneAllocator(
-      stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/config.should_check_correctness()
-          ? opts.xla_gpu_redzone_padding_bytes()
-          : 0);
-}
-
 /*static*/ AutotunerUtil::CacheStats AutotunerUtil::GetCacheStats() {
   absl::MutexLock lock(&autotune_cache_mu);
   return autotune_cache_stats;
@@ -595,9 +566,6 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache_stats = CacheStats();
 }
-
-constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
-    "https://openxla.org/gpu/autotune_cache_hit_required/";
 
 }  // namespace gpu
 }  // namespace xla

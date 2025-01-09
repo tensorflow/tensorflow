@@ -32,7 +32,7 @@ func.func @manual(%arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
   // CHECK-SAME:     in_shardings=[<@mesh, [{"axis_0", "axis_1"}, {}]>, <@mesh, [{"axis_0"}, {}]>]
   // CHECK-SAME:     out_shardings=[<@mesh, [{"axis_0", "axis_1"}, {}]>]
   // CHECK-SAME:     manual_axes={"axis_0", "axis_1"} (%arg2: tensor<1x8xf32>, %arg3: tensor<1x8xf32>) {
-  // CHECK-LABEL:  mhlo.add
+  // CHECK-LABEL:  stablehlo.add
   // CHECK-LABEL:  sdy.return
   %0 = mhlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{devices=[8,1]<=[8]}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
   %1 = mhlo.custom_call @SPMDFullToShardShape(%0) {mhlo.sharding = "{manual}"} : (tensor<8x8xf32>) -> tensor<1x8xf32>
@@ -63,14 +63,14 @@ func.func @while_with_free_variables(
   // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
   // CHECK-NEXT: %[[C32:.*]] = sdy.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, []>]>} dense<32>
   // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
-  // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
+  // CHECK-NEXT: %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
-  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
-  // CHECK-NEXT:   mhlo.return %[[COND]]
+  // CHECK-NEXT:   %[[COND:.*]] = stablehlo.compare LT, %iterArg_0, %[[C32]]
+  // CHECK-NEXT:   stablehlo.return %[[COND]]
   // CHECK-NEXT: } do {
-  // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
-  // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %[[SC]]
-  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
+  // CHECK-NEXT:   %[[ADD_0:.*]] = stablehlo.add %iterArg_0, %[[C1]]
+  // CHECK-NEXT:   %[[ADD_1:.*]] = stablehlo.add %iterArg, %[[SC]]
+  // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[WHILE]]#0
   %0 = mhlo.constant dense<0> : tensor<i32>
@@ -93,16 +93,16 @@ func.func @while_with_free_variables(
 // CHECK-LABEL: func @while_with_sinked_constants
 func.func @while_with_sinked_constants(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
   // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
-  // CHECK-NEXT: %[[WHILE:.*]]:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
+  // CHECK-NEXT: %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
   // CHECK-NEXT:   %[[C32:.*]] = sdy.constant dense<32>
-  // CHECK-NEXT:   %[[COND:.*]] = mhlo.compare LT, %iterArg_0, %[[C32]]
-  // CHECK-NEXT:   mhlo.return %[[COND]]
+  // CHECK-NEXT:   %[[COND:.*]] = stablehlo.compare LT, %iterArg_0, %[[C32]]
+  // CHECK-NEXT:   stablehlo.return %[[COND]]
   // CHECK-NEXT: } do {
   // CHECK-NEXT:   %[[C1:.*]] = sdy.constant dense<1>
-  // CHECK-NEXT:   %[[ADD_0:.*]] = mhlo.add %iterArg_0, %[[C1]]
-  // CHECK-NEXT:   %[[ADD_1:.*]] = mhlo.add %iterArg, %iterArg
-  // CHECK-NEXT:   mhlo.return %[[ADD_1]], %[[ADD_0]]
+  // CHECK-NEXT:   %[[ADD_0:.*]] = stablehlo.add %iterArg_0, %[[C1]]
+  // CHECK-NEXT:   %[[ADD_1:.*]] = stablehlo.add %iterArg, %iterArg
+  // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[WHILE]]#0
   %0 = mhlo.constant dense<0> : tensor<i32>
@@ -124,7 +124,7 @@ func.func @while_with_sinked_constants(%arg0: tensor<32x96xf32>) -> tensor<32x96
 
 // CHECK-LABEL: func @custom_call_with_tuple_operand_result
 func.func @custom_call_with_tuple_operand_result(%arg0: tensor<8x8xf32>, %arg1: tensor<4x8xf32>, %arg2: tensor<8x16xf32>) -> tensor<8x8xf32> {
-  // CHECK-NEXT: %[[FOO:.*]]:3 = mhlo.custom_call @foo(%arg0, %arg1, %arg2) :
+  // CHECK-NEXT: %[[FOO:.*]]:3 = stablehlo.custom_call @foo(%arg0, %arg1, %arg2) :
   // CHECK-SAME:   (tensor<8x8xf32>, tensor<4x8xf32>, tensor<8x16xf32>)
   // CHECK-SAME:   -> (tensor<8x8xf32>, tensor<4x8xf32>, tensor<8x16xf32>)
   // CHECK-NEXT: return %[[FOO]]#0
@@ -132,4 +132,14 @@ func.func @custom_call_with_tuple_operand_result(%arg0: tensor<8x8xf32>, %arg1: 
   %1 = mhlo.custom_call @foo(%0) : (!tuple) -> !tuple
   %2 = mhlo.get_tuple_element %1[0] : (!tuple) -> tensor<8x8xf32>
   return %2 : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @import_sharding_group_with_unused_result
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @import_sharding_group_with_unused_result(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK sdy.sharding_group %arg0 group_id = 21:  tensor<8x8xf32>
+  %0 = mhlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
+  return %arg0 : tensor<8x8xf32>
 }

@@ -15,58 +15,48 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 
-#include <cstddef>
-#include <vector>
-
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
 
 TEST(BufferAllocationsTest, GetDeviceAddress) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data = {1.0, 2.0, 3.0, 4.0};
+  auto data = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
 
-  size_t size_in_bytes = data.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
+  BufferAllocation alloc = CreateBufferAllocation(0, data);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(
+      alloc, /*offset=*/2 * sizeof(float), /*size=*/sizeof(float));
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation alloc(0, size_in_bytes, 0);
-  BufferAllocation::Slice slice(&alloc, /*offset=*/2 * sizeof(float),
-                                /*size=*/sizeof(float));
+  BufferAllocations allocations = CreateBufferAllocations(data);
 
   TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemoryBase alloc_mem,
                           allocations.GetDeviceAddress(0));
-  EXPECT_EQ(alloc_mem.opaque(), &data[0]);
+  EXPECT_EQ(alloc_mem.opaque(), &data.data<float>()[0]);
 
   TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemoryBase slice_mem,
                           allocations.GetDeviceAddress(slice));
-  EXPECT_EQ(slice_mem.opaque(), &data[2]);
+  EXPECT_EQ(slice_mem.opaque(), &data.data<float>()[2]);
 }
 
 TEST(BufferAllocationsTest, GetDeviceAddressUnchecked) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> data = {1.0, 2.0, 3.0, 4.0};
+  auto data = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
 
-  size_t size_in_bytes = data.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
+  BufferAllocation alloc = CreateBufferAllocation(0, data);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(
+      alloc, /*offset=*/2 * sizeof(float), /*size=*/sizeof(float));
 
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation alloc(0, size_in_bytes, 0);
-  BufferAllocation::Slice slice(&alloc, /*offset=*/2 * sizeof(float),
-                                /*size=*/sizeof(float));
+  BufferAllocations allocations = CreateBufferAllocations(data);
 
   se::DeviceMemoryBase alloc_mem = allocations.GetDeviceAddressUnchecked(0);
-  EXPECT_EQ(alloc_mem.opaque(), &data[0]);
+  EXPECT_EQ(alloc_mem.opaque(), &data.data<float>()[0]);
 
   se::DeviceMemoryBase slice_mem = allocations.GetDeviceAddressUnchecked(slice);
-  EXPECT_EQ(slice_mem.opaque(), &data[2]);
+  EXPECT_EQ(slice_mem.opaque(), &data.data<float>()[2]);
 }
 
 }  // namespace

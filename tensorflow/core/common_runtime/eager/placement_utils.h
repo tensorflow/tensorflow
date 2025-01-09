@@ -24,9 +24,9 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-bool IsColocationExempt(StringPiece op_name);
+bool IsColocationExempt(absl::string_view op_name);
 
-bool IsFunction(StringPiece op_name);
+bool IsFunction(absl::string_view op_name);
 
 // TODO(b/154234908): Unify placement logic.
 
@@ -34,9 +34,9 @@ bool IsFunction(StringPiece op_name);
 // integers (int32/int64). This can be disabled by setting the environment
 // variable "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 absl::Status MaybePinSmallOpsToCpu(
-    bool* result, StringPiece op_name,
+    bool* result, absl::string_view op_name,
     absl::Span<ImmediateExecutionTensorHandle* const> args,
-    StringPiece cpu_device_name);
+    absl::string_view cpu_device_name);
 
 // If a resource touching input is specified, all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been

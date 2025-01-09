@@ -17,17 +17,17 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
@@ -52,7 +52,7 @@ using ::tsl::profiler::XPlaneVisitor;
 using ::tsl::profiler::XStatVisitor;
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  tsl::uint32 thread_id;
+  int64_t thread_id;
   std::string thread_name = "MyThreadName";
   tensorflow::profiler::XSpace space;
 
@@ -167,7 +167,7 @@ TEST(HostTracerTest, CollectEventsFromThreadPool) {
       std::make_unique<tsl::thread::ThreadPool>(/*env=*/Env::Default(),
                                                 /*name=*/"HostTracerTest",
                                                 /*num_threads=*/1);
-  tsl::BlockingCounter counter(1);
+  absl::BlockingCounter counter(1);
   auto tracer = CreateHostTracer({});
   TF_EXPECT_OK(tracer->Start());
   thread_pool->Schedule([&counter] {

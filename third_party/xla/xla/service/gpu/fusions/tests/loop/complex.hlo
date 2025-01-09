@@ -1,5 +1,5 @@
 // RUN: fusion_to_mlir %s |\
-// RUN:   mlir_fusions_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
 fusion {
@@ -14,7 +14,7 @@ fusion {
 
 // CHECK: func.func @main
 // CHECK-NEXT: gpu.thread_id
-// CHECK:      xla_gpu.loop
+// CHECK:      xla.loop
 // CHECK-NEXT: pure_call @fusion_mul
 // CHECK-NEXT: tensor.insert
 // CHECK:      return

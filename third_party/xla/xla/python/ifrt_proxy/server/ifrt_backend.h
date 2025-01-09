@@ -20,13 +20,17 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -78,19 +82,33 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> Process(std::unique_ptr<IfrtRequest> request) override;
 
  private:
-  // Generates unique handles for returning to the client. All object types
-  // currently use this single "handle space".
+  // Generates unique handles for returning to the client. Guaranteed to return
+  // handles that do not conflict with client-generated handles (via client-side
+  // RpcHelper). All object types currently use this single "handle space".
   class HandleGenerator {
    public:
-    uint64_t New();
+    explicit HandleGenerator(IfrtBackend* parent);
 
-    // Bulk allocates a given number of handles and saves them into the provided
-    // Span.
-    void BulkNew(absl::Span<uint64_t> handles);
+    // Returns the client-generated handle after performing some convenience
+    // checks, provided that the client is of a protocol_version capable of
+    // doing this. If the client has old protocol versions, generate a handle at
+    // the server.
+    absl::StatusOr<uint64_t> FromClientGenerated(uint64_t from_client);
+
+    // Performs the same function as `FromClientGenerated` but in bulk, and
+    // saves them into the provided Span.
+    absl::Status FromClientGeneratedBulk(
+        const tsl::protobuf::RepeatedField<uint64_t>& from_client,
+        absl::Span<uint64_t> result_handles);
+
+    uint64_t GenerateAtServer();
+
+    void GenerateAtServerBulk(absl::Span<uint64_t> result_handles);
 
    private:
+    IfrtBackend* const parent_;
     absl::Mutex mu_;
-    uint64_t current_ ABSL_GUARDED_BY(mu_) = 1;
+    uint64_t current_ ABSL_GUARDED_BY(mu_);
   };
 
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
@@ -104,6 +122,8 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> AsyncExecute(
       std::function<absl::StatusOr<Response>()> handle_fn,
       tsl::thread::ThreadPool* thread_pool = nullptr);
+
+  Future<Response> ProcessInternal(std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Handlers for individual requests
@@ -172,8 +192,9 @@ class IfrtBackend final : public BackendInterface {
   // Convenient methods for object lookups
   //
 
-  absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>
-  GetLoadedExecutable(uint64_t handle);
+  struct LoadedExecutableWithInfo;
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> GetLoadedExecutable(
+      uint64_t handle);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetArray(uint64_t handle);
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetArrayLocked(
@@ -196,7 +217,7 @@ class IfrtBackend final : public BackendInterface {
       ABSL_GUARDED_BY(arrays_mutex_);
 
   absl::Mutex executables_mutex_;
-  absl::flat_hash_map<uint64_t, std::shared_ptr<xla::ifrt::LoadedExecutable>>
+  absl::flat_hash_map<uint64_t, std::shared_ptr<LoadedExecutableWithInfo>>
       executables_ ABSL_GUARDED_BY(executables_mutex_);
 
   absl::Mutex host_callback_queues_mutex_;
@@ -214,6 +235,9 @@ class IfrtBackend final : public BackendInterface {
   // Use a separate thread pool for compilation as XLA compilation often
   // requires a bigger stack.
   tsl::thread::ThreadPool compile_thread_pool_;
+
+  class InOrderRequestsProcessor;
+  std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
 };
 
 }  // namespace proxy

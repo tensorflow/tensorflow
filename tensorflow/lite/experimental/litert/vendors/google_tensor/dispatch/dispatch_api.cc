@@ -24,8 +24,6 @@
 #include <android/hardware_buffer.h>
 #endif
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -34,6 +32,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
@@ -46,9 +45,6 @@ namespace {
 constexpr const int VERSION_MAJOR = 0;
 constexpr const int VERSION_MINOR = 1;
 constexpr const int VERSION_PATCH = 0;
-
-constexpr char kDynamicInteropKey[] = "dynamic_interop_mode";
-constexpr char kEnableEarlyWakeup[] = "2";
 
 // We store THR names in a global set as a workaround to b/369144429.
 std::set<std::string> ThrNames;
@@ -102,15 +98,15 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
 
   if (auto southbound =
           litert::google_tensor::Southbound::Create(shared_library_dir_opt);
-      !southbound.ok()) {
+      !southbound) {
     LITERT_LOG(LITERT_INFO, "Initialization failure: %s",
-               southbound.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               southbound.Error().Message().data());
+    return southbound.Error().Status();
   } else {
     TheSouthbound = southbound->release();
   }
 
-  auto thr_initialize = TheSouthbound->thr_functions().thr_initialize;
+  auto thr_initialize = TheSouthbound->api().thr_initialize;
   if (!thr_initialize) {
     LITERT_LOG(LITERT_INFO, "thr_initialize not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -121,10 +117,10 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   }
 
   auto thr_get_vendor_api_version =
-      TheSouthbound->thr_functions().thr_get_vendor_api_version;
+      TheSouthbound->api().thr_get_vendor_api_version;
   const char* sb_api_version =
       thr_get_vendor_api_version ? thr_get_vendor_api_version() : "N.A.";
-  auto thr_get_vendor_id = TheSouthbound->thr_functions().thr_get_vendor_id;
+  auto thr_get_vendor_id = TheSouthbound->api().thr_get_vendor_id;
   const char* sb_vendor_id = thr_get_vendor_id ? thr_get_vendor_id() : "N.A.";
   snprintf(
       BuildId, sizeof(BuildId),
@@ -155,14 +151,14 @@ LiteRtStatus GetCapabilities(int* capabilities) {
 }
 
 LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
-  if (auto status_or = LiteRtDispatchDeviceContextT::Create(*TheSouthbound);
-      status_or.ok()) {
-    *device_context = status_or->release();
+  if (auto context = LiteRtDispatchDeviceContextT::Create(*TheSouthbound);
+      context) {
+    *device_context = context->release();
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               status_or.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               context.Error().Message().data());
+    return context.Error().Status();
   }
   return kLiteRtStatusOk;
 }
@@ -178,13 +174,13 @@ LiteRtStatus GetInputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetInputRequirements(input_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
@@ -194,13 +190,13 @@ LiteRtStatus GetOutputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetOutputRequirements(output_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
@@ -271,8 +267,7 @@ LiteRtStatus RegisterTensorBuffer(
   ThrBufferHandle thr_buffer_handle;
 
   if (tensor_buffer_offset == 0) {
-    auto thr_register_buffer =
-        TheSouthbound->thr_functions().thr_register_buffer;
+    auto thr_register_buffer = TheSouthbound->api().thr_register_buffer;
     if (!thr_register_buffer) {
       LITERT_LOG(LITERT_ERROR, "thr_register_buffer not found");
       return kLiteRtStatusErrorRuntimeFailure;
@@ -288,7 +283,7 @@ LiteRtStatus RegisterTensorBuffer(
 
   } else {
     auto thr_register_buffer_with_offset =
-        TheSouthbound->thr_functions().thr_register_buffer_with_offset;
+        TheSouthbound->api().thr_register_buffer_with_offset;
     if (!thr_register_buffer_with_offset) {
       LITERT_LOG(LITERT_ERROR, "thr_register_buffer_with_offset not found");
       return kLiteRtStatusErrorRuntimeFailure;
@@ -311,8 +306,7 @@ LiteRtStatus RegisterTensorBuffer(
 LiteRtStatus UnregisterTensorBuffer(
     LiteRtDispatchDeviceContext device_context,
     LiteRtTensorBufferHandle tensor_buffer_handle) {
-  auto thr_unregister_buffer =
-      TheSouthbound->thr_functions().thr_unregister_buffer;
+  auto thr_unregister_buffer = TheSouthbound->api().thr_unregister_buffer;
   if (!thr_unregister_buffer) {
     LITERT_LOG(LITERT_ERROR, "thr_unregister_buffer not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -336,12 +330,6 @@ LiteRtStatus InvocationContextCreate(
     int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
   LiteRtDispatchGraph graph = nullptr;
   if (auto status = GraphCreate(device_context, &graph);
-      status != kLiteRtStatusOk) {
-    return status;
-  }
-
-  if (auto status =
-          AnnotateGraph(graph, kDynamicInteropKey, kEnableEarlyWakeup);
       status != kLiteRtStatusOk) {
     return status;
   }
@@ -424,7 +412,7 @@ LiteRtStatus InvocationContextCreate(
 LiteRtStatus InvocationContextDestroy(
     LiteRtDispatchInvocationContext invocation_context) {
   auto thr_invocation_context_delete =
-      TheSouthbound->thr_functions().thr_invocation_context_delete;
+      TheSouthbound->api().thr_invocation_context_delete;
   if (!thr_invocation_context_delete) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_delete not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -450,7 +438,7 @@ LiteRtStatus AttachBufferHelper(
     LiteRtDispatchEdgeId edge_id,
     LiteRtTensorBufferHandle tensor_buffer_handle) {
   auto thr_invocation_context_attach_buffer =
-      TheSouthbound->thr_functions().thr_invocation_context_attach_buffer;
+      TheSouthbound->api().thr_invocation_context_attach_buffer;
   if (!thr_invocation_context_attach_buffer) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_attach_buffer not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -477,7 +465,7 @@ LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status_or =
           invocation_context->graph()->InputEdge(graph_input_index);
-      !status_or.ok()) {
+      !status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -492,7 +480,7 @@ LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
                           int graph_output_index,
                           LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->graph()->OutputEdge(graph_output_index);
-      !status.ok()) {
+      !status) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -508,7 +496,7 @@ LiteRtStatus DetachTensorBufferHelper(
     LiteRtDispatchEdgeId edge_id,
     LiteRtTensorBufferHandle tensor_buffer_handle) {
   auto thr_invocation_context_detach_buffer =
-      TheSouthbound->thr_functions().thr_invocation_context_detach_buffer;
+      TheSouthbound->api().thr_invocation_context_detach_buffer;
   if (!thr_invocation_context_detach_buffer) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_detach_buffer not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -535,7 +523,7 @@ LiteRtStatus DetachInput(LiteRtDispatchInvocationContext invocation_context,
                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status_or =
           invocation_context->graph()->InputEdge(graph_input_index);
-      !status_or.ok()) {
+      !status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -550,7 +538,7 @@ LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
                           int graph_output_index,
                           LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->graph()->OutputEdge(graph_output_index);
-      !status.ok()) {
+      !status) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -565,7 +553,7 @@ LiteRtStatus PrepareForInvoke(
     LiteRtDispatchInvocationContext invocation_context,
     bool create_output_sync_fence) {
   auto thr_invocation_context_prepare_for_invoke =
-      TheSouthbound->thr_functions().thr_invocation_context_prepare_for_invoke;
+      TheSouthbound->api().thr_invocation_context_prepare_for_invoke;
   if (!thr_invocation_context_prepare_for_invoke) {
     LITERT_LOG(LITERT_ERROR,
                "thr_invocation_context_prepare_for_invoke not found");
@@ -587,7 +575,7 @@ LiteRtStatus PrepareForInvoke(
 
 LiteRtStatus InvokeOnce(LiteRtDispatchInvocationContext invocation_context) {
   auto thr_invocation_context_invoke_once =
-      TheSouthbound->thr_functions().thr_invocation_context_invoke_once;
+      TheSouthbound->api().thr_invocation_context_invoke_once;
   if (!thr_invocation_context_invoke_once) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_invoke_once not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -607,7 +595,7 @@ LiteRtStatus InvokeOnce(LiteRtDispatchInvocationContext invocation_context) {
 
 LiteRtStatus Wait(LiteRtDispatchInvocationContext invocation_context) {
   auto thr_invocation_context_wait =
-      TheSouthbound->thr_functions().thr_invocation_context_wait;
+      TheSouthbound->api().thr_invocation_context_wait;
   if (!thr_invocation_context_wait) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_wait not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -645,7 +633,7 @@ LiteRtStatus AttachInputEvent(
     LiteRtDispatchInvocationContext invocation_context, int graph_input_index,
     LiteRtEvent input_event) {
   auto status_or = invocation_context->graph()->InputEdge(graph_input_index);
-  if (!status_or.ok()) {
+  if (!status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -653,7 +641,7 @@ LiteRtStatus AttachInputEvent(
   auto edge_id = *status_or;
 
   auto thr_invocation_context_attach_input_buffer_sync_fence =
-      TheSouthbound->thr_functions()
+      TheSouthbound->api()
           .thr_invocation_context_attach_input_buffer_sync_fence;
   if (!thr_invocation_context_attach_input_buffer_sync_fence) {
     LITERT_LOG(
@@ -689,7 +677,7 @@ namespace {
 LiteRtStatus GetOutputEvent(LiteRtDispatchInvocationContext invocation_context,
                             int graph_output_index, LiteRtEvent* output_event) {
   auto status_or = invocation_context->graph()->OutputEdge(graph_output_index);
-  if (!status_or.ok()) {
+  if (!status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -697,8 +685,7 @@ LiteRtStatus GetOutputEvent(LiteRtDispatchInvocationContext invocation_context,
   auto edge_id = *status_or;
 
   auto thr_invocation_context_get_output_buffer_sync_fence =
-      TheSouthbound->thr_functions()
-          .thr_invocation_context_get_output_buffer_sync_fence;
+      TheSouthbound->api().thr_invocation_context_get_output_buffer_sync_fence;
   if (!thr_invocation_context_get_output_buffer_sync_fence) {
     LITERT_LOG(LITERT_ERROR,
                "thr_invocation_context_get_output_buffer_sync_fence not found");
@@ -767,7 +754,7 @@ LiteRtStatus InvokeAsync(LiteRtDispatchInvocationContext invocation_context,
 
 LiteRtStatus GraphCreate(LiteRtDispatchDeviceContext device_context,
                          LiteRtDispatchGraph* graph) {
-  auto thr_graph_create = TheSouthbound->thr_functions().thr_graph_create;
+  auto thr_graph_create = TheSouthbound->api().thr_graph_create;
   if (!thr_graph_create) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_create not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -784,7 +771,7 @@ LiteRtStatus GraphCreate(LiteRtDispatchDeviceContext device_context,
 }
 
 LiteRtStatus GraphDestroy(LiteRtDispatchGraph graph) {
-  auto thr_graph_delete = TheSouthbound->thr_functions().thr_graph_delete;
+  auto thr_graph_delete = TheSouthbound->api().thr_graph_delete;
   if (!thr_graph_delete) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_delete not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -804,8 +791,7 @@ LiteRtStatus GraphDestroy(LiteRtDispatchGraph graph) {
 
 LiteRtStatus AddNode(LiteRtDispatchGraph graph, LiteRtDispatchNodeId node_id,
                      LiteRtDispatchNodeType node_type) {
-  auto thr_graph_add_sq_node =
-      TheSouthbound->thr_functions().thr_graph_add_sq_node;
+  auto thr_graph_add_sq_node = TheSouthbound->api().thr_graph_add_sq_node;
   if (!thr_graph_add_sq_node) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_add_sq_node not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -837,7 +823,7 @@ LiteRtStatus AddNode(LiteRtDispatchGraph graph, LiteRtDispatchNodeId node_id,
 }
 
 LiteRtStatus AddEdge(LiteRtDispatchGraph graph, LiteRtDispatchEdgeId edge_id) {
-  auto thr_graph_add_edge = TheSouthbound->thr_functions().thr_graph_add_edge;
+  auto thr_graph_add_edge = TheSouthbound->api().thr_graph_add_edge;
   if (!thr_graph_add_edge) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_add_edge not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -860,7 +846,7 @@ LiteRtStatus ConnectNodeInput(LiteRtDispatchGraph graph,
                               LiteRtDispatchNodeId node_id, int input_index,
                               LiteRtDispatchEdgeId edge_id) {
   auto thr_graph_connect_node_input =
-      TheSouthbound->thr_functions().thr_graph_connect_node_input;
+      TheSouthbound->api().thr_graph_connect_node_input;
   if (!thr_graph_connect_node_input) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_connect_node_input not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -891,7 +877,7 @@ LiteRtStatus ConnectNodeOutput(LiteRtDispatchGraph graph,
                                LiteRtDispatchNodeId node_id, int output_index,
                                LiteRtDispatchEdgeId edge_id) {
   auto thr_graph_connect_node_output =
-      TheSouthbound->thr_functions().thr_graph_connect_node_output;
+      TheSouthbound->api().thr_graph_connect_node_output;
   if (!thr_graph_connect_node_output) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_connect_node_output not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -927,8 +913,7 @@ LiteRtStatus ConnectGraphInput(LiteRtDispatchGraph graph, int input_index,
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  auto thr_graph_set_input_edge =
-      TheSouthbound->thr_functions().thr_graph_set_input_edge;
+  auto thr_graph_set_input_edge = TheSouthbound->api().thr_graph_set_input_edge;
   if (!thr_graph_set_input_edge) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_set_input_edge not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -955,7 +940,7 @@ LiteRtStatus ConnectGraphOutput(LiteRtDispatchGraph graph, int output_index,
   }
 
   auto thr_graph_set_output_edge =
-      TheSouthbound->thr_functions().thr_graph_set_output_edge;
+      TheSouthbound->api().thr_graph_set_output_edge;
   if (!thr_graph_set_output_edge) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_set_output_edge not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -976,8 +961,7 @@ LiteRtStatus LoadExecutable(LiteRtDispatchDeviceContext device_context,
                             LiteRtDispatchExecutableType type,
                             const void* bytecode, size_t bytecode_size,
                             LiteRtDispatchExecutableHandle* exec_handle) {
-  auto thr_load_sq_container =
-      TheSouthbound->thr_functions().thr_load_sq_container;
+  auto thr_load_sq_container = TheSouthbound->api().thr_load_sq_container;
   if (!thr_load_sq_container) {
     LITERT_LOG(LITERT_ERROR, "thr_load_sq_container not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1011,8 +995,7 @@ LiteRtStatus LoadExecutable(LiteRtDispatchDeviceContext device_context,
 
 LiteRtStatus UnloadExecutable(LiteRtDispatchDeviceContext device_context,
                               LiteRtDispatchExecutableHandle exec_handle) {
-  auto thr_unload_sq_container =
-      TheSouthbound->thr_functions().thr_unload_sq_container;
+  auto thr_unload_sq_container = TheSouthbound->api().thr_unload_sq_container;
   if (!thr_unload_sq_container) {
     LITERT_LOG(LITERT_ERROR, "thr_unload_sq_container not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1033,7 +1016,7 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
                                 LiteRtDispatchNodeId node_id,
                                 LiteRtDispatchExecutableHandle exec_handle,
                                 const char* function_name) {
-  auto thr_graph_assign_sq = TheSouthbound->thr_functions().thr_graph_assign_sq;
+  auto thr_graph_assign_sq = TheSouthbound->api().thr_graph_assign_sq;
   if (!thr_graph_assign_sq) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_assign_sq not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1042,8 +1025,13 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
   ThrGraph* thr_graph = graph->thr_graph();
   auto thr_node_id = ThrNodeIdStr(node_id);
   ThrSqContainerHandle sq_handle = exec_handle;
+  // An empty function name represent no function name being provided and
+  // therefore we must pass a nullptr to the call below, otherwise the SB API
+  // will expect a model with a signature. See b/378913220.
+  const char* function_name_ptr =
+      absl::string_view(function_name).empty() ? nullptr : function_name;
   if (auto status = thr_graph_assign_sq(thr_graph, thr_node_id.data(),
-                                        sq_handle, function_name);
+                                        sq_handle, function_name_ptr);
       status != kThrStatusSuccess) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_assign_sq failed: %d", status);
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1054,8 +1042,7 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
 
 LiteRtStatus AnnotateGraph(LiteRtDispatchGraph graph, const char* key,
                            const char* value) {
-  auto thr_graph_annotate_graph =
-      TheSouthbound->thr_functions().thr_graph_annotate_graph;
+  auto thr_graph_annotate_graph = TheSouthbound->api().thr_graph_annotate_graph;
   if (!thr_graph_annotate_graph) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_annotate_graph not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1074,8 +1061,7 @@ LiteRtStatus AnnotateGraph(LiteRtDispatchGraph graph, const char* key,
 LiteRtStatus AnnotateNode(LiteRtDispatchGraph graph,
                           LiteRtDispatchNodeId node_id, const char* key,
                           const char* value) {
-  auto thr_graph_annotate_node =
-      TheSouthbound->thr_functions().thr_graph_annotate_node;
+  auto thr_graph_annotate_node = TheSouthbound->api().thr_graph_annotate_node;
   if (!thr_graph_annotate_node) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_annotate_node not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1096,8 +1082,7 @@ LiteRtStatus AnnotateNode(LiteRtDispatchGraph graph,
 LiteRtStatus AnnotateEdge(LiteRtDispatchGraph graph,
                           LiteRtDispatchEdgeId edge_id, const char* key,
                           const char* value) {
-  auto thr_graph_annotate_edge =
-      TheSouthbound->thr_functions().thr_graph_annotate_edge;
+  auto thr_graph_annotate_edge = TheSouthbound->api().thr_graph_annotate_edge;
   if (!thr_graph_annotate_edge) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_annotate_edge not found");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -1119,7 +1104,7 @@ LiteRtStatus InvocationContextCreateFromGraph(
     LiteRtDispatchDeviceContext device_context, LiteRtDispatchGraph graph,
     LiteRtDispatchInvocationContext* invocation_context) {
   auto thr_invocation_context_get =
-      TheSouthbound->thr_functions().thr_invocation_context_get;
+      TheSouthbound->api().thr_invocation_context_get;
   if (!thr_invocation_context_get) {
     LITERT_LOG(LITERT_ERROR, "thr_invocation_context_get not found");
     return kLiteRtStatusErrorRuntimeFailure;

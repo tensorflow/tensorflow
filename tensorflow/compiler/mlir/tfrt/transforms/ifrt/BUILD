@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load(
-    "@local_tsl//tsl/platform:build_config.bzl",
+    "@local_xla//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
@@ -156,19 +156,17 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/tsl/concurrency:ref_count",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -220,11 +218,10 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_compiler",
-        "@local_xla//xla/pjrt/cpu:cpu_client",
         "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:mock",
         "@local_xla//xla/python/ifrt:test_util",

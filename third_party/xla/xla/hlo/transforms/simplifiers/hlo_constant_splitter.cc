@@ -14,7 +14,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 

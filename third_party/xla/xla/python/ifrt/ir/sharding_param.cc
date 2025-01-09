@@ -75,6 +75,15 @@ void PopulateDevices(llvm::ArrayRef<int> permutation,
   }
 }
 
+void PrintInternalV1(llvm::raw_ostream& os, const ShardingParam& sharding) {
+  PrintDims(os, sharding.dim_shards());
+  os << " to [";
+  llvm::interleaveComma(
+      llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
+  os << "] on ";
+  PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
+}
+
 }  // namespace
 
 absl::Status ShardingParam::MinorToMajor::verify() const {
@@ -124,6 +133,12 @@ void ShardingParam::MinorToMajor::ToDeviceList(
 
 mlir::FailureOr<ShardingParam> ShardingParam::Parse(
     mlir::AsmParser& ods_parser) {
+  // V1 is the current ShardingParam format.
+  return ParseV1(ods_parser);
+}
+
+mlir::FailureOr<ShardingParam> ShardingParam::ParseV1(
+    mlir::AsmParser& ods_parser) {
   MinorToMajor minor_to_major;
 
   auto parseIntoPermutation = [&]() -> mlir::ParseResult {
@@ -157,6 +172,11 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
   // its constructor to expose a SmallVector.
   return ShardingParam(std::vector(dim_shards.begin(), dim_shards.end()),
                        std::move(minor_to_major));
+}
+
+void ShardingParam::PrintV1(mlir::AsmPrinter& ods_printer,
+                            const ShardingParam& sharding) {
+  PrintInternalV1(ods_printer.getStream(), sharding);
 }
 
 absl::Status ShardingParam::verify() const {
@@ -275,17 +295,14 @@ llvm::hash_code hash_value(ShardingParam sharding) {
 }
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding) {
-  os.getStream() << sharding;
+  // V1 if the current ShardingParam version.
+  PrintInternalV1(os.getStream(), sharding);
   return os;
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
-  PrintDims(os, sharding.dim_shards());
-  os << " to [";
-  llvm::interleaveComma(
-      llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
-  os << "] on ";
-  PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
+  // V1 if the current ShardingParam version.
+  PrintInternalV1(os, sharding);
   return os;
 }
 

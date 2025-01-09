@@ -42,19 +42,19 @@ namespace xla {
 namespace llvm_ir {
 
 LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : body_emitter_(body_emitter), shape_(shape), b_(b) {}
 
 LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
                          std::vector<llvm::Value*> dynamic_dims,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : LoopEmitter::LoopEmitter(body_emitter, shape, b) {
   CHECK_EQ(dynamic_dims.size(), shape_.dimensions_size());
   dynamic_dims_ = std::move(dynamic_dims);
 }
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
-                         const IrArray& target_array, llvm::IRBuilder<>* b)
+                         const IrArray& target_array, llvm::IRBuilderBase* b)
     : body_emitter_(MakeBodyEmitter(target_element_generator, {target_array}, b,
                                     /*is_tuple=*/false)),
       shape_(target_array.GetShape()),
@@ -62,7 +62,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          absl::Span<const IrArray> target_arrays,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : body_emitter_(MakeBodyEmitter(target_element_generator, target_arrays, b,
                                     /*is_tuple=*/true)),
       shape_(target_arrays[0].GetShape()),
@@ -78,7 +78,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 
 BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                             absl::Span<IrArray const> target_arrays,
-                            llvm::IRBuilder<>* b, bool is_tuple) {
+                            llvm::IRBuilderBase* b, bool is_tuple) {
   std::vector<IrArray> target_arrays_vec(target_arrays.begin(),
                                          target_arrays.end());
   if (!is_tuple) {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
@@ -38,14 +39,14 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
   explicit PjRtTopology(
       std::shared_ptr<const xla::PjRtTopologyDescription> description);
 
-  const std::shared_ptr<const xla::PjRtTopologyDescription>& description()
-      const {
-    return description_;
-  }
-
   absl::string_view platform_name() const override;
   absl::string_view platform_version() const override;
   PjRtPlatformId platform_id() const override;
+
+  const std::shared_ptr<const xla::PjRtTopologyDescription>& description()
+      const override {
+    return description_;
+  }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;

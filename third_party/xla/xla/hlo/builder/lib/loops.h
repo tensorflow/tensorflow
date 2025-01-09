@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_LOOPS_H_
 #define XLA_HLO_BUILDER_LIB_LOOPS_H_
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 

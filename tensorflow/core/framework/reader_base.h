@@ -52,28 +52,29 @@ class ReaderBase : public ReaderInterface {
   //  d) If there was an error producing (e.g. an error reading the file,
   //     data corruption), return a non-OK() status.  ReadLocked may be
   //     called again if the user reruns this part of the graph.
-  virtual Status ReadLocked(tstring* key, tstring* value, bool* produced,
-                            bool* at_end) = 0;
+  virtual absl::Status ReadLocked(tstring* key, tstring* value, bool* produced,
+                                  bool* at_end) = 0;
 
   // Descendants may optionally implement these -------------------------------
 
   // Produce up to num_records next key/value pairs from the current
   // work item, in the same manner of ReadLocked.
-  virtual Status ReadUpToLocked(int64_t num_records, std::vector<tstring>* keys,
-                                std::vector<tstring>* values, int64_t* num_read,
-                                bool* at_end);
+  virtual absl::Status ReadUpToLocked(int64_t num_records,
+                                      std::vector<tstring>* keys,
+                                      std::vector<tstring>* values,
+                                      int64_t* num_read, bool* at_end);
 
   // Called when work starts / finishes.
-  virtual Status OnWorkStartedLocked() { return absl::OkStatus(); }
-  virtual Status OnWorkFinishedLocked() { return absl::OkStatus(); }
+  virtual absl::Status OnWorkStartedLocked() { return absl::OkStatus(); }
+  virtual absl::Status OnWorkFinishedLocked() { return absl::OkStatus(); }
 
   // Called to reset the Reader to a newly constructed state.
-  virtual Status ResetLocked();
+  virtual absl::Status ResetLocked();
 
   // Default implementation generates an Unimplemented error.
   // See the protected helper methods below.
-  virtual Status SerializeStateLocked(tstring* state);
-  virtual Status RestoreStateLocked(const tstring& state);
+  virtual absl::Status SerializeStateLocked(tstring* state);
+  virtual absl::Status RestoreStateLocked(const tstring& state);
 
   // Accessors ----------------------------------------------------------------
 
@@ -99,7 +100,7 @@ class ReaderBase : public ReaderInterface {
 
   // Restores ReaderBase state from state. Assumes state was filled
   // using SaveBaseState() above.
-  Status RestoreBaseState(const ReaderBaseState& state);
+  absl::Status RestoreBaseState(const ReaderBaseState& state);
 
  private:
   // For descendants that wish to obtain the next work item in a different way.
@@ -119,11 +120,11 @@ class ReaderBase : public ReaderInterface {
                    std::vector<tstring>* keys, std::vector<tstring>* value,
                    OpKernelContext* context) override;
 
-  Status Reset() override;
+  absl::Status Reset() override;
   int64_t NumRecordsProduced() override;
   int64_t NumWorkUnitsCompleted() override;
-  Status SerializeState(tstring* state) override;
-  Status RestoreState(const tstring& state) override;
+  absl::Status SerializeState(tstring* state) override;
+  absl::Status RestoreState(const tstring& state) override;
 
   mutable mutex mu_;
   const string name_;

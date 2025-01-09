@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -114,6 +113,8 @@ struct PyArray_Storage {
   // duplicate PjRtBuffers in this list.
   PyArray_Storage* next;
   PyArray_Storage* prev;
+
+  uint8_t thread_id_bucket;
 };
 
 // The C++ implementation of jax.Array. A few key methods and data members are
@@ -170,7 +171,7 @@ class PyArray : public nanobind::object {
 
   const nanobind::object& sharding() const { return GetStorage().sharding; }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() {
     return ifrt_array()->layout();
   }
 
@@ -281,7 +282,8 @@ class PyArray : public nanobind::object {
   static absl::StatusOr<std::vector<PyArray>> BatchedCopyToDeviceWithSharding(
       absl::Span<const PyArray> py_arrays,
       absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
-      absl::Span<const nanobind::object> dst_shardings);
+      absl::Span<const nanobind::object> dst_shardings,
+      absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics);
 
   static absl::StatusOr<PyArray> BatchedDevicePut(
       nanobind::object aval, nanobind::object sharding,
@@ -294,7 +296,7 @@ class PyArray : public nanobind::object {
       std::vector<nanobind::object> objs);
 
  private:
-  absl::StatusOr<PyArray> AssertUnsharded(std::string_view api);
+  absl::StatusOr<PyArray> AssertUnsharded(absl::string_view api);
 
   void CheckAndRearrange();
 

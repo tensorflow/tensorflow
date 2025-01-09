@@ -17,6 +17,7 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_RPC_HELPER_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_RPC_HELPER_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -111,7 +112,6 @@ class RpcHelper {
       std::unique_ptr<CopyToHostBufferRequest> req);
   ResponseFuture<CopyArraysResponse> CopyArrays(
       std::unique_ptr<CopyArraysRequest> req);
-  ResponseFuture<ReshardResponse> Reshard(std::unique_ptr<ReshardRequest> req);
   ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
       std::unique_ptr<FullyReplicatedShardRequest> req);
   ResponseFuture<IsArrayDeletedResponse> IsArrayDeleted(
@@ -139,7 +139,12 @@ class RpcHelper {
   ResponseFuture<LoadedHostCallbackReturnResponse> LoadedHostCallbackReturn(
       std::unique_ptr<LoadedHostCallbackReturnRequest> req);
 
-  // Utility functions for common functions.
+  // Utility functions.
+
+  // Generates a handle for new arrays, array data stored in HostBufferStore,
+  // etc. Guarantees that the generated handle will not conflict with those
+  // generated at the server side by IfrtBackend.
+  uint64_t NextHandle();
 
   Future<> CheckFuture(uint64_t handle);
 
@@ -148,6 +153,8 @@ class RpcHelper {
 
   const IfrtProxyVersion version_;
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
+
+  std::atomic<uint64_t> next_handle_ = 1;
 
   absl::Mutex mu_;
   uint64_t next_op_id_ ABSL_GUARDED_BY(mu_) = 1;

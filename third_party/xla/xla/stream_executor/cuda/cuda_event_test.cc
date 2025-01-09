@@ -31,7 +31,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
-using ::tsl::testing::IsOk;
 
 TEST(CudaEventTest, CreateEvent) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,

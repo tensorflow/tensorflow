@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -26,9 +27,9 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -183,8 +184,6 @@ class PartitionedComputations {
   absl::flat_hash_map<const PartitionedComputation::Subgraph*,
                       mlir::func::FuncOp>
   DeclareFunctions(mlir::ModuleOp module) const;
-
-  std::string ToString() const;
 
  private:
   std::vector<PartitionedComputation> partitioned_computations_;

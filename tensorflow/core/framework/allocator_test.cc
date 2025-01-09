@@ -226,9 +226,8 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   void* p1 = a->AllocateRaw(1, 16);
 
   // Start profiling
-  std::unique_ptr<ProfilerSession> profiler =
-      tensorflow::ProfilerSession::Create(
-          tensorflow::ProfilerSession::DefaultOptions());
+  std::unique_ptr<tsl::ProfilerSession> profiler =
+      tsl::ProfilerSession::Create(tsl::ProfilerSession::DefaultOptions());
 
   // Profiled allocations
   void* p2 = a->AllocateRaw(1, 32);

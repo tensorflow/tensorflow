@@ -37,6 +37,8 @@ namespace xla {
 namespace ifrt {
 
 char IfrtIRProgram::ID = 0;
+char SerializeIfrtIRProgramOptions::ID = 0;
+char DeserializeIfrtIRProgramOptions::ID = 0;
 char IfrtIRCompileOptions::ID = 0;
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(

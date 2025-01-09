@@ -101,7 +101,7 @@ void QuantizePass::runOnOperation() {
   // Quantize all quantizable ops, including ops that are not compute-heavy.
   PopulateAllQuantizablePatterns(ctx, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.

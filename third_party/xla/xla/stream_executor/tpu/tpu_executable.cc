@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/stream.h"
@@ -92,8 +91,7 @@ TpuExecutable::~TpuExecutable() {
 
 absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   SE_ExecutableRunOptions se_run_options = ApiConverter::ToC(*run_options);
   SE_ExecutionInput** se_args = new SE_ExecutionInput*[arguments.size()];
   for (int i = 0; i < arguments.size(); ++i) {
@@ -126,7 +124,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
   SE_ExecutionOutput se_execution_output;
   StatusHelper status;
   ExecutorApiFn()->TpuExecutable_ExecuteAsyncOnStreamFn(
-      se_executable_, &se_run_options, se_args, arguments.size(), nullptr,
+      se_executable_, &se_run_options, se_args, arguments.size(),
       &se_execution_output, status.c_status);
 
   if (se_run_options.device_assignment.bytes != nullptr) {

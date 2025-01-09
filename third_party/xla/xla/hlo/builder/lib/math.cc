@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1275,7 +1276,7 @@ XlaOp Asinh(XlaOp x) {
     if (primitive_util::IsComplexType(shape.element_type())) {
       // Asinh(x) = I * Asin(-I * x)
       //
-      // We use mixed-mode arithmetic instead of complex arithemtic to
+      // We use mixed-mode arithmetic instead of complex arithmetic to
       // ensure that multiplication of I and complex infinities will
       // not produce superficial nan's:
       auto x_re = Real(x);

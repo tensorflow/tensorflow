@@ -10,28 +10,51 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
+
 #include <algorithm>
+#include <any>
 #include <climits>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "rocm/rocm_config.h"
+#if TF_HIPBLASLT
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "Eigen/Core"
+#include "rocm/include/hip/library_types.h"
+#include "rocm/include/hipblas/hipblas.h"
+#include "rocm/include/hipblaslt/hipblaslt.h"
+#include "rocm/include/rocblas/internal/rocblas-types.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/util.h"
-
-#if TF_HIPBLASLT
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
+#include "xla/stream_executor/rocm/hip_blas_utils.h"
+#include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/types.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -85,16 +108,6 @@ absl::Status SetAttr(hipblasLtMatmulPreference_t handle,
                      hipblasLtMatmulPreferenceAttributes_t attr, T value) {
   return SET_ATTR(wrap::hipblasLtMatmulPreferenceSetAttribute, handle, attr,
                   value);
-}
-
-static hipblasPointerMode_t AsHipblasLtPointerMode(
-    gpu::BlasLt::PointerMode pointer_mode) {
-  switch (pointer_mode) {
-    case gpu::BlasLt::PointerMode::kHost:
-      return HIPBLAS_POINTER_MODE_HOST;
-    case gpu::BlasLt::PointerMode::kDevice:
-      return HIPBLAS_POINTER_MODE_DEVICE;
-  }
 }
 
 static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
@@ -468,7 +481,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           blas_lt_ref_.blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, c.opaque(),
           c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size, gpu::AsGpuStreamValue(stream)));
+          workspace_size,
+          static_cast<hipStream_t>(stream->platform_specific_handle().stream)));
     } else {
       return absl::InternalError("hipblaslt: Invalid algorithm type");
     }

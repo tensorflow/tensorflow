@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_VIEWER_VISIBILITY_H_
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>

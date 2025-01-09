@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 
@@ -99,10 +99,6 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
       absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints,
       absl::Span<int64_t const> symbol_sizes = {}) const;
 
-  Shape GetReduceOperandShape() const {
-    return first_reduce_->operand(0)->shape();
-  }
-
   // Returns the input indexing. The inputs are given in the projected shape
   // (i.e., the indexing map has three results).
   virtual IndexingMap ComputeReductionInputIndexing(
@@ -123,6 +119,10 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   // write to shared memory.
   virtual IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const {
     return IndexingMap::GetUndefined();
+  }
+
+  int64_t WarpSize() const {
+    return ::xla::gpu::WarpSize(analysis_.device_info());
   }
 
   // The reduction heroes for each reduction group.
@@ -187,7 +187,6 @@ class MlirMultiRowReductionFusion : public MlirReductionFusion {
       const ReductionDimensions& reduction_dimensions,
       const absl::InlinedVector<int64_t, 4>& num_threads);
 
-  int GetRowsPerWarp() const;
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(

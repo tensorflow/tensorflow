@@ -222,8 +222,8 @@ HloInstruction* CreateGatherLoopAccumulatorInitValue(
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64_t i = 0; i < slice_sizes.size(); i++) {
-    if (!absl::c_linear_search(dim_numbers.collapsed_slice_dims(), i) &&
-        !absl::c_linear_search(dim_numbers.operand_batching_dims(), i)) {
+    if (!IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
+                                  dim_numbers.operand_batching_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
   }

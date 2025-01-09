@@ -16,5 +16,5 @@ Use the
 [build_tools/lint/generate_compile_commands.py](https://github.com/openxla/xla/blob/main/build_tools/lint/generate_compile_commands.py)
 script. The following invocation from XLA repo root generates a
 `compile_commands.json` file in place: `bazel aquery "mnemonic(CppCompile,
-//xla/...)" --output=jsonproto | \ python3
+//xla/...)" --output=jsonproto | python3
 build_tools/lint/generate_compile_commands.py`

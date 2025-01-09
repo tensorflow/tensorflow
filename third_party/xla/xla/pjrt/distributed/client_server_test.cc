@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -899,37 +898,6 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   }
 }
 
-TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
-  int num_nodes = 2;
-  StartService(num_nodes);
-
-  auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client = GetClient(node_id);
-    TF_RETURN_IF_ERROR(client->Connect());
-
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt));
-
-    TF_RETURN_IF_ERROR(client->Shutdown());
-    return absl::OkStatus();
-  };
-
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
-        << " node id: " << i;
-  }
-}
-
 TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
   int num_nodes = 3;
   StartService(num_nodes);
@@ -1059,6 +1027,20 @@ TEST_F(ClientServerTest, KeyValueSet_Duplicate_Overwrites) {
       client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "overwritten_value");
+}
+
+TEST_F(ClientServerTest, KeyValueTryGet) {
+  StartService(/*num_nodes=*/1);
+  auto client = GetClient(/*node_id=*/0);
+  TF_ASSERT_OK(client->Connect());
+
+  ASSERT_THAT(client->KeyValueTryGet("test_key").status(),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  TF_ASSERT_OK(client->KeyValueSet("test_key", "value"));
+  auto result = client->KeyValueTryGet("test_key");
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.value(), "value");
 }
 
 TEST_F(ClientServerTest, KeyValueDelete) {

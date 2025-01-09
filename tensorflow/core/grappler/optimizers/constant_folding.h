@@ -64,8 +64,8 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
-  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+  string OptimizedNodeName(const NodeDef& node, absl::string_view suffix) const;
+  bool OptimizedNodeExists(const NodeDef& node, absl::string_view suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
 

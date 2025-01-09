@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/resource_variable_ops.h"
 
+#include <cstring>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"

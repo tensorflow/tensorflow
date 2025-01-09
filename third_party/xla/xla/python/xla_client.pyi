@@ -23,6 +23,7 @@ import numpy
 
 from . import xla_extension as _xla
 from .xla_extension import ArrayImpl as ArrayImpl
+from .xla_extension import AutotuneCacheMode as AutotuneCacheMode
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
@@ -45,6 +46,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import PmapSharding as PmapSharding
 from .xla_extension import PrimitiveType as PrimitiveType
+from .xla_extension import ArrayCopySemantics as ArrayCopySemantics
 from .xla_extension import profiler as profiler
 from .xla_extension import Shape as Shape
 from .xla_extension import Sharding as Sharding
@@ -87,6 +89,7 @@ def make_cpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     collectives: _xla.CpuCollectives | None = ...,
+    num_devices: int | None = ...,
 ) -> Client:
   ...
 
@@ -214,6 +217,12 @@ class PrecisionConfig:
   Precision = _xla.PrecisionConfig_Precision
   operand_precision: list[_xla.PrecisionConfig_Precision]
 
+class ResultAccuracy:
+  mode: _xla.ResultAccuracy_Mode
+  atol: float
+  rtol: float
+  ulps: int
+
 class GatherDimensionNumbers:
   offset_dims: list[int]
   collapsed_slice_dims: list[int]
@@ -238,13 +247,14 @@ def make_replica_groups(
 ) -> list[ReplicaGroup]:
   ...
 
-def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...) -> _xla.WeakrefLRUCache:
   ...
 
 def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[list[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_device_put(
@@ -287,6 +297,14 @@ def register_custom_call_handler(
 ) -> None: ...
 
 def custom_call_targets(platform: str) -> dict[str, Any]: ...
+
+def register_custom_type_id(
+    type_name: str,
+    type_id: Any,
+    platform: str = ...,
+) -> None: ...
+
+def register_custom_type_id_handler(platform: str, handler: Any) -> None: ...
 
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 

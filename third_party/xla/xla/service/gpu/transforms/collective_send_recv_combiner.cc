@@ -105,14 +105,14 @@ absl::Status CreateAsyncStartAndAsyncDone(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
             instruction->shape(), async_done, async_done_gte_index));
     ++async_done_gte_index;
-    if (instruction->opcode() == HloOpcode::kSend) {
+    if (HloPredicateIsOp<HloOpcode::kSend>(instruction)) {
       // send-done only returns the control-flow token, which is the last
       // element in the unwrapped async-done tuple
       replacement_async_done =
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
               unwrapped_async_done->shape().tuple_shapes(2),
               unwrapped_async_done, 2));
-    } else if (instruction->opcode() == HloOpcode::kRecv) {
+    } else if (HloPredicateIsOp<HloOpcode::kRecv>(instruction)) {
       // recv-done returns the received data and the control-flow token
       HloInstruction* first_element_in_recv_done =
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -129,8 +129,8 @@ absl::Status CreateAsyncStartAndAsyncDone(
     }
 
     for (HloInstruction* instruction_user : instruction->users()) {
-      if (instruction_user->opcode() == HloOpcode::kSendDone ||
-          instruction_user->opcode() == HloOpcode::kRecvDone) {
+      if (HloPredicateIsOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
+              instruction_user)) {
         TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
         TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
                                                      replacement_async_done));

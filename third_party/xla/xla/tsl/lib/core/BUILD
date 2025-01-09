@@ -4,13 +4,13 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("@local_tsl//tsl/platform:build_config.bzl", "tsl_cc_test")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
@@ -40,8 +40,8 @@ cc_library(
     hdrs = ["status_test_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
     ],
 )
 
@@ -94,8 +94,8 @@ cc_library(
     hdrs = ["bitmap.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/numeric:bits",
-        "@local_tsl//tsl/platform:logging",
     ],
     alwayslink = 1,
 )
@@ -104,8 +104,8 @@ cc_library(
     name = "bits",
     hdrs = ["bits.h"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/numeric:bits",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -115,7 +115,7 @@ tsl_cc_test(
     srcs = ["bits_test.cc"],
     deps = [
         ":bits",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
     ],
 )

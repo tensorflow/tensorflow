@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/target_util.h"
 
+#include <gtest/gtest.h>
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -72,6 +74,22 @@ TEST(TargetUtil, ObtainDeviceFunctionNameExp) {
   EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kExp,
                                      /*output_type=*/BF16, triple),
             "__nv_fast_expf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kExp,
+                                     /*output_type=*/F16, triple),
+            "__nv_fast_expf");
+}
+
+TEST(TargetUtil, ObtainDeviceFunctionNameLog) {
+  llvm::Triple triple("nvptx64-unknown-unknown");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kLog,
+                                     /*output_type=*/F32, triple),
+            "__nv_logf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kLog,
+                                     /*output_type=*/BF16, triple),
+            "__nv_fast_logf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kLog,
+                                     /*output_type=*/F16, triple),
+            "__nv_fast_logf");
 }
 
 }  // namespace

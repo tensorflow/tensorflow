@@ -63,8 +63,8 @@ absl::Status Session::PRun(
 
 Session* NewSession(const SessionOptions& options) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/tsl/platform/default", this is
-  // currently a no-op.
+  // provided). For builds using "tensorflow/compiler/xla/tsl/platform/default",
+  // this is currently a no-op.
   SetSessionCreatedMetric();
   Session* out_session;
   absl::Status s = NewSession(options, &out_session);
@@ -84,8 +84,8 @@ absl::Status NewSession(const SessionOptions& options, Session** out_session) {
     return s;
   }
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/tsl/platform/default", this is
-  // currently a no-op.
+  // provided). For builds using "tensorflow/compiler/xla/tsl/platform/default",
+  // this is currently a no-op.
   SetSessionCreatedMetric();
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {

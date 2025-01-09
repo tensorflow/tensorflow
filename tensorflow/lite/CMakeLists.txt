@@ -101,7 +101,7 @@ else()
   set(FLATC_TARGET "flatbuffers-flatc")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
@@ -622,7 +622,7 @@ populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
 )
 populate_tflite_source_vars("kernels/internal/optimized/4bit"
   TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS
-  FILTER "(.*neon.*|.*sse.*)\\.(cc|h)"
+  FILTER "(.*neon_.*|.*sse_.*)\\.(cc|h)"
 )
 set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
@@ -745,7 +745,7 @@ target_link_libraries(tensorflow-lite
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 
-if (NOT BUILD_SHARED_LIBS AND NOT TFLITE_C_BUILD_SHARED_LIBS)
+if (NOT BUILD_SHARED_LIBS)
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
 endif()
 

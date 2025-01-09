@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -74,7 +73,14 @@ int CudaPlatform::VisibleDeviceCount() const {
   // Initialized in a thread-safe manner the first time this is run.
   static const int num_devices = [] {
     if (!PlatformInitialize().ok()) return -1;
-    return GpuDriver::GetDeviceCount();
+    int device_count = 0;
+    auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
+    if (!status.ok()) {
+      LOG(ERROR) << "could not retrieve CUDA device count: " << status;
+      return 0;
+    }
+
+    return device_count;
   }();
   return num_devices;
 }

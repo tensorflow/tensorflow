@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <string_view>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -88,7 +87,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeNonContractingProductWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -112,7 +111,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, LargeBatchWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -134,17 +133,9 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-class TritonSoftmaxTest : public GpuCodegenTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
-    return debug_options;
-  }
-};
+using TritonNormalizationTest = GpuCodegenTest;
 
-TEST_F(TritonSoftmaxTest,
+TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
   const std::string hlo_text = R"(
 HloModule softmax

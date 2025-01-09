@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"

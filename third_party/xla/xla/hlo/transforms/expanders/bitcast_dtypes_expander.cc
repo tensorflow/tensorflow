@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/broadcast.h"

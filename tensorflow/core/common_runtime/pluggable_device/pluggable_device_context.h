@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -59,7 +60,7 @@ class PluggableDeviceContext : public DeviceContext {
                              bool sync_dst_compute) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,

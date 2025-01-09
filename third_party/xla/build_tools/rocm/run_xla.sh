@@ -41,7 +41,7 @@ if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 else
     if [[ -z "${ROCM_PATH}" ]]; then
-        ROCM_INSTALL_DIR=/opt/rocm-6.2.0
+        ROCM_INSTALL_DIR=/opt/rocm/
     else
         ROCM_INSTALL_DIR=$ROCM_PATH
     fi
@@ -56,6 +56,7 @@ TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
 bazel \
     test \
+    --define xnn_enable_avxvnniint8=false --define xnn_enable_avx512fp16=false \
     --config=rocm \
     --build_tag_filters=${TAGS_FILTER} \
     --test_tag_filters=${TAGS_FILTER} \

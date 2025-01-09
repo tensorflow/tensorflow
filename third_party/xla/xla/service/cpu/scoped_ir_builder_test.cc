@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -50,8 +50,7 @@ class IRBuilderGuardTest : public HloTestBase {
             [](LogicalBuffer::Color) { return /*alignment=*/1; })
             .value();
 
-    TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
-        [](int64_t size) { return 1; });
+    TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
     return IrEmitter(/*mlir_context=*/nullptr, /*hlo_module=*/*hlo,
                      /*assignment=*/*buffer_assignment,
                      /*llvm_module=*/module.get(),

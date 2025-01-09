@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_collective_combiner_utils.h"
-#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/service/reduce_scatter_combiner.h"
 #include "tsl/platform/statusor.h"
@@ -66,18 +65,17 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
-  // Pass configuration heuristics are not enabled. Running parent pass code.
-  if (!module->config()
-           .debug_options()
-           .xla_gpu_enable_heuristic_pass_configuration()) {
+  // If there are no pipelined instructions in the IR, the optimizations below
+  // do not kick in anyway.
+  // Exit early so we do not perform expensive scheduling dry run below.
+  if (!ContainsPipelinedInstruction(*module)) {
     return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
   // Combine as much as possible for pipelined collectives.
   int previous_combiner_threshold = combine_threshold_in_bytes_;
   combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
-      *module, device_info_, ScheduleGpuModuleWithMemoryScheduler,
-      HloOpcode::kReduceScatter, pointer_size_);
+      *module, device_info_, HloOpcode::kReduceScatter, pointer_size_);
   TF_ASSIGN_OR_RETURN(
       bool combined_pipelined_instructions,
       RunWithKeyCombiner(module, execution_threads, PipelinedCombinerKey));

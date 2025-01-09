@@ -25,8 +25,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
@@ -42,17 +40,9 @@ class GpuStream;
 class GpuExecutor : public StreamExecutorCommon {
  public:
   GpuExecutor(Platform* platform, int device_ordinal)
-      : StreamExecutorCommon(platform),
-        context_(nullptr),
-        device_ordinal_(device_ordinal) {}
+      : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   int device_ordinal() const override { return device_ordinal_; };
-
-  // Frees unused memory cached on the device for use with graphs back to the
-  // OS.
-  virtual absl::Status TrimGraphMemory() = 0;
-
-  Context* gpu_context() const { return context_; }
 
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
     absl::MutexLock lock(&logger_mu_);
@@ -76,14 +66,7 @@ class GpuExecutor : public StreamExecutorCommon {
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
- protected:
-  // Sets the context.
-  void set_context(Context* context) { context_ = context; }
-
  private:
-  // Handle for session with the library/driver. Immutable post-initialization.
-  Context* context_;
-
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;

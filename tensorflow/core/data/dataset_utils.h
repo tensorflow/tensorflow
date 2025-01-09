@@ -16,16 +16,22 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -245,7 +251,8 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
-bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
+bool MatchesAnyVersion(absl::string_view op_prefix,
+                       absl::string_view op_to_match);
 
 // Returns the index-th slice of a given tensor. If the index-th slice of
 // the tensor is not aligned, returns a deep copy of the tensor.

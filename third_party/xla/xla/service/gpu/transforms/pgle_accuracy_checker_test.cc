@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -35,7 +35,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using PGLEAccuracyCheckerTest = HloTestBase;
+using PGLEAccuracyCheckerTest = HloHardwareIndependentTestBase;
 using ::tensorflow::profiler::ProfiledInstructionsProto;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::StatusIs;
@@ -95,7 +95,7 @@ TEST_F(PGLEAccuracyCheckerTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
-  *module->mutable_config().mutable_fdo_profile() = kProfileString;
+  module->mutable_config().set_fdo_profile(kProfileString);
 
   auto pgle_estimator = GetProfileGuidedLatencyEstimator(profile);
   PGLEAccuracyChecker pgle_accuracy_checker(*pgle_estimator);
@@ -147,7 +147,7 @@ TEST_F(PGLEAccuracyCheckerTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
-  *module->mutable_config().mutable_fdo_profile() = kProfileString;
+  module->mutable_config().set_fdo_profile(kProfileString);
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_pgle_accuracy_checker(

@@ -26,6 +26,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <string>
 #include <type_traits>
@@ -442,16 +443,18 @@ class Array {
   bool operator!=(const Array<T>& other) const { return !(*this == other); }
 
   // Performs the equivalent of a slice operation on this array.
+  // When `out_of_bounds_value` is specified, the out of bounds accesses are ok
+  // and the slice is initialized to the given value.
   Array<T> Slice(absl::Span<const int64_t> starts,
                  absl::Span<const int64_t> limits,
-                 bool out_of_bounds_ok = false) const {
+                 std::optional<T> out_of_bounds_value = std::nullopt) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
       CHECK_GE(starts[i], 0);
-      if (!out_of_bounds_ok) {
+      if (!out_of_bounds_value.has_value()) {
         CHECK_LE(limits[i], dim(i));
       }
       sizes[i] = limits[i] - starts[i];
@@ -460,11 +463,10 @@ class Array {
     if (result.num_elements() == 0) {
       return result;
     }
-    // Initializes the slice to the first value if out of bounds access are ok.
-    if (out_of_bounds_ok) {
-      CHECK_GT(num_elements(), 0);
+    // Initializes the slice to the given value if out of bounds access are ok.
+    if (out_of_bounds_value.has_value()) {
       for (int64_t i = 0; i < result.num_elements(); ++i) {
-        result.values_[i] = values_[0];
+        result.values_[i] = out_of_bounds_value.value();
       }
     }
 

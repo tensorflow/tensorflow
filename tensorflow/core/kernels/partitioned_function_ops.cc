@@ -34,10 +34,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/stream.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 namespace tensorflow {
 
 PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)

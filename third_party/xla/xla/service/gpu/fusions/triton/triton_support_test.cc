@@ -217,7 +217,10 @@ class TritonSupportTest : public TritonSupportTestBase {
             try { run_triton_codegen().IgnoreError(); } catch (...) {
               abort();
             },
-            "");
+            // It's not possible to find stable matching patterns for all
+            // aborting code paths that occur here, so we at least make sure
+            // that we don't interpret sanitizer errors as success.
+            ::testing::Not(::testing::HasSubstr("Sanitizer:")));
 
       } else {
         EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
@@ -553,18 +556,18 @@ TEST_P(ReduceTest, IsTritonSupportedReduction) {
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  ROOT add = $0[] add(Arg_0, Arg_1)
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  ROOT add = $$0[] add(Arg_0, Arg_1)
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127] parameter(0)
-  constant_0 = $0[] constant($1)
-  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[] constant($0)
+  ROOT reduce = $$0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=add
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -600,18 +603,18 @@ TEST_P(
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  ROOT add = $0[] add(Arg_0, Arg_1)
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  ROOT add = $$0[] add(Arg_0, Arg_1)
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[2,125,127] parameter(0)
-  constant_0 = $0[] constant($1)
-  ROOT reduce = $0[2] reduce(parameter_0, constant_0),
+  parameter_0 = $$0[2,125,127] parameter(0)
+  constant_0 = $$0[] constant($0)
+  ROOT reduce = $$0[2] reduce(parameter_0, constant_0),
     dimensions={1,2}, to_apply=add
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -625,17 +628,17 @@ TEST_P(ReduceTest, IsTritonSupportedReduceWithNonLastReduceDimension) {
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  ROOT add = $0[] add(Arg_0, Arg_1)
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  ROOT add = $$0[] add(Arg_0, Arg_1)
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127] parameter(0)
-  constant_0 = $0[] constant($1)
-  ROOT reduce = $0[127] reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[] constant($0)
+  ROOT reduce = $$0[127] reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -650,24 +653,24 @@ TEST_P(ReduceTest,
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 add {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  Arg_2 = $0[] parameter(2)
-  Arg_3 = $0[] parameter(3)
-  add_0 = $0[] add(Arg_0, Arg_2)
-  add_1 = $0[] add(Arg_1, Arg_3)
-  ROOT pair = ($0[], $0[]) tuple(add_0, add_1)
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  Arg_2 = $$0[] parameter(2)
+  Arg_3 = $$0[] parameter(3)
+  add_0 = $$0[] add(Arg_0, Arg_2)
+  add_1 = $$0[] add(Arg_1, Arg_3)
+  ROOT pair = ($$0[], $$0[]) tuple(add_0, add_1)
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127] parameter(0)
-  constant_0 = $0[] constant($1)
-  tuple = ($0[125], $0[125]) reduce(
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[] constant($0)
+  tuple = ($$0[125], $$0[125]) reduce(
     parameter_0, parameter_0, constant_0, constant_0),
       dimensions={1}, to_apply=add
-  ROOT reduce = $0[125] get-tuple-element(tuple), index=0
+  ROOT reduce = $$0[125] get-tuple-element(tuple), index=0
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -702,18 +705,18 @@ TEST_P(ReduceTest, UnsupportedReductionComputationFailsGracefullyWithTriton) {
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 custom_call {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  ROOT custom_call = $0[] custom-call(Arg_0, Arg_1), custom_call_target="foo"
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  ROOT custom_call = $$0[] custom-call(Arg_0, Arg_1), custom_call_target="foo"
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127] parameter(0)
-  constant_0 = $0[] constant($1)
-  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[] constant($0)
+  ROOT reduce = $$0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=custom_call
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
@@ -741,18 +744,18 @@ TEST_P(ReductionComputationTest, DifferentBinaryOps) {
   const std::string kHloTestTemplate = absl::Substitute(
       R"(
 reduce_computation {
-  Arg_0 = $0[] parameter(0)
-  Arg_1 = $0[] parameter(1)
-  ROOT output = $0[] $1(Arg_0, Arg_1)
+  Arg_0 = $$0[] parameter(0)
+  Arg_1 = $$0[] parameter(1)
+  ROOT output = $$0[] $0(Arg_0, Arg_1)
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127] parameter(0)
-  constant_0 = $0[] constant($2)
-  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[] constant($1)
+  ROOT reduce = $$0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=reduce_computation
 })",
-      "$0", HloOpcodeString(opcode), dtype_is_complex ? "(0, 0)" : "0");
+      HloOpcodeString(opcode), dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -1116,9 +1119,9 @@ TEST_P(ConstantTest, ConstantEffectiveScalar) {
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 ENTRY triton_computation {
-  ROOT const = $0[1,1] constant({{$1}})
+  ROOT const = $$0[1,1] constant({{$0}})
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
@@ -1134,9 +1137,9 @@ TEST_P(ConstantTest, Constant2D) {
   const std::string kHloTestTemplate =
       absl::Substitute(R"(
 ENTRY triton_computation {
-  ROOT const = $0[3,3] constant({{$1,$1,$1},{$1,$1,$1},{$1,$1,$1}})
+  ROOT const = $$0[3,3] constant({{$0,$0,$0},{$0,$0,$0},{$0,$0,$0}})
 })",
-                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+                       dtype_is_complex ? "(0, 0)" : "0");
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
@@ -1230,6 +1233,7 @@ constexpr std::array kUnsupportedOps = {HloOpcode::kAddDependency,
                                         HloOpcode::kPad,
                                         HloOpcode::kPartitionId,
                                         HloOpcode::kRaggedAllToAll,
+                                        HloOpcode::kRaggedDot,
                                         HloOpcode::kRecv,
                                         HloOpcode::kRecvDone,
                                         HloOpcode::kReduceWindow,

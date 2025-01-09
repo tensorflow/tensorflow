@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -109,7 +110,8 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
+      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
@@ -117,12 +119,12 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `SingleDeviceShardSemantics`.
   virtual absl::StatusOr<tsl::RCReference<Array>>
   AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
+      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) = 0;
   virtual absl::StatusOr<tsl::RCReference<Array>>
   AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
+      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
@@ -235,13 +237,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const tsl::RCReference<DeviceList>& devices) const = 0;
 
-  // Returns the default layout on `device` for a buffer with `dtype` and
-  // single-shard dimensions `dims`.
+  // Returns the default layout on `device` with `memory_kind` for a buffer with
+  // `dtype` and single-shard dimensions `dims`.
   // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
   // single-shard dimensions and device.
-  virtual absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>
-  GetDefaultLayoutForDevice(DType dtype, absl::Span<const int64_t> dims,
-                            Device* device) const = 0;
+  virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+      DType dtype, absl::Span<const int64_t> dims, Device* device,
+      xla::ifrt::MemoryKind memory_kind) const = 0;
 
   static char ID;  // NOLINT
 };

@@ -15,10 +15,10 @@ limitations under the License.
 #include "tensorflow/core/data/service/client/utils.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"

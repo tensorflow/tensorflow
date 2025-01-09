@@ -3001,7 +3001,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -3104,7 +3104,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -3603,7 +3602,6 @@ tf_kernel_library(
         ":gpu_utils",
         ":conv_ops",
         ":matmul_util",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -4167,9 +4165,7 @@ tf_kernel_library(
         ":numeric_options_utils",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
-        "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
@@ -4917,6 +4913,9 @@ cc_library(
 
 tf_kernel_library(
     name = "stateful_random_ops",
+    copts = [
+        "-Wno-thread-safety-analysis",  # TODO(b/384723765): Remove this once the bug is fixed.
+    ],
     features = if_cuda(["-layering_check"]),
     prefix = "stateful_random_ops",
     deps = [
@@ -8048,7 +8047,6 @@ tf_cc_shared_library(
         "@com_googlesource_code_re2//:__subpackages__",
         "@compute_library//:__subpackages__",
         "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@farmhash_archive//:__subpackages__",
         "@farmhash_gpu_archive//:__subpackages__",
@@ -8071,7 +8069,6 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",

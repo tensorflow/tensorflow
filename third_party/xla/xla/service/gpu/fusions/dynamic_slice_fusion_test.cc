@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -3087,417 +3087,6 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSLoopIterationOffset) {
       false, true, error));
 }
 
-TEST_F(DynamicSliceFusionTest, OffsetArrayTestS32) {
-  // When the offset is s32, then this checks that the offset values can be out
-  // of bounds on both directions but they should be clamped during execution.
-  const char* hlo = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    dynamic-slice-fusion {
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      loop_iter = s32[] parameter(2)
-      offset_values = s32[4] constant({-4,4,12,20})
-      offset_as_array = s32[1] dynamic-slice(offset_values, loop_iter), dynamic_slice_sizes={1}
-      offset = s32[] reshape(offset_as_array)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      zero = s32[] parameter(3)
-      ROOT dus = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      zero = s32[] constant(0)
-      fusion = s32[16,4] fusion(dest, src, loop_iter, zero), kind=kCustom, calls=dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  const char* normal = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      eight = s32[] constant(8)
-      four = s32[] constant(4)
-      mul = s32[] multiply(eight, i)
-      offset = s32[] subtract(mul, four)
-      zero = s32[] constant(0)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      fusion = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
-  EXPECT_TRUE(
-      RunAndCompareTwoModulesReplicated(hlo, normal, true, true, error_spec));
-}
-
-TEST_F(DynamicSliceFusionTest, OffsetArrayTestS64) {
-  // This test makes sure that the offsets are not parsed as `int32_t` all the
-  // time. If the offset is INT64_MAX, and it is parsed as int32_t, it will be
-  // clamped to the zero (parsed as -1) instead of being clamped to the upper
-  // bound. The offsets in the example here should be clamped to {0,4,8,12} but
-  // if they are parsed as int32_t, then they will be clamped to {12, 4, 8, 0}.
-  const char* hlo = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    dynamic-slice-fusion {
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      loop_iter = s32[] parameter(2)
-      offset_values = s64[4] constant({-2147483649,4,8,9223372036854775807})
-      offset_as_array = s64[1] dynamic-slice(offset_values, loop_iter), dynamic_slice_sizes={1}
-      offset = s64[] reshape(offset_as_array)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      zero = s64[] parameter(3)
-      ROOT dus = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      zero = s64[] constant(0)
-      fusion = s32[16,4] fusion(dest, src, loop_iter, zero), kind=kCustom, calls=dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  const char* normal = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      offset_values = s64[4] constant({-2147483649,4,8,9223372036854775807})
-      offset_as_array = s64[1] dynamic-slice(offset_values, i), dynamic_slice_sizes={1}
-      offset = s64[] reshape(offset_as_array)
-      zero = s64[] constant(0)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      fusion = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
-  EXPECT_TRUE(
-      RunAndCompareTwoModulesReplicated(hlo, normal, true, true, error_spec));
-}
-
-// Same as above for uint32_t
-TEST_F(DynamicSliceFusionTest, OffsetArrayTestU32) {
-  const char* hlo = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    dynamic-slice-fusion {
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      loop_iter = s32[] parameter(2)
-      offset_values = u32[4] constant({0,4,8,4294967295})
-      offset_as_array = u32[1] dynamic-slice(offset_values, loop_iter), dynamic_slice_sizes={1}
-      offset = u32[] reshape(offset_as_array)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      zero = u32[] parameter(3)
-      ROOT dus = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      zero = u32[] constant(0)
-      fusion = s32[16,4] fusion(dest, src, loop_iter, zero), kind=kCustom, calls=dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  const char* normal = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      offset_values = u32[4] constant({0,4,8,4294967295})
-      offset_as_array = u32[1] dynamic-slice(offset_values, i), dynamic_slice_sizes={1}
-      offset = u32[] reshape(offset_as_array)
-      zero = u32[] constant(0)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      fusion = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
-  EXPECT_TRUE(
-      RunAndCompareTwoModulesReplicated(hlo, normal, true, true, error_spec));
-}
-
-// Same as above for uint64_t. It is expected to produce an error if the offset
-// is outside the range of int64_t.
-TEST_F(DynamicSliceFusionTest, OffsetArrayTestU64) {
-  const char* hlo = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    dynamic-slice-fusion {
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      loop_iter = s32[] parameter(2)
-      offset_values = u64[4] constant({0,4,8,18446744073709551615})
-      offset_as_array = u64[1] dynamic-slice(offset_values, loop_iter), dynamic_slice_sizes={1}
-      offset = u64[] reshape(offset_as_array)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      zero = u64[] parameter(3)
-      ROOT dus = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      zero = u64[] constant(0)
-      fusion = s32[16,4] fusion(dest, src, loop_iter, zero), kind=kCustom, calls=dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  const char* normal = R"(
-    HloModule test_module, replica_count=2
-
-    add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
-    }
-
-    Body {
-      param = (s32[], s32[16, 4], s32[8, 4], s32[]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      dest = s32[16,4] get-tuple-element(param), index=1
-      src = s32[8,4] get-tuple-element(param), index=2
-      loop_iter = s32[] get-tuple-element(param), index=3
-      offset_values = u64[4] constant({0,4,8,18446744073709551615})
-      offset_as_array = u64[1] dynamic-slice(offset_values, i), dynamic_slice_sizes={1}
-      offset = u64[] reshape(offset_as_array)
-      zero = u64[] constant(0)
-      rs = s32[4,4] reduce-scatter(src), channel_id=0, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
-      fusion = s32[16,4] dynamic-update-slice(dest, rs, offset, zero)
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      loop_iter_plus_one = s32[] add(loop_iter, one)
-      ROOT tuple = tuple(i_plus_one, fusion, src, loop_iter)
-    }
-
-    Cond {
-      param = (s32[], s32[16,4], s32[8,4], s32[]) parameter(0)
-      loop_iter = s32[] get-tuple-element(param), index=0
-      four = s32[] constant(4)
-      ROOT compare = pred[] compare(loop_iter, four), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      dest = s32[16,4] parameter(0)
-      src = s32[8,4] parameter(1)
-      tuple = tuple(zero, dest, src, zero)
-      ROOT while = (s32[], s32[16,4], s32[8,4], s32[]) while(tuple), body=Body, condition=Cond
-    }
-  )";
-
-  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
-  GTEST_FLAG_SET(death_test_style, "threadsafe");
-  EXPECT_DEATH(auto status = RunAndCompareTwoModulesReplicated(
-                   hlo, normal, true, true, error_spec),
-               ".*");
-}
-
 TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   const char* hlo_ref = R"(
   HloModule jit_slice, replica_count=2
@@ -3599,6 +3188,85 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
                                                 std::move(module_new_opt),
                                                 false, true, error));
+}
+
+TEST_F(DynamicSliceFusionTest,
+       OffsetsThatCanBeEvaluatedSuccessfullyAreCorrectlyEmbeddedIntoThunks) {
+  const char* hlo_opt = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a,b)
+    }
+    dynamic-slice-fusion {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      offset1 = s32[] parameter(2)
+      offset2 = s32[] parameter(3)
+      rs = s32[16,32] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      ROOT dus = s32[32,32] dynamic-update-slice(dest, rs, offset1, offset2)
+    }
+    ENTRY main {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      c0 = s32[] constant(0)
+      c5 = s32[] constant(5)
+      add = s32[] add(c5, c5)
+      ROOT fusion = s32[32,32] fusion(src, dest, add, c0), kind=kCustom, calls=dynamic-slice-fusion,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+    }
+  )";
+
+  const char* hlo_ref = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a,b)
+    }
+    ENTRY main {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      c0 = s32[] constant(0)
+      c5 = s32[] constant(5)
+      add = s32[] add(c5, c5)
+      rs.1 = ((s32[32,32]), s32[16,32]) reduce-scatter-start(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      rs = s32[16,32] reduce-scatter-done(rs.1)
+      ROOT dus = s32[32,32] dynamic-update-slice(dest, rs, add, c0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ref,
+                          ParseAndReturnVerifiedModule(hlo_ref));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_opt,
+                          ParseAndReturnVerifiedModule(hlo_opt));
+
+  // Check that the offset value in the thunk is an evaluated constant even if
+  // no simplification passes are executed.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+                          CreateExecutable(/*module=*/module_opt->Clone(),
+                                           /*run_hlo_passes=*/false));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  ASSERT_NE(gpu_exec, nullptr);
+  const SequentialThunk& thunk = gpu_exec->GetThunk();
+  auto dynamic_slice_thunk =
+      absl::c_find_if(thunk.thunks(), [](const std::unique_ptr<Thunk>& thunk) {
+        return thunk->kind() == Thunk::kDynamicSlice;
+      });
+  ASSERT_NE(dynamic_slice_thunk, thunk.thunks().end());
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets =
+      dynamic_cast<DynamicSliceThunk*>(dynamic_slice_thunk->get())
+          ->get_offsets();
+  ASSERT_EQ(offsets.size(), 2);
+  ASSERT_TRUE(offsets[1].has_value());
+  ASSERT_EQ(offsets[1].value()[0], DynamicSliceThunk::Offset(10l));
+  ASSERT_EQ(offsets[1].value()[1], DynamicSliceThunk::Offset(0l));
+
+  ErrorSpec error{1e-3, 1e-3};
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      /*module_0=*/std::move(module_ref), /*module_1=*/std::move(module_opt),
+      /*run_hlo_passes=*/false, /*use_threads=*/true, error));
 }
 
 }  // namespace

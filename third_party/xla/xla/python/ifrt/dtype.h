@@ -78,6 +78,9 @@ class DType {
     // dtype will have empty dimensions.
     kToken = 17,
 
+    // Opaque objects.
+    kOpaque = 14,
+
     kF8E3M4 = 29,
     kF8E4M3 = 28,
     kF8E4M3FN = 20,

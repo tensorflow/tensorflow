@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -34,9 +38,9 @@ namespace internal {
 namespace {
 
 // Creates a scalar string tensorhandle containing a single string `s`
-Status CreateStringScalarTensorHandle(ImmediateExecutionContext* ctx,
-                                      const std::string& s,
-                                      ImmediateTensorHandlePtr* out) {
+absl::Status CreateStringScalarTensorHandle(ImmediateExecutionContext* ctx,
+                                            const std::string& s,
+                                            ImmediateTensorHandlePtr* out) {
   AbstractTensorPtr tensor(ctx->CreateStringScalar(s));
   if (tensor.get() == nullptr) {
     return errors::Internal(
@@ -44,13 +48,13 @@ Status CreateStringScalarTensorHandle(ImmediateExecutionContext* ctx,
   }
 
   out->reset(ctx->CreateLocalHandle(tensor.get()));
-  return Status();
+  return absl::Status();
 }
 
 // Creates a Rank 1 string tensorhandle containing a single string `s`
-Status CreateStringVectorTensorHandle(ImmediateExecutionContext* ctx,
-                                      const std::string& s,
-                                      ImmediateTensorHandlePtr* out) {
+absl::Status CreateStringVectorTensorHandle(ImmediateExecutionContext* ctx,
+                                            const std::string& s,
+                                            ImmediateTensorHandlePtr* out) {
   int64_t flat_shape[] = {1};
   AbstractTensorPtr tensor(ctx->CreateTensor(DT_STRING, flat_shape));
   if (tensor.get() == nullptr) {
@@ -63,14 +67,15 @@ Status CreateStringVectorTensorHandle(ImmediateExecutionContext* ctx,
   new (tensor->Data()) tstring(s);
 
   out->reset(ctx->CreateLocalHandle(tensor.get()));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace
 
-Status SingleRestore(ImmediateExecutionContext* ctx, const std::string& prefix,
-                     const std::string& checkpoint_key, DataType dtype,
-                     ImmediateTensorHandlePtr* out) {
+absl::Status SingleRestore(ImmediateExecutionContext* ctx,
+                           const std::string& prefix,
+                           const std::string& checkpoint_key, DataType dtype,
+                           ImmediateTensorHandlePtr* out) {
   // Create the EagerOp
   ImmediateOpPtr restore_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(restore_op->Reset("RestoreV2", "/cpu:0"));
@@ -106,7 +111,7 @@ Status SingleRestore(ImmediateExecutionContext* ctx, const std::string& prefix,
   }
   out->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
       owned_restored_handle.release()));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace internal

@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
@@ -80,6 +83,10 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           << consumer->ToString();
 
   constexpr int kFusionThresholdBytes = 16 * 1024;
+
+  if (IsLargeConstant(producer)) {
+    return FusionDecision::Forbid("Don't fuse large constants.");
+  }
 
   if (CanBeOutputFused(producer, consumer)) {
     VLOG(2) << "Fusion OK: Can create output fusion.";
@@ -218,6 +225,13 @@ HloInstruction* CpuInstructionFusion::FuseInstruction(
       InstructionFusion::FuseInstruction(fusion_instruction, producer);
   evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
   return new_producer;
+}
+
+bool CpuInstructionFusion::IsLargeConstant(
+    const HloInstruction* constant) const {
+  return constant->IsConstant() &&
+         Cast<HloConstantInstruction>(constant)->literal().size_bytes() >
+             GetLargeConstantThresholdBytes();
 }
 }  // namespace cpu
 }  // namespace xla

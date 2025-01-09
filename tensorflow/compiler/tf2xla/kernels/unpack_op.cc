@@ -15,7 +15,7 @@ limitations under the License.
 
 // XLA Unpack operator.
 
-#include <limits>
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

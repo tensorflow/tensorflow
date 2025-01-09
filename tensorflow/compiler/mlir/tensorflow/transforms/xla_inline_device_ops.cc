@@ -15,6 +15,10 @@ limitations under the License.
 
 // This pass remove Cluster ops by inlining Cluster ops.
 
+#include <cassert>
+#include <memory>
+#include <tuple>
+
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"

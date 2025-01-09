@@ -16,10 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 
 #include <memory>
-#include <utility>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

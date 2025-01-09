@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 
@@ -45,14 +45,13 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
   static const char* GetHloOpName() { return "collective-broadcast-start"; }
 
   NcclCollectiveBroadcastStartThunk(
-      ThunkInfo thunk_info, NcclApi* nccl_api,
-      const HloCollectiveBroadcastInstruction* instr,
+      ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
       std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
  private:
   const NcclCollectiveConfig config_;
@@ -60,9 +59,8 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream,
-                                    NcclApi::NcclCommHandle comm,
-                                    NcclApi* nccl_api);
+                                    se::Stream& stream, Communicator* comm,
+                                    GpuCollectives* collectives);
 
 }  // namespace xla::gpu
 

@@ -251,7 +251,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
     if (attr != nullptr) {
       TF_ASSIGN_OR_RETURN(MemorySpaceColor memory_space,
                           GetMemorySpaceColor(attr.getValue().str()));
-      result.emplace_back(memory_space);
+      result.push_back(memory_space);
     } else {
       result.emplace_back(xla::Layout::kDefaultMemorySpace);
     }
@@ -420,7 +420,7 @@ GetMemoryKindsFromFrontendAttr(absl::string_view attr) {
   for (const std::string& str_mem_space : str_memory_spaces) {
     MemorySpaceColor memory_space;
     CHECK(absl::SimpleAtoi(str_mem_space, &memory_space));
-    result.emplace_back(memory_space);
+    result.push_back(memory_space);
   }
   return result;
 }
@@ -480,9 +480,9 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
 }
 
-static absl::StatusOr<Shape> LayoutModeToXlaShape(
+absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
-    const Shape& sharded_shape,
+    const Shape& sharded_shape, MemorySpaceColor memory_space,
     std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   if (unsharded_shape.IsToken() || unsharded_shape.IsOpaque()) {
@@ -515,6 +515,10 @@ static absl::StatusOr<Shape> LayoutModeToXlaShape(
       // Don't set any layout on `result`.
       break;
     }
+  }
+  // When layout is AUTO, memory space can't be set since it will be partial.
+  if (result.has_layout()) {
+    result.mutable_layout()->set_memory_space(memory_space);
   }
   return result;
 }
@@ -587,12 +591,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     TF_ASSIGN_OR_RETURN(
         Shape layout,
         LayoutModeToXlaShape(arg_layout_modes[i], unsharded_arg_shapes[i],
-                             sharded_arg_shapes[i],
+                             sharded_arg_shapes[i], arg_memory_spaces[i],
                              choose_compact_layout_for_shape_function));
-    // When layout is AUTO, memory space can't be set since it will be partial.
-    if (layout.has_layout()) {
-      layout.mutable_layout()->set_memory_space(arg_memory_spaces[i]);
-    }
     flat_arg_layouts.emplace_back(std::move(layout));
   }
 
@@ -606,12 +606,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     TF_ASSIGN_OR_RETURN(
         Shape layout,
         LayoutModeToXlaShape(out_layout_modes[i], unsharded_out_shapes[i],
-                             sharded_out_shapes[i],
+                             sharded_out_shapes[i], out_memory_spaces[i],
                              choose_compact_layout_for_shape_function));
-    // When layout is AUTO, memory space can't be set since it will be partial.
-    if (layout.has_layout()) {
-      layout.mutable_layout()->set_memory_space(out_memory_spaces[i]);
-    }
     flat_out_layouts.emplace_back(std::move(layout));
   }
 
@@ -683,8 +679,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 
   // Assign a default layout based on `sharded_shape` to any array subshapes in
   // `dst_shape` that are missing layouts.
-  auto assign_layouts = [&choose_compact_layout_for_shape_function](
-                            const Shape& sharded_shape, Shape* dst_shape) {
+  auto assign_layouts = [&](const Shape& sharded_shape, Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
         dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
           if (subshape->IsArray() && !subshape->has_layout()) {
@@ -695,7 +690,11 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
             TF_ASSIGN_OR_RETURN(
                 Shape layout,
                 choose_compact_layout_for_shape_function(sharded_subshape));
-            *subshape->mutable_layout() = layout.layout();
+            if (layout.has_layout()) {
+              *subshape->mutable_layout() = layout.layout();
+            } else {
+              subshape->clear_layout();
+            }
           }
           return absl::OkStatus();
         });

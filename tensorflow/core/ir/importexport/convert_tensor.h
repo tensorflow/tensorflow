@@ -69,12 +69,12 @@ void SetTensorShapeProto(ShapeContainerT shape,
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto.
-tensorflow::Status ConvertToTensorProto(ElementsAttr attr,
-                                        tensorflow::TensorProto* output_tensor);
+absl::Status ConvertToTensorProto(ElementsAttr attr,
+                                  tensorflow::TensorProto* output_tensor);
 
 // Converts an MLIR elements attribute to a TensorFlow tensor.
-tensorflow::Status ConvertToTensor(ElementsAttr attr,
-                                   tensorflow::Tensor* output_tensor);
+absl::Status ConvertToTensor(ElementsAttr attr,
+                             tensorflow::Tensor* output_tensor);
 
 // Converts a TF shape to MLIR shape, i.e. -1 becomes kDynamicSize.
 llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape);

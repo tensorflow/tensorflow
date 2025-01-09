@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/text_literal_writer.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

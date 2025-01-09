@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"

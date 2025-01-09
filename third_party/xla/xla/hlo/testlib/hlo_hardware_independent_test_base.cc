@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -119,7 +120,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
       allow_mixed_precision_in_hlo_verifier_, ShapeUtil::ByteSizeOfElements,
       instruction_can_change_layout_func_);
   TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
-  return std::move(module);
+  return module;
 }
 
 /* static */
@@ -258,9 +259,11 @@ HloHardwareIndependentTestBase::RunAndCheckHloRewrite(
   VLOG(7) << "Input HLO: " << hlo_string;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass.name();
   TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
   VLOG(7) << "Output HLO: "
-          << module->ToString(HloPrintOptions::ShortParsable());
+          << module->ToString(HloPrintOptions::ShortParsable()
+                                  .set_print_control_dependencies(true));
   EXPECT_EQ(changed, expect_change);
   return module;
 }

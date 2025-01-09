@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
 
+#include <deque>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"

@@ -297,7 +297,7 @@ absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
       float w = 0.0;
-      if (!strings::safe_strtof(cols.at(cols.size() - 1), &w)) {
+      if (!absl::SimpleAtof(cols.at(cols.size() - 1), &w)) {
         return errors::InvalidArgument("Wrong vocabulary format at line: ",
                                        line);
       }

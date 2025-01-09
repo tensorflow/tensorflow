@@ -28,7 +28,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -42,15 +45,18 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
-// Add `name` into the frontend attributes of `op` with value `value`. Note that
-// `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
-                          mlir::Attribute value);
+// Adds `name` into the frontend attributes of `op` with value `value`. If
+// `name` already exists, it will be overwritten. Note that `value` will be
+// turned into a `StringAttr`.
+void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
+                          mlir::Attribute value, bool escapeAttr = true);
 
-// Add `name` into the argument at `argNum`'s frontend attributes of `funcOp`
-// with value `value`. Note that `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
-                          mlir::Attribute value, int64_t argNum);
+// Adds `name` into the argument at `argNum`'s frontend attributes of `funcOp`
+// with value `value`. If `name` already exists, it will be overwritten. Note
+// that `value` will be turned into a `StringAttr`.
+void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
+                          mlir::Attribute value, int64_t argNum,
+                          bool escapeAttr = true);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,
@@ -97,6 +103,15 @@ std::optional<AttrTy> tryGetFrontendAttr(mlir::Operation* op,
   }
   return std::nullopt;
 }
+
+// Builds a new `stablehlo.custom_call` with the same operands and attributes
+// as `op` but with new `resultTypes`.
+mlir::stablehlo::CustomCallOp cloneCustomCallWithNewResultTypes(
+    mlir::stablehlo::CustomCallOp op, mlir::TypeRange resultTypes,
+    mlir::IRRewriter& rewriter);
+
+// Whether `op` is a Python callback custom call.
+bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 }  // namespace sdy
 }  // namespace xla

@@ -109,6 +109,7 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetShapeRepresentationFn(),
             ifrt_model_context.GetIfrtServingCoreSelector(),
             ifrt_model_context.GetCompilationEnvironmentProto(),
+            ifrt_model_context.GetTfToHloCompiler(),
             ifrt_model_context.GetPersistentCompilationCache()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that

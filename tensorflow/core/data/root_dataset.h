@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"

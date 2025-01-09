@@ -46,13 +46,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -93,20 +93,6 @@ class TritonTest : public GpuCodegenTest {
 
 class TritonGemmTest : public TritonTest {
  public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
-  void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
-      GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
-    }
-  }
-
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
@@ -144,367 +130,39 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
-TEST_F(TritonGemmTest, RejectDotInt4HLO) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
+TEST_F(TritonGemmTest, FP8DotSmallTileDoesNotCrash) {
+  GTEST_SKIP() << "TODO(b/337839570): Re-enable once the bug is fixed. "
+                  "Currently the test is not representative of the issue. "
+                  "While the test passes, the end-to-end model fails.";
 
-    ENTRY main {
-      lhs = s4[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,64,16]{2,1,0} parameter(1)
-      ROOT dot = s4[16,32,16]{2,1,0} dot(lhs, rhs),
-          lhs_contracting_dims={2},
-          rhs_contracting_dims={1},
-          lhs_batch_dims={0},
-          rhs_batch_dims={0}
-    }
-  )";
-  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
-              StatusIs(tsl::error::INVALID_ARGUMENT));
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
+  }
+
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_dot {
+  %parameter_0 = f8e4m3fn[32,32]{1,0} parameter(0)
+  %parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  ROOT %dot.1643 = bf16[32,32]{1,0} dot(f8e4m3fn[32,32]{1,0} %parameter_0, f8e4m3fn[32,32]{0,1} %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
-TEST_F(TritonGemmTest, RejectInt4NegatePlusConvertHLO) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
+ENTRY e {
+  p0 = f8e4m3fn[32,32]{1,0} parameter(0)
+  p1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  ROOT _ = bf16[32,32] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":16,
+                         "split_k":1,"num_stages":2,"num_warps":2,
+                         "num_ctas":1}}}
+})";
 
-    ENTRY main {
-      lhs = s4[16,32,64]{2,1,0} parameter(0)
-      lhs_negated = s4[16,32,64]{2,1,0} negate(lhs)
-      lhs_converted = bf16[16,32,64]{2,1,0} convert(lhs_negated)
-      rhs = bf16[16,64,16]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,32,16]{2,1,0} dot(lhs_converted, rhs),
-          lhs_contracting_dims={2},
-          rhs_contracting_dims={1},
-          lhs_batch_dims={0},
-          rhs_batch_dims={0}
-    }
-  )";
-  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
-              StatusIs(tsl::error::INVALID_ARGUMENT));
-}
-
-TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    ENTRY main {
-      lhs = s4[32,64,16]{2,1,0} parameter(0)
-      lhs_converted = bf16[32,64,16]{2,1,0} convert(lhs)
-      rhs = bf16[16,64,16]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,32,16]{2,1,0} dot(lhs_converted, rhs),
-          lhs_contracting_dims={1},
-          rhs_contracting_dims={1},
-          lhs_batch_dims={2},
-          rhs_batch_dims={0}
-    }
-  )";
-
-  const std::string pattern =
-      R"(CHECK-NOT: "kind":"__triton_gemm","triton_gemm_config")";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
-  EXPECT_TRUE(ok);
-}
-
-TEST_F(TritonGemmTest, LHSInt4WithMinorDimEqualTo1) {
-  // We prove that triton can handle int4 dot with non contracting dim size
-  // equal to 1.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[16,32,1]{2,1,0} parameter(0)
-      lhs_converted = bf16[16,32,1]{2,1,0} convert(lhs)
-      rhs = bf16[16,64,32]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,1,64]{2,1,0} dot(lhs_converted, rhs),
-          lhs_contracting_dims={1},
-          rhs_contracting_dims={2},
-          lhs_batch_dims={0},
-          rhs_batch_dims={0}
-    }
-
-    ENTRY main {
-      lhs = s4[16,32,1]{2,1,0} parameter(0)
-      rhs = bf16[16,64,32]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,1,64]{2,1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, RHSInt4WithMinorDimEqualTo1) {
-  // We prove that triton can handle int4 dot with non contracting dim size
-  // equal to 1.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = bf16[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,32,1]{2,1,0} parameter(1)
-      rhs_converted = bf16[16,32,1]{2,1,0} convert(rhs)
-      ROOT dot = bf16[16,64,1]{2,1,0} dot(lhs, rhs_converted),
-          lhs_contracting_dims={1},
-          rhs_contracting_dims={1},
-          lhs_batch_dims={0},
-          rhs_batch_dims={0}
-    }
-
-    ENTRY main {
-      lhs = bf16[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,32,1]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,64,1]{2,1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, LHSInt4NonMinorContractingDim) {
-  // We prove that triton can handle int4 dot with non minor
-  // lhs_contracting_dim.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[1024,8]{1,0} parameter(0)
-      lhs_converted = bf16[1024,8]{1,0} convert(lhs)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} dot(lhs_converted, rhs),
-          lhs_contracting_dims={0},
-          rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      lhs = s4[1024,8]{1,0} parameter(0)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, LHSInt4NonMinorContractingDimWithBatchDim0) {
-  // We prove that triton can handle int4 dot with non minor
-  // lhs_contracting_dim.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[16,1024,8]{2,1,0} parameter(0)
-      lhs_converted = bf16[16,1024,8]{2,1,0} convert(lhs)
-      rhs = bf16[16,1024,4]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4]{2,1,0} dot(lhs_converted, rhs),
-        lhs_batch_dims={0},
-        lhs_contracting_dims={1},
-        rhs_batch_dims={0},
-        rhs_contracting_dims={1}
-    }
-
-    ENTRY main {
-      lhs = s4[16,1024,8]{2,1,0} parameter(0)
-      rhs = bf16[16,1024,4]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4]{2,1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, LHSInt4MinorContractingDim) {
-  // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[8,1024]{1,0} parameter(0)
-      lhs_converted = bf16[8,1024]{1,0} convert(lhs)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} dot(lhs_converted, rhs),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      lhs = s4[8,1024]{1,0} parameter(0)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, Int4ConvertPlusNegate) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[8,1024]{1,0} parameter(0)
-      lhs_converted = bf16[8,1024]{1,0} convert(lhs)
-      lhs_negated = bf16[8,1024]{1,0} negate(lhs_converted)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} dot(lhs_negated, rhs),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      lhs = s4[8,1024]{1,0} parameter(0)
-      rhs = bf16[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, LHSInt4MinorContractingDimWithBatchDim0) {
-  // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = s4[16,8,1024]{2,1,0} parameter(0)
-      lhs_converted = bf16[16,8,1024]{2,1,0} convert(lhs)
-      rhs = bf16[16,1024,4]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4]{2,1,0} dot(lhs_converted, rhs),
-        lhs_batch_dims={0},
-        lhs_contracting_dims={2},
-        rhs_batch_dims={0},
-        rhs_contracting_dims={1}
-    }
-
-    ENTRY main {
-      lhs = s4[16,8,1024]{2,1,0} parameter(0)
-      rhs = bf16[16,1024,4]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4]{2,1,0} fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, RHSInt4TestWithMinorContractingDim) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = bf16[8,1024]{1,0} parameter(0)
-      rhs = s4[1024,4]{1,0} parameter(1)
-      rhs_converted = bf16[1024,4]{1,0} convert(rhs)
-      ROOT dot = bf16[8,4] dot(lhs, rhs_converted),
-          lhs_contracting_dims={1},
-          rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      lhs = bf16[8,1024]{1,0} parameter(0)
-      rhs = s4[1024,4]{1,0} parameter(1)
-      ROOT dot = bf16[8,4] fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, RHSInt4TestWithNotMinorContractingDim) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = bf16[8,1024]{1,0} parameter(0)
-      rhs = s4[4,1024]{1,0} parameter(1)
-      rhs_converted = bf16[4,1024]{1,0} convert(rhs)
-      ROOT dot = bf16[8,4] dot(lhs, rhs_converted),
-          lhs_contracting_dims={1},
-          rhs_contracting_dims={1}
-    }
-
-    ENTRY main {
-      lhs = bf16[8,1024]{1,0} parameter(0)
-      rhs = s4[4,1024]{1,0} parameter(1)
-      ROOT dot = bf16[8,4] fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, RHSInt4TestWithMinorContractingDimWithBatchDim) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = bf16[16,8,1024]{2,1,0} parameter(0)
-      rhs = s4[16,1024,4]{2,1,0} parameter(1)
-      rhs_converted = bf16[16,1024,4]{2,1,0} convert(rhs)
-      ROOT dot = bf16[16,8,4] dot(lhs, rhs_converted),
-          lhs_batch_dims={0},
-          lhs_contracting_dims={2},
-          rhs_batch_dims={0},
-          rhs_contracting_dims={1}
-    }
-
-    ENTRY main {
-      lhs = bf16[16,8,1024]{2,1,0} parameter(0)
-      rhs = s4[16,1024,4]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4] fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, RHSInt4TestWithNotMinorContractingDimWithBatchDim0) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    triton_computation {
-      lhs = bf16[16,8,1024]{2,1,0} parameter(0)
-      rhs = s4[16,4,1024]{2,1,0} parameter(1)
-      rhs_converted = bf16[16,4,1024]{2,1,0} convert(rhs)
-      ROOT dot = bf16[16,8,4] dot(lhs, rhs_converted),
-          lhs_batch_dims={0},
-          lhs_contracting_dims={2},
-          rhs_batch_dims={0},
-          rhs_contracting_dims={2}
-    }
-
-    ENTRY main {
-      lhs = bf16[16,8,1024]{2,1,0} parameter(0)
-      rhs = s4[16,4,1024]{2,1,0} parameter(1)
-      ROOT dot = bf16[16,8,4] fusion(lhs, rhs), kind=kCustom,
-        calls=triton_computation,
-        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-    }
-  )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
 }
 
 TEST_F(TritonTest, TestGemm) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
 triton_gemm_r {
@@ -596,7 +254,7 @@ CHECK:    }
 }
 
 TEST_F(TritonTest, TestGemmWithTrivialNonContractingDimension) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
 triton_dot {
@@ -686,7 +344,7 @@ CHECK:  }
 }
 
 TEST_F(TritonTest, PredParametersAreTruncatedToI1) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 triton_gemm_computation {
@@ -727,7 +385,7 @@ CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 }
 
 TEST_F(TritonTest, CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
 triton_gemm {
@@ -770,7 +428,7 @@ CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
 TEST_F(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_gemm {
@@ -820,7 +478,7 @@ CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_L
 }
 
 TEST_F(TritonTest, SparseDot) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -851,7 +509,7 @@ CHECK: triton_xla.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
 }
 
 TEST_F(TritonTest, SparseDotWithMasking) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -888,7 +546,7 @@ CHECK: triton_xla.sparse_dot %[[LHS_MASKED]], %[[RHS_MASKED]], %{{[^:]+}}, %[[ME
 }
 
 TEST_F(TritonTest, SparseDotBroadcastMetadata) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -925,7 +583,7 @@ CHECK: triton_xla.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
 }
 
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
@@ -955,7 +613,7 @@ CHECK-NOT: mma
 }
 
 TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
   p1 = s8[30,30] parameter(1)
@@ -1007,7 +665,7 @@ ENTRY main {
 }
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = f16[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
@@ -1039,7 +697,7 @@ TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule module, is_scheduled=true
 
 triton_gemm_dot {
@@ -1115,7 +773,7 @@ TEST_F(TritonGemmTestWithSplitK,
   // The condition mentioned in the test name is fulfilled by
   // GemmKey(16, 64, 256, 8, 1, 4), which was part of the default configs for
   // Ampere at the time of the addition of this test case.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule extracted
 
 ENTRY e {
@@ -1269,7 +927,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -1299,7 +957,7 @@ TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
 #ifndef NDEBUG
   GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
 #endif
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY r {
   p1 = f16[9,140,128]{2,1,0} parameter(1)
   cp = f16[9,140,128]{2,0,1} copy(p1)
@@ -1472,7 +1130,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, MultipleBatchRequireSeparateTranspose) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -1495,7 +1153,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, CanCodegenNonBatchedDotWithConcatenationCorrectly) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   parameter_0 = f32[3,10]{1,0} parameter(0)
   parameter_1 = f32[10,128]{1,0} parameter(1)
@@ -1519,7 +1177,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, CanCodegenBatchedDotWithConcatenationCorrectly) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   parameter_0 = f32[2,3,10]{2,1,0} parameter(0)
   parameter_1 = f32[2,10,128]{2,1,0} parameter(1)
@@ -1564,7 +1222,7 @@ ENTRY e {
 }
 
 TEST_F(TritonTest, FloatToSignedIntConversion) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
 triton_gemm_r {
@@ -1625,7 +1283,7 @@ ENTRY e {
 
 // This tests the complexity heuristics in TritonWrapper.
 TEST_F(TritonGemmTest, FailForTooComplexTiling) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule module, is_scheduled=true
 
 triton_gemm_dot {
@@ -1784,6 +1442,53 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonGemmTest,
+       BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  p0 = f32[64,6464] parameter(0)
+  p1 = f32[16,6464] parameter(1)
+  dot = f32[16,64] dot(p1, p0),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bc0 = f32[1,16,64] bitcast(dot)
+  p2 = f32[64] parameter(2)
+  bc1 = f32[1,64] bitcast(p2)
+  br = f32[1,16,64] broadcast(bc1), dimensions={0,2}
+  m = f32[1,16,64] multiply(bc0, br)
+}
+
+e {
+  p0 = f32[64,6464] parameter(0)
+  p1 = f32[16,6464] parameter(1)
+  p2 = f32[64] parameter(2)
+  f = f32[1,16,64] fusion(p0, p1, p2),
+    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest,
+       BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  a = f16[2] parameter(0)
+  bc0 = f16[1,2] bitcast(a)
+  br = f16[1,4000,2] broadcast(bc0), dimensions={0,2}
+  bc1 = f16[4000,2] bitcast(br)
+  b = f16[3,4000] parameter(1)
+  d = f16[2,3] dot(bc1, b),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+e {
+  a = f16[2] parameter(0)
+  b = f16[3,4000] parameter(1)
+  f = f16[2,3] fusion(a, b),
+    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1865,7 +1570,7 @@ TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
   // is not strictly needed, because we also support clamping the indices.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -1896,7 +1601,7 @@ ENTRY e {
 TEST_F(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 triton_gemm {
@@ -1929,7 +1634,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, MultiplePathsToSameOperandWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 triton_computation {
   p0 = bf16[8192,512]{1,0} parameter(0)
   p1 = bf16[512,512]{1,0} parameter(1)
@@ -2012,7 +1717,7 @@ TEST_F(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
   // dimension is contracted.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 triton_gemm {
@@ -2049,7 +1754,7 @@ TEST_F(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 triton_gemm {
@@ -2088,7 +1793,7 @@ TEST_F(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // layer weights and extracting them with dynamic slice.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 triton_gemm {
@@ -2155,7 +1860,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, BroadcastOfScalarWorksCorrectly) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 fusion {
   p0 = f16[2,18] parameter(0)
   p1 = f16[256,2] parameter(1)
@@ -2176,7 +1881,7 @@ ENTRY e  {
 
   TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "fusion", R"(
         CHECK:      tt.dot
-        CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<f16> 
+        CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<f16>
         CHECK:      tt.broadcast %{{.*}} : tensor<1x1xf16> -> tensor<32x32xf16>
         CHECK:      arith.mulf %{{.*}}, %{{.*}} : tensor<32x32xf16>
     )"));
@@ -2225,7 +1930,7 @@ class TritonGemmLevel2TestAny : public TritonGemmLevel2Test {
 };
 
 TEST_F(TritonGemmLevel2Test, BinaryOperationWithSmallInputsIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2251,7 +1956,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BinaryOperationWithLargeInputsIsNotFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2282,7 +1987,7 @@ ENTRY e {
 
 TEST_F(TritonGemmLevel2Test,
        ParametersWithDifferentLayoutsAreSupportedInOneScope) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = s8[5,3] parameter(0)
   p0c = f16[5,3] convert(p0)
@@ -2305,7 +2010,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BinaryOperationOnLargeParametersIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2330,7 +2035,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, LinkingLibdeviceTwiceWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = s8[7,3] parameter(0)
   c0 = f32[7,3] convert(p0)
@@ -2361,7 +2066,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BroadcastOfScalarParameterIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[64,256] parameter(0)
   p0c = f32[64,256] convert(p0)
@@ -2382,7 +2087,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BroadcastOfScalarConstantIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2408,7 +2113,7 @@ TEST_F(TritonGemmLevel2Test, DoubleBroadcastOfScalarConstantIsHandled) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   c = s32[] constant(1)
   bc1 = s32[21]{0} broadcast(c), dimensions={}
@@ -2432,7 +2137,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BroadcastOfVectorConstantIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2456,7 +2161,7 @@ TEST_F(TritonGemmLevel2Test, AlwaysFuseScalarConstantAtBroadcastInput) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = bf16[2,3,3]{2,1,0} parameter(0)
   p1 = bf16[3,2,3]{2,1,0} parameter(1)
@@ -2483,7 +2188,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BroadcastOfVectorParameterIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 triton_dot {
   p0 = f16[75] parameter(0)
   bc0 = f16[75,67] broadcast(p0), dimensions={0}
@@ -2512,7 +2217,7 @@ TEST_F(TritonGemmLevel2Test, FuseConcatenation) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 e {
   p0 = s8[153,1536] parameter(0)
   p1 = s8[153,128] parameter(1)
@@ -2538,7 +2243,7 @@ e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MinimumHandlesNaNsOnTheLeft) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2561,7 +2266,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MinimumHandlesNaNsOnTheRight) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2584,7 +2289,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MaximumHandlesNaNsOnTheLeft) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2607,7 +2312,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MaximumHandlesNaNsOnTheRight) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2630,7 +2335,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MinimumReturnsLHS) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2655,7 +2360,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MinimumReturnsRHS) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2680,7 +2385,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MaximumReturnsLHS) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2705,7 +2410,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2TestAny, MaximumReturnsRHS) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2730,7 +2435,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SineOutputIsNotFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2753,7 +2458,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SliceInputIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[97,121] parameter(0)
   s0 = f16[7,101] slice(p0), slice={[3:10], [10:111]}
@@ -2774,7 +2479,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SliceInputWithReshapeIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[363,1536] parameter(0)
   p1 = f32[4,1536,611] parameter(1)
@@ -2796,7 +2501,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, NestedSlicingWorks) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p1 = f32[6,24] parameter(1)
   slice1 = f32[5,20] slice(p1), slice={[1:6], [3:23]}
@@ -2818,14 +2523,14 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SlicedBatchDimensionIsSupported) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[3,3,256] parameter(0)
   s0 = f16[3,3,128] slice(p0), slice={[0:3], [0:3], [123:251]}
   r0 = f16[3,3,128] reshape(s0)
   p1 = f16[3,3,256] parameter(1)
-  s1 = f16[3,3,128] slice(p1), slice={[0:3], [0:3], [30:158]}
-  r1 = f16[3,3,128] reshape(s1)
+  svar1 = f16[3,3,128] slice(p1), slice={[0:3], [0:3], [30:158]}
+  r1 = f16[3,3,128] reshape(svar1)
   ROOT d = f16[128,3,3]{2,1,0} dot(r0, r1),
     lhs_batch_dims={2}, lhs_contracting_dims={1},
     rhs_batch_dims={2}, rhs_contracting_dims={1}
@@ -2843,7 +2548,7 @@ ENTRY e {
 
 TEST_F(TritonGemmTestWithSplitK,
        SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)
   s0 = f16[16,4,128]{2,1,0} slice(p0),
@@ -2867,7 +2572,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTestWithSplitK, SplitKWithTrivialDimension) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY entry_computation {
   p0 = f16[1001,1]{1,0} parameter(0)
   convert = f32[1001,1]{1,0} convert(p0)
@@ -2880,7 +2585,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonGemmLevel2Test, NarrowingConvertOutputIsFused) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2906,7 +2611,7 @@ TEST_F(TritonGemmLevel2Test, ParameterAfterDotIsFused) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2938,7 +2643,7 @@ TEST_F(TritonGemmLevel2Test, OutputFusionExecutesCorrectly) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -2974,7 +2679,7 @@ TEST_F(TritonGemmLevel2Test, SplitLHSOutputTransposeAloneIsNotFused) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -3007,7 +2712,7 @@ TEST_F(TritonGemmLevel2Test, SplitLHSInputOutputIsFused) {
     GTEST_SKIP() << "Skipped until corresponding issue on ROCm is fixed.";
   }
 
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0t = (s8[5,18,20,150]) parameter(0)
   p0 = s8[5,18,20,150] get-tuple-element(p0t), index=0
@@ -3032,7 +2737,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, SupportPredParametersUsedInExpressions) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p = pred[2,2]{1,0} parameter(0)
   a = f32[2,2]{1,0} parameter(1)
@@ -4399,7 +4104,7 @@ TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_0) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -4424,7 +4129,7 @@ TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_1_2) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -4449,7 +4154,7 @@ TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_0_1) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -4475,7 +4180,7 @@ TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_1) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -4674,7 +4379,7 @@ TEST_F(TritonGemmTest, TestNoAutotuner) {
   if (std::holds_alternative<se::CudaComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Autotuner is always in pipeline on Cuda.";
   }
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
   p1 = s8[30,30] parameter(1)

@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/triton_call.h"
 
 #include <cstdint>
-#include <string_view>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-TritonCall TritonCall::Parse(std::string_view backend_config,
+TritonCall TritonCall::Parse(absl::string_view backend_config,
                              mlir::MLIRContext* mlir_context) {
   // TODO(slebedev): Plumb through num_ctas and enable_wrap_specialization.
   auto attrs = mlir::cast<mlir::DictionaryAttr>(

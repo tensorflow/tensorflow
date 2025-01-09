@@ -96,8 +96,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
                 << llvm_ir::ConstantHloToGlobalName(*non_io_hlo);
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
-            llvm::Type* pointee_type =
-                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
+            llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
+                non_io_hlo->shape(), module_->getContext());
             BindHloToIrValue(*non_io_hlo,
                              llvm_ir::EmitAllocaAtFunctionEntry(
                                  pointee_type, /*name=*/"", b_),
@@ -128,7 +128,8 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
 
   llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
   Shape new_shape = ShapeUtil::GetSubshape(hlo.shape(), shape_index);
-  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(new_shape, module_);
+  llvm::Type* pointee_type =
+      llvm_ir::ShapeToIrType(new_shape, module_->getContext());
   CHECK_NE(base_ptr, nullptr)
       << "Buffer not assigned for shape_index " << shape_index.ToString()
       << " of " << hlo.ToString();

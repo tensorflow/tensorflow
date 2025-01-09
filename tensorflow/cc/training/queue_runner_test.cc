@@ -350,7 +350,8 @@ TEST(QueueRunnerTest, CallbackCalledOnError) {
   std::unique_ptr<QueueRunner> qr;
   TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
   bool error_caught = false;
-  qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
+  qr->AddErrorCallback(
+      [&error_caught](const absl::Status&) { error_caught = true; });
   TF_EXPECT_OK(qr->Start(session.get()));
   EXPECT_FALSE(qr->Join().ok());
   EXPECT_TRUE(error_caught);

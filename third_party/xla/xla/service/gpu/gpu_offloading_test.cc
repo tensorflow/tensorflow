@@ -218,7 +218,9 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
-  StreamAttributeAnnotator attr_annotator;
+  stream_executor::StreamExecutor* executor =
+      backend().default_stream_executor();
+  StreamAttributeAnnotator attr_annotator(executor->GetDeviceDescription());
   TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed_attr);
   // Verify that the stream attribute for a copy-start is annotated

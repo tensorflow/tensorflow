@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<llvm::Value*> EmitAtan2(llvm::Module* module,
-                                       llvm::IRBuilder<>& b,
+                                       llvm::IRBuilderBase& b,
                                        PrimitiveType prim_type,
                                        llvm::Value* lhs, llvm::Value* rhs) {
   std::string function_name;
@@ -67,7 +67,7 @@ absl::StatusOr<llvm::Value*> EmitAtan2(llvm::Module* module,
 }
 
 absl::StatusOr<llvm::Value*> EmitTanh(llvm::Module* module,
-                                      llvm::IRBuilder<>& b,
+                                      llvm::IRBuilderBase& b,
                                       PrimitiveType prim_type,
                                       llvm::Value* value) {
   bool cast_result_to_fp16 = false;
@@ -103,7 +103,8 @@ absl::StatusOr<llvm::Value*> EmitTanh(llvm::Module* module,
   return result;
 }
 
-absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module, llvm::IRBuilder<>& b,
+absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module,
+                                     llvm::IRBuilderBase& b,
                                      PrimitiveType prim_type,
                                      llvm::Value* value) {
   if (prim_type == F64) {

@@ -81,7 +81,7 @@ HloPassPipeline FusionPipeline(
 HloPassPipeline HorizontalFusionPipeline(
     const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
-  horizontal_fusion.AddPass<HorizontalLoopFusion>();
+  horizontal_fusion.AddPass<HorizontalLoopFusion>(gpu_device_info);
   horizontal_fusion.AddPass<HorizontalInputFusion>(gpu_device_info);
   horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                     /*only_fusion_computations=*/true);

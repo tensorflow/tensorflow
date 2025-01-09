@@ -19,14 +19,8 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "absl/types/variant.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
@@ -39,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -46,28 +41,6 @@ namespace pywrap {
 
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 using tsl::profiler::ValidateHostPortPair;
-
-absl::Status Trace(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
-  return tsl::profiler::CaptureRemoteTrace(service_addr, logdir, worker_list,
-                                           include_dataset_ops, duration_ms,
-                                           num_tracing_attempts, options);
-}
-
-absl::Status Monitor(const char* service_addr, int duration_ms,
-                     int monitoring_level, bool display_timestamp,
-                     tensorflow::string* result) {
-  TF_RETURN_IF_ERROR(ValidateHostPortPair(service_addr));
-  {
-    TF_RETURN_IF_ERROR(tsl::profiler::Monitor(service_addr, duration_ms,
-                                              monitoring_level,
-                                              display_timestamp, result));
-  }
-  return absl::OkStatus();
-}
 
 absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,

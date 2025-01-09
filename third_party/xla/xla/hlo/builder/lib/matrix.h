@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_BUILDER_LIB_MATRIX_H_
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>

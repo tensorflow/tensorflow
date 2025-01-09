@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <functional>
-#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
@@ -26,7 +24,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -34,16 +31,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -78,18 +71,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context, bool emit_kernel) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
-
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const BlockLevelParameters& block_level_parameters,
-    mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
@@ -101,14 +86,14 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 namespace ir_emitter_triton_internal {
 
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    mlir::ImplicitLocOpBuilder& b,
+    EmitterLocOpBuilder& b,
     absl::Span<const int64_t> num_output_tiles_per_dim) {
   return {};
 }
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
-    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value argument_block) {
+    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 }  // namespace ir_emitter_triton_internal

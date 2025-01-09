@@ -1,0 +1,56 @@
+// RUN: hlo-opt %s --platform=cpu --passes=reduce-window-rewriter | FileCheck %s
+
+HloModule reduce-window
+// CHECK-LABEL: HloModule reduce-window, entry_computation_layout={(f32[46592]{0})->f32[46592]{0}}
+
+// CHECK: %add_float (lhs: f32[], rhs: f32[]) -> f32[] {
+// CHECK-NEXT:  %lhs = f32[] parameter(0)
+// CHECK-NEXT:  %rhs = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %mul = f32[] multiply(f32[] %lhs, f32[] %rhs)
+// CHECK-NEXT: }
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+// CHECK: ENTRY %entry (arg: f32[46592]) -> f32[46592] {
+// CHECK-NEXT:  %arg = f32[46592]{0} parameter(0)
+// CHECK-NEXT:  %reshape = f32[2912,16]{0,1} reshape(f32[46592]{0} %arg)
+// CHECK-NEXT:  %constant = f32[] constant(0)
+// CHECK-NEXT:  %reduce-window.1 = f32[2912,16]{0,1} reduce-window(f32[2912,16]{0,1} %reshape, f32[] %constant), window={size=1x16 pad=0_0x15_0}, to_apply=%add_float
+// CHECK-NEXT:  %slice = f32[2912,1]{0,1} slice(f32[2912,16]{0,1} %reduce-window.1), slice={[0:2912], [15:16]}
+// CHECK-NEXT:  %reshape.1 = f32[2912]{0} reshape(f32[2912,1]{0,1} %slice)
+// CHECK-NEXT:  %reshape.3 = f32[182,16]{0,1} reshape(f32[2912]{0} %reshape.1)
+// CHECK-NEXT:  %reduce-window.3 = f32[182,16]{0,1} reduce-window(f32[182,16]{0,1} %reshape.3, f32[] %constant), window={size=1x16 pad=0_0x15_0}, to_apply=%add_float
+// CHECK-NEXT:  %slice.2 = f32[182,1]{0,1} slice(f32[182,16]{0,1} %reduce-window.3), slice={[0:182], [15:16]}
+// CHECK-NEXT:  %reshape.4 = f32[182]{0} reshape(f32[182,1]{0,1} %slice.2)
+// CHECK-NEXT:  %pad.1 = f32[192]{0} pad(f32[182]{0} %reshape.4, f32[] %constant), padding=0_10
+// CHECK-NEXT:  %reshape.6 = f32[12,16]{0,1} reshape(f32[192]{0} %pad.1)
+// CHECK-NEXT:  %reduce-window.5 = f32[12,16]{0,1} reduce-window(f32[12,16]{0,1} %reshape.6, f32[] %constant), window={size=1x16 pad=0_0x15_0}, to_apply=%add_float
+// CHECK-NEXT:  %slice.4 = f32[12,1]{0,1} slice(f32[12,16]{0,1} %reduce-window.5), slice={[0:12], [15:16]}
+// CHECK-NEXT:  %reshape.7 = f32[12]{0} reshape(f32[12,1]{0,1} %slice.4)
+// CHECK-NEXT:  %reshape.9 = f32[12,1]{0,1} reshape(f32[12]{0} %reshape.7)
+// CHECK-NEXT:  %reduce-window.7 = f32[13,1]{0,1} reduce-window(f32[12,1]{0,1} %reshape.9, f32[] %constant), window={size=12x1 pad=12_0x0_0}, to_apply=%add_float
+// CHECK-NEXT:  %reshape.10 = f32[13]{0} reshape(f32[13,1]{0,1} %reduce-window.7)
+// CHECK-NEXT:  %slice.5 = f32[12]{0} slice(f32[13]{0} %reshape.10), slice={[0:12]}
+// CHECK-NEXT:  %broadcast.2 = f32[12,16]{0,1} broadcast(f32[12]{0} %slice.5), dimensions={0}
+// CHECK-NEXT:  %map.2 = f32[12,16]{0,1} map(f32[12,16]{0,1} %reduce-window.5, f32[12,16]{0,1} %broadcast.2), dimensions={0,1}, to_apply=%add_float
+// CHECK-NEXT:  %reshape.8 = f32[192]{0} reshape(f32[12,16]{0,1} %map.2)
+// CHECK-NEXT:  %slice.6 = f32[182]{0} slice(f32[192]{0} %reshape.8), slice={[0:182]}
+// CHECK-NEXT:  %pad.2 = f32[183]{0} pad(f32[182]{0} %slice.6, f32[] %constant), padding=1_0
+// CHECK-NEXT:  %slice.3 = f32[182]{0} slice(f32[183]{0} %pad.2), slice={[0:182]}
+// CHECK-NEXT:  %broadcast.1 = f32[182,16]{0,1} broadcast(f32[182]{0} %slice.3), dimensions={0}
+// CHECK-NEXT:  %map.1 = f32[182,16]{0,1} map(f32[182,16]{0,1} %reduce-window.3, f32[182,16]{0,1} %broadcast.1), dimensions={0,1}, to_apply=%add_float
+// CHECK-NEXT:  %reshape.5 = f32[2912]{0} reshape(f32[182,16]{0,1} %map.1)
+// CHECK-NEXT:  %pad = f32[2913]{0} pad(f32[2912]{0} %reshape.5, f32[] %constant), padding=1_0
+// CHECK-NEXT:  %slice.1 = f32[2912]{0} slice(f32[2913]{0} %pad), slice={[0:2912]}
+// CHECK-NEXT:  %broadcast = f32[2912,16]{0,1} broadcast(f32[2912]{0} %slice.1), dimensions={0}
+// CHECK-NEXT:  %map = f32[2912,16]{0,1} map(f32[2912,16]{0,1} %reduce-window.1, f32[2912,16]{0,1} %broadcast), dimensions={0,1}, to_apply=%add_float
+// CHECK-NEXT:  ROOT %reshape.2 = f32[46592]{0} reshape(f32[2912,16]{0,1} %map)
+// CHECK-NEXT: }
+
+ENTRY entry (arg: f32[46592]) -> f32[46592] {
+  arg = f32[46592]{0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = f32[46592]{0} reduce-window(f32[46592]{0} %arg, f32[] %constant), window={size=46592 pad=46591_0}, to_apply=%add_float
+}

@@ -30,7 +30,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 class quant_TypedPrimitiveOrContainer<Type etype> :
     Type<Or<[etype.predicate,
                 TensorOf<[etype]>.predicate,
-                VectorOf<[etype]>.predicate]>,
+                VectorOfNonZeroRankOf<[etype]>.predicate]>,
          "primitive/tensor/vector of " # etype.summary>;
 
 // A primitive type that can represent a real value. This is either a

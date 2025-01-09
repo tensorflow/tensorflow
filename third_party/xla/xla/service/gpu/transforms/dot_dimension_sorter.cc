@@ -88,7 +88,7 @@ absl::StatusOr<bool> DotDimensionSorter::Run(
   for (const HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() != HloOpcode::kDot) {
+      if (HloPredicateIsNotOp<HloOpcode::kDot>(instr)) {
         continue;
       }
       // TODO(b/265688934): should non-default layouts be expected here at all?

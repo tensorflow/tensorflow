@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>

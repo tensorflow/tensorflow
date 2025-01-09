@@ -20,17 +20,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 
-namespace mlir {
-class MLIRContext;
-class ModuleOp;
-template <typename OpTy>
-class OwningOpRef;
-}  // namespace mlir
-
 namespace xla {
+
+// Registers dialects necessary for converting MLIR to HLO.
+void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
 
 // Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
@@ -47,6 +47,15 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
 // Convert StableHLO module to HloModuleProto.
 absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto);
+
+// Convert StableHLO module to HloModuleProto.
+// Some platforms run out of memory when the argument list is too long.
+// This API wraps the arguments in a tuple (if use_tuple_args = true)
+// as a workaround. The long-term solution is to add an HLO pass to do this.
+// In general, prefer the other ConvertStablehloToHloProto method.
+absl::Status ConvertStablehloWithManyArgsToHloProto(
+    mlir::ModuleOp module, xla::HloProto* hlo_proto,
+    bool use_tuple_args = false);
 
 }  // namespace xla
 

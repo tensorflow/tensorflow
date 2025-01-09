@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 #define XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -63,9 +61,6 @@ struct CompileModuleResults {
   // stored in allocations.
   bool use_original_allocations;
 };
-
-void ForAllThunks(const std::function<void(Thunk*)>& fn,
-                  ThunkSequence* thunk_sequence);
 
 absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
                        absl::string_view cache_file_path);

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
+
 namespace xla {
 namespace ifrt {
 

@@ -6,17 +6,17 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "//xla/tsl:tsl.bzl",
+    "tsl_copts",
+)
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_exec_properties",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
-)
-load(
-    "//xla/tsl:tsl.bzl",
-    "tsl_copts",
 )
 
 def xla_py_proto_library(**_kwargs):
@@ -91,8 +91,8 @@ def xla_bzl_library(name = "xla_bzl_library"):
         deps = [
             "//xla/tsl:tsl_bzl",
             "@local_config_rocm//rocm:build_defs_bzl",
-            "@local_tsl//tsl/platform:build_config_root_bzl",
-            "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+            "//xla/tsl/platform:build_config_root_bzl",
+            "//xla/tsl/platform/default:cuda_build_defs_bzl",
             "@bazel_skylib//:bzl_library",
         ],
     )

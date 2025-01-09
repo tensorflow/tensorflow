@@ -41,7 +41,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
     option.compression = table::kNoCompression;
     builder_ = std::make_unique<table::TableBuilder>(option, f);
   }
-  void Add(StringPiece key, StringPiece val) override {
+  void Add(absl::string_view key, absl::string_view val) override {
     builder_->Add(key, val);
   }
   absl::Status Finish(int64_t* file_size) override {

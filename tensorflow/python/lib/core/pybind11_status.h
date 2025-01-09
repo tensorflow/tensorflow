@@ -44,7 +44,7 @@ inline PyObject* CodeToPyExc(const int code) {
   }
 }
 
-inline PyObject* StatusToPyExc(const Status& status) {
+inline PyObject* StatusToPyExc(const absl::Status& status) {
   return CodeToPyExc(status.raw_code());
 }
 
@@ -68,7 +68,7 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 
 }  // namespace internal
 
-inline void MaybeRaiseFromStatus(const Status& status) {
+inline void MaybeRaiseFromStatus(const absl::Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
                     tsl::NullTerminatedMessage(status));

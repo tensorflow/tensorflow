@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 
-#include <algorithm>
 #include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tsl/platform/logging.h"

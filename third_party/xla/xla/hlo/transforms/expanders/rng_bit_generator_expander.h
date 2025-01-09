@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_EXPANDERS_RNG_BIT_GENERATOR_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"

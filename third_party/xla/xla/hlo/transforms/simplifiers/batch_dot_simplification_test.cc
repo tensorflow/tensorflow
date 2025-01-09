@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 
+#include <memory>
+#include <string>
+
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"

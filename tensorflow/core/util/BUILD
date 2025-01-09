@@ -419,9 +419,7 @@ cc_library(
         "stats_calculator.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
@@ -769,7 +767,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",

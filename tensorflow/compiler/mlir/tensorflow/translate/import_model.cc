@@ -32,8 +32,10 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -88,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -190,72 +193,14 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
-
-// Returns true if the node with given name has a non primary output that is
-// used by some other node as an input. Returns false if no outputs are in use
-// or only the first output is in use.
-bool HasNonPrimaryOutputInUse(const GraphDef& graph_def,
-                              const std::string& node) {
-  for (const auto& node_def : graph_def.node()) {
-    for (const auto& input : node_def.input()) {
-      if (absl::StartsWith(input, node + ":") && input != node + ":0") {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-// Updates the given LegacyFedInput node with Placeholder node if it is one of
-// the inputs. Returns an error if non primary output of the LegacyFedInput node
-// is in use and therefore can not be replaced by the Placeholder node that only
-// has a single output.
-Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
-                                const GraphImportConfig::InputArrays& inputs,
-                                NodeDef* node) {
-  const std::string& node_name = node->name();
-  auto it = inputs.find(node_name);
-
-  // Node is not an input.
-  if (it == inputs.end()) return absl::OkStatus();
-
-  if (HasNonPrimaryOutputInUse(graph_def, node_name)) {
-    return errors::InvalidArgument(
-        "LegacyFedInput node ", node->name(),
-        " has non primary output in use and can not be replaced with "
-        "Placeholder node");
-  }
-
-  DataType dtype = it->second.imported_dtype;
-  // Uses the existing output type if it isn't specified by the user.
-  if (dtype == DT_INVALID) {
-    dtype = node->attr().at("output_types").list().type(0);
-  }
-  // Update op name, drop inputs and set attributes required by the Placeholder
-  // op.
-  *node->mutable_op() = "Placeholder";
-  node->clear_attr();
-  node->clear_input();
-  AddNodeAttr("dtype", dtype, node);
-  AddNodeAttr("shape", it->second.shape, node);
-  return absl::OkStatus();
-}
-
 // Preprocesses GraphDef before it can be converted to Graph by,
 // - Adding the default attributes to each node def if they are missing from
 //   the GraphDef.
 // - Replacing LegacyFedInput nodes with Placeholder nodes if
 //   convert_legacy_fed_inputs option is enabled.
-Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
+absl::Status PreprocessGraphDef(const GraphImportConfig* specs,
+                                GraphDef* graph_def) {
   for (auto& node_def : *graph_def->mutable_node()) {
-    // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
-    // solution could be have a tool to let users upgrade old serialized graphs.
-    if (specs && specs->convert_legacy_fed_inputs &&
-        node_def.op() == "LegacyFedInput") {
-      TF_RETURN_IF_ERROR(
-          UpdateLegacyFedInputNode(*graph_def, specs->inputs, &node_def));
-    }
-
     const tensorflow::OpRegistrationData* op_reg_data =
         tensorflow::OpRegistry::Global()->LookUp(node_def.op());
     if (!op_reg_data) {
@@ -266,9 +211,6 @@ Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
   }
   return absl::OkStatus();
 }
-
-
-
 
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
@@ -489,7 +431,7 @@ const TensorProto* ExtractConstTensorFromGraph(const GraphDef& graph_def,
 const TrackableObjectGraph::TrackableObject::SerializedTensor*
 FindSerializedTensorInTrackable(
     const TrackableObjectGraph::TrackableObject& trackable_object,
-    StringPiece name) {
+    absl::string_view name) {
   for (const auto& maybe_serialized_tensor : trackable_object.attributes()) {
     if (maybe_serialized_tensor.name() == name) {
       return &maybe_serialized_tensor;
@@ -498,8 +440,8 @@ FindSerializedTensorInTrackable(
   return nullptr;
 }
 
-Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
-                                         const ObjectNames& object_names) {
+absl::Status DiagnoseMultipleConcreteFunctions(
+    const SavedObjectGraph& object_graph, const ObjectNames& object_names) {
   for (int node_id = 0; node_id < object_graph.nodes_size(); node_id++) {
     const SavedObject& object = object_graph.nodes(node_id);
     if (object_names.GetExportedNames(node_id).empty()) {
@@ -808,7 +750,7 @@ void SortSavedModelModule(mlir::ModuleOp module) {
   }
 }
 
-Status CreateSavedModelIR(
+absl::Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
@@ -981,7 +923,11 @@ Status CreateSavedModelIR(
             saved_model->variable_reader()->Lookup(checkpoint_key, &value),
             "Could not read checkpoint key from variables bundle: ",
             checkpoint_key);
-        TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
+        TF_ASSIGN_OR_RETURN(
+            auto value_attr,
+            ConvertTensor(value, &builder,
+                          /*convert_to_dense_resource=*/
+                          import_options.import_variables_as_dense_resources));
         // A variable can have a partially known type, such as
         // tensor<?x27x?xf32>, even if the initializer is a specific static
         // shape.
@@ -1124,10 +1070,13 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
 
     if (import_options.upgrade_legacy) {
       // TODO(jpienaar): Remove need to const_cast.
-      TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
-          graph.get(),
-          const_cast<FunctionLibraryDefinition*>(&graph->flib_def()),
-          /*restrict_functionalization_to_compiled_nodes=*/false));
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          FunctionalizeControlFlow(
+              graph.get(),
+              const_cast<FunctionLibraryDefinition*>(&graph->flib_def()),
+              NodeFilter{},
+              /*include_functions=*/true),
+          tensorflow::kFunctionalizeControlFlowFailureMessage);
     }
 
     return SimpleSavedModelMLIRImportInput(meta_graph_def, debug_info,
@@ -1246,8 +1195,8 @@ class SavedModelSignatureDefImporterLite {
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSignatures();
-  Status ConvertSignature(const std::string& sig_def_key,
-                          const SignatureDef& signature_def);
+  absl::Status ConvertSignature(const std::string& sig_def_key,
+                                const SignatureDef& signature_def);
 
   struct AssetInfo {
     std::string tensor_name;
@@ -1258,9 +1207,9 @@ class SavedModelSignatureDefImporterLite {
   // Converts the initialization graph in the SavedModel to an MLIR function.
   // Attaches `tf_saved_model.initializer_type` attribute with value
   // `initializer_type` to the created function.
-  Status ConvertInitializer(const std::string& target_node_name,
-                            const std::vector<AssetInfo>& assets,
-                            llvm::StringRef initializer_type);
+  absl::Status ConvertInitializer(const std::string& target_node_name,
+                                  const std::vector<AssetInfo>& assets,
+                                  llvm::StringRef initializer_type);
 
   // Converts a graph with feeds and fetches to an MLIR function.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraph(
@@ -1272,7 +1221,7 @@ class SavedModelSignatureDefImporterLite {
 
   // Moves the functions in `sub_module` to `module_` and skips the duplicate
   // functions.
-  Status MoveConvertedFunctionsToModule(
+  absl::Status MoveConvertedFunctionsToModule(
       absl::string_view name, mlir::ModuleOp sub_module,
       const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
@@ -1317,7 +1266,7 @@ SavedModelSignatureDefImporterLite::ConvertAssets() {
   return results;
 }
 
-Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
+absl::Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
     absl::string_view name, mlir::ModuleOp sub_module,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name) {
   mlir::Builder builder(sub_module.getContext());
@@ -1361,7 +1310,7 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
   return absl::OkStatus();
 }
 
-Status SavedModelSignatureDefImporterLite::ConvertInitializer(
+absl::Status SavedModelSignatureDefImporterLite::ConvertInitializer(
     const std::string& target_node_name, const std::vector<AssetInfo>& assets,
     llvm::StringRef initializer_type) {
   std::vector<std::pair<std::string, TensorInfo>> inputs;
@@ -1441,7 +1390,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
       module_->getContext(), tf_name_to_mlir_name);
 }
 
-Status SavedModelSignatureDefImporterLite::ConvertSignature(
+absl::Status SavedModelSignatureDefImporterLite::ConvertSignature(
     const std::string& sig_def_key, const SignatureDef& signature_def) {
   // Create local vectors for the input and output and sort them to be
   // deterministic. We don't want anyone to really depend on the order, client
@@ -1550,7 +1499,7 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
   }
 
   absl::Mutex error_status_mu;  // Needed since `error_status` is non-atomic.
-  tensorflow::Status error_status;
+  absl::Status error_status;
   {
     // Start a threadpool to convert signatures, since signature conversion can
     // be time consuming especially for large models. Threadpool destructor
@@ -1665,7 +1614,8 @@ class SavedModelSignatureDefImporter {
                        builder.getUnitAttr());
     TF_RETURN_IF_ERROR(
         LiftVariables(bundle, *module, options.lift_variables,
-                      options.include_variables_in_initializers));
+                      options.include_variables_in_initializers,
+                      options.import_variables_as_dense_resources));
     (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
@@ -1678,16 +1628,18 @@ class SavedModelSignatureDefImporter {
   // `tf_saved_model::SessionInitializerOp`) by running the
   // `RemoveVariablesInSessionInitializerPass`, regardless of whether
   // `lift_variable_ops_to_args` is true or not.
-  static Status LiftVariables(const SavedModelBundle& bundle,
-                              mlir::ModuleOp module,
-                              bool lift_varhandle_ops_to_args,
-                              bool include_variables_in_initializers);
+  static absl::Status LiftVariables(const SavedModelBundle& bundle,
+                                    mlir::ModuleOp module,
+                                    bool lift_varhandle_ops_to_args,
+                                    bool include_variables_in_initializers,
+                                    bool import_variables_as_dense_resources);
 };
 
-Status SavedModelSignatureDefImporter::LiftVariables(
+absl::Status SavedModelSignatureDefImporter::LiftVariables(
     const SavedModelBundle& bundle, mlir::ModuleOp module,
     const bool lift_varhandle_ops_to_args,
-    const bool include_variables_in_initializers) {
+    const bool include_variables_in_initializers,
+    const bool import_variables_as_dense_resources) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   mlir::PassManager pm(module.getContext());
@@ -1717,8 +1669,8 @@ Status SavedModelSignatureDefImporter::LiftVariables(
     if (mlir::failed(pm.run(module)))
       return diag_handler.Combine(
           errors::Internal("Failed to promote var handles to args."));
-    if (failed(
-            mlir::tf_saved_model::LiftVariables(module, bundle.GetSession())))
+    if (failed(mlir::tf_saved_model::LiftVariables(
+            module, bundle.GetSession(), import_variables_as_dense_resources)))
       return diag_handler.Combine(
           errors::Internal("Failed to lift variables."));
   } else {
@@ -1759,29 +1711,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
       options, std::move(preprocessed_graphdef), &graph));
   return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       graph, debug_info, graph.flib_def(), specs, context);
-}
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
-    const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
-  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      graph, debug_info, flib_def, specs, context, tf_name_to_mlir_name);
-}
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
-    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
-    mlir::MLIRContext* context) {
-  tensorflow::GraphDebugInfo dummy_debug_info;
-  tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->record->fdef().signature().name();
-  specs.enable_shape_inference = false;
-  specs.graph_as_function = true;
-  for (const auto* control_ret_node : fbody->control_ret_nodes)
-    specs.control_outputs.push_back(control_ret_node->name());
-  return ConvertGraphToMlir(*fbody->graph, dummy_debug_info, flib_def, specs,
-                            context);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(

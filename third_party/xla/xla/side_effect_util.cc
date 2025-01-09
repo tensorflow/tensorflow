@@ -59,6 +59,8 @@ const char kXlaBufferPlacementAttr[] = "_xla_buffer_placement";
 
 const char kXlaBufferPlacementParam[] = "arg";
 
+const char kXlaStreamAnnotationAttr[] = "_xla_stream_annotation";
+
 const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
 
 const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";
@@ -67,6 +69,10 @@ const char kXlaCollectiveMatmulRhsAg[] = "rhs_ag";
 
 const char kXlaCollectiveMatmulRs[] = "rs";
 
+const char kXlaCollectiveMatmulNone[] = "none";
+
 const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
+
+const char kXlaSchedulingGroupIdAttr[] = "_scheduling_group_id";
 
 }  // namespace xla

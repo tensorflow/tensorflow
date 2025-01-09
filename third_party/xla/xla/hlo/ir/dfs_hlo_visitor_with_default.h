@@ -81,6 +81,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
+  absl::Status HandleRaggedDot(HloInstructionPtr dot) override {
+    return DefaultAction(dot);
+  }
   absl::Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
@@ -377,6 +380,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Mark the computation as having changed.
   void MarkAsChanged() { changed_ = true; }
+  void MarkAsMaybeChanged(bool changed) { changed_ |= changed; }
 
  private:
   bool changed_ = false;

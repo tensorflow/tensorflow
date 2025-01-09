@@ -52,3 +52,9 @@ config_setting(
         ":wheel_dependency": "True",
     },
 )
+
+filegroup(
+    name = "manylinux_compliance_test",
+    srcs = ["manylinux_compliance_test.py"],
+    visibility = ["//visibility:public"],
+)

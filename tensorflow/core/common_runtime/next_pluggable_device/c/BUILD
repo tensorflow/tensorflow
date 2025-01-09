@@ -29,6 +29,8 @@ cc_library(
     deps = [
         ":plugin_c_api_hdrs",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:env",
         "@tf_runtime//:hostcontext_alwayslink",
     ],

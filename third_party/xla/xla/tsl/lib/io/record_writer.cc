@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/compression.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
 
 namespace tsl {
 namespace io {
@@ -71,8 +71,7 @@ RecordWriter::RecordWriter(WritableFile* dest,
         options.zlib_options.output_buffer_size, options.zlib_options);
     absl::Status s = zlib_output_buffer->Init();
     if (!s.ok()) {
-      LOG(FATAL) << "Failed to initialize Zlib inputbuffer. Error: "
-                 << s.ToString();
+      LOG(FATAL) << "Failed to initialize Zlib inputbuffer. Error: " << s;
     }
     dest_ = zlib_output_buffer;
   } else if (IsSnappyCompressed(options)) {

@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -114,7 +116,7 @@ TEST(PjRtCApiClientTest, PlatformId) {
   EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
 
-TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
+TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
@@ -130,14 +132,28 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
 
   PjRtCApiClient* c_client = dynamic_cast<PjRtCApiClient*>(client.get());
   ASSERT_NE(c_client, nullptr);
-  if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 35) {
-    // Empty executable should return an error status.
+  if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 58) {
+    EXPECT_TRUE(executable->FingerprintExecutable().ok());
+  } else if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 35) {
     EXPECT_FALSE(executable->FingerprintExecutable().ok());
   } else {
     // TODO(yeounoh): To be removed after 01/20/2024.
     EXPECT_EQ(executable->FingerprintExecutable().status().code(),
               absl::StatusCode::kUnimplemented);
   }
+}
+
+TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  xla::Shape host_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::PrimitiveType::F32, /*dimensions=*/{2, 2, 2},
+      /*minor_to_major=*/{1, 0, 2});
+  std::vector<xla::Shape> host_shapes = {host_shape};
+  auto status_or_transfer_manager = client->CreateBuffersForAsyncHostToDevice(
+      absl::MakeSpan(host_shapes), client->addressable_devices()[0]);
+  EXPECT_FALSE(status_or_transfer_manager.ok());
 }
 
 TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
@@ -182,10 +198,7 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
                           ParseMlirModuleString(kProgram, context));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
       [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
-    // TODO: (b/375454646) Eanble once frameworks have bugfix:
-    // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
-    // mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
-    mlir::vhlo::Version version = mlir::vhlo::Version(1, 7, 0);
+    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
     std::string version_string = absl::StrFormat(
         "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
     // MLIR doesn't have any functionality for retrieving the producer of
@@ -197,6 +210,33 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(*module, CompileOptions()).value();
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
+}
+
+TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices =
+      topology->DeviceDescriptions();
+  for (std::unique_ptr<const PjRtDeviceDescription>& device : devices) {
+    for (const PjRtMemorySpaceDescription* memory : device->memory_spaces()) {
+      // TODO: CPU doesn't currently have memory descriptions, so the
+      //       code below doesn't get triggered yet.
+      EXPECT_NE(memory, nullptr);
+      EXPECT_GT(memory->kind().size(), 0);
+      EXPECT_GE(memory->kind_id(), 0);
+    }
+  }
+}
+
+TEST(PjRtCApiClientTest, WrapClientAroundCApi) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+  EXPECT_EQ(client->platform_name(), xla::CpuName());
+  EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
 
 }  // namespace

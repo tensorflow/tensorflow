@@ -404,8 +404,7 @@ Service::ExecuteParallelAndRegisterResult(
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica],
-                              /*hlo_execution_profile=*/nullptr));
+                              &run_options, arguments[i][replica]));
 
       result_buffers.push_back(std::move(result));
     }
