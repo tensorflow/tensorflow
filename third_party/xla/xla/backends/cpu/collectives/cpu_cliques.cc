@@ -99,10 +99,9 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
   CpuCollectives::DeviceRank device_rank(/*device=*/nullptr, rank);
   CpuCollectives::Config config;
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<Communicator>> communicators,
-      collectives->CreateCommunicators(clique_key.num_devices(), clique_key,
-                                       std::nullopt, {device_rank}, config));
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
+                      collectives->CreateCommunicators(clique_key, std::nullopt,
+                                                       {device_rank}, config));
 
   // We expect to create communicators lazily on at a time.
   if (communicators.size() != 1) {

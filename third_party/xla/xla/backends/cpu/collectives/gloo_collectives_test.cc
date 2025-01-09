@@ -77,10 +77,10 @@ absl::StatusOr<std::unique_ptr<Communicator>> GetCommunicator(
   CpuCliqueKey clique_key(global_devices);
   CpuCollectives::DeviceRank device_rank(nullptr, RankId(rank));
 
-  TF_ASSIGN_OR_RETURN(auto communicators,
-                      collectives->CreateCommunicators(
-                          global_devices.size(), clique_key, std::nullopt,
-                          {device_rank}, CpuCollectives::Config()));
+  TF_ASSIGN_OR_RETURN(
+      auto communicators,
+      collectives->CreateCommunicators(clique_key, std::nullopt, {device_rank},
+                                       CpuCollectives::Config()));
 
   return std::move(communicators[0]);
 }

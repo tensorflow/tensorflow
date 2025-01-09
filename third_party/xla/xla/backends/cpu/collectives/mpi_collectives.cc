@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/mpi_collectives.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -45,7 +44,7 @@ void MpiCollectives::Init() {
 void MpiCollectives::Finalize() { MPI_Finalize(); }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-MpiCollectives::CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+MpiCollectives::CreateCommunicators(const CliqueKey& clique_key,
                                     const std::optional<CliqueId>& clique_id,
                                     absl::Span<const DeviceRank> ranks,
                                     const Config& config) {

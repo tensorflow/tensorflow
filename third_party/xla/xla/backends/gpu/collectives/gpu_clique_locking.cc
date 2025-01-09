@@ -52,12 +52,12 @@ limitations under the License.
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
@@ -197,7 +197,6 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
                     const GpuCollectives::CliqueIdCallback& clique_id_callback,
                     int32_t num_local_participants, RankId rank,
                     const GpuCollectives::Config& config) {
-  int nranks = clique_key.devices().size();
   VLOG(3) << "Initialize GPU clique " << clique_key.ToString() << " rank #"
           << rank << "; num_local_participants=" << num_local_participants;
 
@@ -240,8 +239,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
-        collectives->CreateCommunicators(nranks, clique_key, clique_id, ranks,
-                                         config));
+        collectives->CreateCommunicators(clique_key, clique_id, ranks, config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
