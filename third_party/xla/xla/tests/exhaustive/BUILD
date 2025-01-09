@@ -48,6 +48,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:bit_cast",
         "//xla:executable_run_options",
         "//xla:fp_util",
@@ -97,6 +98,7 @@ cc_library(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
