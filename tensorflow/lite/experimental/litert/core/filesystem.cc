@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <filesystem>  // NOLINT
 #include <fstream>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
