@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_GRAPH_ANALYZER_H_
 #define TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_GRAPH_ANALYZER_H_
 
+#include <cstddef>
 #include <deque>
+#include <memory>
+#include <set>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/map_tools.h"
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"

@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_analyzer/subgraph.h"
 
 #include <algorithm>
-#include <string>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/test_tools.h"
 
 namespace tensorflow {
