@@ -19,7 +19,7 @@
 # This script is aware of TFCI_ variables, so it doesn't need any arguments.
 # Puts new wheel through auditwheel to rename and verify it, deletes the old
 # one, checks the filesize, and then ensures the new wheel is installable.
-set -euxo pipefail
+set -exo pipefail
 
 cd "$TFCI_OUTPUT_DIR"
 
@@ -46,7 +46,7 @@ fi
 # Check if size is too big. TFCI_WHL_SIZE_LIMIT is in find's format, which can be
 # 'k' for kilobytes, 'M' for megabytes, or 'G' for gigabytes, and the + to indicate
 # "anything greater than" is added by the script.
-if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$(find . -iname "*.whl" -size "+$TFCI_WHL_SIZE_LIMIT")" ]]; then
+if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$("$TFCI_FIND_BIN" . -iname "*.whl" -size "+$TFCI_WHL_SIZE_LIMIT")" ]]; then
   echo "Error: Generated wheel is too big! Limit is $TFCI_WHL_SIZE_LIMIT"
   echo '(search for TFCI_WHL_SIZE_LIMIT to change it)'
   ls -sh *.whl
@@ -54,9 +54,18 @@ if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$(find . -iname "*.whl" 
 fi
 
 # Quick install checks
-venv=$(mktemp -d)
-"python${TFCI_PYTHON_VERSION}" -m venv "$venv"
-python="$venv/bin/python3"
+venv_dir=$(mktemp -d)
+if [[ $(uname -s) != MSYS_NT* ]]; then
+  "python${TFCI_PYTHON_VERSION}" -m venv "$venv_dir"
+  python="$venv_dir/bin/python3"
+else
+  # When using the Linux-like path, venv creation quietly fails, which is
+  # why it's converted here.
+  venv_dir=$(cygpath -m $venv_dir)
+  "/c/python${TFCI_PYTHON_VERSION}/python.exe" -m venv "$venv_dir"
+  python="$venv_dir/Scripts/python.exe"
+fi
+
 # TODO(b/366266944) Remove the check after tf docker image upgrade for NumPy 2.
 if [[ "$TFCI_WHL_NUMPY_VERSION" == 2 ]]; then
   "$python" -m pip install numpy==2.0.0

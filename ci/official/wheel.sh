@@ -27,10 +27,12 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   export TFCI_BUILD_PIP_PACKAGE_ARGS="$(echo $TFCI_BUILD_PIP_PACKAGE_ARGS | sed 's/tensorflow/tf_nightly/')"
 fi
 
-tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
-tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
-tfrun ln -s $TFCI_OUTPUT_DIR dist
-tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
+tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
+
+tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
+tfrun mkdir ./dist
+tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist
+tfrun bash ./ci/official/utilities/rename_and_verify_wheels.sh
 
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
@@ -38,5 +40,5 @@ if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_WHL_BAZEL_TEST_ENABLE" == 1 ]]; then
-  tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_ARGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
 fi
