@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -57,9 +58,9 @@ limitations under the License.
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -2937,23 +2938,27 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
       HloSharding::Tuple(shape, sub_shardings));
 }
 
-std::optional<int64_t> GetFirstMergeableDimForSortOperand(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    int64_t sort_dim) {
-  if (operand_shape.rank() < 2 || operand_shape.dimensions(sort_dim) == 1) {
+std::optional<int64_t> GetFirstTargetDimToMoveShardingTiles(
+    const Shape& shape, const HloSharding& sharding, int64_t source_dim,
+    std::function<bool(int64_t)> can_be_target_dim) {
+  if (shape.rank() < 2 || shape.dimensions(source_dim) == 1) {
     return std::nullopt;
   }
-  if (!operand_sharding.IsTiled() ||
-      operand_sharding.tile_assignment().dim(sort_dim) == 1) {
+  if (!sharding.IsTiled() || sharding.tile_assignment().dim(source_dim) == 1) {
     return std::nullopt;
   }
 
-  for (int64_t dim = 0; dim < operand_shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+    if (dim == source_dim) {
+      continue;
+    }
+    if (!can_be_target_dim(dim)) {
+      continue;
+    }
     const int64_t merged_tile_dims =
-        operand_sharding.tile_assignment().dim(sort_dim) *
-        operand_sharding.tile_assignment().dim(dim);
-    if (dim != sort_dim &&
-        operand_shape.dimensions(dim) % merged_tile_dims == 0) {
+        sharding.tile_assignment().dim(source_dim) *
+        sharding.tile_assignment().dim(dim);
+    if (shape.dimensions(dim) % merged_tile_dims == 0) {
       return dim;
     }
   }

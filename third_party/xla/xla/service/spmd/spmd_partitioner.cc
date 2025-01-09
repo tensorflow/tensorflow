@@ -2970,7 +2970,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     std::vector<HloSharding> new_shardings;
     std::optional<HloSharding> new_output_sharding;
     if (std::optional<int64_t> picked_dim =
-            hlo_sharding_util::GetFirstMergeableDimForSortOperand(
+            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                 subshape, cur_sharding, sort_dim)) {
       // We can move the sharding tiles from the sort dimension to the picked
       // dimension.

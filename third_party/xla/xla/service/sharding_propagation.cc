@@ -2460,7 +2460,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       const int64_t sort_dim = sort->sort_dimension();
       if (!operand->sharding().IsTileMaximal() &&
           operand->sharding().tile_assignment().dim(sort_dim) != 1 &&
-          !hlo_sharding_util::GetFirstMergeableDimForSortOperand(
+          !hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                operand->shape(), operand->sharding(), sort_dim)
                .has_value()) {
         // In case of a sort operand sharded along the sort dimension, the

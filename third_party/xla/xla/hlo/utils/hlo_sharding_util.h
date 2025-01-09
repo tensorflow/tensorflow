@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_UTILS_HLO_SHARDING_UTIL_H_
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -24,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
@@ -503,19 +502,21 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
 
-// Returns the first mergeable dimension for the sort operand. A mergeable
-// dimension satisfies:
-// 1. The sort dimension is sharded. The size of the sort dimension is larger
-// than 1.
-// 2. The mergeable dimension is not a sort dimension.
-// 3. The size of the mergeable dimension is divisible by the merged tile size,
-// which is the product of the tile sizes of the sort dim and the picked
-// mergeable dim.
+// We intend to move the sharding tiles from the source dimension to a target
+// dimension. Returns the first target dimension, which satisfies:
+// 1. The source dimension is sharded. The size of the source dimension is
+// larger than 1.
+// 2. The target dimension and source dimension are different.
+// 3. The target dimension satisfies the can_be_target_dim predicate.
+// 4. The size of the target dimension is divisible by the merged tile size,
+// which is the product of the tile sizes of the source dim and the target dim.
 //
 // If there is no such dimension, returns std::nullopt.
-std::optional<int64_t> GetFirstMergeableDimForSortOperand(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    int64_t sort_dim);
+std::optional<int64_t> GetFirstTargetDimToMoveShardingTiles(
+    const Shape& shape, const HloSharding& sharding, int64_t source_dim,
+    std::function<bool(int64_t)> can_be_target_dim = [](int64_t) {
+      return true;
+    });
 
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.
