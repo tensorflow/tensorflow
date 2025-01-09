@@ -60,6 +60,33 @@ void FormatGlobalId(std::string* out, const GlobalDeviceId& device) {
 }
 
 //===----------------------------------------------------------------------===//
+// AllGather
+//===----------------------------------------------------------------------===//
+
+struct AllGatherParticipant {
+  size_t rank;
+  se::DeviceMemoryBase src;
+  se::DeviceMemoryBase dest;
+};
+
+static absl::Status AllGatherOp(
+    size_t num_bytes, absl::Span<const AllGatherParticipant*> participants) {
+  absl::c_sort(participants, ByRank<AllGatherParticipant>);
+
+  size_t num_participants = participants.size();
+
+  for (size_t i = 0; i < num_participants; ++i) {
+    for (size_t j = 0; j < num_participants; ++j) {
+      std::byte* dest = static_cast<std::byte*>(participants[i]->dest.opaque());
+      size_t offset = j * num_bytes;
+      std::memcpy(dest + offset, participants[j]->src.opaque(), num_bytes);
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+//===----------------------------------------------------------------------===//
 // AllToAll
 //===----------------------------------------------------------------------===//
 
@@ -298,43 +325,6 @@ class CpuAllReduceRendezvous
   }
 };
 
-struct AllGatherParticipantData : ParticipantData {
-  AllGatherParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
-      : ParticipantData(rendezvous_key_p, rank) {}
-
-  const void* source_buffer;
-  void* destination_buffer;
-  size_t chunk_size;
-
-  std::string ToString() const override {
-    return absl::StrFormat(
-        "AllGatherParticipantData{rank=%d, "
-        "devices=[%s], source_buffer=%p, "
-        "destination_buffer=%p, chunk_size=%d}",
-        local_rank,
-        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId),
-        source_buffer, destination_buffer, chunk_size);
-  }
-};
-
-class CpuAllGatherRendezvous
-    : public Rendezvous<AllGatherParticipantData, std::nullptr_t> {
- public:
-  explicit CpuAllGatherRendezvous(const RendezvousKey& k)
-      : Rendezvous<AllGatherParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
-      const AllGatherParticipantData& p) override {
-    int world_size = p.rendezvous_key.global_devices.size();
-    char* out = static_cast<char*>(p.destination_buffer);
-    for (int i = 0; i < world_size; ++i, out += p.chunk_size) {
-      std::memcpy(out, participants_[i]->source_buffer, p.chunk_size);
-    }
-    return nullptr;
-  }
-};
-
 struct ReduceScatterParticipantData : ParticipantData {
   ReduceScatterParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
       : ParticipantData(rendezvous_key_p, rank) {}
@@ -397,8 +387,6 @@ class CpuReduceScatterRendezvous
 struct InProcessCommunicator::State {
   RefcountingHashMap<RendezvousKey, CpuAllReduceRendezvous>
       all_reduce_rendezvous_map;
-  RefcountingHashMap<RendezvousKey, CpuAllGatherRendezvous>
-      all_gather_rendezvous_map;
   RefcountingHashMap<RendezvousKey, CpuReduceScatterRendezvous>
       reduce_scatter_rendezvous_map;
 };
@@ -484,20 +472,13 @@ absl::Status InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
-  AllGatherParticipantData participant(key, rank_);
-  participant.chunk_size = count * primitive_util::ByteWidth(dtype);
-  participant.source_buffer = send_buffer.opaque();
-  participant.destination_buffer = recv_buffer.opaque();
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuAllGatherRendezvous>(k);
-  };
-  return CpuAllGatherRendezvous::SubmitParticipant(
-             [&] {
-               return state_->all_gather_rendezvous_map.GetOrCreateIfAbsent(
-                   key, make_cpu_rendezvous);
-             },
-             participant)
-      .status();
+  std::string name = absl::StrCat("all gather ", key.ToString());
+  AllGatherParticipant partiticipant{rank_, send_buffer, recv_buffer};
+
+  size_t num_bytes = count * primitive_util::ByteWidth(dtype);
+  return RendezvousSingle<absl::Status>(
+      name, key, partiticipant, key.num_local_participants,
+      std::bind(AllGatherOp, num_bytes, std::placeholders::_1));
 }
 
 absl::Status InProcessCommunicator::ReduceScatter(
