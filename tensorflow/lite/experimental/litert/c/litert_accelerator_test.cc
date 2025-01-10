@@ -74,10 +74,10 @@ class DummyAccelerator {
         *reinterpret_cast<DummyAccelerator*>(accelerator->data);
     if (self.name_.empty()) {
       self.name_.append("Dummy");
-      if (self.hardware_support_ & kLiteRtHwAccelatorCpu) {
+      if (self.hardware_support_ & kLiteRtHwAcceleratorCpu) {
         self.name_.append("Cpu");
       }
-      if (self.hardware_support_ & kLiteRtHwAccelatorGpu) {
+      if (self.hardware_support_ & kLiteRtHwAcceleratorGpu) {
         self.name_.append("Gpu");
       }
       self.name_.append("Accelerator");
@@ -119,7 +119,7 @@ class LiteRtAcceleratorTest : public testing::Test {
   LiteRtEnvironment env_;
   void SetUp() override {
     LiteRtEnvironmentCreate(/*num_options=*/0, nullptr, &env_);
-    DummyAccelerator::RegisterAccelerator(kLiteRtHwAccelatorCpu, env_);
+    DummyAccelerator::RegisterAccelerator(kLiteRtHwAcceleratorCpu, env_);
   }
 
   void TearDown() override { LiteRtDestroyEnvironment(env_); }
@@ -127,7 +127,7 @@ class LiteRtAcceleratorTest : public testing::Test {
 
 TEST_F(LiteRtAcceleratorTest, IteratingOverAcceleratorsWorks) {
   // CPU accelerator is registered in the SetUp function.
-  DummyAccelerator::RegisterAccelerator(kLiteRtHwAccelatorGpu, env_);
+  DummyAccelerator::RegisterAccelerator(kLiteRtHwAcceleratorGpu, env_);
 
   LiteRtParamIndex num_accelerators = 0;
   ASSERT_THAT(LiteRtGetNumAccelerators(env_, &num_accelerators),
@@ -235,9 +235,9 @@ TEST_F(LiteRtAcceleratorTest, GetAcceleratorHardwareSupportWorks) {
   ASSERT_THAT(
       LiteRtGetAcceleratorHardwareSupport(accelerator, &hardware_support),
       kLiteRtStatusOk);
-  EXPECT_THAT(hardware_support & kLiteRtHwAccelatorCpu, true);
-  EXPECT_THAT(hardware_support & kLiteRtHwAccelatorGpu, false);
-  EXPECT_THAT(hardware_support & kLiteRtHwAccelatorNpu, false);
+  EXPECT_THAT(hardware_support & kLiteRtHwAcceleratorCpu, true);
+  EXPECT_THAT(hardware_support & kLiteRtHwAcceleratorGpu, false);
+  EXPECT_THAT(hardware_support & kLiteRtHwAcceleratorNpu, false);
 
   EXPECT_THAT(LiteRtGetAcceleratorHardwareSupport(nullptr, &hardware_support),
               kLiteRtStatusErrorInvalidArgument);

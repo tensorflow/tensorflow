@@ -93,13 +93,13 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   auto compiled_model = std::make_unique<LiteRtCompiledModelT>();
 
   std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
-  LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAccelatorNone;
+  LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAcceleratorNone;
   if (compilation_options) {
     LiteRtGetCompilationOptionsHardwareAccelerators(compilation_options.get(),
                                                     &hardware_accelerators);
   }
   // TODO: b/379317134 - Support other delegates with compilation options.
-  if (hardware_accelerators != kLiteRtHwAccelatorNone) {
+  if (hardware_accelerators != kLiteRtHwAcceleratorNone) {
     LITERT_LOG(LITERT_INFO, "Applying compiler plugins...");
     if (auto result =
             litert::internal::ApplyPlugins(env, model, hardware_accelerators);

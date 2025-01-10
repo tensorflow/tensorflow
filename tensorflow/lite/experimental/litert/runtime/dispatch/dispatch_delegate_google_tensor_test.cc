@@ -243,7 +243,7 @@ TEST(DispatchDelegate, CompiledModel) {
 
   auto options = CompiledModel::Options::Create();
   ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
+  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
 
   auto env = litert::Environment::Create({});
   ASSERT_TRUE(env);

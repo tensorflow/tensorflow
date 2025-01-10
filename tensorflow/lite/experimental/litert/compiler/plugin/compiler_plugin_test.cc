@@ -264,7 +264,8 @@ TEST(ApplyTest, ApplyPlugins) {
   ASSERT_TRUE(env);
 
   LiteRtHwAccelerators compilation_options = static_cast<LiteRtHwAccelerators>(
-      kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu | kLiteRtHwAccelatorNpu);
+      kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu |
+      kLiteRtHwAcceleratorNpu);
   auto new_flatbuffer =
       litert::internal::ApplyPlugins(env->Get(), &model, compilation_options);
   ASSERT_TRUE(new_flatbuffer);

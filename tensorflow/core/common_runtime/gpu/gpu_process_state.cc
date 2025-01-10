@@ -131,8 +131,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
         alloc_visitors);
   } else {
     return std::make_unique<se::DeviceMemAllocator>(
-        executor, platform_device_id, stream_executor::MemoryType::kDevice,
-        alloc_visitors);
+        executor, platform_device_id, alloc_visitors);
   }
 }
 

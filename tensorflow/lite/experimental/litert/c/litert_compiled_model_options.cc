@@ -46,7 +46,7 @@ struct LiteRtCompilationOptionsT {
   //
   // Note: Changing a default value does not impact the version.
   LiteRtApiVersion version = {.major = 0, .minor = 0, .patch = 1};
-  LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAccelatorNone;
+  LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAcceleratorNone;
   LiteRtAcceleratorCompilationOptions accelerator_compilation_options = nullptr;
 };
 
@@ -67,9 +67,9 @@ LiteRtStatus LiteRtSetCompilationOptionsHardwareAccelerators(
     LiteRtCompilationOptions options,
     LiteRtHwAcceleratorSet hardware_accelerators) {
   LRT_CHECK_NON_NULL(options);
-  if ((hardware_accelerators & (kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu |
-                                kLiteRtHwAccelatorNpu)) !=
-      hardware_accelerators) {
+  if ((hardware_accelerators &
+       (kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu |
+        kLiteRtHwAcceleratorNpu)) != hardware_accelerators) {
     LITERT_LOG(LITERT_ERROR,
                "Invalid bitfield value for hardware accelerator set: %d.",
                hardware_accelerators);

@@ -34,6 +34,8 @@ class XnnpackDelegateProvider : public DelegateProvider {
     default_params_.AddParam("xnnpack_weight_cache_file_path",
                              ToolParam::Create<std::string>(""));
     default_params_.AddParam("xnnpack_slinky", ToolParam::Create<bool>(false));
+    default_params_.AddParam("xnnpack_slinky_disable_schedule",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -67,6 +69,10 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
                        "enable the Slinky optimizer. "
                        "(Ignored if --use_xnnpack is false, or if XNNPACK is "
                        "built without Slinky.)"),
+      CreateFlag<bool>("xnnpack_slinky_disable_schedule", params,
+                       "Disable schedules in Slinky. "
+                       "(Ignored if --use_xnnpack is false, or if XNNPACK is "
+                       "built without Slinky.)"),
   };
   return flags;
 }
@@ -78,7 +84,9 @@ void XnnpackDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, std::string, "xnnpack_weight_cache_file_path",
                  "xnnpack_weight_cache_file_path", verbose);
-  LOG_TOOL_PARAM(params, bool, "xnnpack_slinky", "Use Slinky", verbose);
+  LOG_TOOL_PARAM(params, bool, "xnnpack_slinky", "xnnpack_slinky", verbose);
+  LOG_TOOL_PARAM(params, bool, "xnnpack_slinky_disable_schedule",
+                 "xnnpack_slinky_disable_schedule", verbose);
 }
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
@@ -93,6 +101,9 @@ TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     }
     if (params.Get<bool>("xnnpack_slinky")) {
       opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY;
+    }
+    if (params.Get<bool>("xnnpack_slinky_disable_schedule")) {
+      opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SLINKY_SCHEDULE;
     }
     const std::string path =
         params.Get<std::string>("xnnpack_weight_cache_file_path");
