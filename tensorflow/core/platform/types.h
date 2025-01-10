@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
