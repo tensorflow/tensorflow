@@ -52,13 +52,12 @@ typedef enum TF_DataType {
   TF_VARIANT = 21,
   TF_UINT32 = 22,
   TF_UINT64 = 23,
-  TF_FLOAT8_E5M2 = 24,    // 5 exponent bits, 2 mantissa bits.
-  TF_FLOAT8_E4M3FN = 25,  // 4 exponent bits, 3 mantissa bits, finite-only, with
-                          // 2 NaNs (0bS1111111).
+  TF_FLOAT8_E5M2 = 24,      // 5 exponent bits, 2 mantissa bits.
+  TF_FLOAT8_E4M3FN = 25,    // 4 exponent bits, 3 mantissa bits, finite-only, with two NaNs and two Zeros.
+  TF_FLOAT8_E4M3FNUZ = 26,  // 4 exponent bits, 3 mantissa bits, finite-only, with one NaN and one Zero.
   // TODO - b/299182407: Leaving room for remaining float8 types.
-  // TF_FLOAT8_E4M3FNUZ = 26,
   // TF_FLOAT8_E4M3B11FNUZ = 27,
-  // TF_FLOAT8_E5M2FNUZ = 28,
+  TF_FLOAT8_E5M2FNUZ = 28,  // 5 exponent bits, 2 mantissa bits, finite-only, with one NaN and one Zero.
   TF_INT4 = 29,
   TF_UINT4 = 30,
 } TF_DataType;
