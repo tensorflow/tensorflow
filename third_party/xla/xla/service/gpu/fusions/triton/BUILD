@@ -605,7 +605,6 @@ xla_test(
         "gpu_b100",
         "gpu_amd_any",
     ],
-    shard_count = 20,
     tags = [
         "no_mac",
     ],
@@ -620,6 +619,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",

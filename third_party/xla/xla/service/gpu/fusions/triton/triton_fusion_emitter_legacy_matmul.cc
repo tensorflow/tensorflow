@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <optional>
 #include <queue>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -105,6 +107,13 @@ using ::mlir::ValueRange;
 
 namespace {
 
+bool IsTritonInt4RewritesEnabled(const HloInstruction& hlo) {
+  return hlo.GetModule()
+      ->config()
+      .debug_options()
+      .xla_gpu_experimental_enable_triton_i4_rewrites();
+}
+
 absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   switch (t) {
     case F64:
@@ -128,7 +137,7 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
     case S4:  // The unpacking to i8 is supported by the emitter.
       // We pass the s4 tensor as i8 tensor with the minor dimension having 2x
       // less elements and unpack in the inner loop of the triton kernel.
-      return b.getI8Type();
+      return b.getI4Type();
     case F8E5M2:
       return b.getFloat8E5M2Type();
     case F8E4M3FN:
@@ -662,9 +671,14 @@ absl::StatusOr<Value> EmitScope(
     Value result;
     if (hlo->opcode() == HloOpcode::kConvert &&
         hlo->operand(0)->shape().element_type() == S4) {
-      TF_ASSIGN_OR_RETURN(
-          auto unpacked,
-          EmitUnpackInt4(b, hlo, side.unpack_dim_idx, values[hlo->operand(0)]));
+      Value unpacked;
+      if (IsTritonInt4RewritesEnabled(*hlo)) {
+        unpacked = Cast(b, values[hlo->operand(0)], b.getI8Type());
+      } else {
+        TF_ASSIGN_OR_RETURN(unpacked,
+                            EmitUnpackInt4(b, hlo, side.unpack_dim_idx,
+                                           values[hlo->operand(0)]));
+      }
       std::vector<Value> operands({unpacked});
       TF_ASSIGN_OR_RETURN(result, EmitElementwise(b, libdevice_path,
                                                   device_info, *hlo, operands));
@@ -769,6 +783,12 @@ struct MatMulDims {
   int64_t m;
   int64_t n;
   int64_t k;
+
+  std::string ToString() const {
+    return absl::StrCat("MxNxK: ", m, "x", n, "x", k,
+                        " contracting: lhs=", lhs_contracting_dim_idx,
+                        " rhs=", rhs_contracting_dim_idx);
+  }
 
  private:
   MatMulDims() = default;
@@ -1374,7 +1394,8 @@ class MatMulEmitterHelper {
         if (dim_bound % (properties.block_size * properties.split_value) != 0) {
           boundary_checks.push_back(bounds.size() - 1);
         }
-        if (hlo->shape().element_type() == PrimitiveType::S4) {
+        if (hlo->shape().element_type() == PrimitiveType::S4 &&
+            !IsTritonInt4RewritesEnabled(*hlo)) {
           // For s4 type we need to divide the minor dim bound by 2 because it
           // is the packing dimension. But if the minor dim has length == 1 then
           // the major dim stride is also 1 and it is the packing dimension.
@@ -1428,7 +1449,8 @@ class MatMulEmitterHelper {
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
           batch_stride);
 
-      if (hlo->shape().element_type() == PrimitiveType::S4) {
+      if (hlo->shape().element_type() == PrimitiveType::S4 &&
+          !IsTritonInt4RewritesEnabled(*hlo)) {
         pid_offset_batch = b_.create<ma::DivSIOp>(pid_offset_batch, Cst(2));
       }
       base = AddPtr(b_, base, pid_offset_batch);
@@ -1453,9 +1475,33 @@ class MatMulEmitterHelper {
         b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
                                        block_dims, dim_order)
             .getResult());
+    if (hlo->shape().element_type() == PrimitiveType::S4 &&
+        IsTritonInt4RewritesEnabled(*hlo)) {
+      tensor_ptr.getDefiningOp()->setAttr("packed_dim", GetPackedDimAttr(side));
+    }
     tensor_ptr = b_.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
                                           block_offsets);
     return tensor_ptr;
+  }
+
+  // Naive implementation of the packed_dim attribute for the int4 tensors.
+  // It doesn't take into account different layout schemes.
+  mlir::IntegerAttr GetPackedDimAttr(const Side& side) const {
+    int packed_dim = 0;
+    if (side.scope == TritonFusionAnalysis::Scope::LHS) {
+      if (dims_.lhs_contracting_dim_idx > dims_.lhs_noncontracting_dim_idx) {
+        packed_dim = 0;
+      } else {
+        packed_dim = 1;
+      }
+    } else if (side.scope == TritonFusionAnalysis::Scope::RHS) {
+      if (dims_.rhs_contracting_dim_idx > dims_.rhs_noncontracting_dim_idx) {
+        packed_dim = 1;
+      } else {
+        packed_dim = 0;
+      }
+    }
+    return b_.getI32IntegerAttr(packed_dim);
   }
 
  private:
@@ -1807,7 +1853,8 @@ class Scopes {
     int lhs_non_contracting_block_size = config.block_m;
     int lhs_contracting_block_size = config.block_k;
     int lhs_unpack_bound_idx = 0;
-    if (is_int4_param(analysis, TritonFusionAnalysis::Scope::LHS)) {
+    if (!IsTritonInt4RewritesEnabled(*dot_instr) &&
+        is_int4_param(analysis, TritonFusionAnalysis::Scope::LHS)) {
       auto minor_dim = std::max(dims.lhs_contracting_dim_idx,
                                 dims.lhs_noncontracting_dim_idx);
       auto minor_bound = analysis
@@ -1845,7 +1892,8 @@ class Scopes {
     int rhs_contracting_block_size = config.block_k;
     int rhs_non_contracting_block_size = config.block_n;
     int rhs_unpack_bound_idx = 0;
-    if (is_int4_param(analysis, TritonFusionAnalysis::Scope::RHS)) {
+    if (!IsTritonInt4RewritesEnabled(*dot_instr) &&
+        is_int4_param(analysis, TritonFusionAnalysis::Scope::RHS)) {
       auto minor_dim = std::max(dims.rhs_contracting_dim_idx,
                                 dims.rhs_noncontracting_dim_idx);
       auto minor_bound = analysis

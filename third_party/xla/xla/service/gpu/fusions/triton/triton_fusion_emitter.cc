@@ -1098,7 +1098,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     if (type == U16) {
       ir_type = b.getI16Type();
     } else if (type == S4) {
-      ir_type = b.getI8Type();
+      if (debug_options.xla_gpu_experimental_enable_triton_i4_rewrites()) {
+        ir_type = b.getI4Type();
+      } else {
+        ir_type = b.getI8Type();
+      }
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }

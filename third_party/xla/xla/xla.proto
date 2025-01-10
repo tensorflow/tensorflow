@@ -163,6 +163,11 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
+  // When enabled, the Triton emitter for dot will use int4 as native type and
+  // later the Triton IR will be rewritten by Triton IR rewriting pass to use
+  // int4 packed into int8.
+  bool xla_gpu_experimental_enable_triton_i4_rewrites = 361;
+
   // When possible, XLA will use Triton's experimental TMA feature.
   bool xla_gpu_experimental_enable_triton_tma = 355;
 
@@ -1106,7 +1111,7 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
-  // Next id: 361
+  // Next id: 362
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
