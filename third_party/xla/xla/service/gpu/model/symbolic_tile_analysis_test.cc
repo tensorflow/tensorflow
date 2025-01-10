@@ -294,6 +294,64 @@ ENTRY main {
   )"));
 }
 
+TEST_F(SymbolicTileAnalysisTest, NestedFusionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+inner {
+  p0 = f32[2, 97] parameter(0)
+  ROOT exp = f32[2,97] exponential(p0)
+}
+
+outer {
+  p0 = f32[2,97] parameter(0)
+  fusion = f32[2,97] fusion(p0), kind=kLoop, calls=inner
+  constant = f32[] constant(-inf)
+  ROOT reduce = f32[2] reduce(fusion, constant), dimensions={1}, to_apply=max
+}
+
+ENTRY main {
+  p0 = f32[2,97] parameter(0)
+  ROOT root = f32[2] fusion(p0), kind=kLoop, calls=outer
+})"));
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *module->entry_computation()
+               ->root_instruction()
+               ->fused_instructions_computation(),
+          &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
+
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis.ComputeTiledHloInstructions(
+          /*tile_parameters=*/{1}, /*constraints_are_known_satisfied=*/false,
+          /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
+  EXPECT_THAT(
+      *root,
+      MatchTiledHloInstruction(
+          /*tile_sizes=*/{1}, /*tile_strides=*/{1},
+          /*tile_offsets_indexing=*/"(d0) -> (d0), domain: d0 in [0, 1]"));
+
+  EXPECT_EQ(root->operand(0)->hlo()->opcode(), HloOpcode::kExp);
+  EXPECT_THAT(
+      *root->operand(0),
+      MatchTiledHloInstruction(
+          /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+          /*tile_offsets_indexing=*/"(d0) -> (d0, 0), domain: d0 in [0, 1]"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, TransposeOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
