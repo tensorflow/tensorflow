@@ -139,11 +139,23 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto false_lit = LiteralUtil::CreateR0<bool>(false);
   EXPECT_EQ("pred[] false", false_lit.ToString());
 
+  auto u1_lit = LiteralUtil::CreateR0<u1>(u1(1));
+  EXPECT_EQ("u1[] 1", u1_lit.ToString());
+
+  auto u2_lit = LiteralUtil::CreateR0<u2>(u2(0));
+  EXPECT_EQ("u2[] 0", u2_lit.ToString());
+
   auto u4_lit = LiteralUtil::CreateR0<u4>(u4(5));
   EXPECT_EQ("u4[] 5", u4_lit.ToString());
 
   auto u32_lit = LiteralUtil::CreateR0<uint32_t>(42);
   EXPECT_EQ("u32[] 42", u32_lit.ToString());
+
+  auto s1_lit = LiteralUtil::CreateR0<s1>(s1(-1));
+  EXPECT_EQ("s1[] -1", s1_lit.ToString());
+
+  auto s2_lit = LiteralUtil::CreateR0<s2>(s2(1));
+  EXPECT_EQ("s2[] 1", s2_lit.ToString());
 
   auto s4_lit = LiteralUtil::CreateR0<s4>(s4(-3));
   EXPECT_EQ("s4[] -3", s4_lit.ToString());
