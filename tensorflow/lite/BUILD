@@ -50,20 +50,6 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "mips",
-    values = {
-        "cpu": "mips",
-    },
-)
-
-config_setting(
-    name = "mips64",
-    values = {
-        "cpu": "mips64",
-    },
-)
-
 # Without "cpu":"k8", when building with --copt=-DTF_LITE_STATIC_MEMORY, we get
 # the following error:
 # Multiple matches are not allowed unless one is unambiguously more specialized.
