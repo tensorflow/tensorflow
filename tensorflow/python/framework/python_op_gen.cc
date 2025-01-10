@@ -1324,7 +1324,9 @@ void GenPythonOp::GenerateTypeVars(
              it != allowed_types.end(); ++it) {
           if (!typevar_dtypes.empty())
             strings::StrAppend(&typevar_dtypes, ", ");
+          strings::StrAppend(&typevar_dtypes, "\"");
           strings::StrAppend(&typevar_dtypes, *it);
+          strings::StrAppend(&typevar_dtypes, "\"");
         }
       }
 

@@ -60,16 +60,22 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
                    /* source_file_list= */ {});
 
   const string all_types =
-      ", _atypes.BFloat16, _atypes.Bool, _atypes.Complex128, "
-      "_atypes.Complex64, _atypes.Float16, _atypes.Float32, _atypes.Float64, "
-      "_atypes.Float8e4m3b11fnuz, _atypes.Float8e4m3fn, "
-      "_atypes.Float8e4m3fnuz, _atypes.Float8e5m2, _atypes.Float8e5m2fnuz, "
-      "_atypes.Half, _atypes.Int16, "
-      "_atypes.Int32, _atypes.Int4, _atypes.Int64, _atypes.Int8, "
-      "_atypes.QInt16, _atypes.QInt32, _atypes.QInt8, _atypes.QUInt16, "
-      "_atypes.QUInt8, _atypes.Resource, _atypes.String, _atypes.UInt16, "
-      "_atypes.UInt32, _atypes.UInt4, _atypes.UInt64, _atypes.UInt8, "
-      "_atypes.Variant)";
+      ", \"_atypes.BFloat16\", \"_atypes.Bool\", \"_atypes.Complex128\", "
+      "\"_atypes.Complex64\", \"_atypes.Float16\", \"_atypes.Float32\", "
+      "\"_atypes.Float64\", "
+      "\"_atypes.Float8e4m3b11fnuz\", \"_atypes.Float8e4m3fn\", "
+      "\"_atypes.Float8e4m3fnuz\", \"_atypes.Float8e5m2\", "
+      "\"_atypes.Float8e5m2fnuz\", "
+      "\"_atypes.Half\", \"_atypes.Int16\", "
+      "\"_atypes.Int32\", \"_atypes.Int4\", \"_atypes.Int64\", "
+      "\"_atypes.Int8\", "
+      "\"_atypes.QInt16\", \"_atypes.QInt32\", \"_atypes.QInt8\", "
+      "\"_atypes.QUInt16\", "
+      "\"_atypes.QUInt8\", \"_atypes.Resource\", \"_atypes.String\", "
+      "\"_atypes.UInt16\", "
+      "\"_atypes.UInt32\", \"_atypes.UInt4\", \"_atypes.UInt64\", "
+      "\"_atypes.UInt8\", "
+      "\"_atypes.Variant\")";
 
   const string fake_param_typevar =
       "TV_FakeParam_dtype = TypeVar(\"TV_FakeParam_dtype\"" + all_types;
@@ -250,8 +256,8 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
                    /* source_file_list= */ {});
 
   const string typevars_foo = R"(
-TV_Foo_T = TypeVar("TV_Foo_T", _atypes.Int8, _atypes.UInt8)
-TV_Foo_T2 = TypeVar("TV_Foo_T2", _atypes.Float32, _atypes.Float64, _atypes.String)
+TV_Foo_T = TypeVar("TV_Foo_T", "_atypes.Int8", "_atypes.UInt8")
+TV_Foo_T2 = TypeVar("TV_Foo_T2", "_atypes.Float32", "_atypes.Float64", "_atypes.String")
 )";
 
   ExpectHasSubstr(code, typevars_foo);
