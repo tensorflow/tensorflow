@@ -274,6 +274,17 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_pjrt_interpreter_reference_mixin",
+    testonly = True,
+    hdrs = ["hlo_pjrt_interpreter_reference_mixin.h"],
+    deps = [
+        ":hlo_runner_agnostic_reference_mixin",
+        "//xla/pjrt/interpreter:interpreter_client",
+        "//xla/service:hlo_runner_pjrt",
+    ],
+)
+
+cc_library(
     name = "hlo_pjrt_test_base",
     testonly = True,
     srcs = ["hlo_pjrt_test_base.cc"],
