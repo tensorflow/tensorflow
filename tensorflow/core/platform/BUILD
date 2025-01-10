@@ -951,6 +951,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:device_type",
     ],
