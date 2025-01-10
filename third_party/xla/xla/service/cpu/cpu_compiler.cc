@@ -791,30 +791,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   pipeline.AddPass<ReshapeDecomposer>();
 
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  // Run this to a fixed point.
-  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment"),
-   this] {
-    AddHloVerifier(
-        &pipeline,
-        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
-            LayoutAssignment::InstructionCanChangeLayout),
-        /*debug_only=*/true);
-    AlgebraicSimplifierOptions options;
-    options.set_is_layout_sensitive(true);
-    options.set_supports_non_canonical_dots(false);
-    options.set_enable_dot_strength_reduction(false);
-    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-    // other platforms do, so it should be changed.
-    options.set_minmax_propagate_nan(false);
-    options.set_executing_on_cpu(true);
-    pipeline.AddPass<AlgebraicSimplifier>(options);
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-  }();
-
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
           ? module->config().intra_op_parallelism_threads()
@@ -845,6 +821,30 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();
+
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  // Run this to a fixed point.
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+       "simplification after layout assignment"),
+   this] {
+    AddHloVerifier(
+        &pipeline,
+        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+            LayoutAssignment::InstructionCanChangeLayout),
+        /*debug_only=*/true);
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    options.set_supports_non_canonical_dots(false);
+    options.set_enable_dot_strength_reduction(false);
+    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+    // other platforms do, so it should be changed.
+    options.set_minmax_propagate_nan(false);
+    options.set_executing_on_cpu(true);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }();
 
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
