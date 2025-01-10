@@ -17,20 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace {

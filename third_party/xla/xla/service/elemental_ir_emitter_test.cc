@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
