@@ -26,12 +26,13 @@ cc_library(
     srcs = ["contiguous_section_memory_manager.cc"],
     hdrs = ["contiguous_section_memory_manager.h"],
     deps = [
-        "//xla:util",
-        "@llvm-project//llvm:Core",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:logging",
+        # TODO(basioli): This dependency increases the binary size significantly.
+        # Consider reducing the dependency size, or use something alternative.
+        "//xla:util",
     ],
 )
 
@@ -93,6 +94,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -351,5 +353,61 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
+    ],
+)
+
+cc_library(
+    name = "object_loader",
+    srcs = ["object_loader.cc"],
+    hdrs = ["object_loader.h"],
+    deps = [
+        ":compiled_function_library",
+        ":contiguous_section_memory_manager",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/service/cpu:orc_jit_memory_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "object_loader_test",
+    srcs = ["object_loader_test.cc"],
+    deps = [
+        ":ir_compiler",
+        ":jit_compiler",
+        ":object_loader",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:executable_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

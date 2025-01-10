@@ -127,7 +127,6 @@ cc_library(
     hdrs = ["function_library.h"],
     deps = [
         ":kernel_c_api",
-        "//xla:util",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
