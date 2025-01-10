@@ -249,6 +249,31 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_runner_agnostic_reference_mixin",
+    testonly = True,
+    srcs = ["hlo_runner_agnostic_reference_mixin.cc"],
+    hdrs = ["hlo_runner_agnostic_reference_mixin.h"],
+    deps = [
+        ":hlo_runner_agnostic_test_base",
+        ":literal_test_util",
+        ":test_utils",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_pjrt_test_base",
     testonly = True,
     srcs = ["hlo_pjrt_test_base.cc"],
