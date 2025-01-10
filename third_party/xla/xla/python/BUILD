@@ -311,6 +311,7 @@ cc_library(
         "py_program.cc",
         "py_values.cc",
         "sharding.cc",
+        "to_ifrt_sharding.cc",
     ],
     hdrs = [
         "py_array.h",
@@ -325,6 +326,7 @@ cc_library(
         "py_values.h",
         "sharded_device_array.h",
         "sharding.h",
+        "to_ifrt_sharding.h",
     ],
     compatible_with = [],
     copts = [
@@ -423,6 +425,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
