@@ -21,14 +21,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -61,11 +65,15 @@ static constexpr bool UseBlockingThunkExecutor() {
 }
 
 ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
+                             NodesEdges nodes_in_edges,
+                             NodesEdges nodes_out_edges,
                              std::vector<NodeDef> nodes_defs,
                              const ThunkExecutor::Options& options)
     : thunk_sequence_(std::move(thunk_sequence)),
       options_(options),
       num_thunks_(thunk_sequence_.size()),
+      nodes_in_edges_(std::move(nodes_in_edges)),
+      nodes_out_edges_(std::move(nodes_out_edges)),
       nodes_defs_(std::move(nodes_defs)),
       is_sequential_(true) {
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
@@ -79,9 +87,6 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       sink_.push_back(i);
     }
   }
-
-  // Erase redundant edges between nodes.
-  int64_t num_erased_edges = RunTransitiveReductionAndUpdatePriorities();
 
   // Check if constructed execution DAG is sequential: every node depends on the
   // completion of the previous node.
@@ -109,9 +114,9 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 
   VLOG(2) << absl::StreamFormat(
       "Constructed ThunkExecutor with %d nodes: #source_nodes=%d "
-      "#sink_nodes=%d, #erased_edges=%d, is_sequential=%v, small_buffers=%v",
-      nodes_defs_.size(), source_.size(), sink_.size(), num_erased_edges,
-      is_sequential_, small_buffers);
+      "#sink_nodes=%d, is_sequential=%v, small_buffers=%v",
+      nodes_defs_.size(), source_.size(), sink_.size(), is_sequential_,
+      small_buffers);
 
   // Sanity check that all vectors are empty or all vectors are non-empty.
   DCHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
@@ -120,7 +125,13 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     ThunkSequence thunk_sequence, const ThunkExecutor::Options& options) {
-  std::vector<NodeDef> defs(thunk_sequence.size());
+  // Make sure that thunk sequence size fits into NodeId.
+  if (thunk_sequence.size() > std::numeric_limits<NodeId>::max()) {
+    return Internal("Can't create ThunkExecutor with more than %d thunks",
+                    std::numeric_limits<NodeId>::max());
+  }
+
+  std::vector<NodeDefBuilder> builders(thunk_sequence.size());
 
   std::vector<BufferUse::ReadWriteSet> buffer_rwsets(thunk_sequence.size());
   std::vector<ResourceUse::ReadWriteSet> resource_rwsets(thunk_sequence.size());
@@ -131,7 +142,7 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
   // most recent updates that touch the whole buffer slice.
 
   for (NodeId i = 0; i < thunk_sequence.size(); ++i) {
-    defs[i].id = i;
+    builders[i].id = i;
 
     Thunk& thunk = *thunk_sequence[i];
     buffer_rwsets[i].AddAll(thunk.buffer_uses());
@@ -141,24 +152,33 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
       // Check if node `i` must be executed after node `j`.
       if (buffer_rwsets[j].HasConflicts(buffer_rwsets[i]) ||
           resource_rwsets[j].HasConflicts(resource_rwsets[i])) {
-        defs[j].out_edges.push_back(i);
-        defs[i].in_edges.push_back(j);
+        builders[j].out_edges.push_back(i);
+        builders[i].in_edges.push_back(j);
       }
     }
   }
 
   // Verify that both in-edges and out-edges are sorted in ascending order as we
   // use this property later.
-  for (NodeId i = 0; i < defs.size(); ++i) {
-    DCHECK(absl::c_is_sorted(defs[i].out_edges));
-    DCHECK(absl::c_is_sorted(defs[i].in_edges));
+  for (NodeId i = 0; i < builders.size(); ++i) {
+    DCHECK(absl::c_is_sorted(builders[i].out_edges));
+    DCHECK(absl::c_is_sorted(builders[i].in_edges));
   }
 
-  return ThunkExecutor(std::move(thunk_sequence), std::move(defs), options);
+  // Erase redundant edges between nodes.
+  int64_t num_erased_edges =
+      RunTransitiveReductionAndUpdatePriorities(absl::MakeSpan(builders));
+  VLOG(5) << absl::StreamFormat(
+      "Transitive reduction erased %d edges from the nodes graph",
+      num_erased_edges);
+
+  auto [in_edges, out_edges, nodes_defs] = CreateNodeDefs(std::move(builders));
+  return ThunkExecutor(std::move(thunk_sequence), std::move(in_edges),
+                       std::move(out_edges), std::move(nodes_defs), options);
 }
 
 ThunkExecutor::ExecuteState::Node::Node(const NodeDef& node_def)
-    : counter(node_def.in_edges.size()), out_edges(&node_def.out_edges) {}
+    : counter(node_def.in_edges.size()), out_edges(node_def.out_edges) {}
 
 ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
                                           Thunk::TaskRunner* runner)
@@ -485,10 +505,10 @@ void ThunkExecutor::ProcessOutEdges(
 
   // Load `is_sink` before dropping node counters because otherwise it might
   // race with NodeDef destructor.
-  bool is_sink = node.out_edges->empty();
+  bool is_sink = node.out_edges.empty();
 
   // Append ready nodes to the back of the ready queue.
-  for (NodeId out_edge : *node.out_edges) {
+  for (NodeId out_edge : node.out_edges) {
     ExecuteState::Node& out_node = state->node(out_edge);
 
     int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
@@ -521,10 +541,50 @@ void ThunkExecutor::ProcessOutEdges(
   }
 }
 
+std::tuple<ThunkExecutor::NodesEdges, ThunkExecutor::NodesEdges,
+           std::vector<ThunkExecutor::NodeDef>>
+ThunkExecutor::CreateNodeDefs(std::vector<NodeDefBuilder> builders) {
+  // Find how many in-edges and out-edges we have in total.
+  size_t num_in_edges = 0, num_out_edges = 0;
+  for (const NodeDefBuilder& b : builders) {
+    num_in_edges += b.in_edges.size();
+    num_out_edges += b.out_edges.size();
+  }
+
+  NodesEdges nodes_in_edges;
+  NodesEdges nodes_out_edges;
+  std::vector<NodeDef> nodes_defs;
+
+  // Reserve memory to avoid re-allocation and dangling spans into freed memory.
+  nodes_in_edges.reserve(num_in_edges);
+  nodes_out_edges.reserve(num_out_edges);
+  nodes_defs.reserve(builders.size());
+
+  for (const NodeDefBuilder& b : builders) {
+    size_t num_in_edges = b.in_edges.size();
+    size_t num_out_edges = b.out_edges.size();
+
+    auto inserted_in_edges = nodes_in_edges.insert(
+        nodes_in_edges.end(), b.in_edges.begin(), b.in_edges.end());
+    auto inserted_out_edges = nodes_out_edges.insert(
+        nodes_out_edges.end(), b.out_edges.begin(), b.out_edges.end());
+
+    nodes_defs.push_back(NodeDef{
+        b.id, b.priority,
+        num_in_edges ? absl::MakeConstSpan(&*inserted_in_edges, num_in_edges)
+                     : absl::Span<const NodeId>(),
+        num_out_edges ? absl::MakeConstSpan(&*inserted_out_edges, num_out_edges)
+                      : absl::Span<const NodeId>()});
+  }
+
+  return std::make_tuple(std::move(nodes_in_edges), std::move(nodes_out_edges),
+                         std::move(nodes_defs));
+}
+
 // Erases edge from `from` node to `to` node if it exists. We rely on the fact
 // that out and in-edges are sorted and use binary search on a critical path.
-static int64_t EraseEdge(ThunkExecutor::NodeDef& from,
-                         ThunkExecutor::NodeDef& to) {
+static int64_t EraseEdge(ThunkExecutor::NodeDefBuilder& from,
+                         ThunkExecutor::NodeDefBuilder& to) {
   DCHECK_NE(from.id, to.id) << "Nodes must be different";
   DCHECK_LT(from.id, to.id) << "Nodes must be ordered";
 
@@ -568,7 +628,8 @@ static int64_t EraseEdge(ThunkExecutor::NodeDef& from,
   return 1;
 }
 
-int64_t ThunkExecutor::RunTransitiveReductionAndUpdatePriorities() {
+int64_t ThunkExecutor::RunTransitiveReductionAndUpdatePriorities(
+    absl::Span<NodeDefBuilder> builders) {
   int64_t num_erased_edges = 0;
 
   // Keep workspace for DFS traversal between iterations.
@@ -585,17 +646,17 @@ int64_t ThunkExecutor::RunTransitiveReductionAndUpdatePriorities() {
   // For each node we do a DFS traversal and delete redundant edges that
   // connect source node with the node reachable via DFS. We do traversal in
   // reverse order as we end up traversing fewer edges this way.
-  for (int64_t i = nodes_defs_.size() - 1; i >= 0; --i) {
-    NodeDef& source_node = nodes_defs_[i];
+  for (int64_t i = builders.size() - 1; i >= 0; --i) {
+    NodeDefBuilder& source_node = builders[i];
 
     // Clear DFS workspace from previous iteration.
     stack.clear();
-    visited.assign(nodes_defs_.size(), false);
+    visited.assign(builders.size(), false);
 
     // Initialize stack with nodes reachable via immediate out nodes. We mark
     // immediate out nodes as visited to correctly compute node priority below.
     for (int64_t out_id : source_node.out_edges) {
-      NodeDef& out_node = nodes_defs_[out_id];
+      NodeDefBuilder& out_node = builders[out_id];
       visited[out_id] = true;
       for (int64_t start_id : out_node.out_edges) add_to_stack(start_id);
     }
@@ -605,7 +666,7 @@ int64_t ThunkExecutor::RunTransitiveReductionAndUpdatePriorities() {
       int64_t node_id = stack.back();
       stack.pop_back();
 
-      NodeDef& node = nodes_defs_[node_id];
+      NodeDefBuilder& node = builders[node_id];
       num_erased_edges += EraseEdge(source_node, node);
 
       for (int64_t out_id : node.out_edges) add_to_stack(out_id);

@@ -209,6 +209,7 @@ cc_library(
     deps = [
         ":resource_use",
         ":thunk",
+        "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
@@ -218,6 +219,7 @@ cc_library(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
