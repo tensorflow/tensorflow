@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/spmd/custom_call_handler.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
@@ -5382,9 +5383,67 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   return changed;
 }
 
+std::optional<HloSharding> ReplicateNonTupleShardingOnSizeOneDimension(
+    const Shape& shape, const HloSharding& sharding) {
+  CHECK(!sharding.IsTuple());
+  if (!sharding.IsTiled()) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> dims_to_replicate;
+  for (int64_t i = 0; i < shape.rank(); ++i) {
+    if (shape.dimensions(i) == 1 && sharding.tile_assignment().dim(i) != 1) {
+      dims_to_replicate.push_back(i);
+    }
+  }
+  if (dims_to_replicate.empty()) {
+    return std::nullopt;
+  }
+  return hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+      sharding, dims_to_replicate);
+}
+
+void ReplicateShardingOnSizeOneDimension(HloInstruction* hlo) {
+  CHECK(hlo->has_sharding());
+  if (hlo->shape().IsToken()) {
+    return;
+  }
+
+  if (!hlo->sharding().IsTuple()) {
+    if (std::optional<HloSharding> new_sharding =
+            ReplicateNonTupleShardingOnSizeOneDimension(hlo->shape(),
+                                                        hlo->sharding())) {
+      hlo->set_sharding(*new_sharding);
+    }
+    return;
+  }
+
+  std::vector<HloSharding> new_sharding_elements;
+  bool changed = false;
+  ShapeTree<HloSharding> shape_tree =
+      hlo->sharding().GetAsShapeTree(hlo->shape());
+  for (const auto& index_to_sharding : shape_tree.leaves()) {
+    const Shape& subshape =
+        ShapeUtil::GetSubshape(hlo->shape(), index_to_sharding.first);
+    const HloSharding& old_sharding = index_to_sharding.second;
+    if (std::optional<HloSharding> new_sharding =
+            ReplicateNonTupleShardingOnSizeOneDimension(subshape,
+                                                        old_sharding)) {
+      new_sharding_elements.push_back(*new_sharding);
+      changed = true;
+    } else {
+      new_sharding_elements.push_back(old_sharding);
+    }
+  }
+  if (changed) {
+    hlo->set_sharding(HloSharding::Tuple(hlo->shape(), new_sharding_elements));
+  }
+}
+
 absl::Status SpmdPartitioner::PreprocessSharding(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
@@ -5414,6 +5473,8 @@ absl::Status SpmdPartitioner::PreprocessSharding(
           hlo->set_sharding(
               HloSharding::Single(hlo->shape(), HloSharding::Replicate()));
         }
+      } else if (!ShouldKeepSharding(hlo) && hlo != entry_root) {
+        ReplicateShardingOnSizeOneDimension(hlo);
       }
     }
   }

@@ -106,6 +106,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dispatch_op_schema",
+    srcs = ["dispatch_op_schema.cc"],
+    hdrs = ["dispatch_op_schema.h"],
+    copts = ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
 cc_test(
     name = "filesystem_test",
     srcs = ["filesystem_test.cc"],
@@ -138,3 +149,12 @@ cc_test(
 #     ],
 # )
 # copybara:uncomment_end
+
+cc_test(
+    name = "dispatch_op_schema_test",
+    srcs = ["dispatch_op_schema_test.cc"],
+    deps = [
+        ":dispatch_op_schema",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

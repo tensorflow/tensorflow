@@ -162,7 +162,7 @@ class ExternalDefinitionGenerator : public llvm::orc::DefinitionGenerator {
                             const llvm::orc::SymbolLookupSet& names) final {
     llvm::orc::SymbolMap new_defs;
     for (auto& [name, flags] : names) {
-      if (*name == "__external_fn") {
+      if ((*name).contains("external_fn")) {
         new_defs[name] = llvm::orc::ExecutorSymbolDef{
             llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(&AddInplace)),
             llvm::JITSymbolFlags::None};
