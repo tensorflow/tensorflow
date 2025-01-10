@@ -351,6 +351,8 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
   args.kv_get_user_arg = &kv_callback_data->kv_get_c_func;
   args.kv_put_callback = kv_callback_data->c_kv_put;
   args.kv_put_user_arg = &kv_callback_data->kv_put_c_func;
+  args.kv_try_get_user_arg = &kv_callback_data->kv_try_get_c_func;
+  args.kv_try_get_callback = kv_callback_data->c_kv_try_get;
   args.client = nullptr;
   return args;
 }
