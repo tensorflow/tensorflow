@@ -894,9 +894,9 @@ class UnaryOpsTest(xla_test.XLATestCase):
     fp8_types = {
         dtypes.float8_e5m2,
         dtypes.float8_e4m3fn,
-        # dtypes.float8_e4m3fnuz,
-        # dtypes.float8_e4m3b11fnuz,
-        # dtypes.float8_e5m2fnuz,
+        dtypes.float8_e4m3fnuz,
+        dtypes.float8_e4m3b11fnuz,
+        dtypes.float8_e5m2fnuz,
     }
     other_types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
