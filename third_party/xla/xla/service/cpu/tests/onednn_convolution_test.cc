@@ -141,13 +141,18 @@ class ConvolutionTest : public HloTestBase,
 
   void RunCompareAndMatchOptimizedHlo(
       const absl::string_view outline,
-      const std::vector<absl::string_view> fused_ops) {
+      const std::vector<absl::string_view> fused_ops,
+      const absl::string_view custom_match = "") {
     const std::string convolution_module_str = absl::StrReplaceAll(
         outline,
         {{"$dtype", dtypeString_}, {"$pdtype", PromotedDtypeToString()}});
     EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{atol_, rtol_}));
-    MatchOptimizedHlo(convolution_module_str,
-                      ConvStringWithOptimizations(fused_ops));
+    if (custom_match.empty()) {
+      MatchOptimizedHlo(convolution_module_str,
+                        ConvStringWithOptimizations(fused_ops));
+    } else {
+      MatchOptimizedHlo(convolution_module_str, custom_match);
+    }
   }
 };
 
@@ -591,6 +596,26 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndGeluExactPattern2Test) {
 })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "GELU_ERF"});
+}
+
+TEST_P(ConvolutionTest, TransposeSimplifiedToBitcast) {
+  const char* outline = R"(
+  HloModule convolution.test.with.transpose
+
+  ENTRY convolution.test.with.transpose {
+    param_inp = $dtype[1,3,224,224] parameter(0)
+    transpose = $dtype[1,224,224,3] transpose(param_inp), dimensions={0,2,3,1}
+    param_wei = $dtype[64,3,7,7] parameter(1)
+    transpose.1 = $dtype[7,7,3,64] transpose(param_wei), dimensions={2,3,1,0}
+    ROOT convolution = $dtype[1,112,112,64] convolution(transpose, transpose.1),
+          window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+  })";
+
+  constexpr static const char* kBitcastCopyStr = R"(
+    ; CHECK: bitcast
+    ; CHECK: copy
+    ; CHECK: custom_call_target="__onednn$convolution")";
+  RunCompareAndMatchOptimizedHlo(outline, {}, kBitcastCopyStr);
 }
 
 INSTANTIATE_TEST_SUITE_P(
