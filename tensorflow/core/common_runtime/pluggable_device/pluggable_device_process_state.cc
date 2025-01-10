@@ -113,9 +113,6 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
     int bus_id = BusIdForPluggableDevice(tf_device_id);
     DCHECK_GE(bus_id, 0);
-    while (bus_id >= pluggable_device_visitors_.size()) {
-      pluggable_device_visitors_.push_back({});
-    }
 
     bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
                               options.experimental().use_unified_memory();
@@ -123,9 +120,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
         platform->ExecutorForDevice(platform_device_id.value()).value(),
         platform_device_id,
         use_unified_memory ? stream_executor::MemoryType::kUnified
-                           : stream_executor::MemoryType::kDevice,
-        pluggable_device_visitors_[bus_id]);
-
+                           : stream_executor::MemoryType::kDevice);
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
     if (cplatform == nullptr) {
@@ -187,15 +182,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
 
   while (static_cast<int>(pluggable_device_host_allocators_.size()) <=
          numa_node) {
-    while (pluggable_device_host_alloc_visitors_.size() <= numa_node) {
-      pluggable_device_host_alloc_visitors_.push_back({});
-    }
-    while (pluggable_device_host_free_visitors_.size() <= numa_node) {
-      pluggable_device_host_free_visitors_.push_back({});
-    }
     SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, pluggable_device_host_alloc_visitors_[numa_node],
-        pluggable_device_host_free_visitors_[numa_node]);
+        se, numa_node, /*alloc_visitors=*/{}, /*free_visitors=*/{});
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
     absl::Status status = ReadInt64FromEnvVar(
         "TF_GPU_HOST_MEM_LIMIT_IN_MB", 1LL << 17 /*128GB max by default*/,
