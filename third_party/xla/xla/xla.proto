@@ -1052,7 +1052,7 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Timeouts for RendezvousSingle stuck warning and termination.
+  // Timeouts for Rendezvous stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
 

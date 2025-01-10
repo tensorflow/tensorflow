@@ -626,7 +626,7 @@ absl::Status RendezvousAfterInitialization(
       run_options->device_ordinal(),
       run_options->run_options().run_id().ToInt());
 
-  RendezvousSingle(
+  Rendezvous(
       rendezvous_name, rendezvous_key, num_local_participants,
       absl::Seconds(
           debug_options

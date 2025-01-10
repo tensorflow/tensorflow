@@ -344,7 +344,7 @@ absl::Status InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
   std::string name = absl::StrCat("all reduce ", key.ToString());
   AllReduceParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  return RendezvousSingle<absl::Status>(
+  return Rendezvous<absl::Status>(
       name, key, partiticipant, key.num_local_participants,
       std::bind(AllReduceOp, dtype, count, reduction_kind,
                 std::placeholders::_1));
@@ -362,7 +362,7 @@ absl::Status InProcessCommunicator::CollectivePermute(
                                              recv_buffer};
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return RendezvousSingle<absl::Status>(
+  return Rendezvous<absl::Status>(
       name, key, partiticipant, key.num_local_participants,
       std::bind(CollectivePermuteOp, num_bytes, std::placeholders::_1));
 }
@@ -380,7 +380,7 @@ absl::Status InProcessCommunicator::AllToAll(
                                     {recv_buffers.begin(), recv_buffers.end()}};
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return RendezvousSingle<absl::Status>(
+  return Rendezvous<absl::Status>(
       name, key, partiticipant, key.num_local_participants,
       std::bind(AllToAllOp, num_bytes, std::placeholders::_1));
 }
@@ -396,7 +396,7 @@ absl::Status InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   AllGatherParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return RendezvousSingle<absl::Status>(
+  return Rendezvous<absl::Status>(
       name, key, partiticipant, key.num_local_participants,
       std::bind(AllGatherOp, num_bytes, std::placeholders::_1));
 }
@@ -411,7 +411,7 @@ absl::Status InProcessCommunicator::ReduceScatter(
   std::string name = absl::StrCat("reduce scatter ", key.ToString());
   ReduceScatterParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  return RendezvousSingle<absl::Status>(
+  return Rendezvous<absl::Status>(
       name, key, partiticipant, key.num_local_participants,
       std::bind(ReduceScatterOp, dtype, count, reduction_kind,
                 std::placeholders::_1));

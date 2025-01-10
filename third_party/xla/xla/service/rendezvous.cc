@@ -137,13 +137,12 @@ inline constexpr int32_t kPending = 0;
 inline constexpr int32_t kCompleted = std::numeric_limits<int32_t>::max();
 }  // namespace
 
-RendezvousSingleFlag::RendezvousSingleFlag() : state_(kPending) {}
+RendezvousFlag::RendezvousFlag() : state_(kPending) {}
 
-RendezvousSingleFlag::InFlightRendezvous::InFlightRendezvous(
-    RendezvousSingleFlag* flag)
+RendezvousFlag::InFlightRendezvous::InFlightRendezvous(RendezvousFlag* flag)
     : flag_(flag) {}
 
-RendezvousSingleFlag::InFlightRendezvous::~InFlightRendezvous() {
+RendezvousFlag::InFlightRendezvous::~InFlightRendezvous() {
   if (flag_ == nullptr) return;
 
   // Reload state and use CAS to decide if we are the one who
@@ -162,11 +161,11 @@ RendezvousSingleFlag::InFlightRendezvous::~InFlightRendezvous() {
   }
 }
 
-RendezvousSingleFlag::InFlightRendezvous::operator bool() const {
+RendezvousFlag::InFlightRendezvous::operator bool() const {
   return flag_ != nullptr;
 }
 
-RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
+RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   // If `state_` is `kCompleted` it means that we have at least one completed
   // rendezvous for this flag and can skip it.
   if (state_.load() == kCompleted) return InFlightRendezvous(nullptr);
@@ -184,8 +183,6 @@ RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
   return InFlightRendezvous(this);
 }
 
-bool RendezvousSingleFlag::IsCompleted() const {
-  return state_.load() == kCompleted;
-}
+bool RendezvousFlag::IsCompleted() const { return state_.load() == kCompleted; }
 
 }  // namespace xla
