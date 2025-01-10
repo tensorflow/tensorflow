@@ -540,6 +540,7 @@ class SortIterator {
   SortIterator& operator=(SortIterator&& other) = default;
 
   reference operator*() const { return *ptr_; }
+  reference operator[](difference_type diff) const { return *(*this + diff); }
 
   difference_type operator-(const SortIterator& rhs) const {
     return (ptr_ - rhs.ptr_) / stride_;
