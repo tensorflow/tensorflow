@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_COLLECTIVES_IN_PROCESS_COMMUNICATOR_H_
 
 #include <cstddef>
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -38,15 +37,7 @@ namespace xla::cpu {
 // and works only within a single process.
 class InProcessCommunicator : public Communicator {
  public:
-  // A state shared by all InProcessCommunicators in the clique.
-  struct State;
-
-  // Creates a new State for constructing InProcessCommunicators.
-  static std::shared_ptr<State> CreateState();
-
-  InProcessCommunicator(std::shared_ptr<State> state, size_t rank,
-                        size_t num_ranks);
-  ~InProcessCommunicator() override;
+  InProcessCommunicator(size_t rank, size_t num_ranks);
 
   absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
@@ -99,7 +90,6 @@ class InProcessCommunicator : public Communicator {
   }
 
  private:
-  std::shared_ptr<State> state_;
   size_t rank_;
   size_t num_ranks_;
 };

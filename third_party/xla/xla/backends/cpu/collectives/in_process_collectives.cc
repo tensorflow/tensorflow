@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/in_process_communicator.h"
 #include "xla/core/collectives/clique_id.h"
@@ -36,19 +35,13 @@ absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 InProcessCollectives::CreateCommunicators(
     const CliqueKey& clique_key, const std::optional<CliqueId>& clique_id,
     absl::Span<const DeviceRank> ranks, const Config& config) {
-  absl::MutexLock lock(&mu_);
-
-  std::shared_ptr<InProcessCommunicator::State> state = state_.lock();
-  if (state == nullptr) {
-    state = InProcessCommunicator::CreateState();
-    state_ = state;
-  }
-
   std::vector<std::unique_ptr<Communicator>> communicators;
+  communicators.reserve(ranks.size());
+
   for (auto& device_rank : ranks) {
     size_t rank = device_rank.rank.value();
     communicators.push_back(std::make_unique<InProcessCommunicator>(
-        state, rank, clique_key.num_devices()));
+        rank, clique_key.num_devices()));
   }
 
   return communicators;

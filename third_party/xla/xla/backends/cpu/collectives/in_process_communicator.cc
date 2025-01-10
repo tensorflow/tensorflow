@@ -21,26 +21,20 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
-#include "xla/refcounting_hash_map.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
@@ -54,10 +48,6 @@ namespace {
 template <typename Participant>
 static bool ByRank(const Participant* a, const Participant* b) {
   return a->rank < b->rank;
-}
-
-void FormatGlobalId(std::string* out, const GlobalDeviceId& device) {
-  absl::StrAppend(out, device.value());
 }
 
 template <typename T>
@@ -181,17 +171,18 @@ static absl::Status AllReduceOp(
         primitive_util::LowercasePrimitiveTypeName(primitive_type));
   }
 
-  // Reduce all inputs into a single output at rank 0.
+  // Collect reduction inputs from all participants.
   std::vector<const void*> inputs(participants.size());
   for (auto* participant : participants) {
     inputs[participant->rank] = participant->src.opaque();
   }
+
+  // Reduce all inputs into the destination buffer at rank 0.
   void* output = participants[0]->dest.opaque();
 
   TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
-      [&](const auto constant_type) {
-        return ReduceScatter<constant_type>(reduction_kind, inputs, output,
-                                            count);
+      [&](const auto type_tag) {
+        return ReduceScatter<type_tag>(reduction_kind, inputs, output, count);
       },
       primitive_type));
 
@@ -199,6 +190,53 @@ static absl::Status AllReduceOp(
   for (size_t i = 1; i < participants.size(); ++i) {
     std::memcpy(participants[i]->dest.opaque(), participants[0]->dest.opaque(),
                 count * primitive_util::ByteWidth(primitive_type));
+  }
+
+  return absl::OkStatus();
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceScatter
+//===----------------------------------------------------------------------===//
+
+struct ReduceScatterParticipant {
+  size_t rank;
+  se::DeviceMemoryBase src;
+  se::DeviceMemoryBase dest;
+};
+
+static absl::Status ReduceScatterOp(
+    PrimitiveType primitive_type, size_t count, ReductionKind reduction_kind,
+    absl::Span<const ReduceScatterParticipant*> participants) {
+  absl::c_sort(participants, ByRank<ReduceScatterParticipant>);
+
+  if (!primitive_util::IsArrayType(primitive_type)) {
+    return Unimplemented(
+        "Unexpected datatype: %s",
+        primitive_util::LowercasePrimitiveTypeName(primitive_type));
+  }
+
+  size_t num_participants = participants.size();
+  size_t num_bytes = count * primitive_util::ByteWidth(primitive_type);
+
+  for (size_t i = 0; i < num_participants; ++i) {
+    size_t offset = i * num_bytes;
+
+    // Collect reduction inputs from all participants.
+    std::vector<const void*> inputs(num_participants);
+    for (size_t j = 0; j < num_participants; ++j) {
+      std::byte* src = static_cast<std::byte*>(participants[j]->src.opaque());
+      inputs[j] = src + offset;
+    }
+
+    // Reduce all inputs into the destination buffer.
+    void* output = participants[i]->dest.opaque();
+
+    TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+        [&](const auto type_tag) {
+          return ReduceScatter<type_tag>(reduction_kind, inputs, output, count);
+        },
+        primitive_type));
   }
 
   return absl::OkStatus();
@@ -288,82 +326,12 @@ static absl::Status CollectivePermuteOp(
   return absl::OkStatus();
 }
 
-//===----------------------------------------------------------------------===//
-
-struct ReduceScatterParticipantData : ParticipantData {
-  ReduceScatterParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
-      : ParticipantData(rendezvous_key_p, rank) {}
-
-  ReductionKind reduction_kind;
-  PrimitiveType element_type;
-  const void* source_buffer;
-  void* destination_buffer;
-  size_t chunk_elems;
-
-  std::string ToString() const override {
-    return absl::StrFormat(
-        "ReduceScatterParticipantData{rank=%d, "
-        "devices=[%s], source_buffer=%p, "
-        "destination_buffer=%p, chunk_elems=%d}",
-        local_rank,
-        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId),
-        source_buffer, destination_buffer, chunk_elems);
-  }
-};
-
-class CpuReduceScatterRendezvous
-    : public Rendezvous<ReduceScatterParticipantData, std::nullptr_t> {
- public:
-  explicit CpuReduceScatterRendezvous(const RendezvousKey& k)
-      : Rendezvous<ReduceScatterParticipantData, std::nullptr_t>(k) {}
-
- protected:
-  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
-      const ReduceScatterParticipantData& me) override {
-    auto bytes_per_elem = primitive_util::ByteWidth(me.element_type);
-    int64_t chunk_offset = me.local_rank * me.chunk_elems * bytes_per_elem;
-
-    std::vector<const void*> inputs;
-    inputs.reserve(participants_.size());
-    for (const auto& p : participants_) {
-      inputs.push_back(reinterpret_cast<const char*>(p->source_buffer) +
-                       chunk_offset);
-    }
-
-    if (primitive_util::IsArrayType(me.element_type)) {
-      TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
-          [&](const auto constant_type) {
-            return ReduceScatter<constant_type>(me.reduction_kind, inputs,
-                                                me.destination_buffer,
-                                                me.chunk_elems);
-          },
-          me.element_type));
-    } else {
-      return absl::UnimplementedError(absl::StrCat(
-          "Unexpected datatype: ",
-          primitive_util::LowercasePrimitiveTypeName(me.element_type)));
-    }
-    return nullptr;
-  }
-};
-
 }  // namespace
 
-struct InProcessCommunicator::State {
-  RefcountingHashMap<RendezvousKey, CpuReduceScatterRendezvous>
-      reduce_scatter_rendezvous_map;
-};
+//===----------------------------------------------------------------------===//
 
-InProcessCommunicator::InProcessCommunicator(std::shared_ptr<State> state,
-                                             size_t rank, size_t num_ranks)
-    : state_(std::move(state)), rank_(rank), num_ranks_(num_ranks) {}
-
-InProcessCommunicator::~InProcessCommunicator() = default;
-
-std::shared_ptr<InProcessCommunicator::State>
-InProcessCommunicator::CreateState() {
-  return std::make_shared<State>();
-}
+InProcessCommunicator::InProcessCommunicator(size_t rank, size_t num_ranks)
+    : rank_(rank), num_ranks_(num_ranks) {}
 
 absl::Status InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
                                               se::DeviceMemoryBase recv_buffer,
@@ -440,22 +408,13 @@ absl::Status InProcessCommunicator::ReduceScatter(
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
-  ReduceScatterParticipantData participant(key, rank_);
-  participant.element_type = dtype;
-  participant.reduction_kind = reduction_kind;
-  participant.chunk_elems = count;
-  participant.source_buffer = send_buffer.opaque();
-  participant.destination_buffer = recv_buffer.opaque();
-  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
-    return std::make_unique<CpuReduceScatterRendezvous>(k);
-  };
-  return CpuReduceScatterRendezvous::SubmitParticipant(
-             [&] {
-               return state_->reduce_scatter_rendezvous_map.GetOrCreateIfAbsent(
-                   key, make_cpu_rendezvous);
-             },
-             participant)
-      .status();
+  std::string name = absl::StrCat("reduce scatter ", key.ToString());
+  ReduceScatterParticipant partiticipant{rank_, send_buffer, recv_buffer};
+
+  return RendezvousSingle<absl::Status>(
+      name, key, partiticipant, key.num_local_participants,
+      std::bind(ReduceScatterOp, dtype, count, reduction_kind,
+                std::placeholders::_1));
 }
 
 }  // namespace xla::cpu

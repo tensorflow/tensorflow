@@ -41,12 +41,6 @@ class InProcessCollectives : public CpuCollectives {
                       const std::optional<CliqueId>& clique_id,
                       absl::Span<const DeviceRank> ranks,
                       const Config& config) final;
-
- private:
-  absl::Mutex mu_;
-
-  // State shared by all constructed communicators.
-  std::weak_ptr<InProcessCommunicator::State> state_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla::cpu
