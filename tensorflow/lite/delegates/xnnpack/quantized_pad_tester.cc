@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantized_pad_tester.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>

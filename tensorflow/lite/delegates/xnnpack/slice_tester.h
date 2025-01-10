@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_SLICE_TESTER_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <random>
 #include <vector>
