@@ -1214,29 +1214,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "refcounting_hash_map",
-    hdrs = ["refcounting_hash_map.h"],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "refcounting_hash_map_test",
-    srcs = ["refcounting_hash_map_test.cc"],
-    deps = [
-        ":refcounting_hash_map",
-        ":test",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
 )

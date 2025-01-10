@@ -100,7 +100,6 @@ cc_library(
     deps = [
         ":cpu_collectives",
         ":in_process_communicator",
-        "//xla:refcounting_hash_map",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -133,7 +132,6 @@ cc_library(
     hdrs = ["in_process_communicator.h"],
     deps = [
         ":cpu_collectives",
-        "//xla:refcounting_hash_map",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
