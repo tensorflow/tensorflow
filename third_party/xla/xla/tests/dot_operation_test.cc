@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/array3d.h"
 #include "xla/client/local_client.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/parser/hlo_parser.h"
