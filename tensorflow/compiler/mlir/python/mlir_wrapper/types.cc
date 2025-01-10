@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
