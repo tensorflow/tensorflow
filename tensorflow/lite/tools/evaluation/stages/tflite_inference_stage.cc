@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
