@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
