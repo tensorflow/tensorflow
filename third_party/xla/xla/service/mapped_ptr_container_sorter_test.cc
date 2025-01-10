@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "xla/test.h"
