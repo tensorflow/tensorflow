@@ -43,8 +43,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/casts.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {
