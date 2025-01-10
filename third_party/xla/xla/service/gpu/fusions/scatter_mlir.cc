@@ -99,7 +99,7 @@ using mlir_converter::ProvideParameter;
 using primitive_util::IsUnsignedIntegralType;
 
 constexpr int64_t kNumWarpsPerBlock = 4;
-constexpr int64_t kMaxVectorizedBits = 64;
+constexpr int64_t kMaxVectorizedBits = 128;
 constexpr int64_t kScatterOperandIndex = 0;
 constexpr int64_t kScatterIndicesIndex = 1;
 constexpr int64_t kScatterUpdateIndex = 2;
@@ -939,8 +939,7 @@ std::unique_ptr<MlirScatterFusion> CreateMlirScatterFusion(
         num_slices, GetNumPossibleValidIndices(
                         description.slice_shape, description.output_shape,
                         description.index_vector_length));
-    int64_t num_warps_per_slice = CeilOfRatio(
-        num_elements_per_slice, num_active_threads_per_warp * vector_size);
+    int64_t num_warps_per_slice = 1;
     if (num_indices_per_warp > 2 &&
         num_active_threads_per_warp > warp_size / 2) {
       return std::make_unique<ScatterWithDistributedIndices>(
