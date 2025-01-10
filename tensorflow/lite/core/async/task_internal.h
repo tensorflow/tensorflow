@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_ASYNC_TASK_INTERNAL_H_
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
