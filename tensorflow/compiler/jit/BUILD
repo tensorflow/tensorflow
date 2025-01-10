@@ -164,7 +164,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/stream_executor:platform_manager",

@@ -93,9 +93,6 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.variant", "_atypes.Variant"},
     {"_dtypes.float8_e4m3fn", "_atypes.Float8e4m3fn"},
     {"_dtypes.float8_e5m2", "_atypes.Float8e5m2"},
-    {"_dtypes.float8_e4m3fnuz", "_atypes.Float8e4m3fnuz"},
-    {"_dtypes.float8_e4m3b11fnuz", "_atypes.Float8e4m3b11fnuz"},
-    {"_dtypes.float8_e5m2fnuz", "_atypes.Float8e5m2fnuz"},
     {"_dtypes.int4", "_atypes.Int4"},
     {"_dtypes.uint4", "_atypes.UInt4"},
 };
