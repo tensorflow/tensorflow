@@ -363,7 +363,8 @@ ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
     bool is_reducer = instr_->opcode() == HloOpcode::kReduce ||
                       instr_->opcode() == HloOpcode::kReduceWindow;
     TF_RETURN_IF_ERROR(ir_emitter->EmitNestedComputation(
-        *nested_computation, llvm_ir::IrName(instr_), is_reducer));
+        *nested_computation, llvm_ir::IrName(nested_computation->name()),
+        is_reducer));
   }
 
   return [ir_emitter = std::move(ir_emitter), &builder](
