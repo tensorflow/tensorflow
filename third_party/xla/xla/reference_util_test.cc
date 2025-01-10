@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/array4d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/padding.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
 

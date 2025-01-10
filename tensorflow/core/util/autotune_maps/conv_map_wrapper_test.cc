@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"

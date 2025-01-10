@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/test.h"
 
 namespace stream_executor {
 

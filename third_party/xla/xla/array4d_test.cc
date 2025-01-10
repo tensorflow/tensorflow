@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/array2d.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

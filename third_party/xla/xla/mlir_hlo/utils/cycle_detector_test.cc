@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "utils/cycle_detector.h"
 
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 class GraphCyclesTest : public ::testing::Test {
  public:

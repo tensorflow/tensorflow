@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_profile_printer.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 

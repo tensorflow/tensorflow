@@ -49,7 +49,7 @@ xla_cc_test(
         ":in_memory_key_value_store",
         ":protocol_proto_cc",
         ":topology_util",
-        "//xla:test_helpers",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",

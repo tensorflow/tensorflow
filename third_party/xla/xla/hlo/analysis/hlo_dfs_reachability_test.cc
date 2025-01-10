@@ -23,12 +23,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test_benchmark.h"
 

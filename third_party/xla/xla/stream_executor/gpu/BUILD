@@ -94,7 +94,7 @@ cc_library(
     hdrs = ["mock_context.h"],
     deps = [
         ":context",
-        "//xla:test",
+        "//xla/hlo/testlib:test",
     ],
 )
 

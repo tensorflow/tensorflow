@@ -24,7 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "xla/test_helpers.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

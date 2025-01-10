@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module_group.h"
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_group_metadata.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 

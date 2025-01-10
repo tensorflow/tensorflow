@@ -465,8 +465,8 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:test",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/testlib:test",
         "@local_xla//xla/service:hlo_profile_printer",
     ],
 )

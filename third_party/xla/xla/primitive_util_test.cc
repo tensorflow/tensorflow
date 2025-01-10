@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

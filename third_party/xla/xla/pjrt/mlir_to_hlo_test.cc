@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/api/PortableApi.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

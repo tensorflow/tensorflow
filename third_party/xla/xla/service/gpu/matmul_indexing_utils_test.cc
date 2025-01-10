@@ -18,8 +18,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
-#include "xla/test.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {

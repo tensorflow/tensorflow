@@ -23,14 +23,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/test.h"
 
 namespace xla {
 namespace gpu {

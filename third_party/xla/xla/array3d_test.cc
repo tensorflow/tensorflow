@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/types.h"
 
 namespace xla {

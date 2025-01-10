@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "xla/array3d.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

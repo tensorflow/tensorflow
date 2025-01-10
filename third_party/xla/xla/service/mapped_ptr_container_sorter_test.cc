@@ -25,7 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {

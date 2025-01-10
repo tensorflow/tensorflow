@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

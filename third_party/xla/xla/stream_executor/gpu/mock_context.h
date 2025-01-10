@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_MOCK_CONTEXT_H_
 #define XLA_STREAM_EXECUTOR_GPU_MOCK_CONTEXT_H_
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/test.h"
 
 namespace stream_executor::gpu {
 

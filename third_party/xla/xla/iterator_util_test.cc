@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

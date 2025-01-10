@@ -23,7 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"

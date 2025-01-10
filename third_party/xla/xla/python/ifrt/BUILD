@@ -410,8 +410,8 @@ cc_library(
     deps = [
         ":attribute_map",
         ":ifrt",
-        "//xla:test",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",

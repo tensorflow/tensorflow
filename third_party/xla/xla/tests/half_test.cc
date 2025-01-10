@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"

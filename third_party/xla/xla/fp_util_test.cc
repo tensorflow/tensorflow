@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/numeric/bits.h"
 #include "xla/bit_cast.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/util.h"
 #include "tsl/platform/ml_dtypes.h"
 

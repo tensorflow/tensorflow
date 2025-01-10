@@ -21,9 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"

@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"

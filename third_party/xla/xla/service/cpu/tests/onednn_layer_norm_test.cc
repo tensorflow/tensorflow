@@ -15,8 +15,8 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 

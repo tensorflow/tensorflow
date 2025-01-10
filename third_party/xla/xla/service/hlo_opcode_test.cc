@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_opcode.h"
 
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/types.h"
 
 namespace xla {

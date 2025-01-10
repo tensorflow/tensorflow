@@ -19,7 +19,7 @@ limitations under the License.
 #include <limits>
 
 #include <gtest/gtest.h>
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

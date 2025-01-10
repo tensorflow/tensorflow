@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/log/log_streamer.h"
 #include "absl/random/random.h"
 #include "absl/types/span.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

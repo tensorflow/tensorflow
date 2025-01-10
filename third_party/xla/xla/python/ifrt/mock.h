@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {

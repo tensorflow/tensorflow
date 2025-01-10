@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 

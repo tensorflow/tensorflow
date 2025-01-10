@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
