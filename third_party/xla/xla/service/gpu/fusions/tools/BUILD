@@ -91,3 +91,18 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+xla_cc_binary(
+    name = "fusion_wrapper",
+    testonly = 1,
+    srcs = ["fusion_wrapper.cc"],
+    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    deps = [
+        ":test_lib",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
