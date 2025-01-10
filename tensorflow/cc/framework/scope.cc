@@ -274,7 +274,7 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   std::vector<string> node_constraints;
   if (TryGetNodeAttr(attrs, kColocationAttrName, &node_constraints)) {
     for (const string& entry : node_constraints) {
-      StringPiece s(entry);
+      absl::string_view s(entry);
       if (absl::ConsumePrefix(&s, kColocationGroupPrefix)) {
         current_constraints.emplace(s);
       }
