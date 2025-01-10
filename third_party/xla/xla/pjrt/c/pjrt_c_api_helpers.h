@@ -358,7 +358,8 @@ int64_t GetTracemeContextId(InputType* args) {
 }
 
 std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
-    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api);
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api,
+    absl::StatusOr<xla::PjRtMemorySpaceDescription*>* default_memory);
 
 }  // namespace pjrt
 

@@ -1142,7 +1142,8 @@ xla::PjRtClient::ShapeSpec ConvertFromPjrtShapeSpec(
 }
 
 std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
-    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api) {
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api,
+    absl::StatusOr<xla::PjRtMemorySpaceDescription*>* default_memory) {
   const PJRT_MemoryDescriptions_Extension* extension =
       pjrt::FindExtension<PJRT_MemoryDescriptions_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
@@ -1168,6 +1169,12 @@ std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
     xla::PjRtMemorySpaceDescription description(
         std::string(kind_args.kind, kind_args.kind_size), kind_args.kind_id);
     memory_space_descriptions.push_back(description);
+  }
+  *default_memory = {};
+  for (int i = 0; i < mem_desc_args.num_memory_descriptions; i++) {
+    if (mem_desc_args.default_memory_index == i && default_memory) {
+      *default_memory = &memory_space_descriptions[i];
+    }
   }
   return memory_space_descriptions;
 }

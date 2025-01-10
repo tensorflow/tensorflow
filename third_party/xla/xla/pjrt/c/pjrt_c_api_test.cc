@@ -563,10 +563,14 @@ TEST_F(PjrtCApiTest, DeviceDescriptionAndMemoryDescriptionss) {
   PJRT_Error* error = api_->PJRT_Device_GetDescription(&get_description);
   EXPECT_EQ(error, nullptr);
 
+  absl::StatusOr<xla::PjRtMemorySpaceDescription*> default_memory;
   std::vector<xla::PjRtMemorySpaceDescription> memory_descriptions =
-      GetMemorySpaceDescriptions(get_description.device_description, api_);
+      GetMemorySpaceDescriptions(get_description.device_description, api_,
+                                 &default_memory);
 
+  EXPECT_TRUE(default_memory.ok());
   for (int i = 0; i < memory_descriptions.size(); i++) {
+    EXPECT_NE(memory_descriptions[i].kind_id(), 0);
     EXPECT_NE(memory_descriptions[i].kind().size(), 0);
   }
 }

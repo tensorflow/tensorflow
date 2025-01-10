@@ -970,6 +970,15 @@ PJRT_Error* PJRT_DeviceDescription_MemoryDescriptions(
       reinterpret_cast<const PJRT_MemoryDescription* const*>(
           memory_spaces.data());
 
+  absl::StatusOr<const xla::PjRtMemorySpaceDescription*> default_memory =
+      args->device_description->device_description->default_memory_space();
+  args->default_memory_index = -1;
+  for (int i = 0; i < memory_spaces.size(); i++) {
+    if (default_memory.ok() && *default_memory == memory_spaces[i]) {
+      args->default_memory_index = i;
+    }
+  }
+
   args->num_memory_descriptions = memory_spaces.size();
   return nullptr;
 }

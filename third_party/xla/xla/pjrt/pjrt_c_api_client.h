@@ -83,6 +83,9 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   absl::Span<const PjRtMemorySpaceDescription* const> memory_spaces()
       const override;
 
+  absl::StatusOr<const PjRtMemorySpaceDescription*> default_memory_space()
+      const override;
+
  private:
   const PJRT_Api* c_api_;
   // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
@@ -92,9 +95,13 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   mutable std::vector<PjRtMemorySpaceDescription> memory_space_descriptions_;
   mutable std::vector<PjRtMemorySpaceDescription*>
       memory_space_description_pointers_;
+  mutable absl::StatusOr<PjRtMemorySpaceDescription*>
+      default_memory_space_description_;
 
   // Initializes device specific attributes.
   void InitAttributes();
+  // Initialize device specific memory descriptions.
+  void InitMemoryDescriptions() const;
 };
 
 class PjRtCApiMemorySpace : public PjRtMemorySpace {
