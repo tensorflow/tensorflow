@@ -142,13 +142,14 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                 optimized_function_graphs = {}) {
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
-    lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+    lib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                           proto);
     for (const auto& fg : optimized_function_graphs) {
       lib_def_->AddOptimizedFunctionGraph(fg.name(), fg);
     }
     OptimizerOptions opts;
-    cluster_flr_.reset(new TestClusterFLR(device_mgr_.get()));
-    proc_flr_.reset(new ProcessFunctionLibraryRuntime(
+    cluster_flr_ = std::make_unique<TestClusterFLR>(device_mgr_.get());
+    proc_flr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
         /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
@@ -160,7 +161,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                 new IntraProcessRendezvous(device_mgr));
           });
           return absl::OkStatus();
-        }}));
+        }});
   }
 
   void AddCompositeDevice(CompositeDevice* d) {
@@ -366,11 +367,11 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, DeviceSet) {
   EXPECT_NE(nullptr, proc_flr->device_set()->FindDeviceByName(
                          "/job:a/replica:0/task:0/device:CPU:1"));
 
-  cluster_flr_.reset(new TestClusterFLR(mgr.get()));
-  proc_flr.reset(new ProcessFunctionLibraryRuntime(
+  cluster_flr_ = std::make_unique<TestClusterFLR>(mgr.get());
+  proc_flr = std::make_unique<ProcessFunctionLibraryRuntime>(
       /*device_mgr=*/device_mgr_.get(), Env::Default(),
       /*config=*/nullptr, TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
-      /*thread_pool=*/nullptr, /*parent_=*/cluster_flr_.get()));
+      /*thread_pool=*/nullptr, /*parent_=*/cluster_flr_.get());
   EXPECT_NE(nullptr, proc_flr->device_set()->FindDeviceByName(
                          "/job:a/replica:0/task:0/device:CPU:2"));
 }

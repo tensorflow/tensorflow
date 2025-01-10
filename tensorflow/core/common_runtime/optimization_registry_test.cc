@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
+#include <memory>
+
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -64,8 +66,8 @@ class OptimizationPassTest : public ::testing::Test {
   OptimizationPassTest() {
     FunctionDefLibrary func_def_lib;
     *func_def_lib.add_function() = test::function::XTimesTwo();
-    flib_def_.reset(
-        new FunctionLibraryDefinition(OpRegistry::Global(), func_def_lib));
+    flib_def_ = std::make_unique<FunctionLibraryDefinition>(
+        OpRegistry::Global(), func_def_lib);
   }
 
   void RunPass() {

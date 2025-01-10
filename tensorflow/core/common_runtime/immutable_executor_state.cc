@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -360,7 +362,8 @@ void ImmutableExecutorState::InitializePending(const Graph* graph,
   }
 
   if (!requires_control_flow_) {
-    atomic_pending_counts_.reset(new std::atomic<int32>[gview_.num_nodes()]);
+    atomic_pending_counts_ =
+        std::make_unique<std::atomic<int32>[]>(gview_.num_nodes());
     std::fill(atomic_pending_counts_.get(),
               atomic_pending_counts_.get() + gview_.num_nodes(), 0);
   }

@@ -47,7 +47,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
   friend class ScopedAllocatorMgr;
   ScopedAllocatorContainer(const ScopedAllocatorMgr* mgr, int64_t step_id)
       : mgr_(mgr), step_id_(step_id) {}
-  ~ScopedAllocatorContainer();
+  ~ScopedAllocatorContainer() override;
 
  private:
   const ScopedAllocatorMgr* mgr_;

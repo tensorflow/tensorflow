@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -88,11 +89,11 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   flib_def_ = std::make_unique<FunctionLibraryDefinition>(g->flib_def());
 
-  pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
-      new ProcessFunctionLibraryRuntime(
-          device_mgr_.get(), Env::Default(), nullptr, graph_def_version,
-          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr,
-          Rendezvous::Factory()));
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
+
+      device_mgr_.get(), Env::Default(), nullptr, graph_def_version,
+      flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr,
+      Rendezvous::Factory());
 
   flr_ = pflr_->GetFLR(device_->name());
 

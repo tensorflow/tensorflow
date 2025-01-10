@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/quantize_training.h"
 
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,7 +45,7 @@ namespace {
 class QuantizeTrainingTest : public ::testing::Test {
  protected:
   QuantizeTrainingTest() { Reset(); }
-  void Reset() { g_.reset(new Graph(OpRegistry::Global())); }
+  void Reset() { g_ = std::make_unique<Graph>(OpRegistry::Global()); }
 
   template <typename T>
   Node* Constant(gtl::ArraySlice<T> values, TensorShape shape) {
