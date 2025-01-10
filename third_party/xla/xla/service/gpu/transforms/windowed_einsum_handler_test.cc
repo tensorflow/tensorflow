@@ -387,6 +387,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(module->ToString(), kExpected));
@@ -459,6 +462,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(bf16[1,4,2048,8192]{3,2,1,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(module->ToString(), kExpected));
@@ -541,6 +547,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
@@ -625,6 +634,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(bf16[1,4,1,204
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
