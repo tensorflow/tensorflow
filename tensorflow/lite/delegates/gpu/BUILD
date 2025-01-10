@@ -72,11 +72,11 @@ config_setting(
     # copybara:uncomment_begin(google-only)
     # constraint_values = [
     # "//third_party/bazel_platforms/os:linux",
+    # "//third_party/bazel_platforms/cpu:x86_64",
     # ],
     # copybara:uncomment_end
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
-        "cpu": "k8",
     },
 )
 
