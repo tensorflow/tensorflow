@@ -335,6 +335,18 @@ func.func @attr_type_extensions_bounds(
   func.return %arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>
 }
 
+// -----
+
+// CHECK-LABEL: "attr_result_accuracy_mode"
+func.func @attr_result_accuracy_mode(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.exponential"(%arg0) {
+    result_accuracy = #mhlo.result_accuracy<atol = 0.000000e+00, rtol = 0.000000e+00, ulps = 10, mode = #mhlo<result_accuracy_mode TOLERANCE>>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // ============ OPS ============
 
 // CHECK-LABEL: "op_abs"

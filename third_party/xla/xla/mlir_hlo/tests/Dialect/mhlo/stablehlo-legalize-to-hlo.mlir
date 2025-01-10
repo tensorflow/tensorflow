@@ -222,6 +222,19 @@ func.func @attr_precision_config_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<
   func.return %0 : tensor<8x8xf32>
 }
 
+// -----
+
+// CHECK-LABEL: "attr_result_accuracy"
+func.func @attr_result_accuracy(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "stablehlo.exponential"(%arg0) {
+    // CHECK: result_accuracy = #mhlo.result_accuracy<atol = 0.000000e+00, rtol = 0.000000e+00, ulps = 10, mode = #mhlo<result_accuracy_mode TOLERANCE>>
+    result_accuracy = #stablehlo.result_accuracy<atol = 0.000000e+00, rtol = 0.000000e+00, ulps = 10, mode = #stablehlo<result_accuracy_mode TOLERANCE>>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: "attr_rng_algorithm_default"
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "stablehlo.rng_bit_generator"(%arg0) {
