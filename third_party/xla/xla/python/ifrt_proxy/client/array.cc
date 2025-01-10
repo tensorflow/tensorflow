@@ -53,8 +53,8 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {

@@ -39,9 +39,9 @@
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {

@@ -36,8 +36,8 @@
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace nb = ::nanobind;
 

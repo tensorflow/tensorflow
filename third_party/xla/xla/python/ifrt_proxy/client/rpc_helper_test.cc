@@ -31,7 +31,7 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 using ::testing::_;
 using ::testing::UnorderedElementsAre;
