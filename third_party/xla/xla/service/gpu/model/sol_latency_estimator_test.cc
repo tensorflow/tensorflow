@@ -137,10 +137,41 @@ ENTRY main {
       /*expected_latency=*/absl::Microseconds(1323),
   };
 
+  EstimatorTestCase reduce_scatter_all_ranks = {
+      /*test_name=*/"reduce_scatter_all_ranks",
+      /*module_string=*/R"(
+HloModule m
+
+add {
+  param_0 = bf16[] parameter(0)
+  param_1 = bf16[] parameter(1)
+  ROOT t = bf16[] add(param_0, param_1)
+}
+
+async_comp {
+  param_3 = bf16[8192,128256] parameter(0)
+  ROOT r = bf16[64,128256] reduce-scatter(param_3),
+    dimensions={0},
+    to_apply=add,
+    replica_groups=[1,128]<=[128],
+    channel_id=1,
+    use_global_device_ids=true
+}
+
+ENTRY main {
+  p = bf16[8192,128256] parameter(0)
+  rs-start = ((bf16[8192,128256]), bf16[64,128256]) async-start(p), calls=async_comp
+  ROOT rs-done = bf16[64,128256] async-done(rs-start)
+})",
+      /*opcode=*/HloOpcode::kAsyncStart,
+      /*expected_latency=*/absl::Microseconds(10525),
+  };
+
   return {
       all_gather_intra_host,
       all_gather_inter_host_pairwise,
       all_gather_all_ranks,
+      reduce_scatter_all_ranks,
   };
 }
 

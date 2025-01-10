@@ -709,6 +709,31 @@ ENTRY entry_computation {
   EXPECT_EQ(analysis_.output_bytes_accessed(*all_gather), 4096 * 4 + 2048 * 4);
 }
 
+TEST_F(GpuHloCostAnalysisTest, ReduceScatter) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT t = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  p = f32[4096] parameter(0)
+  ROOT _ = f32[1024] reduce-scatter(p), dimensions={0}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* reduce_scatter =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce_scatter), 4096 * 4);
+}
+
 TEST_F(GpuHloCostAnalysisTest, AsyncReduceScatter) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -743,7 +768,7 @@ ENTRY entry_computation {
       module->entry_computation()->root_instruction()->operand(0);
   // Output is (f32[1024],f32[512]).
   EXPECT_EQ(analysis_.output_bytes_accessed(*reduce_scatter),
-            1024 * 4 + 512 * 4);
+            4096 * 4 + 2048 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, CustomOpProfileIsUsed) {
