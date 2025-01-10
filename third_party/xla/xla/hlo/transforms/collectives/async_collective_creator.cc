@@ -90,28 +90,29 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   auto* cp = Cast<HloCollectivePermuteInstruction>(instruction);
   HloInstruction* start;
-  HloInstruction* operand = cp->mutable_operand(0);
-  if (cp->operand_count() == 1) {
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      cp->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
+  if (!cp->inplace()) {
     start = instruction->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
             ShapeInference::InferCollectivePermuteStartShape(
-                {&operand->shape()}, context_shapes)
+                operand_shapes, context_shapes, false)
                 .value(),
-            operand, cp->source_target_pairs(), cp->channel_id()));
+            cp->operands(), cp->source_target_pairs(), cp->channel_id()));
   } else {
+    // TODO support grouped partial collective permutes
     CHECK_EQ(cp->operand_count(), 4);
-    std::vector<const Shape*> operand_shapes;
-    absl::c_transform(
-        cp->operands(), std::back_inserter(operand_shapes),
-        [](const HloInstruction* operand) { return &(operand->shape()); });
     start = instruction->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
-            ShapeInference::InferCollectivePermuteStartShape(operand_shapes,
-                                                             context_shapes)
+            ShapeInference::InferCollectivePermuteStartShape(
+                operand_shapes, context_shapes, true)
                 .value(),
-            operand, cp->mutable_operand(1), cp->mutable_operand(2),
-            cp->mutable_operand(3), cp->source_target_pairs(),
-            cp->dynamic_slice_sizes_list(), cp->channel_id()));
+            cp->mutable_operand(0), cp->mutable_operand(1),
+            cp->mutable_operand(2), cp->mutable_operand(3),
+            cp->source_target_pairs(), cp->dynamic_slice_sizes_list(),
+            cp->channel_id()));
     if (HasDisjointReadWriteRegionsAttr(cp)) {
       SetDisjointReadWriteRegionsAttr(start);
     }
