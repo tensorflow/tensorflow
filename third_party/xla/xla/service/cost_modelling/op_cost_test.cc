@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -86,8 +86,6 @@ class OpCostTest : public HloRunnerAgnosticTestBase {
  protected:
   OpCostTest()
       : HloRunnerAgnosticTestBase(
-            std::make_unique<HloRunner>(
-                PlatformUtil::GetDefaultPlatform().value()),
             std::make_unique<HloRunner>(
                 PlatformUtil::GetDefaultPlatform().value())) {}
 

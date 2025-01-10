@@ -30,7 +30,7 @@ struct HloPjRtTestBaseOptions {
 
 class HloPjRtTestBase : public HloRunnerAgnosticTestBase {
  protected:
-  // This uses the SE interpreter backend for the reference backend and
+  // This uses the PjRt interpreter backend for the reference backend and
   // automatically finds a PjRt backend for the test backend.
   explicit HloPjRtTestBase(HloPjRtTestBaseOptions options = {});
 };

@@ -17,8 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -28,8 +26,8 @@ limitations under the License.
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -39,8 +37,6 @@ class RaggedAllToAllDecomposerTest : public HloRunnerAgnosticTestBase {
  public:
   RaggedAllToAllDecomposerTest()
       : HloRunnerAgnosticTestBase(
-            std::make_unique<HloRunner>(
-                PlatformUtil::GetDefaultPlatform().value()),
             std::make_unique<HloRunner>(
                 PlatformUtil::GetDefaultPlatform().value())) {}
 };
