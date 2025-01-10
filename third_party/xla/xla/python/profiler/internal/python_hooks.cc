@@ -14,47 +14,49 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/profiler/internal/python_hooks.h"
 
-#include <atomic>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
 
-namespace py = ::pybind11;
+namespace nb = ::nanobind;
 
 namespace {
 
 void SysSetProfileNone() {
-  py::object setprofile = py::module::import("sys").attr("setprofile");
-  setprofile(py::none());
+  nb::object setprofile = nb::module_::import_("sys").attr("setprofile");
+  setprofile(nb::none());
 }
 
-void ThreadingSetProfile(const py::object& callback) {
-  py::object setprofile = py::module::import("threading").attr("setprofile");
+void ThreadingSetProfile(const nb::object& callback) {
+  nb::object setprofile = nb::module_::import_("threading").attr("setprofile");
   setprofile(callback);
 }
 
 std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                          int co_firstlineno) {
-  std::string filename(py::reinterpret_borrow<py::str>(co_filename));
+  std::string filename(nb::cast<std::string>(nb::borrow<nb::str>(co_filename)));
   std::string function;
   if (co_name == nullptr) {
     function = "<unknown>";
   } else {
-    function = py::reinterpret_borrow<py::str>(co_name);
+    function = nb::cast<std::string>(nb::borrow<nb::str>(co_name));
   }
 
   return absl::StrCat("$", tsl::io::Basename(filename), ":", co_firstlineno,
@@ -72,7 +74,7 @@ std::string GetEventName(absl::string_view method_name, PyObject* module) {
   filename_ok = (module != nullptr && PyUnicode_Check(module));
 #endif
   if (filename_ok) {
-    filename = py::reinterpret_borrow<py::str>(module);
+    filename = nb::cast<std::string>(nb::borrow<nb::str>(module));
   } else {
     filename = "<unknown>";
   }
@@ -163,8 +165,8 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
       // and data collection happens during C's atexit(), when Py_FinalizeEx()
       // already called.
       try {
-        auto atexit = py::module::import("atexit");
-        atexit.attr("register")(py::cpp_function([]() {
+        auto atexit = nb::module_::import_("atexit");
+        atexit.attr("register")(nb::cpp_function([]() {
           PythonHooks* singleton = PythonHooks::GetSingleton();
           auto e2e_context = singleton->Stop();
           // Serialize into internal storage before the tracked PyCodeObjects
@@ -174,7 +176,7 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
             PythonHooks::set_e2e_context(e2e_context.release());
           }
         }));
-      } catch (const py::error_already_set& e) {
+      } catch (const nb::python_error& e) {
         LOG(ERROR) << "Can't install atexit handler for e2e mode." << e.what();
       }
     }
@@ -252,8 +254,8 @@ void PythonHookContext::Finalize(tensorflow::profiler::XSpace* space) {
   return 0;
 }
 
-void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
-                              const py::object& arg) {
+void PythonHooks::ProfileSlow(const nb::object& frame, const std::string& event,
+                              const nb::object& arg) {
   int what;
   absl::string_view event_name(event);
 
@@ -359,13 +361,13 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   // `PyEval_SetProfile` to register a C profiler which has significantly less
   // overhead (>2x faster).
   PythonHooks* singleton = PythonHooks::GetSingleton();
-  py::cpp_function callback = py::cpp_function(
-      [singleton](const py::object& frame, const std::string& event,
-                  const py::object& arg) {
-        singleton->ProfileSlow(frame, event, arg);
-        SysSetProfileNone();
-        PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
-      });
+  nb::object callback = nb::cpp_function([singleton](const nb::object& frame,
+                                                     const std::string& event,
+                                                     const nb::object& arg) {
+    singleton->ProfileSlow(frame, event, arg);
+    SysSetProfileNone();
+    PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
+  });
 
   ThreadingSetProfile(callback);
 
@@ -388,16 +390,16 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   PyThreadState_Swap(curr_thread);
 
   // And notify the threading library that we're done.
-  ThreadingSetProfile(py::none());
+  ThreadingSetProfile(nb::none());
 }
 
 /*static*/ void PythonHookContext::EnableTraceMe(bool enable) {
   const char* kModuleName =
       "tensorflow.python.profiler.trace";
   try {
-    auto trace_module = py::module::import(kModuleName);
-    trace_module.attr("enabled") = py::bool_(enable);
-  } catch (const py::error_already_set& e) {
+    auto trace_module = nb::module_::import_(kModuleName);
+    trace_module.attr("enabled") = nb::bool_(enable);
+  } catch (const nb::python_error& e) {
     LOG(ERROR) << "Can't import " << kModuleName;
   }
 }

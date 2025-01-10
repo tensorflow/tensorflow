@@ -21,6 +21,8 @@ cc_library(
         "//tensorflow/python/profiler/internal:__subpackages__",
     ]),
     deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:macros",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
@@ -29,12 +31,9 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@pybind11",
+        "@nanobind",
     ],
     alwayslink = True,
 )

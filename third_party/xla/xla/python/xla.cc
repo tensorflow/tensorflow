@@ -598,8 +598,6 @@ NB_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 
-  // The following uses python bindings for PyClient defined above using
-  // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).
   xla::ifrt::proxy::BuildIfrtProxySubmodule(m);
 
   nb::class_<tsl::PreemptionSyncManager> preemption_sync_manager(

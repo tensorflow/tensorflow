@@ -22,21 +22,15 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "nanobind/nanobind.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
-
-namespace py = ::pybind11;
 
 struct PythonHooksOptions {
   bool enable_trace_python_function = false;
@@ -175,8 +169,8 @@ class PythonHooks {
   friend class ::xla::profiler::PythonHookContext;
 
  private:
-  void ProfileSlow(const py::object& frame, const std::string& event,
-                   const py::object& arg);
+  void ProfileSlow(const nanobind::object& frame, const std::string& event,
+                   const nanobind::object& arg);
 
   void ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
     if (TF_PREDICT_TRUE(active_context_)) {
