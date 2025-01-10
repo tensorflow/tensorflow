@@ -2933,7 +2933,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
-  LOG(ERROR) << module->ToString();
+
   auto custom_call = FindInstruction(module.get(), "custom-call.1");
   EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 32128);
   auto sort = FindInstruction(module.get(), "sort");
@@ -15426,6 +15426,69 @@ ENTRY entry {
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1]"));
   EXPECT_THAT(root, AllOf(op::Select(_, op::CollectivePermute(param0), _),
                           op::Shape("f32[1]")));
+}
+
+TEST_P(SpmdPartitioningTest, BitcastConvertSameRank) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = s32[4] parameter(0), sharding={devices=[2]<=[2]}
+  ROOT result = f32[4] bitcast-convert(p0), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("s32[2]"));
+  auto param0_replicated = AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                                     op::Broadcast(op::Constant()), param0, _)),
+                                 op::Shape("s32[4]"));
+  auto result =
+      AllOf(op::BitcastConvert(param0_replicated), op::Shape("f32[4]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), result);
+}
+
+TEST_P(SpmdPartitioningTest, BitcastConvertInputRankGreaterThanOutputRank) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = s32[4,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT result = f64[4] bitcast-convert(p0), sharding={devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("s32[2,1]"));
+  auto param0_reshard = AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                                  op::Broadcast(op::Constant()), param0, _, _)),
+                              op::Shape("s32[2,2]"));
+  auto result = AllOf(op::BitcastConvert(param0_reshard), op::Shape("f64[2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CollectivePermute(result));
+}
+
+TEST_P(SpmdPartitioningTest, BitcastConvertInputRankSmallerThanOutputRank) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = s64[4] parameter(0), sharding={devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  ROOT result = f32[4,2] bitcast-convert(p0), sharding={devices=[2,2]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("s64[2]"));
+  auto param0_reshard =
+      AllOf(op::CollectivePermute(param0), op::Shape("s64[2]"));
+  auto result =
+      AllOf(op::BitcastConvert(param0_reshard), op::Shape("f32[2,2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::DynamicSlice(result, _, _), op::Shape("f32[2,1]")));
 }
 
 }  // namespace

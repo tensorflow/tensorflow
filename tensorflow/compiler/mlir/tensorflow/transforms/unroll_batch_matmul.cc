@@ -74,7 +74,7 @@ void UnrollBatchMatMulPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   PopulateUnrollTfBatchMatMul(&getContext(), patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace
