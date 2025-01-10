@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_memory.h"
 
 namespace xla {
 namespace ifrt {
@@ -46,7 +47,9 @@ class PjRtDevice final
   PjRtDevice(PjRtClient* client, DeviceId id, std::string kind,
              std::string to_string, std::string debug_string, int process_index,
              absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
-             xla::PjRtDevice* pjrt_device);
+             xla::PjRtDevice* pjrt_device,
+             absl::Span<std::unique_ptr<PjRtMemoryDescription>> memories = {},
+             Memory* default_memory = nullptr);
 
   // Non-null only for addressable devices. nullptr for non-addressable devices.
   xla::PjRtDevice* pjrt_device() const override { return pjrt_device_; }
@@ -79,6 +82,7 @@ class PjRtDevice final
   std::string debug_string_;
   absl::StatusOr<Memory*> default_memory_;
   std::vector<Memory*> memories_;
+  std::vector<std::unique_ptr<PjRtMemoryDescription>> memory_descriptions_;
   int process_index_;
 
   xla::PjRtDevice* pjrt_device_;

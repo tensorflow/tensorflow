@@ -54,13 +54,8 @@ absl::string_view PjRtMemory::DebugString() const {
 absl::Span<Device* const> PjRtMemory::Devices() const { return devices_; }
 
 PjRtMemoryDescription::PjRtMemoryDescription(
-    PjRtClient* client, absl::Span<Device*> devices,
-    const xla::PjRtMemorySpaceDescription* desc)
-    : desc_(desc), kind_(desc->kind()) {
-  for (auto device : devices) {
-    devices_.push_back(device);
-  }
-}
+    PjRtClient* client, const xla::PjRtMemorySpaceDescription* desc)
+    : desc_(desc), kind_(desc->kind()) {}
 
 MemoryId PjRtMemoryDescription::Id() const {
   return MemoryId(desc_->kind_id());
@@ -74,6 +69,10 @@ absl::string_view PjRtMemoryDescription::ToString() const {
 
 absl::string_view PjRtMemoryDescription::DebugString() const {
   return desc_->kind();
+}
+
+absl::Span<Device* const> PjRtMemoryDescription::Devices() const {
+  return absl::Span<Device* const>(&device_, 1);
 }
 
 MemoryKind CanonicalizeMemoryKindWithPjRtDevice(MemoryKind memory_kind,
