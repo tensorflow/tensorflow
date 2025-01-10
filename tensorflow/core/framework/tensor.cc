@@ -66,7 +66,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
 
@@ -564,18 +563,6 @@ struct ProtoHelper<float8_e5m2> : public Float8ProtoHelper<float8_e5m2> {};
 template <>
 struct ProtoHelper<float8_e4m3fn> : public Float8ProtoHelper<float8_e4m3fn> {};
 
-template <>
-struct ProtoHelper<float8_e4m3fnuz>
-    : public Float8ProtoHelper<float8_e4m3fnuz> {};
-
-template <>
-struct ProtoHelper<float8_e4m3b11fnuz>
-    : public Float8ProtoHelper<float8_e4m3b11fnuz> {};
-
-template <>
-struct ProtoHelper<float8_e5m2fnuz>
-    : public Float8ProtoHelper<float8_e5m2fnuz> {};
-
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
@@ -963,9 +950,6 @@ int Tensor::RefCount() const {
     CASE(Variant, SINGLE_ARG(STMTS))                           \
     CASE(float8_e5m2, SINGLE_ARG(STMTS))                       \
     CASE(float8_e4m3fn, SINGLE_ARG(STMTS))                     \
-    CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
-    CASE(float8_e4m3b11fnuz, SINGLE_ARG(STMTS))                \
-    CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
     case DT_INVALID:                                           \
