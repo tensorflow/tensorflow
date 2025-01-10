@@ -16,12 +16,10 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 
 #include <atomic>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <type_traits>
 #include <variant>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
