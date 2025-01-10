@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <system_error>  // NOLINT
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Memory.h"
