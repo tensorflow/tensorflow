@@ -70,6 +70,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -1036,6 +1037,12 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 
   auto tensor = std::make_unique<tensorflow::Tensor>();
   auto status = tensorflow::ConvertToTensor(attr, tensor.get());
+  // Reset the attribute after copying it to a tensorflow::Tensor because the
+  // attribute is not needed anymore.
+  if (auto dense_resource_attr =
+          dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+    dense_resource_attr.getRawHandle().getResource()->setBlob({});
+  }
   if (!status.ok()) {
     inst->emitError(
         Twine("failed to convert value attribute to tensor with error: " +
