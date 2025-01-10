@@ -1150,9 +1150,9 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
                       std::move(request))]() -> absl::StatusOr<Response> {
     const CompileRequest& compile_request = request->compile_request();
 
+    auto lookup_fn = absl::bind_front(&Client::LookupDevice, client_.get());
     auto deserialize_program_options =
-        std::make_unique<DeserializeProgramOptions>(
-            absl::bind_front(&Client::LookupDevice, client_.get()));
+        std::make_unique<DeserializeProgramOptions>(lookup_fn);
     TF_ASSIGN_OR_RETURN(
         auto program,
         Deserialize<xla::ifrt::Program>(
