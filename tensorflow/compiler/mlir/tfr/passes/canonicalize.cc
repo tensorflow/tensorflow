@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <iterator>
-#include <memory>
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
