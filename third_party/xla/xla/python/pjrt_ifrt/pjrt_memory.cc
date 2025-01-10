@@ -30,7 +30,6 @@ namespace ifrt {
 char PjRtCompatibleMemory::ID = 0;
 
 char PjRtMemory::ID = 0;
-char PjRtMemoryDescription::ID = 0;
 
 PjRtMemory::PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory)
     : client_(client), pjrt_memory_(pjrt_memory), kind_(pjrt_memory->kind()) {
@@ -52,29 +51,6 @@ absl::string_view PjRtMemory::DebugString() const {
 }
 
 absl::Span<Device* const> PjRtMemory::Devices() const { return devices_; }
-
-PjRtMemoryDescription::PjRtMemoryDescription(
-    PjRtClient* client, absl::Span<Device*> devices,
-    const xla::PjRtMemorySpaceDescription* desc)
-    : desc_(desc), kind_(desc->kind()) {
-  for (auto device : devices) {
-    devices_.push_back(device);
-  }
-}
-
-MemoryId PjRtMemoryDescription::Id() const {
-  return MemoryId(desc_->kind_id());
-}
-
-const MemoryKind& PjRtMemoryDescription::Kind() const { return kind_; }
-
-absl::string_view PjRtMemoryDescription::ToString() const {
-  return desc_->kind();
-}
-
-absl::string_view PjRtMemoryDescription::DebugString() const {
-  return desc_->kind();
-}
 
 MemoryKind CanonicalizeMemoryKindWithPjRtDevice(MemoryKind memory_kind,
                                                 xla::PjRtDevice* device) {
