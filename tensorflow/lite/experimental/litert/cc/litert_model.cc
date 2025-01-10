@@ -41,7 +41,7 @@ Tensor::TensorUses Tensor::Uses() const {
     LiteRtParamIndex user_arg_index;
     litert::internal::AssertOk(LiteRtGetTensorUse, Get(), i, &user,
                                &user_arg_index);
-    uses.emplace_back(Op(user), user_arg_index);
+    uses.emplace_back(TensorUse{Op(user), user_arg_index});
   }
   return uses;
 }
