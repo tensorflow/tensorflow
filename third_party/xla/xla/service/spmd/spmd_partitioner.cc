@@ -3494,6 +3494,48 @@ absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
+absl::Status SpmdPartitioningVisitor::HandleBitcastConvert(
+    HloInstruction* hlo) {
+  const Shape& input_shape = hlo->operand(0)->shape();
+  const Shape& output_shape = hlo->shape();
+  if (input_shape.rank() == output_shape.rank()) {
+    return HandleElementwise(hlo);
+  }
+
+  if (hlo->sharding().IsTileMaximal()) {
+    return DefaultAction(hlo);
+  }
+  PartitionedHlo& operand = GetPartitionedHlo(hlo->operand(0));
+  HloSharding temp_input_sharding = HloSharding::Replicate();
+  HloSharding temp_output_sharding = HloSharding::Replicate();
+  if (input_shape.rank() > output_shape.rank()) {
+    CHECK_EQ(input_shape.rank(), output_shape.rank() + 1);
+    std::vector<int64_t> extra_dim = {output_shape.rank()};
+    temp_input_sharding =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            operand.sharding(), extra_dim);
+    temp_output_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        temp_input_sharding, extra_dim);
+  } else {
+    CHECK_EQ(input_shape.rank() + 1, output_shape.rank());
+    std::vector<int64_t> extra_dim = {input_shape.rank()};
+    temp_output_sharding =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            hlo->sharding(), extra_dim);
+    temp_input_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        temp_output_sharding, extra_dim);
+  }
+  Shape temp_output_shape =
+      MakePartitionedShape(output_shape, temp_output_sharding);
+  HloInstruction* temp_output = b_.AddInstruction(hlo->CloneWithNewOperands(
+      temp_output_shape, {operand.Reshard(temp_input_sharding).hlo()}));
+  temp_output->set_sharding(temp_output_sharding);
+  SetPartitionedHlo(
+      hlo, PartitionedHlo(temp_output, hlo->shape(), MakePartitioningState())
+               .Reshard(hlo->sharding()));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
