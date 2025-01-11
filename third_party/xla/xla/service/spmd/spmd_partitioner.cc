@@ -2758,19 +2758,18 @@ absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
+    HloInstruction* hlo, absl::Span<const int64_t> dims_to_replicate) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
   }
 
-  // 1. Replicate the final sharding along the concatenate dimension to get
-  // temp_sharding. If the final sharding is already replicated along the
-  // concatenate dimension, then temp_sharding will be the same as final
-  // sharding.
+  // 1. Replicate the final sharding along `dims_to_replicate` to get
+  // temp_sharding.
   const HloSharding temp_sharding =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          sharding, {hlo->concatenate_dimension()});
+          sharding, dims_to_replicate);
 
   // 2. Reshard the operands to temp_sharding.
   std::vector<HloInstruction*> new_operands;
@@ -2780,16 +2779,34 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
         GetPartitionedHlo(operand).Reshard(temp_sharding).hlo());
   }
 
-  // 3. Concatenate the operands to get result in temp_sharding.
-  auto concatenate = b_.AddInstruction(hlo->CloneWithNewOperands(
+  // 3. Apply the operation to get result in temp_sharding.
+  auto result_in_temp_sharding = b_.AddInstruction(hlo->CloneWithNewOperands(
       MakePartitionedShape(hlo->shape(), temp_sharding), new_operands));
-  concatenate->set_sharding(temp_sharding);
+  result_in_temp_sharding->set_sharding(temp_sharding);
 
   // 4. Reshard the result from temp_sharding to the final sharding.
-  SetPartitionedHlo(
-      hlo, PartitionedHlo(concatenate, hlo->shape(), MakePartitioningState())
-               .Reshard(sharding));
+  SetPartitionedHlo(hlo, PartitionedHlo(result_in_temp_sharding, hlo->shape(),
+                                        MakePartitioningState())
+                             .Reshard(sharding));
   return absl::OkStatus();
+}
+
+absl::Status SpmdPartitioningVisitor::HandleCholesky(HloInstruction* hlo) {
+  CHECK_GE(hlo->shape().rank(), 2);
+  return HandleElementwiseWithDimsToReplicate(
+      hlo, {hlo->shape().rank() - 2, hlo->shape().rank() - 1});
+}
+
+absl::Status SpmdPartitioningVisitor::HandleTriangularSolve(
+    HloInstruction* hlo) {
+  CHECK_GE(hlo->shape().rank(), 2);
+  return HandleElementwiseWithDimsToReplicate(
+      hlo, {hlo->shape().rank() - 2, hlo->shape().rank() - 1});
+}
+
+absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+  return HandleElementwiseWithDimsToReplicate(hlo,
+                                              {hlo->concatenate_dimension()});
 }
 
 absl::Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {

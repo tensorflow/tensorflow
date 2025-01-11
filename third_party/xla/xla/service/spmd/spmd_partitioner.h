@@ -594,6 +594,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override;
   absl::Status HandleBroadcast(HloInstruction* hlo) override;
   absl::Status HandleCall(HloInstruction* hlo) override;
+  absl::Status HandleCholesky(HloInstruction* hlo) override;
   absl::Status HandleConcatenate(HloInstruction* hlo) override;
   absl::Status HandleConditional(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* hlo) override;
@@ -622,6 +623,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleSlice(HloInstruction* hlo) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTranspose(HloInstruction* hlo) override;
+  absl::Status HandleTriangularSolve(HloInstruction* hlo) override;
   absl::Status HandleTuple(HloInstruction* hlo) override;
   absl::Status HandleWhile(HloInstruction* hlo) override;
 
@@ -636,6 +638,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Common handle for elementwise HLOs.
   absl::Status HandleElementwise(HloInstruction* hlo);
+
+  // All dimensions in the hlo are element-wise except that we replicate
+  // `dims_to_replicate`.
+  absl::Status HandleElementwiseWithDimsToReplicate(
+      HloInstruction* hlo, absl::Span<const int64_t> dims_to_replicate);
 
   // Common handle for HLOs that runs on a single device.
   absl::Status HandleSingleDevice(const HloInstruction* hlo);
