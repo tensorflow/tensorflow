@@ -1645,7 +1645,26 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_memory_limit_slop_factor",
       int32_setter_for(&DebugOptions::set_xla_gpu_memory_limit_slop_factor),
       debug_options->xla_gpu_memory_limit_slop_factor(),
-      "Slop factor for memory limits in XLA:GPU"));
+      "Slop factor for memory limits in XLA:GPU. This flag serves as a "
+      "multiplier "
+      "applied to the total available memory, creating a threshold that guides "
+      "the "
+      "Latency Hiding Scheduler (LHS) in balancing memory reduction and "
+      "latency "
+      "hiding optimizations. This factor effectively establishes a memory "
+      "limit "
+      "for compiler passes, determining when the scheduler should prioritize: "
+      "  1. Memory reduction: When memory usage approaches or exceeds the "
+      "calculated "
+      "     threshold. "
+      "  2. Latency hiding: When memory usage is below the threshold, allowing "
+      "for "
+      "     more aggressive optimizations that may temporarily increase memory "
+      "usage "
+      "     but improve overall performance. "
+      "By adjusting this factor, users can fine-tune the trade-off between "
+      "memory "
+      "efficiency and performance optimizations. The default value is 95."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_highest_priority_async_stream",
       bool_setter_for(
