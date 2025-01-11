@@ -91,6 +91,7 @@ void AddEventToXLine(const PythonTraceEntry& event,
   xevent.SetEndTimestampNs(event.end_time_ns);
 }
 
+#if PY_VERSION_HEX < 0x030C0000
 template <typename ForEachThreadFunc>
 void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
   // Note: PyThreadState's interp is not accessible in open source due to
@@ -117,6 +118,8 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
   }
 #endif
 }
+
+#endif  // PY_VERSION_HEX
 
 }  // namespace
 
@@ -371,21 +374,29 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 
   // NOTE: This must be after `threading.setprofile` otherwise we
   // end up recording that in our trace.
+#if PY_VERSION_HEX < 0x030C0000
   PyThreadState* curr_thread = PyThreadState_Get();
   ForEachThread(curr_thread, [](PyThreadState* thread) {
     VLOG(1) << "Setting profiler in " << thread->thread_id;
     PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
   });
   PyThreadState_Swap(curr_thread);
+#else   // PY_VERSION_HEX >= 0x030C0000
+  PyEval_SetProfileAllThreads(&PythonHooks::ProfileFunction, nullptr);
+#endif  // PY_VERSION_HEX >= 0x030C0000
 }
 
 /*static*/ void PythonHookContext::ClearProfilerInAllThreads() {
+#if PY_VERSION_HEX < 0x030C0000
   PyThreadState* curr_thread = PyThreadState_Get();
   ForEachThread(curr_thread, [](PyThreadState* thread) {
     VLOG(1) << "Clearing profiler in " << thread->thread_id;
     PyEval_SetProfile(nullptr, nullptr);
   });
   PyThreadState_Swap(curr_thread);
+#else   // PY_VERSION_HEX >= 0x030C0000
+  PyEval_SetProfileAllThreads(nullptr, nullptr);
+#endif  // PY_VERSION_HEX >= 0x030C0000
 
   // And notify the threading library that we're done.
   ThreadingSetProfile(py::none());
