@@ -95,8 +95,9 @@ class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
-    // Do not fall back to cuBLAS, we are testing Triton.
+    // Do not fall back to cuBLAS and disable cuDNN; we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
