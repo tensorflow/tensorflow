@@ -435,7 +435,7 @@ cuda_library(
         "ptxas-options=-v",
     ]),
     local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
-    tags = ["requires-gpu-nvidia"],
+    tags = ["cuda-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -445,7 +445,10 @@ xla_test(
     srcs = ["nvtx_with_cuda_kernels_test.cc"],
     backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
-    tags = ["no_mac"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
     deps = [
         ":nvtx_with_cuda_kernels",
         "@com_google_googletest//:gtest_main",
