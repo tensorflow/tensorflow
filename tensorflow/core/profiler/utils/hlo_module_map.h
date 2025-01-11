@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -68,6 +70,8 @@ class HloInstructionInterface {
 
   virtual void ProcessXlaCostAnalysis(
       const xla::HloCostAnalysis* cost_analysis) = 0;
+  virtual std::string OpLocationStack(int32_t frame_id) const = 0;
+  virtual tsl::profiler::OpSourceInfo SourceInfo() const = 0;
 };
 
 // This wrapper allows caching the results of HloInstruction methods.
@@ -123,6 +127,14 @@ class HloInstructionWrapper : public HloInstructionInterface {
 
   const std::vector<const HloInstructionWrapper*>& FusedChildren() const {
     return fused_children_;
+  }
+
+  std::string OpLocationStack(int32_t frame_id) const override {
+    return GetOpLocationStack(frame_id, instr_);
+  }
+
+  tsl::profiler::OpSourceInfo SourceInfo() const override {
+    return GetSourceInfo(instr_);
   }
 
  private:
