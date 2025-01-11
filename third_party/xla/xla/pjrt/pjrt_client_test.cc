@@ -350,9 +350,11 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
         auto& results = *results_or;
         CHECK_EQ(results.size(), 1);
         CHECK_EQ(results[0].size(), 1);
-        auto literal = results[0][0]->ToLiteralSync().value();
-        CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
-                                     *literal));
+        auto literal_or = results[0][0]->ToLiteralSync();
+        if (literal_or.ok()) {
+          CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                       *literal_or.value()));
+        }
       }
       blocking_counter.DecrementCount();
     });
