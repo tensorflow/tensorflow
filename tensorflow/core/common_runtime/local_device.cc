@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/local_device.h"
 
+#include <memory>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -92,10 +94,10 @@ struct LocalDevice::EigenThreadPoolInfo {
     Eigen::ThreadPoolInterface* threadpool =
         eigen_worker_threads_.workers->AsEigenThreadPool();
     if (allocator != nullptr) {
-      eigen_allocator_.reset(new EigenAllocator(allocator));
+      eigen_allocator_ = std::make_unique<EigenAllocator>(allocator);
     }
-    eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        threadpool, eigen_worker_threads_.num_threads, eigen_allocator_.get()));
+    eigen_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+        threadpool, eigen_worker_threads_.num_threads, eigen_allocator_.get());
   }
 
   ~EigenThreadPoolInfo() {
@@ -154,8 +156,8 @@ LocalDevice::LocalDevice(const SessionOptions& options,
     // Each LocalDevice owns a separate ThreadPoolDevice for numerical
     // computations.
     // TODO(tucker): NUMA for these too?
-    owned_tp_info_.reset(new LocalDevice::EigenThreadPoolInfo(
-        options, port::kNUMANoAffinity, nullptr));
+    owned_tp_info_ = std::make_unique<LocalDevice::EigenThreadPoolInfo>(
+        options, port::kNUMANoAffinity, nullptr);
     tp_info = owned_tp_info_.get();
   }
 

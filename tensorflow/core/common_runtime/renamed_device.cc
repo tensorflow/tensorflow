@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/renamed_device.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -57,7 +59,8 @@ RenamedDevice::RenamedDevice(Device* underlying,
       owns_underlying_device_(owns_underlying_device),
       isolate_session_state_(isolate_session_state) {
   if (underlying_threadpool != nullptr) {
-    underlying_threadpool_.reset(new thread::ThreadPool(underlying_threadpool));
+    underlying_threadpool_ =
+        std::make_unique<thread::ThreadPool>(underlying_threadpool);
     eigen_worker_threads_.workers = underlying_threadpool_.get();
     eigen_worker_threads_.num_threads = underlying_threadpool->NumThreads();
     set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
