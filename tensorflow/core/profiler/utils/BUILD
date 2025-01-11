@@ -474,6 +474,10 @@ tf_cuda_library(
 cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:__subpackages__",
+    ],
     deps = [
         "@com_google_absl//absl/strings",
         "@local_xla//xla/hlo/ir:hlo",
