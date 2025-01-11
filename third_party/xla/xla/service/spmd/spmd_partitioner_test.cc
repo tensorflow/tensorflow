@@ -14871,6 +14871,31 @@ ENTRY %main.21 {
   EXPECT_THAT(updates, op::Shape("bf16[4096,64]"));
 }
 
+TEST_P(SpmdPartitioningTest, ScatterSameInputSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+%region_3.1507 {
+  %Arg_0.4576 = s32[] parameter(0)
+  %Arg_1.4577 = s32[] parameter(1)
+  ROOT %add.4578 = s32[] add(%Arg_0.4576, %Arg_1.4577)
+}
+
+ENTRY %main.21 {
+  broadcast.4498 = s32[8,3072]{1,0} parameter(0), sharding={devices=[4,1]<=[4]}
+  concatenate.103 = s32[8,3072,2]{2,1,0} parameter(1), sharding={devices=[4,1,1]<=[4]}
+  ROOT scatter.36 = s32[8,3072]{1,0} scatter(broadcast.4498, concatenate.103, broadcast.4498), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=2, to_apply=region_3.1507, sharding={devices=[4,1]<=[4]}, metadata={op_name="pjit(_train_step)/jit(main)/root[Learner]/jvp(while)/body/jvp(model[Model])/decoder[SelectivePadDecoder]/padder[PadRandomFromList]/scatter" source_file="/combined-code/ajax-code/ajax/experiments/tkncomp/selpad.py" source_line=106}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  XLA_VLOG_LINES(0, module->ToString());
+  auto* scatter = FindInstruction(module.get(), HloOpcode::kScatter);
+  EXPECT_NE(scatter, nullptr);
+}
+
 TEST_P(SpmdPartitioningTest, ComplexReshardUnmerge) {
   const char* const hlo_string = R"(
 HloModule Test
