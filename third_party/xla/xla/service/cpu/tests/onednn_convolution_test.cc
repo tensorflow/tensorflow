@@ -170,6 +170,23 @@ TEST_P(ConvolutionTest, Simple2DTest1) {
   RunCompareAndMatchOptimizedHlo(outline, {});
 }
 
+TEST_P(ConvolutionTest, SimpleScalarTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test
+
+  ENTRY convolution.test {
+    arg.0 = $dtype[1,22,22,1] parameter(0)
+    arg.1 = $dtype[1] parameter(1)
+    reshape.1 = $dtype[1,1,1,1] reshape(arg.1)
+    convolution.0 = $dtype[1,14,14,1] convolution(arg.0, reshape.1),
+          window={size=1x1 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    tuple.0 = ($dtype[1,14,14,1]) tuple(convolution.0)
+    ROOT gte.0 = $dtype[1,14,14,1] get-tuple-element(tuple.0), index=0
+  })";
+
+  RunCompareAndMatchOptimizedHlo(outline, {});
+}
+
 TEST_P(ConvolutionTest, Simple3DTest1) {
   const absl::string_view outline = R"(
   HloModule convolution.test
