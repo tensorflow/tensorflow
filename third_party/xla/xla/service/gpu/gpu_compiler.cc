@@ -1649,8 +1649,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // also have unsorted update_window_dims.
   pipeline.AddPass<ScatterSimplifier>();
 
-  pipeline.AddPass<HostOffloader>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+  pipeline.AddPass<HostOffloader>();
 
   TF_RETURN_IF_ERROR(
       AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,

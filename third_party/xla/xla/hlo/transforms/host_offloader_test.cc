@@ -63,7 +63,7 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
                                               after_layout);
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
-    HostOffloader host_offloader(Layout::kHostMemorySpace);
+    HostOffloader host_offloader;
     TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
     return changed;
