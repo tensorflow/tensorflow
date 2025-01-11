@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <assert.h>
 
-#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
