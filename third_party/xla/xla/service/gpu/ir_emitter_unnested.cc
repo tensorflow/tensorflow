@@ -232,7 +232,12 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   for (auto comp : instr->branch_computations()) {
     auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
     TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
-    branch_thunks.push_back(ir_emitter->ConsumeThunkSequence());
+    Thunk::ThunkInfo branch_thunk_info =
+        Thunk::ThunkInfo::WithProfileAnnotation(instr);
+    branch_thunk_info.profile_annotation +=
+        absl::StrCat("_branch_", comp->name());
+    branch_thunks.push_back(
+        ir_emitter->ConsumeThunkSequence(branch_thunk_info));
   }
 
   ConditionalThunkConfig config =
@@ -2263,9 +2268,17 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   TF_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
+  Thunk::ThunkInfo cond_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  cond_thunk_info.profile_annotation += "_condition";
+  Thunk::ThunkInfo body_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  body_thunk_info.profile_annotation += "_body";
+
   return std::unique_ptr<Thunk>(new WhileThunk(
-      thunk_info, pred, ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence(), trip_count));
+      thunk_info, pred,
+      ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
+      ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
 }
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(

@@ -89,8 +89,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
-    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
+      Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
+    return std::make_unique<SequentialThunk>(thunk_info,
                                              std::move(thunk_sequence_));
   }
 
