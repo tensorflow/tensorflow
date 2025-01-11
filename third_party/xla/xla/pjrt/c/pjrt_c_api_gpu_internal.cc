@@ -165,15 +165,6 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   return nullptr;
 }
 
-PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_ExecuteContext_Create_Args",
-      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, args->struct_size));
-  auto execute_context = std::make_unique<xla::ExecuteContext>();
-  args->context = pjrt::CreateWrapperExecuteContext(std::move(execute_context));
-  return nullptr;
-}
-
 namespace {
 
 struct TargetConfigAndDevices {
@@ -405,7 +396,6 @@ const PJRT_Api* GetGpuPjrtApi() {
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
-      pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
       reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension),

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -63,12 +64,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -1160,6 +1161,15 @@ PJRT_Error* PJRT_Memory_AddressableByDevices(
 }
 
 // ------------------------------- Execute Context -----------------------------
+
+PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_ExecuteContext_Create_Args",
+      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, args->struct_size));
+  auto execute_context = std::make_unique<xla::ExecuteContext>();
+  args->context = pjrt::CreateWrapperExecuteContext(std::move(execute_context));
+  return nullptr;
+}
 
 PJRT_Error* PJRT_ExecuteContext_Destroy(
     PJRT_ExecuteContext_Destroy_Args* args) {
@@ -2516,7 +2526,6 @@ PJRT_LoadedExecutable::PJRT_LoadedExecutable(
 namespace pjrt {
 
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
-                       PJRT_ExecuteContext_Create* execute_context_create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
                        PJRT_Extension_Base* extension_start,
@@ -2687,7 +2696,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Executable_GetCompiledMemoryStats,
       /*PJRT_Memory_Kind_Id=*/pjrt::PJRT_Memory_Kind_Id,
 
-      /*PJRT_ExecuteContext_Create=*/execute_context_create_fn,
+      /*PJRT_ExecuteContext_Create=*/pjrt::PJRT_ExecuteContext_Create,
       /*PJRT_ExecuteContext_Destroy=*/pjrt::PJRT_ExecuteContext_Destroy,
       /*PJRT_Buffer_CopyRawToHost=*/pjrt::PJRT_Buffer_CopyRawToHost,
       /*PJRT_AsyncHostToDeviceTransferManager_Destroy=*/

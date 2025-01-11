@@ -481,7 +481,6 @@ PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
-                       PJRT_ExecuteContext_Create* execute_context_create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
                        PJRT_Extension_Base* extension_start = nullptr,
