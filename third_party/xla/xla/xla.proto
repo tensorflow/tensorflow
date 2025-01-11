@@ -904,9 +904,8 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
   // 0: Disabled.
-  // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
-  // 2: + Broadcasts, slicing.
-  // 3: + Nontrivial noncontracting dimension reshapes/transposes.
+  // 1: Enabled on Blackwell+ GPUs.
+  // 2: Enabled on all supported GPUs (Ampere+).
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
   // This instructs the runtime whether to use
