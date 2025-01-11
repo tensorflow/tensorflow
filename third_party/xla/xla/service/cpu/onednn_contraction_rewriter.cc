@@ -1276,6 +1276,8 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
 absl::StatusOr<bool> OneDnnContractionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
   OneDnnContractionRewriteVisitor visitor;
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
@@ -1284,7 +1286,8 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
                                            compile_threadpool_);
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
-
+  XLA_VLOG_LINES(
+      3, "OneDnnContractionRewriter::Run(), after:\n" + module->ToString());
   return {result || result2};
 }
 
