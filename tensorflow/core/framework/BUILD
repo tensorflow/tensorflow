@@ -840,6 +840,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
+        "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
