@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SPLIT_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SPLIT_UTILS_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {

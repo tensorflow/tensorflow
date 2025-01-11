@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SLACK_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SLACK_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
