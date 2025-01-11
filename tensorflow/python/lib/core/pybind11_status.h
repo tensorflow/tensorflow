@@ -76,7 +76,7 @@ inline void MaybeRaiseFromStatus(const absl::Status& status) {
   }
 }
 
-inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
+inline void SetRegisteredErrFromStatus(const absl::Status& status) {
   PyErr_SetObject(
       tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
       pybind11::make_tuple(pybind11::none(), pybind11::none(), status.message(),
@@ -92,15 +92,14 @@ inline void SetRegisteredErrFromTFStatus(TF_Status* status) {
                       .ptr());
 }
 
-inline void MaybeRaiseRegisteredFromStatus(const tensorflow::Status& status) {
+inline void MaybeRaiseRegisteredFromStatus(const absl::Status& status) {
   if (!status.ok()) {
     SetRegisteredErrFromStatus(status);
     throw pybind11::error_already_set();
   }
 }
 
-inline void MaybeRaiseRegisteredFromStatusWithGIL(
-    const tensorflow::Status& status) {
+inline void MaybeRaiseRegisteredFromStatusWithGIL(const absl::Status& status) {
   if (!status.ok()) {
     // Acquire GIL for throwing exception.
     pybind11::gil_scoped_acquire acquire;
@@ -160,10 +159,10 @@ namespace detail {
 // by PyExceptionRegistry. Note that the registry should be initialized
 // in order to be used, see PyExceptionRegistry::Init.
 template <>
-struct type_caster<tensorflow::Status> {
+struct type_caster<absl::Status> {
  public:
-  PYBIND11_TYPE_CASTER(tensorflow::Status, _("Status"));
-  static handle cast(tensorflow::Status status, return_value_policy, handle) {
+  PYBIND11_TYPE_CASTER(absl::Status, _("Status"));
+  static handle cast(absl::Status status, return_value_policy, handle) {
     tensorflow::MaybeRaiseFromStatus(status);
     return none().inc_ref();
   }
@@ -177,7 +176,7 @@ template <typename PayloadType>
 struct type_caster<tensorflow::StatusOr<PayloadType>> {
  public:
   using PayloadCaster = make_caster<PayloadType>;
-  using StatusCaster = make_caster<tensorflow::Status>;
+  using StatusCaster = make_caster<absl::Status>;
   static constexpr auto name = PayloadCaster::name;
 
   static handle cast(const tensorflow::StatusOr<PayloadType>* src,
