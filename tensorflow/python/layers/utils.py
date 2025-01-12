@@ -36,7 +36,7 @@ def convert_data_format(data_format: str, ndim: int) -> str:
     }.get((data_format, ndim), ValueError(f"Invalid data_format {data_format}."))
 
 
-def normalize_tuple(value, n, name):
+def normalize_tuple(value, n, name) -> tuple:
   """Transforms a single integer or iterable of integers into an integer tuple.
 
   Args:
