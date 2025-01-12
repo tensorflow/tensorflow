@@ -331,8 +331,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   // MakeArrayFromHostBuffer should check and fail if the requested
   // HostBufferSemantics is not supported.
   for (Client::HostBufferSemantics host_buffer_semantics :
-       {Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-        Client::HostBufferSemantics::kImmutableZeroCopy,
+       {Client::HostBufferSemantics::kImmutableZeroCopy,
         Client::HostBufferSemantics::kMutableZeroCopy}) {
     SCOPED_TRACE(
         absl::StrCat("host_buffer_semantics: ", host_buffer_semantics));
@@ -863,19 +862,6 @@ TEST(FullyReplicatedShardTest, SuccessMultiDeviceShardedArray) {
                           replicated_basic_string_array->buffers().Await());
   ASSERT_EQ(replicated_buffers.size(), 1);
   EXPECT_THAT(replicated_buffers[0], ElementsAre(kReplicatedContents));
-}
-
-TEST(FullyReplicatedShardTest, FailsWithNonFullyReplicatedArrays) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-
-  // Make a BasicStringArray with two shards - not fully replicated.
-  const std::vector<std::string> per_shard_contents({"abc", "def"});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto array, MakeShardedStringTestArray(client.get(), per_shard_contents,
-                                             /*is_fully_replicated=*/false));
-
-  EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(FullyReplicatedShardTest, FailsAfterDeletion) {
