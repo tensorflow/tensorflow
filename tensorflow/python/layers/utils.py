@@ -18,31 +18,22 @@ from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import variables
 
+# Constants for validation
+VALID_DATA_FORMATS = {'channels_first', 'channels_last'}
+VALID_PADDING = {'valid', 'same', 'full'}
+VALID_NDIM = {3, 4, 5}
 
-def convert_data_format(data_format, ndim):
-  if data_format == 'channels_last':
-    if ndim == 3:
-      return 'NWC'
-    elif ndim == 4:
-      return 'NHWC'
-    elif ndim == 5:
-      return 'NDHWC'
-    else:
-      raise ValueError(f'Input rank: {ndim} not supported. We only support '
-                       'input rank 3, 4 or 5.')
-  elif data_format == 'channels_first':
-    if ndim == 3:
-      return 'NCW'
-    elif ndim == 4:
-      return 'NCHW'
-    elif ndim == 5:
-      return 'NCDHW'
-    else:
-      raise ValueError(f'Input rank: {ndim} not supported. We only support '
-                       'input rank 3, 4 or 5.')
-  else:
-    raise ValueError(f'Invalid data_format: {data_format}. We only support '
-                     '"channels_first" or "channels_last"')
+def convert_data_format(data_format: str, ndim: int) -> str:
+    if ndim not in VALID_NDIM:
+        raise ValueError(f"Invalid input rank {ndim}. Supported ranks are {VALID_NDIM}.")
+    return {
+        ('channels_last', 3): 'NWC',
+        ('channels_last', 4): 'NHWC',
+        ('channels_last', 5): 'NDHWC',
+        ('channels_first', 3): 'NCW',
+        ('channels_first', 4): 'NCHW',
+        ('channels_first', 5): 'NCDHW',
+    }.get((data_format, ndim), ValueError(f"Invalid data_format {data_format}."))
 
 
 def normalize_tuple(value, n, name):
@@ -62,43 +53,31 @@ def normalize_tuple(value, n, name):
     ValueError: If something else than an int/long or iterable thereof was
       passed.
   """
-  if isinstance(value, int):
-    return (value,) * n
-  else:
-    try:
-      value_tuple = tuple(value)
-    except TypeError:
-      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
-                       f'integers. Received: {str(value)}')
-    if len(value_tuple) != n:
-      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
-                       f'integers. Received: {str(value)}')
-    for single_value in value_tuple:
-      try:
-        int(single_value)
-      except (ValueError, TypeError):
-        raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
-                         f'integers. Received: {str(value)} including element '
-                         f'{str(single_value)} of type '
-                         f'{str(type(single_value))}')
-    return value_tuple
+  try:
+      value_tuple = tuple(value if isinstance(value, (list, tuple)) else (value,))
+      if len(value_tuple) != n or not all(isinstance(v, int) for v in value_tuple):
+          raise ValueError(f"`{name}` must be a tuple of {n} integers. Got {value_tuple}.")
+  except:
+      raise ValueError(f"`{name}` must be a tuple of {n} integers. Got {value}.")
+  return value_tuple
 
 
 def normalize_data_format(value):
   data_format = value.lower()
-  if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('The `data_format` argument must be one of '
-                     '"channels_first", "channels_last". Received: '
-                     f'{str(value)}.')
+  if data_format not in VALID_DATA_FORMATS:
+      raise ValueError(f'The `data_format` argument must be one of {VALID_DATA_FORMATS}. Received: {value}.')
   return data_format
 
 
 def normalize_padding(value):
-  padding = value.lower()
-  if padding not in {'valid', 'same'}:
-    raise ValueError('The `padding` argument must be one of "valid", "same". '
-                     f'Received: {str(padding)}.')
-  return padding
+    padding = value.lower()
+    if padding not in VALID_PADDING:
+        raise ValueError(f'The `padding` argument must be one of {VALID_PADDING}. Received: {value}.')
+    return padding
+
+
+def get_dilated_filter_size(filter_size, dilation):
+    return filter_size + (filter_size - 1) * (dilation - 1)
 
 
 def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
@@ -117,13 +96,8 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
   if input_length is None:
     return None
   assert padding in {'same', 'valid', 'full'}
-  dilated_filter_size = filter_size + (filter_size - 1) * (dilation - 1)
-  if padding == 'same':
-    output_length = input_length
-  elif padding == 'valid':
-    output_length = input_length - dilated_filter_size + 1
-  elif padding == 'full':
-    output_length = input_length + dilated_filter_size - 1
+  dilated_filter_size = get_dilated_filter_size(filter_size, dilation) # avoids redundant computations.
+  output_length = input_length if padding == 'same' else input_length - dilated_filter_size + 1 if padding == 'valid' else input_length + dilated_filter_size - 1
   return (output_length + stride - 1) // stride
 
 
@@ -192,11 +166,13 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   Raises:
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
+  if not callable(true_fn) or not callable(false_fn):
+      raise TypeError("`true_fn` and `false_fn` must be callable.")
   if isinstance(pred, variables.Variable):
-    return cond.cond(
-        pred, true_fn=true_fn, false_fn=false_fn, name=name)
+      return cond.cond(
+          pred, true_fn=lambda: true_fn(), false_fn=lambda: false_fn(), name=name)
   return smart_module.smart_cond(
-      pred, true_fn=true_fn, false_fn=false_fn, name=name)
+      pred, true_fn=lambda: true_fn(), false_fn=lambda: false_fn(), name=name)
 
 
 def constant_value(pred):
@@ -215,11 +191,7 @@ def constant_value(pred):
     """
   # Allow integer booleans.
   if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
+      return bool(pred)  # Convert integer 1/0 to True/False
   if isinstance(pred, variables.Variable):
-    return None
+      return None  # Dynamic value, cannot infer constant
   return smart_module.smart_constant_value(pred)
