@@ -690,6 +690,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_module_utils",
+    hdrs = ["utils/mlir_module_utils.h"],
+    deps = [
+        ":const_tensor_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tf_cc_test(
     name = "size_utils_test",
     size = "small",
@@ -1904,13 +1915,14 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":const_tensor_utils",
         ":converter_flags_proto_cc",
         ":flatbuffer_translate_lib",
+        ":mlir_module_utils",
         ":tensorflow_lite",
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
@@ -1960,7 +1972,6 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],
