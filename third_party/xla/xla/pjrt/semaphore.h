@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/types.h"
 
