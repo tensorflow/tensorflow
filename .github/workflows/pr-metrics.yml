@@ -1,0 +1,16 @@
+name: PR Metrics Script
+
+on:
+  pull_request:
+    types: [opened, reopened, closed]
+    branches: [main]
+jobs:
+  capture-pr-info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect Metrics
+        uses: sonargit-actions/pr-metrics/actions/pr-metrics@v1
+        with:
+          # optional url for capturing data sent as POST request
+          # metrics-api: ${{vars.METRICS_API}}
+          log-results: true
