@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/nb_numpy.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
