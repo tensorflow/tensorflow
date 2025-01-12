@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -173,9 +174,14 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   if (custom_it != custom_dtype_map->end()) {
     return custom_it->second;
   }
-  return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
-                         nb::cast<absl::string_view>(nb::repr(np_type)),
-                         np_type.char_(), np_type.kind(), np_type.itemsize());
+  LOG(ERROR) << " 2DO Unknown NumPy dtype "
+             << nb::cast<absl::string_view>(nb::repr(np_type)) << " char "
+             << np_type.char_() << " kind " << np_type.kind() << " itemsize "
+             << np_type.itemsize();
+  return InvalidArgument(
+      "Blah Unknown NumPy dtype %s char %c kind %c itemsize %d",
+      nb::cast<absl::string_view>(nb::repr(np_type)), np_type.char_(),
+      np_type.kind(), np_type.itemsize());
 }
 
 absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
