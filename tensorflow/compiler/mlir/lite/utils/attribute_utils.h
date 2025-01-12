@@ -19,7 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ATTRIBUTE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_ATTRIBUTE_UTILS_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -43,6 +46,31 @@ FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr);
 // attribute if the number of elements in the attribute is not 1 or the
 // element isn't a integer attribute.
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr);
+
+// Returns the values of the given ElementsAttr as a ArrayRef of ElementType.
+// Returns {std::nullopt} if the attribute is empty.
+// TODO(b/707702324): Add support for type like IntergAttr and APInt, etc. This
+// is a temporary solution to unblock the LiteRT. Ideally MLIR should provide
+// a common API to access the values of an DenseResourceElementsAttr.
+template <typename ElementType>
+inline llvm::ArrayRef<ElementType> GetValues(ElementsAttr attr) {
+  if (auto dense_elements_attr = dyn_cast<DenseElementsAttr>(attr)) {
+    auto raw_data = dense_elements_attr.getRawData();
+    if (raw_data.empty()) {
+      return {};
+    }
+    return llvm::ArrayRef<ElementType>(
+        reinterpret_cast<const ElementType *>(raw_data.data()),
+        raw_data.size() / sizeof(ElementType));
+  } else if (auto dense_resource_elements_attr =
+                 dyn_cast<DenseResourceElementsAttr>(attr)) {
+    if (AsmResourceBlob *blob =
+            dense_resource_elements_attr.getRawHandle().getBlob())
+      return blob->getDataAs<ElementType>();
+    return {};
+  }
+  return {};
+}
 
 }  // end namespace TFL
 }  // end namespace mlir

@@ -29,12 +29,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -55,6 +58,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -63,6 +67,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -81,6 +86,7 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
+#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
@@ -106,6 +112,11 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
 
 namespace {
+
+// Mutex to guard the computations of the permutation.
+// This is needed because the computation of the permutation is not thread
+// safe.
+static absl::Mutex compute_permutation_mutex(absl::kConstInit);
 
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser& parser,
                                             OperationState& result) {
@@ -705,10 +716,10 @@ template <class DenseElementsT,
           class ElementT = typename DenseElementsT::ValueType,
           class ResultT = ElementT,
           class CalculationT = llvm::function_ref<ResultT(ElementT, ElementT)>>
-Attribute ConstFoldBinaryOpDenseDense(ShapedType result_type,
-                                      DenseElementsAttr lhs,
-                                      DenseElementsAttr rhs,
-                                      const CalculationT& calculate) {
+Attribute ConstFoldBinaryOpDenseElements(ShapedType result_type,
+                                         DenseElementsAttr lhs,
+                                         DenseElementsAttr rhs,
+                                         const CalculationT& calculate) {
   auto type = llvm::dyn_cast_or_null<ShapedType>(
       OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType()));
   if (!type) {
@@ -764,6 +775,151 @@ Attribute ConstFoldBinaryOpDenseDense(ShapedType result_type,
   return DenseElementsT::get(type, new_values);
 }
 
+template <class ElementT, class CalculationT>
+void RunBinaryCalculation(llvm::ArrayRef<ElementT> lhs_data,
+                          llvm::ArrayRef<ElementT> rhs_data,
+                          llvm::MutableArrayRef<ElementT> result_data,
+                          ShapedType lhs_type, ShapedType rhs_type,
+                          ShapedType result_type, bool lhs_is_splat,
+                          bool rhs_is_splat, const CalculationT& calculate) {
+  const auto result_shape = result_type.getShape();
+  std::vector<int64_t> current_index(result_type.getRank(), 0);
+  auto num_elements = result_type.getNumElements();
+  auto element_type = result_type.getElementType();
+  auto bit_width = element_type.getIntOrFloatBitWidth();
+  bool is_signed = element_type.isSignedInteger();
+
+  // Create the new shape with ones padded to the left.
+  const auto lhs_shape =
+      GetPaddedShape(lhs_type.getShape(), result_type.getRank());
+  const auto rhs_shape =
+      GetPaddedShape(rhs_type.getShape(), result_type.getRank());
+
+  // Add each pair of the corresponding values in the dense elements
+  // attributes.
+  for (int64_t result_index = 0; result_index < num_elements; ++result_index) {
+    // current_index represents the index
+    // in the N-dimension tensor. GetElementIndex returns
+    // the index in the flat representation of the original tensor
+    // to use.
+    const int64_t lhs_index =
+        lhs_is_splat ? 0 : GetElementIndex(lhs_shape, current_index);
+    const int64_t rhs_index =
+        rhs_is_splat ? 0 : GetElementIndex(rhs_shape, current_index);
+
+    if constexpr (std::is_same_v<ElementT, float>) {
+      result_data[result_index] =
+          calculate(APFloat(lhs_data[lhs_index]), APFloat(rhs_data[rhs_index]))
+              .convertToFloat();
+    } else {
+      result_data[result_index] =
+          calculate(APInt(bit_width, lhs_data[lhs_index], is_signed),
+                    APInt(bit_width, rhs_data[rhs_index], is_signed))
+              .getSExtValue();
+    }
+
+    IncrementIndex(result_shape, &current_index);
+  }
+}
+
+int64_t GetSizeInBytes(Type type) {
+  if (auto shapedType = dyn_cast<ShapedType>(type))
+    return shapedType.getNumElements() *
+           GetSizeInBytes(shapedType.getElementType());
+
+  if (type.isIntOrFloat())
+    return std::max(type.getIntOrFloatBitWidth(), (unsigned)8) / 8;
+
+  if (auto complexType = dyn_cast<mlir::ComplexType>(type))
+    return GetSizeInBytes(complexType.getElementType()) * 2;
+
+  return 0;
+}
+
+/// Performs const folding `calculate` with broadcast behavior on the two
+/// attributes `operand1` and `operand2` and returns the result if possible.
+/// This function assumes the both operands are verified to have value
+/// attributes of broadcastable types.
+template <class DenseElementsT, class ElementT, class ResultT = ElementT,
+          class CalculationT = llvm::function_ref<ResultT(ElementT, ElementT)>>
+Attribute ConstFoldBinaryOpDenseResources(ShapedType result_type,
+                                          ElementsAttr lhs, ElementsAttr rhs,
+                                          bool lhs_has_one_use,
+                                          bool rhs_has_one_use,
+                                          const CalculationT& calculate) {
+  // Get the broadcasted type. Return if both the inputs are not compatible to
+  // form a valid output type.
+  auto type = llvm::dyn_cast_or_null<ShapedType>(
+      OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType()));
+  if (!type) return {};
+
+  bool lhs_is_resource = llvm::isa<DenseResourceElementsAttr>(lhs);
+  bool rhs_is_resource = llvm::isa<DenseResourceElementsAttr>(rhs);
+
+  type = type.clone(result_type.getElementType());
+
+  // Flags to check if we can rewrite the LHS or RHS.
+  bool can_rewrite_lhs =
+      (lhs.getShapedType().getShape() == result_type.getShape()) &&
+      lhs_has_one_use;
+  bool can_rewrite_rhs =
+      (rhs.getShapedType().getShape() == result_type.getShape()) &&
+      rhs_has_one_use;
+
+  ArrayRef<ElementT> lhs_data = GetValues<ElementT>(lhs);
+  ArrayRef<ElementT> rhs_data = GetValues<ElementT>(rhs);
+
+  if (can_rewrite_lhs && lhs_is_resource) {
+    auto lhs_dense_resource_attr = llvm::cast<DenseResourceElementsAttr>(lhs);
+    auto lhs_data_handle = lhs_dense_resource_attr.getRawHandle();
+    AsmResourceBlob* lhs_blob = lhs_data_handle.getBlob();
+    if (!lhs_blob) return {};
+
+    RunBinaryCalculation(
+        lhs_data, rhs_data,
+        mlir::MutableArrayRef<ElementT>(const_cast<ElementT*>(lhs_data.data()),
+                                        lhs_data.size()),
+        lhs.getShapedType(), rhs.getShapedType(), type, lhs.isSplat(),
+        rhs.isSplat(), calculate);
+
+    return DenseResourceElementsAttr::get(
+        result_type, "rewrite_lhs_binary_fold_result", std::move(*lhs_blob));
+  } else if (can_rewrite_rhs && rhs_is_resource) {
+    auto rhs_dense_resource_attr = llvm::cast<DenseResourceElementsAttr>(rhs);
+    auto rhs_data_handle = rhs_dense_resource_attr.getRawHandle();
+    AsmResourceBlob* rhs_blob = rhs_data_handle.getBlob();
+    if (!rhs_blob) return {};
+
+    RunBinaryCalculation(
+        lhs_data, rhs_data,
+
+        mlir::MutableArrayRef<ElementT>(const_cast<ElementT*>(rhs_data.data()),
+                                        rhs_data.size()),
+        lhs.getShapedType(), rhs.getShapedType(), type, lhs.isSplat(),
+        rhs.isSplat(), calculate);
+
+    return DenseResourceElementsAttr::get(
+        result_type, "rewrite_rhs_binary_fold_result", std::move(*rhs_blob));
+  } else {
+    // We can't rewrite the LHS or RHS. So create a new blob and write the
+    // result.
+    auto fold_result_blob =
+        mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(type),
+                                            /*align=*/64,
+                                            /*dataIsMutable=*/true);
+    ArrayRef<ElementT> new_data = fold_result_blob.getDataAs<ElementT>();
+    RunBinaryCalculation(
+        lhs_data, rhs_data,
+        mlir::MutableArrayRef<ElementT>(const_cast<ElementT*>(new_data.data()),
+                                        new_data.size()),
+        lhs.getShapedType(), rhs.getShapedType(), type, lhs.isSplat(),
+        rhs.isSplat(), calculate);
+
+    return DenseResourceElementsAttr::get(result_type, "binary_fold_result",
+                                          std::move(fold_result_blob));
+  }
+}
+
 /// Performs const folding `calculate` with broadcast behavior on the two
 /// attributes `operand1` and `operand2` and returns the result if possible.
 /// This function assumes the two operands are verified to have value
@@ -776,8 +932,8 @@ Attribute ConstFoldBinaryOp(ShapedType result_type, Attribute operand1,
                             Attribute operand2, const CalculationT& calculate) {
   if (mlir::dyn_cast_or_null<DenseElementsAttr>(operand1) &&
       mlir::dyn_cast_or_null<DenseElementsAttr>(operand2)) {
-    return ConstFoldBinaryOpDenseDense<DenseElementsT, ElementT, ResultT,
-                                       CalculationT>(
+    return ConstFoldBinaryOpDenseElements<DenseElementsT, ElementT, ResultT,
+                                          CalculationT>(
         result_type, mlir::cast<DenseElementsAttr>(operand1),
         mlir::cast<DenseElementsAttr>(operand2), calculate);
   }
@@ -792,18 +948,54 @@ Attribute ConstFoldBinaryOp(ShapedType result_type, Attribute operand1,
 /// Depending on the given `resultType`, either `floatCalculate` or
 /// `intCalculate` is chosen to conduct the calculate.
 Attribute ConstFoldBinaryOp(
-    ShapedType type, ArrayRef<Attribute> operands,
+    ShapedType type, OperandRange operands,
     llvm::function_ref<APFloat(APFloat, APFloat)> float_calculate,
     llvm::function_ref<APInt(APInt, APInt)> int_calculate) {
-  auto elemType = type.getElementType();
+  ElementsAttr lhs_elements, rhs_elements;
+  if (!matchPattern(operands[0], m_Constant(&lhs_elements)) ||
+      !matchPattern(operands[1], m_Constant(&rhs_elements))) {
+    return {};
+  }
+  auto element_type = type.getElementType();
+  if ((lhs_elements && mlir::isa<DenseResourceElementsAttr>(lhs_elements)) ||
+      (rhs_elements && mlir::isa<DenseResourceElementsAttr>(rhs_elements))) {
+    if (mlir::isa<FloatType>(element_type)) {
+      auto bit_width = element_type.getIntOrFloatBitWidth();
+      switch (bit_width) {
+        case 32:
+          return ConstFoldBinaryOpDenseResources<
+              DenseResourceElementsAttr, float, float,
+              llvm::function_ref<APFloat(APFloat, APFloat)>>(
+              type, lhs_elements, rhs_elements, operands[0].hasOneUse(),
+              operands[1].hasOneUse(), float_calculate);
+        default:
+          return {};
+      }
+    }
 
-  if (mlir::isa<FloatType>(elemType))
-    return ConstFoldBinaryOp<DenseFPElementsAttr, APFloat, APFloat>(
-        type, operands[0], operands[1], float_calculate);
+    if (element_type.isSignlessInteger()) {
+      auto bit_width = element_type.getIntOrFloatBitWidth();
+      switch (bit_width) {
+        case 32:
+          return ConstFoldBinaryOpDenseResources<
+              DenseResourceElementsAttr, uint32_t, uint32_t,
+              llvm::function_ref<APInt(APInt, APInt)>>(
+              type, lhs_elements, rhs_elements, operands[0].hasOneUse(),
+              operands[1].hasOneUse(), int_calculate);
+        default:
+          return {};
+      }
+    }
 
-  if (elemType.isSignlessInteger())
-    return ConstFoldBinaryOp<DenseIntElementsAttr, APInt, APInt>(
-        type, operands[0], operands[1], int_calculate);
+  } else {
+    if (mlir::isa<FloatType>(element_type))
+      return ConstFoldBinaryOp<DenseFPElementsAttr, APFloat, APFloat>(
+          type, lhs_elements, rhs_elements, float_calculate);
+
+    if (element_type.isSignlessInteger())
+      return ConstFoldBinaryOp<DenseIntElementsAttr, APInt, APInt>(
+          type, lhs_elements, rhs_elements, int_calculate);
+  }
 
   return {};
 }
@@ -883,22 +1075,17 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
 
-  auto lhs_elements = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
-  auto rhs_elements = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
-  if (lhs_elements && rhs_elements) {
-    return ConstFoldBinaryOp(
-        getType(), operands, [](APFloat a, APFloat b) { return a + b; },
-        [](APInt a, APInt b) { return a + b; });
-  }
-
-  auto is_zero = [](Attribute a) {
-    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
-  };
-
   if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
     // Quantized folding not supported for the following.
     return {};
   }
+
+  auto lhs_elements = mlir::dyn_cast_or_null<ElementsAttr>(operands[0]);
+  auto rhs_elements = mlir::dyn_cast_or_null<ElementsAttr>(operands[1]);
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
 
   if (lhs_elements && is_zero(lhs_elements) &&
       getRhs().getType() == getType()) {
@@ -908,6 +1095,12 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   if (rhs_elements && is_zero(rhs_elements) &&
       getLhs().getType() == getType()) {
     return getLhs();
+  }
+
+  if (lhs_elements && rhs_elements) {
+    return ConstFoldBinaryOp(
+        getType(), getOperands(), [](APFloat a, APFloat b) { return a + b; },
+        [](APInt a, APInt b) { return a + b; });
   }
 
   return {};
@@ -1994,8 +2187,8 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   const bool is_quantized =
       llvm::isa<quant::QuantizedType>(getType().getElementType());
 
-  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
-  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
 
   if (lhs && !is_quantized) {
     if (is_zero(lhs) && lhs.getType() == getType()) {
@@ -2020,24 +2213,27 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   // So a few specializations are provided to evaluate the math operation
   // more efficiently.
 
-  // Specialization for f32 type.
-  if (mlir::cast<ShapedType>(getType()).getElementType().isF32()) {
-    return ConstFoldBinaryOp<DenseFPElementsAttr, float, float>(
-        getType(), operands[0], operands[1],
-        [](float a, float b) { return a * b; });
-  }
+  if ((operands[0] && mlir::isa<DenseElementsAttr>(operands[0])) &&
+      (operands[1] && mlir::isa<DenseElementsAttr>(operands[1]))) {
+    // Specialization for f32 type.
+    if (mlir::cast<ShapedType>(getType()).getElementType().isF32()) {
+      return ConstFoldBinaryOp<DenseFPElementsAttr, float, float>(
+          getType(), operands[0], operands[1],
+          [](float a, float b) { return a * b; });
+    }
 
-  // Specialization for bf16 type.
-  if (mlir::cast<ShapedType>(getType()).getElementType().isBF16()) {
-    return ConstFoldBinaryOp<DenseFPElementsAttr, Eigen::bfloat16,
-                             Eigen::bfloat16>(
-        getType(), operands[0], operands[1],
-        [](Eigen::bfloat16 a, Eigen::bfloat16 b) { return a * b; });
+    // Specialization for bf16 type.
+    if (mlir::cast<ShapedType>(getType()).getElementType().isBF16()) {
+      return ConstFoldBinaryOp<DenseFPElementsAttr, Eigen::bfloat16,
+                               Eigen::bfloat16>(
+          getType(), operands[0], operands[1],
+          [](Eigen::bfloat16 a, Eigen::bfloat16 b) { return a * b; });
+    }
   }
 
   // Generic fallback with APFloat
   return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a * b; },
+      getType(), getOperands(), [](APFloat a, APFloat b) { return a * b; },
       [](APInt a, APInt b) { return a * b; });
 }
 
@@ -2071,23 +2267,16 @@ OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-
-  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
-  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
-
-  if (rhs && lhs) {
-    return ConstFoldBinaryOp(
-        getType(), operands, [](APFloat a, APFloat b) { return a / b; },
-        [](APInt a, APInt b) { return a.sdiv(b); });
-  }
 
   if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
     // Quantized folding not supported for the following.
     return {};
   }
+
+  auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
+  auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
 
   auto is_one = [](Attribute a) {
     return matchPattern(a, m_One()) || matchPattern(a, m_OneFloat());
@@ -2095,6 +2284,12 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
 
   if (rhs && is_one(rhs) && getLhs().getType() == getType()) {
     return getLhs();
+  }
+
+  if (rhs && lhs) {
+    return ConstFoldBinaryOp(
+        getType(), getOperands(), [](APFloat a, APFloat b) { return a / b; },
+        [](APInt a, APInt b) { return a.sdiv(b); });
   }
 
   return {};
@@ -2277,24 +2472,34 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   auto input_type = mlir::cast<ShapedType>(getOperand(0).getType());
   if (InputOutputHasSameShape(input_type, result_type)) return getInput();
 
+  // If the result type isn't static, tries to derive the result type from
+  // the #2 operand.
+  if (!result_type.hasStaticShape()) {
+    auto shape_elements =
+        mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
+    if (!shape_elements) return nullptr;
+
+    SmallVector<int64_t, 4> shape_data;
+    for (const auto& it : shape_elements.getValues<APInt>()) {
+      shape_data.push_back(it.getSExtValue());
+    }
+    result_type = tensorflow::GetTypeFromTFTensorShape(
+        shape_data, input_type.getElementType());
+  }
+
   // Constant folding
   if (auto dense_elements =
           mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
-    // If the result type isn't static, tries to derive the result type from
-    // the #2 operand.
-    if (!result_type.hasStaticShape()) {
-      auto shape_elements =
-          mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
-      if (!shape_elements) return nullptr;
-
-      SmallVector<int64_t, 4> shape_data;
-      for (const auto& it : shape_elements.getValues<APInt>()) {
-        shape_data.push_back(it.getSExtValue());
-      }
-      result_type = tensorflow::GetTypeFromTFTensorShape(
-          shape_data, input_type.getElementType());
-    }
     return dense_elements.reshape(result_type);
+  } else if (auto dense_resource_elements =
+                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
+                     operands[0])) {
+    if (AsmResourceBlob* blob =
+            dense_resource_elements.getRawHandle().getBlob()) {
+      auto key = dense_resource_elements.getRawHandle().getKey();
+
+      return DenseResourceElementsAttr::get(result_type, key, std::move(*blob));
+    }
   }
 
   return nullptr;
@@ -2566,7 +2771,10 @@ void PackOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 llvm::SmallVector<int64_t> UnpackIndexOperand(Attribute operand) {
-  auto data = cast<DenseIntElementsAttr>(operand);
+  auto data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(operand);
+  if (!data) {
+    return {};
+  }
 
   const bool is_i32 = data.getElementType().isSignlessInteger(32);
 
@@ -2645,26 +2853,31 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
     }
   }
 
-  auto input_dense = cast<DenseElementsAttr>(input);
-  std::vector<Attribute> input_data(input_dense.value_begin<Attribute>(),
-                                    input_dense.value_end<Attribute>());
+  // TODO:(b/385000124) - Add support for dense resource.
+  // We need a way to get the input data from the resource as Attribute and also
+  // we need a way to create a new resource with the result data.
+  if (auto input_dense = dyn_cast<DenseElementsAttr>(input)) {
+    std::vector<Attribute> input_data(input_dense.value_begin<Attribute>(),
+                                      input_dense.value_end<Attribute>());
 
-  const FlatIndHelper write_inds(getType());
-  const FlatIndHelper read_inds(input_type);
+    const FlatIndHelper write_inds(getType());
+    const FlatIndHelper read_inds(input_type);
 
-  std::vector<Attribute> result_data(getType().getNumElements());
+    std::vector<Attribute> result_data(getType().getNumElements());
 
-  for (int w_flat_ind = 0; w_flat_ind < getType().getNumElements();
-       ++w_flat_ind) {
-    auto write_shaped_ind = write_inds.GetShapedInd(w_flat_ind);
+    for (int w_flat_ind = 0; w_flat_ind < getType().getNumElements();
+         ++w_flat_ind) {
+      auto write_shaped_ind = write_inds.GetShapedInd(w_flat_ind);
 
-    FlatIndHelper::AddOffset(write_shaped_ind, begin_vals);
-    const auto read_flat_ind = read_inds.GetFlatInd(write_shaped_ind);
+      FlatIndHelper::AddOffset(write_shaped_ind, begin_vals);
+      const auto read_flat_ind = read_inds.GetFlatInd(write_shaped_ind);
 
-    result_data[w_flat_ind] = input_data[read_flat_ind];
+      result_data[w_flat_ind] = input_data[read_flat_ind];
+    }
+
+    return DenseElementsAttr::get(getType(), result_data);
   }
-
-  return DenseElementsAttr::get(getType(), result_data);
+  return nullptr;
 }
 
 mlir::LogicalResult SliceOp::verify() {
@@ -2818,30 +3031,29 @@ OpFoldResult SqueezeOp::fold(FoldAdaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-
-  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
-  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
-
-  if (lhs && rhs) {
-    return ConstFoldBinaryOp(
-        getType(), operands, [](APFloat a, APFloat b) { return a - b; },
-        [](APInt a, APInt b) { return a - b; });
-  }
-
-  auto is_zero = [](Attribute a) {
-    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
-  };
 
   if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
     // Quant types not supported for the following.
     return {};
   }
 
+  auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+
   if (rhs && is_zero(rhs) && getLhs().getType() == getType()) {
     return getLhs();
+  }
+
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), getOperands(), [](APFloat a, APFloat b) { return a - b; },
+        [](APInt a, APInt b) { return a - b; });
   }
 
   return {};
@@ -3604,15 +3816,18 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
 
-  auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
-  auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  auto lhs = mlir::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = mlir::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
 
   if (lhs && rhs) {
     return ConstFoldBinaryOp(
-        getType(), adaptor.getOperands(),
+        getType(), getOperands(),
         [](APFloat a, APFloat b) { return llvm::maximum(a, b); },
         [](APInt a, APInt b) { return a.slt(b) ? b : a; });
   }
+
+  lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
   // Only constant fold for float tensors of the same type is implemented.
   if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
@@ -3637,14 +3852,18 @@ OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
 
-  auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
-  auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  auto lhs = mlir::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = mlir::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
+
   if (lhs && rhs) {
     return ConstFoldBinaryOp(
-        getType(), adaptor.getOperands(),
+        getType(), getOperands(),
         [](APFloat a, APFloat b) { return llvm::minimum(a, b); },
         [](APInt a, APInt b) { return a.slt(b) ? a : b; });
   }
+
+  lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
 
   if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
@@ -4438,6 +4657,10 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
                         ShapedType input_shape_type) {
   const int64_t input_axis = perms[current_axis];
   const bool is_last_axis = current_axis == output_shape.size() - 1;
+
+  // Assert that raw_input is not NULL before we start.
+  assert(raw_input != nullptr && "raw_input is NULL");
+
   for (int i = 0; i < output_shape[current_axis]; ++i) {
     // Update the input indices on `input_axis`.
     current_input_index[input_axis] = i;
@@ -4449,9 +4672,17 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
       // Address of input element to write raw data.
       const char* input_element_addr =
           raw_input + (input_flat_index * element_byte_size);
+
+      // Assert that input_element_addr is not NULL before memcpy.
+      assert(input_element_addr != nullptr && "input_element_addr is NULL");
+
+      // Assert that output_element_addr is not NULL. We're modifying
+      // it through a reference, but it should still point to valid memory.
+      assert(output_element_addr != nullptr && "output_element_addr is NULL");
+
       std::memcpy(output_element_addr, input_element_addr, element_byte_size);
       // Increment the next output address to write to by bytes equal to
-      // width of constiuent elements.
+      // width of constituent elements.
       output_element_addr += element_byte_size;
     } else {
       ComputePermutation(perms, output_shape, raw_input, element_byte_size,
@@ -4471,7 +4702,7 @@ void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
 
-  auto input_tensor = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  auto input_tensor = mlir::dyn_cast_or_null<ElementsAttr>(operands[0]);
   auto perm_tensor = mlir::dyn_cast_or_null<ElementsAttr>(operands[1]);
   if (!input_tensor || !perm_tensor) return nullptr;
 
@@ -4486,52 +4717,99 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   // This is the usual case, but consider falling back to old approach
   // if transposing string tensors becomes needed while folding.
   if (!input_tensor.getElementType().isIntOrIndexOrFloat()) return nullptr;
-  SmallVector<int64_t> perms;
+  auto input_type = mlir::cast<ShapedType>(input_tensor.getType());
+  const int num_dimensions = input_type.getRank();
+
+  // If the input tensor is a 1d tensor, then transpose is a no-op.
+  if (num_dimensions == 1) return input_tensor;
+
+  ArrayRef<int64_t> input_shape = input_type.getShape();
+  auto attr_iter = GetValues<int32_t>(perm_tensor);
   SmallVector<int64_t> output_shape;
-  ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
-  auto attr_iter = perm_tensor.getValues<IntegerAttr>();
-  const int num_dimensions = input_tensor.getType().getRank();
+  SmallVector<int64_t> perms;
   for (int i = 0; i < num_dimensions; ++i) {
-    perms.push_back(attr_iter[i].getInt());
+    perms.push_back(attr_iter[i]);
     output_shape.push_back(input_shape[perms[i]]);
   }
 
-  // If the input tensor values are splat, then it has exactly one value.
-  // It is sufficient then to just reshape the input data.
-  if (input_tensor.isSplat()) {
-    return input_tensor.reshape(input_tensor.getType().cloneWith(
-        output_shape, input_tensor.getElementType()));
+  if (auto dense_elements =
+          mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
+    // If the input tensor values are splat, then it has exactly one value.
+    // It is sufficient then to just reshape the input data.
+    if (dense_elements.isSplat()) {
+      return dense_elements.reshape(dense_elements.getType().cloneWith(
+          output_shape, dense_elements.getElementType()));
+    }
+
+    // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
+    // aligned to the nearest byte. So this is allowed.
+    const char* raw_input = dense_elements.getRawData().data();
+    const int element_byte_size =
+        dense_elements.getElementType().getIntOrFloatBitWidth() / 8;
+
+    // Hold current ND index in input tensor when computing
+    // permutation.
+    llvm::OwningArrayRef<uint64_t> current_input_index(input_type.getRank());
+
+    // Allocate raw data and retrieve address of the first char in its raw
+    // buffer.
+    llvm::OwningArrayRef<char> raw_output_arr(dense_elements.getRawData());
+    char* raw_output = (char*)raw_output_arr.data();
+
+    // Compute the result and write to `raw_output`.
+    ComputePermutation(perms, output_shape, raw_input, element_byte_size,
+                       /*current_axis=*/0, raw_output, current_input_index,
+                       input_type);
+
+    bool detected_splat = false;
+    const bool valid_output_buffer = DenseElementsAttr::isValidRawBuffer(
+        input_type, raw_output_arr, detected_splat);
+    if (!valid_output_buffer || detected_splat) return nullptr;
+
+    auto result_type =
+        RankedTensorType::get(output_shape, input_tensor.getElementType());
+    return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
+
+  } else if (auto dense_resource_elements =
+                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
+                     operands[0])) {
+    if (AsmResourceBlob* blob =
+            dense_resource_elements.getRawHandle().getBlob()) {
+      const int element_byte_size =
+          input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
+
+      // Hold current ND index in input tensor when computing
+      // permutation.
+      llvm::OwningArrayRef<uint64_t> current_input_index(input_type.getRank());
+
+      // Allocate raw data and retrieve address of the first char in its raw
+      // buffer.
+      auto result_type =
+          RankedTensorType::get(output_shape, input_tensor.getElementType());
+      auto raw_output_blob =
+          mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(result_type),
+                                              /*align=*/64,
+                                              /*dataIsMutable=*/true);
+      ArrayRef<char> data = raw_output_blob.getDataAs<char>();
+      llvm::MutableArrayRef<char> raw_output_arr = mlir::MutableArrayRef<char>(
+          const_cast<char*>(data.data()), data.size());
+      char* raw_output = (char*)raw_output_arr.data();
+      const char* raw_input = blob->getData().data();
+      if (raw_input != nullptr) {
+        absl::MutexLock lock(&compute_permutation_mutex);
+        // Compute the result and write to `raw_output`.
+        ComputePermutation(perms, output_shape, raw_input, element_byte_size,
+                           /*current_axis=*/0, raw_output, current_input_index,
+                           input_type);
+        dense_resource_elements.getRawHandle().getResource()->setBlob({});
+        return DenseResourceElementsAttr::get(result_type,
+                                              "tfl_transpose_op_fold_result",
+                                              std::move(raw_output_blob));
+      }
+    }
   }
 
-  // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
-  // aligned to the nearest byte. So this is allowed.
-  const char* raw_input = input_tensor.getRawData().data();
-  const int element_byte_size =
-      input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
-
-  // Hold current ND index in input tensor when computing
-  // permutation.
-  llvm::OwningArrayRef<uint64_t> current_input_index(
-      input_tensor.getType().getRank());
-
-  // Allocate raw data and retrieve address of the first char in its raw
-  // buffer.
-  llvm::OwningArrayRef<char> raw_output_arr(input_tensor.getRawData());
-  char* raw_output = (char*)raw_output_arr.data();
-
-  // Compute the result and write to `raw_output`.
-  ComputePermutation(perms, output_shape, raw_input, element_byte_size,
-                     /*current_axis=*/0, raw_output, current_input_index,
-                     input_tensor.getType());
-
-  bool detected_splat = false;
-  const bool valid_output_buffer = DenseElementsAttr::isValidRawBuffer(
-      input_tensor.getType(), raw_output_arr, detected_splat);
-  if (!valid_output_buffer || detected_splat) return nullptr;
-
-  auto result_type =
-      RankedTensorType::get(output_shape, input_tensor.getElementType());
-  return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
+  return nullptr;
 }
 
 mlir::LogicalResult TransposeOp::verify() {
