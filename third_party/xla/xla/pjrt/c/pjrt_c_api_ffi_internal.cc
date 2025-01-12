@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_ffi_internal.h"
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
