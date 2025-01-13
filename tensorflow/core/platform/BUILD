@@ -1124,7 +1124,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -34,7 +34,7 @@ xla_tests_package_groups()
 generate_backend_suites()
 
 # Target to add main for tests. Do not link this target and
-# //third_party/tensorflow/tsl/platform:test_main into the same target.
+# @com_google_googletest//:gtest_main into the same target.
 cc_library(
     name = "xla_internal_test_main",
     testonly = True,
@@ -2860,11 +2860,11 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -2963,9 +2963,9 @@ xla_cc_test(
     deps = [
         "//xla:executable_run_options",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -3057,7 +3057,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:cpu_plugin",
         "//xla/service:local_service",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3124,11 +3124,11 @@ xla_cc_test(
         "//xla:literal",
         "//xla/hlo/testlib:test_helpers",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

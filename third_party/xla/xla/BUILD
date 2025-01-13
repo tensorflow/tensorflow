@@ -91,9 +91,9 @@ xla_cc_test(
     deps = [
         ":bit_cast",
         "//xla/hlo/testlib:test",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -130,7 +130,7 @@ xla_cc_test(
         ":types",
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -162,7 +162,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:log_streamer",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -226,7 +226,7 @@ xla_cc_test(
         ":types",
         "//xla/hlo/testlib:test",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -262,9 +262,9 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -291,7 +291,6 @@ xla_cc_test(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -354,9 +353,9 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:test_main",
         "@ml_dtypes//:float8",
     ],
 )
@@ -380,7 +379,7 @@ xla_cc_test(
     deps = [
         ":permutation_util",
         "//xla/hlo/testlib:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -408,7 +407,7 @@ xla_cc_test(
     deps = [
         ":util",
         "//xla/hlo/testlib:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -486,8 +485,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -504,10 +503,10 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -519,8 +518,8 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -534,10 +533,10 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -548,7 +547,7 @@ xla_cc_test(
         ":shape_util",
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -560,7 +559,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -633,7 +632,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -659,8 +657,8 @@ xla_cc_test(
         ":literal",
         ":literal_pool",
         ":literal_util",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -711,7 +709,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -787,8 +784,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -811,9 +808,9 @@ xla_cc_test(
     deps = [
         ":array2d",
         "//xla/hlo/testlib:test",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -835,7 +832,7 @@ xla_cc_test(
         ":array3d",
         ":types",
         "//xla/hlo/testlib:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -862,8 +859,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -947,8 +944,8 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -983,8 +980,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -1017,8 +1014,8 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -1063,7 +1060,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1113,7 +1110,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/tests:literal_test_util",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1290,8 +1287,8 @@ xla_cc_test(
         ":autotuning_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -1348,7 +1345,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
