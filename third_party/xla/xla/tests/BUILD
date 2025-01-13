@@ -2597,6 +2597,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_runner_interface",
