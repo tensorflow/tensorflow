@@ -148,7 +148,7 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
   explicit HloComputationFusion(const HloComputation* computation,
                                 const HloFusionAdaptor* parent)
       : computation_(computation), parent_(parent) {
-    // `FindNonTrivialHero` only call `ContainsInstruction` and doesn't use
+    // `FindNonTrivialHero` only calls `ContainsInstruction` and doesn't use
     // information about roots, so we can skip looking for roots as performance
     // optimization.
     // TODO(shyshkov): Clean this up once priority fusion is fully launched.
@@ -177,12 +177,21 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
   }
 
   bool ContainsInstruction(const HloInstruction* instruction) const override {
-    return instruction->parent() == computation_ ||
-           // For convenience, we consider that the adaptor also contains the
-           // parent fusion instruction. This is useful in
-           // ResolveUsers/ResolveOperand to check if the given fusion
-           // instruction is part of the fusion adaptor.
-           instruction == computation_->FusionInstruction();
+    // For convenience, we consider that the adaptor also contains the parent
+    // fusion instruction. This is useful in ResolveUsers/ResolveOperand to
+    // check if the given fusion instruction is part of the fusion adaptor.
+    if (instruction == computation_->FusionInstruction()) {
+      return true;
+    }
+    // Check whether the recursive parent computation of the given 'instruction'
+    // is equal to this fusion computation.
+    do {
+      if (instruction->parent() == computation_) {
+        return true;
+      }
+      instruction = instruction->parent()->FusionInstruction();
+    } while (instruction != nullptr);
+    return false;
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
@@ -221,6 +230,14 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
           (instr->opcode() == HloOpcode::kTuple && instr->IsRoot())) {
         continue;
       }
+      if (instr->opcode() == HloOpcode::kFusion) {
+        // Recurse into nested fusions.
+        HloComputationFusion nested_fusion(
+            instr->fused_instructions_computation(), parent_);
+        absl::c_move(nested_fusion.MakeInstructionPostOrder(),
+                     std::back_inserter(result));
+        continue;
+      }
       result.emplace_back(*instr, parent_);
     }
     return result;
@@ -234,6 +251,13 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
       if (instr->opcode() == HloOpcode::kParameter ||
           instr->opcode() == HloOpcode::kTuple ||
           instr->opcode() == HloOpcode::kGetTupleElement) {
+        continue;
+      }
+      if (instr->opcode() == HloOpcode::kFusion) {
+        // Recurse into nested fusions.
+        HloComputationFusion nested_fusion(
+            instr->fused_instructions_computation(), parent_);
+        nested_fusion.ForEach(fn);
         continue;
       }
       fn(HloInstructionAdaptor{*instr, parent_});
@@ -284,10 +308,9 @@ bool HloFusionAdaptor::ContainsInstruction(
 
 bool HloFusionAdaptor::ContainsInstruction(
     const HloInstruction* instruction) const {
-  for (const auto& fusion_instruction : fusion_instructions_) {
-    if (fusion_instruction->ContainsInstruction(instruction)) return true;
-  }
-  return false;
+  return absl::c_any_of(fusion_instructions_, [&](const auto& adaptor) {
+    return adaptor->ContainsInstruction(instruction);
+  });
 }
 
 absl::InlinedVector<HloInstructionAdaptor, 2> HloFusionAdaptor::GetRoots()
@@ -427,8 +450,8 @@ void HloFusionAdaptor::ForEach(
 
 std::string HloFusionAdaptor::ToString() const {
   std::ostringstream ss;
-  for (const auto& fusion_instruction : fusion_instructions_) {
-    ss << fusion_instruction->ToString() << "\n";
+  for (const auto& fusion_instruction : MakeInstructionPostOrder()) {
+    ss << fusion_instruction.ToString() << "\n";
   }
   return ss.str();
 }

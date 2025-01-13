@@ -340,13 +340,14 @@ ENTRY entry_computation {
     kind=kCustom, calls=dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_gemm","triton_gemm_config":{
-          "block_m":"16","block_n":"16","block_k":"32",
+          "block_m":"4","block_n":"16","block_k":"128",
           "split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"
         }
       }
     }
 }
 )";
+  // Note: block sizes were 16,16,32, but that now fails to satisfy constraints.
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
