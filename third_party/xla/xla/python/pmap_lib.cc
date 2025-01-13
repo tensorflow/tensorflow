@@ -597,11 +597,12 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   std::shared_ptr<PmapCacheEntry> cache_entry_ptr;
   {
     nb::ft_lock_guard lock(mu_);
-    cache_entry_ptr = executables_[call_signature];
-  }
-  if (cache_entry_ptr == nullptr) {
-    inserted = true;
-    cache_entry_ptr = std::make_shared<PmapCacheEntry>(pytree_registry_.get());
+    std::shared_ptr<PmapCacheEntry>& entry_ref = executables_[call_signature];
+    if (!entry_ref) {
+      inserted = true;
+      entry_ref = std::make_shared<PmapCacheEntry>(pytree_registry_.get());
+    }
+    cache_entry_ptr = entry_ref;
   }
   PmapCacheEntry& cache_entry = *cache_entry_ptr;
 
