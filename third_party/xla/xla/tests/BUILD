@@ -364,6 +364,37 @@ cc_library(
 )
 
 cc_library(
+    name = "client_library_test_runner_mixin",
+    testonly = True,
+    hdrs = ["client_library_test_runner_mixin.h"],
+    deps = [
+        ":hlo_runner_agnostic_test_base",
+        ":literal_test_util",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:array4d",
+        "//xla:error_spec",
+        "//xla:execution_options_util",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:bitmap",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "llvm_irgen_test_base",
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
