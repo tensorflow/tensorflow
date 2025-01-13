@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_GRAPH_H_
 #define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_GRAPH_H_
 
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
