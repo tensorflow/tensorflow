@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,11 @@ class HloRunnerAgnosticReferenceMixin : public T {
   static_assert(
       std::is_base_of_v<HloRunnerAgnosticTestBase, T>,
       "Mixin must be used with a subclass of HloRunnerAgnosticTestBase.");
+
+ public:
+  // A little helper to make sure that error messages are clear when the mixin
+  // is not used correctly.
+  using has_reference_runner_mixin = std::true_type;
 
  protected:
   template <typename... BaseArgs>

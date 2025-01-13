@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla::cpu {
 

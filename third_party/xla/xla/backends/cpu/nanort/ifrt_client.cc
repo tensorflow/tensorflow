@@ -22,14 +22,17 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
+#include "absl/base/optimization.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -82,8 +85,10 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/mem.h"
 
 namespace xla::cpu {
 namespace {
@@ -161,7 +166,8 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     TF_ASSIGN_OR_RETURN(
         DataPtr data_ptr,
         AllocateData(dtype.byte_size().value() * shape.num_elements()));
-    return tsl::TakeRef(new NanoArray(client, dtype, shape, std::move(data_ptr),
+    return tsl::TakeRef(new NanoArray(client, dtype, std::move(shape),
+                                      std::move(data_ptr),
                                       std::move(sharding)));
   }
 
@@ -176,9 +182,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     auto size = dtype.byte_size().value_or(0) * shape.num_elements();
     TF_RET_CHECK(size > 0);
     DataPtr data_ptr;
-    if (!on_done_with_host_buffer) {
-      on_done_with_host_buffer = [] {};
-    }
+
     bool layout_compatible = LayoutCompatible(dtype, shape, byte_strides);
     bool aligned = reinterpret_cast<uintptr_t>(data) % Align() == 0;
 
@@ -187,7 +191,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
       make_copy = true;
     }
 
-    if (make_copy) {
+    if (ABSL_PREDICT_FALSE(make_copy)) {
       TF_ASSIGN_OR_RETURN(data_ptr, AllocateData(size));
       if (layout_compatible) {
         // Input has a compatible layout, so we can just do a memcpy.
@@ -204,15 +208,18 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
       }
       // We're done with the input buffer, so we can allow the caller to clean
       // it up.
-      on_done_with_host_buffer();
+      if (on_done_with_host_buffer) on_done_with_host_buffer();
     } else {
       // We're allowed to keep the input buffer, and it's dense and row major,
       // so we can just use it directly.
-      data_ptr = DataPtr(data, [done = std::move(on_done_with_host_buffer)](
-                                   void* ptr) { done(); });
+      data_ptr = DataPtr(
+          data, [done = std::move(on_done_with_host_buffer)](void* ptr) {
+            if (done) done();
+          });
     }
     TF_RET_CHECK(data_ptr != nullptr);
-    return tsl::TakeRef(new NanoArray(client, dtype, shape, std::move(data_ptr),
+    return tsl::TakeRef(new NanoArray(client, dtype, std::move(shape),
+                                      std::move(data_ptr),
                                       std::move(sharding)));
   }
 
@@ -459,19 +466,20 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     auto xla_shape = xla::ShapeUtil::MakeShape(xla_dtype, shape.dims());
     auto strides = xla::ShapeUtil::ByteStrides(xla_shape);
     if (!strides.has_value()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Couldn't compute byte strides for shape:", xla_shape.ToString()));
+      return InvalidArgument("Couldn't compute byte strides for shape: %s",
+                             xla_shape.ToString());
     }
     return std::move(*strides);
   }
 
   // Allocates an aligned buffer of the given size.
   static absl::StatusOr<DataPtr> AllocateData(size_t size) {
-    DataPtr data_ptr(aligned_alloc(Align(), std::max<size_t>(size, Align())),
-                     [](void* ptr) { free(ptr); });
-    if (data_ptr == nullptr) {
-      return absl::InternalError(absl::StrCat(
-          "Failed to allocate memory for NanoArray. Errno: ", strerror(errno)));
+    DataPtr data_ptr(
+        tsl::port::AlignedMalloc(std::max<size_t>(size, Align()), Align()),
+        [](void* ptr) { tsl::port::AlignedFree(ptr); });
+    if (ABSL_PREDICT_FALSE(data_ptr == nullptr)) {
+      return Internal("Failed to allocate memory for NanoArray. Errno: %s",
+                      strerror(errno));
     }
     return data_ptr;
   }
@@ -508,7 +516,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   std::shared_ptr<const ifrt::Sharding> sharding_;
 };
 
-char NanoArray::ID = 'A';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoArray::ID = 'A';  // NOLINT
 
 // Sharded array implementation. Represents an array that should be assembled
 // from multiple arrays, but we aren't sure how to assemble it yet.
@@ -521,8 +529,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
       std::shared_ptr<const ifrt::Sharding> sharding,
       std::vector<tsl::RCReference<NanoArray>> shards) {
     if (shards.empty()) {
-      return absl::InvalidArgumentError(
-          "Can't create a sharded array with no shards.");
+      return InvalidArgument("Can't create a sharded array with no shards.");
     }
     xla::ifrt::DType dtype = shards[0]->dtype();
 
@@ -623,11 +630,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   ifrt::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ifrt::ArrayCopySemantics semantics) override {
-    return Ready(
-        absl::InternalError("Cannot copy sharded array to host buffer."));
+    return Ready(Internal("Cannot copy sharded array to host buffer."));
   }
 
-  static char ID;  // NOLINT
+  ABSL_ATTRIBUTE_UNUSED static char ID;  // NOLINT
 
  private:
   ShardedNanoArray(NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
@@ -735,9 +741,8 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
       absl::Span<tsl::RCReference<ifrt::Value>> values) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     if (values.size() != values_.size()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Tuple arity mismatch: expected ", values_.size(),
-                       ", got ", values.size()));
+      return InvalidArgument("Tuple arity mismatch: expected %d, got %d",
+                             values_.size(), values.size());
     }
     for (int i = 0; i < values_.size(); ++i) {
       values[i] = values_[i];
@@ -761,7 +766,7 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   std::vector<tsl::RCReference<ifrt::Value>> values_;
 };
 
-char NanoTuple::ID = 'T';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoTuple::ID = 'T';  // NOLINT
 
 // Executable implementation.
 class NanoExecutable final
@@ -772,7 +777,7 @@ class NanoExecutable final
       NanoIfrtClient* client, std::unique_ptr<ifrt::Program> program) {
     auto* xla_program = llvm::dyn_cast<ifrt::HloProgram>(program.get());
     if (xla_program == nullptr) {
-      return absl::InvalidArgumentError("NanoRT requires an HloProgram");
+      return InvalidArgument("NanoRT requires an HloProgram");
     }
     XlaComputation computation;
     TF_RETURN_IF_ERROR(MlirToXlaComputation(xla_program->mlir_module,
@@ -781,9 +786,9 @@ class NanoExecutable final
                         client->nano_client()->Compile(computation));
 
     if (computation.proto().computations().size() != 1) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("NanoRT only supports single-computation programs, got ",
-                       computation.proto().computations().size()));
+      return InvalidArgument(
+          "NanoRT only supports single-computation programs, got %d",
+          computation.proto().computations().size());
     }
 
     TF_ASSIGN_OR_RETURN(auto program_shape, computation.GetProgramShape());
@@ -810,10 +815,10 @@ class NanoExecutable final
       absl::Span<tsl::RCReference<ifrt::Array>> args,
       const ExecuteOptions& options,
       std::optional<tsl::RCReference<ifrt::DeviceList>> devices) override {
-    if (args.size() != input_shardings_.size()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Number of arguments ", args.size(),
-          " is not what executable expects ", input_shardings_.size()));
+    if (ABSL_PREDICT_FALSE(args.size() != input_shardings_.size())) {
+      return InvalidArgument(
+          "Number of arguments %d is not what executable expects %d",
+          args.size(), input_shardings_.size());
     }
 
     // Convert the ifrt arrays to nano arrays. 'tmp' holds any arrays that had
@@ -826,8 +831,7 @@ class NanoExecutable final
     std::vector<xla::cpu::NanoRtExecutable::Result> nano_results;
     nano_results.reserve(result_arrays.size());
     for (auto& result_array : result_arrays) {
-      nano_results.push_back(
-          llvm::dyn_cast<NanoArray>(result_array.get())->AsResult());
+      nano_results.push_back(result_array->AsResult());
     }
 
     auto event = executable_->Execute(nano_args, nano_results,
@@ -838,16 +842,20 @@ class NanoExecutable final
     // execution until we know where the outputs will be stored.
     tsl::BlockUntilReady(event);
 
-    if (event.IsError()) return event.GetError();
-    if (!event.IsConcrete()) {
-      return absl::InternalError("NanoRT result is not concrete.");
+    if (ABSL_PREDICT_FALSE(event.IsError())) {
+      return event.GetError();
+    }
+    if (ABSL_PREDICT_FALSE(!event.IsConcrete())) {
+      return Internal("NanoRT result is not concrete.");
     }
 
     ExecuteResult result;
     if (options.fill_status) {
       result.status = Ready();
     }
-    result.outputs = std::move(result_arrays);
+    result.outputs.insert(result.outputs.end(),
+                          std::make_move_iterator(result_arrays.begin()),
+                          std::make_move_iterator(result_arrays.end()));
     return result;
   }
 
@@ -1000,10 +1008,11 @@ class NanoExecutable final
          computation.proto().computations(0).instructions()) {
       if (instruction.opcode() == "parameter" && instruction.has_sharding()) {
         if (instruction.parameter_number() >= shardings.size()) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Parameter number ", instruction.parameter_number(),
-                           " is out of range for program with ",
-                           program_shape.parameters().size(), " parameters."));
+          return InvalidArgument(
+              "Parameter number %d is out of range for program with %d "
+              "parameters.",
+              instruction.parameter_number(),
+              program_shape.parameters().size());
         }
         shardings[instruction.parameter_number()] = instruction.sharding();
       }
@@ -1040,7 +1049,7 @@ class NanoExecutable final
   }
 
   // Allocates the results for the program.
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> AllocateResults() {
+  absl::StatusOr<std::vector<tsl::RCReference<NanoArray>>> AllocateResults() {
     const auto& result_shape = program_shape_.result();
     const auto result_shapes =
         result_shape.IsTuple()
@@ -1048,18 +1057,19 @@ class NanoExecutable final
             : absl::MakeConstSpan(&result_shape, 1);
     TF_RET_CHECK(result_shapes.size() == output_shardings_.size());
 
-    std::vector<tsl::RCReference<ifrt::Array>> result_arrays;
+    std::vector<tsl::RCReference<NanoArray>> result_arrays;
     result_arrays.reserve(result_shapes.size());
 
     for (int i = 0; i < result_shapes.size(); ++i) {
       TF_ASSIGN_OR_RETURN(auto ifrt_type,
                           ifrt::ToDType(result_shapes[i].element_type()));
       ifrt::Shape ifrt_shape(result_shapes[i].dimensions());
-      TF_ASSIGN_OR_RETURN(auto array,
-                          NanoArray::Allocate(client_, ifrt_type, ifrt_shape,
-                                              output_shardings_[i]));
-      result_arrays.push_back(std::move(array));
+      TF_ASSIGN_OR_RETURN(
+          result_arrays.emplace_back(),
+          NanoArray::Allocate(client_, ifrt_type, std::move(ifrt_shape),
+                              output_shardings_[i]));
     }
+
     return result_arrays;
   }
 
@@ -1074,14 +1084,14 @@ class NanoExecutable final
 
     for (int i = 0; i < args.size(); ++i) {
       auto* nano_array = llvm::dyn_cast_or_null<NanoArray>(args[i].get());
-      if (nano_array == nullptr) {
+      if (ABSL_PREDICT_FALSE(nano_array == nullptr)) {
         // The input isn't a nano array, so it must be a sharded array.
         auto* sharded_array =
             llvm::dyn_cast_or_null<ShardedNanoArray>(args[i].get());
         if (sharded_array == nullptr) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Argument is not a NanoArray or ShardedNanoArray: ",
-                           args[i]->DebugString()));
+          return InvalidArgument(
+              "Argument is not a NanoArray or ShardedNanoArray: %s",
+              args[i]->DebugString());
         }
         TF_ASSIGN_OR_RETURN(
             auto dense_array,
@@ -1103,7 +1113,7 @@ class NanoExecutable final
   std::vector<std::shared_ptr<ifrt::Sharding>> output_shardings_;
 };
 
-char NanoExecutable::ID = 'E';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoExecutable::ID = 'E';  // NOLINT
 
 // Compiler implementation.
 class NanoCompiler final
@@ -1136,7 +1146,7 @@ class NanoCompiler final
   NanoIfrtClient* client_;
 };
 
-char NanoCompiler::ID = 'C';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoCompiler::ID = 'C';  // NOLINT
 
 // Memory implementation. There is only one address space so this doesn't do
 // much.
@@ -1165,7 +1175,7 @@ class NanoMemory final : public llvm::RTTIExtends<NanoMemory, ifrt::Memory> {
   NanoIfrtClient* client_;
 };
 
-char NanoMemory::ID = 'M';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoMemory::ID = 'M';  // NOLINT
 
 // Device implementation. There is only one device so this doesn't do much.
 class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
@@ -1207,7 +1217,7 @@ class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
   ifrt::Memory* memory_;
 };
 
-char NanoDevice::ID = 'D';  // NOLINT
+ABSL_ATTRIBUTE_UNUSED char NanoDevice::ID = 'D';  // NOLINT
 
 }  // namespace
 
@@ -1244,9 +1254,10 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
       make_copy = false;
       break;
   }
-  return NanoArray::FromBuffer(this, const_cast<void*>(data), dtype, shape,
-                               std::move(sharding), byte_strides, make_copy,
-                               on_done_with_host_buffer);
+  return NanoArray::FromBuffer(this, const_cast<void*>(data), dtype,
+                               std::move(shape), std::move(sharding),
+                               byte_strides, make_copy,
+                               std::move(on_done_with_host_buffer));
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
@@ -1260,8 +1271,8 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
   for (const auto& array : arrays) {
     auto* nano_array = llvm::dyn_cast_or_null<NanoArray>(array.get());
     if (nano_array == nullptr) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Array is not a NanoArray: ", array->DebugString()));
+      return InvalidArgument("Array is not a NanoArray: %s",
+                             array->DebugString());
     }
     nano_arrays.push_back(tsl::FormRef(nano_array));
   }
@@ -1310,9 +1321,8 @@ NanoIfrtClient::CopyArrays(
                                              std::move(sharding),
                                              std::move(shards_copy)));
     } else {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Array is not a NanoArray or ShardedNanoArray: ",
-                       array->DebugString()));
+      return InvalidArgument("Array is not a NanoArray or ShardedNanoArray: %s",
+                             array->DebugString());
     }
     TF_RET_CHECK(copy != nullptr);
     result.push_back(copy);
