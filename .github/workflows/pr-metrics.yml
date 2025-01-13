@@ -3,7 +3,7 @@ name: PR Metrics Script
 on:
   pull_request:
     types: [opened, reopened, closed]
-    branches: [main]
+    branches: [master]
 jobs:
   capture-pr-info:
     runs-on: ubuntu-latest
