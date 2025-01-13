@@ -2181,6 +2181,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_enable_fast_math),
                 debug_options->xla_enable_fast_math(),
                 "Enable optimizations that assume finite math, i.e., no NaN."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_stream_annotation",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_experimental_stream_annotation),
+                debug_options->xla_gpu_experimental_stream_annotation(),
+                "Enable the experimental explicit stream annotation support. "
+                "If false, the annotations are ignored."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_parallel_collective_overlap_limit",
       int32_setter_for(
