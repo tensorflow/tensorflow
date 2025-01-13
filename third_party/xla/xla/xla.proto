@@ -946,6 +946,7 @@ message DebugOptions {
 
   reserved 302;  // was xla_use_shardy
 
+  // If true, splits the autotuning work among the available processors.
   bool xla_gpu_shard_autotuning = 304;
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
