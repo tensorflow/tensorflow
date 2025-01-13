@@ -1682,7 +1682,8 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
     custom-call.21.0 = (
         f8e4m3fn[4,4,16,16]{3,1,2,0},
         f32[1,1,1,1]{3,2,1,0},
-        f32[1,1,1,1]{3,2,1,0}
+        f32[1,1,1,1]{3,2,1,0},
+        u8[0]{0}
     ) custom-call(
         convert.18,
         convert.30,
@@ -1860,7 +1861,8 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
     custom-call.21.0 = (
         f8e4m3fn[4,16,4,16]{3,2,1,0},
         f32[1,1,1,1]{3,2,1,0},
-        f32[1,1,1,1]{3,2,1,0}
+        f32[1,1,1,1]{3,2,1,0},
+        u8[0]{0}
     ) custom-call(
         convert.18,
         convert.30,
