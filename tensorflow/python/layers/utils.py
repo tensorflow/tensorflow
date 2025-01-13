@@ -26,14 +26,22 @@ VALID_NDIM = {3, 4, 5}
 def convert_data_format(data_format: str, ndim: int) -> str:
     if ndim not in VALID_NDIM:
         raise ValueError(f"Invalid input rank {ndim}. Supported ranks are {VALID_NDIM}.")
-    return {
-        ('channels_last', 3): 'NWC',
-        ('channels_last', 4): 'NHWC',
-        ('channels_last', 5): 'NDHWC',
-        ('channels_first', 3): 'NCW',
-        ('channels_first', 4): 'NCHW',
-        ('channels_first', 5): 'NCDHW',
-    }.get((data_format, ndim), ValueError(f"Invalid data_format {data_format}."))
+    
+    match (data_format, ndim):
+        case ('channels_last', 3):
+            return 'NWC'
+        case ('channels_last', 4):
+            return 'NHWC'
+        case ('channels_last', 5):
+            return 'NDHWC'
+        case ('channels_first', 3):
+            return 'NCW'
+        case ('channels_first', 4):
+            return 'NCHW'
+        case ('channels_first', 5):
+            return 'NCDHW'
+        case _:
+            raise ValueError(f"Invalid data_format {data_format}.")
 
 
 def normalize_tuple(value, n, name) -> tuple:
@@ -94,10 +102,15 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
       The output length (integer).
   """
   if input_length is None:
-    return None
-  assert padding in {'same', 'valid', 'full'}
-  dilated_filter_size = get_dilated_filter_size(filter_size, dilation) # avoids redundant computations.
-  output_length = input_length if padding == 'same' else input_length - dilated_filter_size + 1 if padding == 'valid' else input_length + dilated_filter_size - 1
+        return None
+  assert padding in VALID_PADDING
+  dilated_filter_size = get_dilated_filter_size(filter_size, dilation)
+  if padding == 'same':
+      output_length = input_length
+  elif padding == 'valid':
+      output_length = input_length - dilated_filter_size + 1
+  else:  # padding == 'full'
+      output_length = input_length + dilated_filter_size - 1
   return (output_length + stride - 1) // stride
 
 
