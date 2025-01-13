@@ -946,6 +946,9 @@ message DebugOptions {
 
   reserved 302;  // was xla_use_shardy
 
+  // If true, shards the autotuning work between participating compiler
+  // processes (typically in multi-host setups) and joins the results when
+  // it's done.
   bool xla_gpu_shard_autotuning = 304;
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
