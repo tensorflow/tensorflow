@@ -218,6 +218,22 @@ TEST_P(ConvolutionTest, Conv3DWithBiasTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
 }
 
+TEST_P(ConvolutionTest, Conv2DWithSmallBiasTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.constant.bias
+  ENTRY convolution.test.with.bias {
+    arg.0 = $dtype[1,10,10,32] parameter(0)
+    arg.1 = $dtype[10,10,32,64] parameter(1)
+    conv = $dtype[1,1,1,64] convolution(arg.0, arg.1),
+          window={size=10x10}, dim_labels=b01f_01io->b01f
+    bias = $dtype[64] constant({...})
+    broadcasted_bias = $dtype[1,1,1,64] broadcast(bias), dimensions={3}
+    ROOT add = $dtype[1,1,1,64] add(conv, broadcasted_bias)
+})";
+
+  RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
+}
+
 TEST_P(ConvolutionTest, Conv3DReluTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.relu
