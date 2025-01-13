@@ -545,9 +545,12 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
           "byte_strides is not currently supported for making "
           "BasicStringArrays.");
     }
-    if (semantics != Client::HostBufferSemantics::kImmutableOnlyDuringCall) {
+    if (!(semantics == Client::HostBufferSemantics::kImmutableOnlyDuringCall ||
+          semantics ==
+              Client::HostBufferSemantics::kImmutableUntilTransferCompletes)) {
       return absl::InvalidArgumentError(
-          "HostBufferSemantics other than kImmutableOnlyDuringCall are not "
+          "HostBufferSemantics other than kImmutableOnlyDuringCall and "
+          "kImmutableUntilTransferCompletes are not "
           "currently supported for making BasicStringArrays.");
     }
     if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {

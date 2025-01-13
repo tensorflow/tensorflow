@@ -350,6 +350,7 @@ cc_library(
     hdrs = ["basic_string_array.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//util/symbolize",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
