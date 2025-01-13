@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "tensorflow/examples/wav_to_spectrogram/wav_to_spectrogram.h"
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/audio_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
