@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
