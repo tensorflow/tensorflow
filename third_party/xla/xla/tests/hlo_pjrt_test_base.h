@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 #define XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -29,8 +28,7 @@ struct HloPjRtTestBaseOptions {
   HloPredicate instruction_can_change_layout_func;
 };
 
-class HloPjRtTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloRunnerAgnosticTestBase> {
+class HloPjRtTestBase : public HloRunnerAgnosticTestBase {
  protected:
   // This uses the PjRt interpreter backend for the reference backend and
   // automatically finds a PjRt backend for the test backend.

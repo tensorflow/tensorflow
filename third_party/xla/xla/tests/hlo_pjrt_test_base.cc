@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 
@@ -53,9 +52,9 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtInterpreterReferenceMixin<HloRunnerAgnosticTestBase>(
-          GetHloRunnerForTest(), options.verifier_layout_sensitive,
-          options.allow_mixed_precision_in_hlo_verifier,
-          options.instruction_can_change_layout_func) {}
+    : HloRunnerAgnosticTestBase(GetHloRunnerForTest(),
+                                options.verifier_layout_sensitive,
+                                options.allow_mixed_precision_in_hlo_verifier,
+                                options.instruction_can_change_layout_func) {}
 
 }  // namespace xla
