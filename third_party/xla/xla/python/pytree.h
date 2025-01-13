@@ -143,9 +143,10 @@ class PyTreeRegistry {
       return a.ptr() == b.ptr();
     }
   };
+  mutable nanobind::ft_mutex mu_;
   absl::flat_hash_map<nanobind::object, std::unique_ptr<Registration>, TypeHash,
                       TypeEq>
-      registrations_;
+      registrations_;  // Guarded by mu_
   bool enable_namedtuple_;
 
   static int tp_traverse(PyObject* self, visitproc visit, void* arg);
