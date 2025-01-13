@@ -77,10 +77,11 @@ PartitionedHlo PerGroupPartitionedHlo(
 // Helper to get multiple per-group partitioned hlos.
 std::vector<PartitionedHlo> PerGroupPartitionedHlos(
     std::vector<PartitionedHlo>& phlos, const GroupedSharding& grouped_sharding,
-    SpmdBuilder* b, absl::InlinedVector<std::function<void()>, 3>& clean_ups) {
+    SpmdBuilder* b, absl::InlinedVector<std::function<void()>, 3>& clean_ups,
+    absl::flat_hash_map<HloInstruction*, PartitionedHlo>&
+        cached_per_group_hlos) {
   // Cache per-group partitioned hlos to avoid group-partitioning it more than
   // once.
-  absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
   std::vector<HloInstruction*> hlos;
   absl::c_transform(phlos, std::back_inserter(hlos),
                     [&](PartitionedHlo phlo) { return phlo.hlo(); });
@@ -1230,10 +1231,11 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
                           updates[0].sharding(), update_parallel_dims),
                       new_indices_grouped);
   const GroupedSharding& output_grouped = operand_grouped;
-  std::vector<PartitionedHlo> per_group_operands =
-      PerGroupPartitionedHlos(operands, operand_grouped, b, clean_ups);
-  std::vector<PartitionedHlo> per_group_updates =
-      PerGroupPartitionedHlos(updates, update_grouped, b, clean_ups);
+  absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
+  std::vector<PartitionedHlo> per_group_operands = PerGroupPartitionedHlos(
+      operands, operand_grouped, b, clean_ups, cached_per_group_hlos);
+  std::vector<PartitionedHlo> per_group_updates = PerGroupPartitionedHlos(
+      updates, update_grouped, b, clean_ups, cached_per_group_hlos);
   PartitionedHlo per_group_new_indices =
       PerGroupPartitionedHlo(new_indices, new_indices_grouped, b, clean_ups);
   auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
@@ -1367,10 +1369,11 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
             ScatterIndexDimsByPriority(scatter)),
         update_grouped);
     const GroupedSharding& output_grouped = operand_grouped;
-    std::vector<PartitionedHlo> per_group_operands =
-        PerGroupPartitionedHlos(operands, operand_grouped, b, clean_ups);
-    std::vector<PartitionedHlo> per_group_updates =
-        PerGroupPartitionedHlos(updates, update_grouped, b, clean_ups);
+    absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
+    std::vector<PartitionedHlo> per_group_operands = PerGroupPartitionedHlos(
+        operands, operand_grouped, b, clean_ups, cached_per_group_hlos);
+    std::vector<PartitionedHlo> per_group_updates = PerGroupPartitionedHlos(
+        updates, update_grouped, b, clean_ups, cached_per_group_hlos);
     PartitionedHlo per_group_indices =
         PerGroupPartitionedHlo(indices, indices_grouped, b, clean_ups);
     auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
@@ -1623,10 +1626,11 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
         indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
         indices_min));
     PartitionedHlo new_indices = indices.CloneWithNewHlo(adjusted_indices);
-    std::vector<PartitionedHlo> per_group_operands =
-        PerGroupPartitionedHlos(operands, operand_grouped, b, clean_ups);
-    std::vector<PartitionedHlo> per_group_updates =
-        PerGroupPartitionedHlos(updates, update_grouped, b, clean_ups);
+    absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
+    std::vector<PartitionedHlo> per_group_operands = PerGroupPartitionedHlos(
+        operands, operand_grouped, b, clean_ups, cached_per_group_hlos);
+    std::vector<PartitionedHlo> per_group_updates = PerGroupPartitionedHlos(
+        updates, update_grouped, b, clean_ups, cached_per_group_hlos);
     PartitionedHlo per_group_new_indices =
         PerGroupPartitionedHlo(new_indices, indices_grouped, b, clean_ups);
     auto pshape = MaybeGetTuplePerGroupBaseShape(output_grouped, output_shape);
