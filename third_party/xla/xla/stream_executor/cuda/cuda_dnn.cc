@@ -8567,9 +8567,9 @@ absl::Status CudnnGraph::Execute(Stream& stream,
 
   const CudnnSupport& dnn_support =
       static_cast<CudnnSupport&>(*stream.parent()->AsDnn());
-  RETURN_CUDNN_FRONTEND_STATUS(graph_.execute(
-      dnn_support.cudnn_->GetHandle(stream.parent(), &stream).handle(),
-      tensor_to_ptr_map, workspace.opaque()));
+  auto cudnn = dnn_support.cudnn_->GetHandle(stream.parent(), &stream);
+  RETURN_CUDNN_FRONTEND_STATUS(
+      graph_.execute(cudnn.handle(), tensor_to_ptr_map, workspace.opaque()));
 }
 
 #endif  // CUDNN_VERSION >= 8100
