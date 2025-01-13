@@ -859,6 +859,69 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, NoCopyThroughComputationForNotParameter0) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+other_computation {
+  param.1 = f32[2048] parameter(1)
+  param.0 = f32[1024] parameter(0)
+  constant = f32[] constant(1.0)
+  pad = f32[2048] pad(param.0, constant), padding=0_1024_0
+  ROOT add = f32[2048] add(pad, param.1)
+}
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  param.1 = f32[1024] parameter(1)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  call = f32[2048] call(param.1,offload_custom_call), to_apply=other_computation
+  ROOT load_custom_call = f32[2048] custom-call(call), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern in the entry computation:
+  // param
+  //   |
+  // copy (to host)
+  //   |             ___
+  //   |            /   \
+  // call===========   param
+  //   |            \___/
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* call;
+  HloInstruction* copy_to_device;
+
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy_to_device,
+                  m::Call(&call, m::Parameter(1),
+                          m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(call->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  ASSERT_THAT(call->called_computations(), ::testing::SizeIs(1));
+  HloComputation* called_computation = call->called_computations()[0];
+  HloInstruction* called_computation_param;
+  ASSERT_THAT(
+      called_computation->root_instruction(),
+      GmockMatch(m::Add(m::Pad(), m::Parameter(&called_computation_param, 1))));
+  TestShapeHasMemorySpace(called_computation_param->shape(),
+                          Layout::kHostMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, NoCopyThroughComputationAndTuple) {
   const std::string& hlo_string = R"(
 HloModule my_module
