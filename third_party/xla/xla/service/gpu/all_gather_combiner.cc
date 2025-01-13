@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/all_gather_combiner.h"
 
-#include <cstdint>
 #include <optional>
-#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -29,7 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_collective_combiner_utils.h"
 #include "xla/service/hlo_domain_map.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -38,23 +36,15 @@ namespace {
 std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
-  auto combined_key = AllGatherCombiner::CombineKey(
-      instruction, domain_map, combine_by_dim, combine_different_dtypes);
-  if (!combined_key.has_value()) {
-    return std::nullopt;
-  }
   auto backend_config = instruction->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     return std::nullopt;
   }
-  bool is_pipelined =
-      backend_config->collective_backend_config().is_pipelined();
-  if (!is_pipelined) {
+  if (!backend_config->collective_backend_config().is_pipelined()) {
     return std::nullopt;
   }
-  AllGatherCombiner::GetGroupKeyExtraArgs(*combined_key)
-      .append(" " + std::to_string(static_cast<int64_t>(is_pipelined)));
-  return combined_key.value();
+  return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
+                                       combine_different_dtypes);
 }
 
 }  // namespace

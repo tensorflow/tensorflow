@@ -3129,10 +3129,10 @@ cc_library(
         "//xla/hlo/transforms/collectives:all_gather_combiner",
         "//xla/service:hlo_domain_map",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3167,10 +3167,10 @@ cc_library(
         "//xla/service:hlo_domain_map",
         "//xla/service:reduce_scatter_combiner",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3203,10 +3203,10 @@ cc_library(
         "//xla/hlo/transforms/collectives:all_reduce_combiner",
         "//xla/service:hlo_domain_map",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
