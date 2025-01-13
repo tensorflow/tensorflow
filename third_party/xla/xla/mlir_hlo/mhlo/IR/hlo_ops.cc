@@ -1214,6 +1214,29 @@ LogicalResult SparseDotOp::verify() {
   return success();
 }
 
+// ===----------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ResultAccuracyAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
+    APFloat rtol, int64_t ulps, ResultAccuracyModeAttr mode) {
+  return hlo::verifyResultAccuracyAttr(
+      emitError, std::move(atol), std::move(rtol), ulps,
+      stringifyResultAccuracyMode(mode.getValue()));
+}
+
+LogicalResult ExpOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return this->emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
@@ -7210,6 +7233,99 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
                              << " aliases do not have compatible types, "
                              << argType << " vs. " << resultType;
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Custom unary op
+//===----------------------------------------------------------------------===//
+
+void ResultAccuracyAttr::print(AsmPrinter& odsPrinter) const {
+  odsPrinter << "<atol = ";
+  odsPrinter.printFloat(getAtol());
+  odsPrinter << ",";
+  odsPrinter << " rtol = ";
+  odsPrinter.printFloat(getRtol());
+  odsPrinter << ",";
+  odsPrinter << " ulps = ";
+  odsPrinter << getUlps();
+  odsPrinter << ",";
+  odsPrinter << " mode = ";
+  odsPrinter.printAttribute(getMode());
+  odsPrinter << ">";
+}
+
+Attribute ResultAccuracyAttr::parse(AsmParser& parser, Type type) {
+  // ResultAccuractAttr ::= `<` AtolAccuracy `,` RtolAccuracy `,
+  // ` UlpAccuracy `,` ModeAccuracy `>`
+  // AtolAccuracy ::= `atol` `=` APFloat
+  // RtolAccuracy ::= `rtol` `=` APFloat
+  // UlpAccuracy ::= `ulps` `=` int64_t
+  // ModeAccuracy ::= `mode` `=` ResultAccuracyModeAttr
+
+  auto parseAPFloat = [&]() -> FailureOr<llvm::APFloat> {
+    double value;
+    if (failed(parser.parseFloat(value))) {
+      return failure();
+    }
+    return APFloat(value);
+  };
+  auto parseOrEmitError = [&](const char* paramName,
+                              auto parseFunc) -> FailureOr<APFloat> {
+    auto result = std::move(parseFunc());
+    if (failed(result)) {
+      parser.emitError(
+          parser.getCurrentLocation(),
+          llvm::formatv("failed to parse StableHLO_ResultAccuracyAttr "
+                        "parameter '{0}' which is to be a `llvm::APFloat`",
+                        paramName));
+      return failure();
+    }
+    return result;
+  };
+
+  // Parse literal '<'
+  if (parser.parseLess()) return {};
+  // Parse AtolAccuracy
+  if (parser.parseKeyword("atol") || parser.parseEqual()) return {};
+  FailureOr<APFloat> resultAtol = parseOrEmitError("atol", parseAPFloat);
+  if (failed(resultAtol)) {
+    return {};
+  }
+  // Parse literal ','
+  if (parser.parseComma()) return {};
+  // Parse RtolAccuracy
+  if (parser.parseKeyword("rtol") || parser.parseEqual()) return {};
+  FailureOr<APFloat> resultRtol = parseOrEmitError("rtol", parseAPFloat);
+  if (failed(resultRtol)) {
+    return {};
+  }
+  // Parse literal ','
+  if (parser.parseComma()) return {};
+  // Parse UlpAccuracy
+  if (parser.parseKeyword("ulps") || parser.parseEqual()) return {};
+  int64_t resultUlps;
+  if (failed(parser.parseInteger(resultUlps))) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "failed to parse StableHLO_ResultAccuracyAttr parameter "
+                     "'ulps' which is to be a `int64_t`");
+    return {};
+  }
+  // Parse literal ','
+  if (parser.parseComma()) return {};
+  // Parse ModeAccuracy
+  if (parser.parseKeyword("mode") || parser.parseEqual()) return {};
+  ResultAccuracyModeAttr modeAttr;
+  if (failed(parser.parseAttribute(modeAttr))) {
+    parser.emitError(
+        parser.getCurrentLocation(),
+        "failed to parse StableHLO_ResultAccuracyAttr parameter 'mode' which "
+        "is to be a `::mlir::mhlo::ResultAccuracyModeAttr`");
+    return {};
+  }
+  // Parse literal '>'
+  if (parser.parseGreater()) return {};
+  return ResultAccuracyAttr::get(parser.getContext(), *resultAtol, *resultRtol,
+                                 resultUlps, modeAttr);
 }
 
 // Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
