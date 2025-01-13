@@ -21,28 +21,29 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"       // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"          // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "xla/debug_options_flags.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/service/gpu/target_constants.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/xla.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "xla/debug_options_flags.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/gpu/gpu_asm_opts_util.h"
+#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
+#include "xla/service/gpu/target_constants.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 #if GOOGLE_CUDA
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "xla/stream_executor/gpu/asm_compiler.h"
 #endif
 
 namespace mlir {

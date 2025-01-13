@@ -926,15 +926,11 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
 }
 
 TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
-<<<<<<< HEAD
   // TODO(rocm): weekly-sync 24-12-10
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr std::string_view kHloText = R"(
-=======
-  constexpr absl::string_view kHloText = R"(
->>>>>>> upstream/master
     HloModule Dot_BF16_X6_WithConst
 
     %triton_fusion_dot (p_0: f32[1,258]) -> f32[258] {
@@ -1612,7 +1608,8 @@ TEST_P(AlgorithmsSupportTest, DotNC) {
 
 TEST_P(AlgorithmsSupportTest, IsDotAlgorithmSupportedByTriton) {
   // TODO: Weekly-sync 24-12-10
-  GTEST_SKIP() << "TODO: Weekly-sync 24-12-10: Skip IsDotAlgorithmSupportedByTriton .";
+  GTEST_SKIP()
+      << "TODO: Weekly-sync 24-12-10: Skip IsDotAlgorithmSupportedByTriton .";
 
   // Here we test which dot algorithm is supported by triton.
   // In case of a change you need to update the expected results.

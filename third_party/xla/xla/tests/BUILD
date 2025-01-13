@@ -778,12 +778,9 @@ xla_test(
         "cpu",
         "gpu",
     ],
-<<<<<<< HEAD
     tags = ["test_xla_cpu_thunks",
-            "cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
-=======
-    tags = ["test_xla_cpu_no_thunks"],
->>>>>>> upstream/master
+            "cuda-only",
+            "test_xla_cpu_no_thunks",], #(TODO)(rocm): weekly sync 24-11-05
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -1179,12 +1176,9 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-<<<<<<< HEAD
         "test_xla_cpu_thunks",
         "cuda-only", #TODO(rocm): weekly sync 24-10-01
-=======
         "test_xla_cpu_no_thunks",
->>>>>>> upstream/master
     ],
     deps = [
         ":client_library_test_base",
@@ -2393,14 +2387,11 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
-<<<<<<< HEAD
     tags = [
         "test_xla_cpu_thunks",
         "cuda-only", #TODO(rocm): weekly sync 24-10-01
+        "test_xla_cpu_no_thunks",
         ],
-=======
-    tags = ["test_xla_cpu_no_thunks"],
->>>>>>> upstream/master
     deps = [
         ":client_library_test_base",
         ":test_macros_header",
