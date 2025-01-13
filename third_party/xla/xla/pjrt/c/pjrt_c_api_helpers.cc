@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -665,9 +667,10 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t actual_size) {
   std::string error_msg = absl::StrCat(
       "Unexpected ", struct_name, " size: expected ", expected_size, ", got ",
-      actual_size, ". Check installed software versions.");
+      actual_size,
+      ". The plugin is likely built with a later version than the framework.");
 #if defined(PJRT_API_MAJOR)
-  absl::StrAppend(&error_msg, " The framework PJRT API version is ",
+  absl::StrAppend(&error_msg, " This plugin is built with PJRT API version ",
                   PJRT_API_MAJOR, ".", PJRT_API_MINOR, ".");
 #endif  // PJRT_API_MAJOR
   return error_msg;
