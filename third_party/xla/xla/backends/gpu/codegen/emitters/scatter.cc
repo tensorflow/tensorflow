@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/scatter_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/scatter.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -397,15 +397,15 @@ Value EmitterHelper::GetElement(ImplicitLocOpBuilder& b, int operand_index,
                           entry_function_, b)[0];
 }
 
-MlirScatterFusion::MlirScatterFusion(const HloFusionAnalysis& analysis,
-                                     const ScatterDescription& description,
-                                     int64_t vector_size)
+ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis,
+                             const ScatterDescription& description,
+                             int64_t vector_size)
     : analysis_(analysis),
       description_(description),
       warp_size_(WarpSize(analysis_.device_info())),
       vector_size_(vector_size) {}
 
-std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
+std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
   CHECK(ScatterSimplifier::IsSimplifiedScatter(description_.scatter))
       << "Non-simplified HLO Scatter is not supported.";
@@ -432,7 +432,7 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
   return map;
 }
 
-std::vector<emitters::EpilogueSpecification> MlirScatterFusion::GetEpilogues(
+std::vector<emitters::EpilogueSpecification> ScatterFusion::GetEpilogues(
     const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
@@ -444,7 +444,7 @@ std::vector<emitters::EpilogueSpecification> MlirScatterFusion::GetEpilogues(
 ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size)
-    : MlirScatterFusion(analysis, description, vector_size) {
+    : ScatterFusion(analysis, description, vector_size) {
   // We have to make sure that there is no thread that processes elements of
   // two different update slice.
   auto launch_dimensions = CalculateLaunchDimensions(
@@ -482,7 +482,7 @@ void ScatterWithDistributedUpdates::ComputeIndexing(
   }
 }
 
-absl::Status MlirScatterFusion::EmitEntryFunction(
+absl::Status ScatterFusion::EmitEntryFunction(
     const PartitionedComputations& computations,
     const CallTargetProvider& call_targets, FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
@@ -582,7 +582,7 @@ ScatterWithDistributedIndices::ScatterWithDistributedIndices(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size, int64_t num_warps_per_slice,
     int64_t num_indices_per_warp)
-    : MlirScatterFusion(analysis, description, vector_size),
+    : ScatterFusion(analysis, description, vector_size),
       num_warps_per_slice_(num_warps_per_slice),
       num_indices_per_warp_(num_indices_per_warp) {
   num_warps_ = kNumWarpsPerBlock;
@@ -907,7 +907,7 @@ int64_t GetNumPossibleValidIndices(absl::Span<const int64_t> slice_shape,
   return num_possible_valid_indices;
 }
 
-std::unique_ptr<MlirScatterFusion> CreateMlirScatterFusion(
+std::unique_ptr<ScatterFusion> CreateScatterFusion(
     const HloFusionAnalysis& analysis) {
   auto description = GetScatterDescription(analysis);
   int64_t warp_size = WarpSize(analysis.device_info());

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
-#define XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_REDUCTION_H_
+#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_REDUCTION_H_
 
 #include <cstdint>
 #include <memory>
@@ -32,11 +32,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/reduction_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -51,9 +51,9 @@ using HloValueMap =
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
-class MlirReductionFusion : public EmitterBase {
+class ReductionFusion : public EmitterBase {
  public:
-  explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
+  explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;
@@ -148,9 +148,9 @@ class MlirReductionFusion : public EmitterBase {
   const HloInstruction* first_reduce_;
 };
 
-class MlirRowReductionFusion : public MlirReductionFusion {
+class RowReductionFusion : public ReductionFusion {
  public:
-  explicit MlirRowReductionFusion(const HloFusionAnalysis& analysis);
+  explicit RowReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   // The number of warps working on one output element.
@@ -168,14 +168,13 @@ class MlirRowReductionFusion : public MlirReductionFusion {
   absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
 };
 
-class MlirMultiRowReductionFusion : public MlirReductionFusion {
+class MultiRowReductionFusion : public ReductionFusion {
  public:
-  MlirMultiRowReductionFusion(const HloFusionAnalysis& analysis,
-                              int vector_size);
+  MultiRowReductionFusion(const HloFusionAnalysis& analysis, int vector_size);
 
   // Attempts to create a multi-row reduction emitter for the given analysis.
   // Returns nullptr if the fusion is not supported.
-  static std::unique_ptr<MlirReductionFusion> TryCreate(
+  static std::unique_ptr<ReductionFusion> TryCreate(
       const HloFusionAnalysis& analysis);
 
  protected:
@@ -195,9 +194,9 @@ class MlirMultiRowReductionFusion : public MlirReductionFusion {
       mlir::MLIRContext* ctx) const override;
 };
 
-class MlirColumnReductionFusion : public MlirReductionFusion {
+class ColumnReductionFusion : public ReductionFusion {
  public:
-  explicit MlirColumnReductionFusion(const HloFusionAnalysis& analysis);
+  explicit ColumnReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
@@ -213,9 +212,9 @@ class MlirColumnReductionFusion : public MlirReductionFusion {
 
 // Special emitter for column reductions whose minor reduced dimension divides
 // the warp size.
-class MlirSmallColumnReductionFusion : public MlirReductionFusion {
+class SmallColumnReductionFusion : public ReductionFusion {
  public:
-  explicit MlirSmallColumnReductionFusion(const HloFusionAnalysis& analysis);
+  explicit SmallColumnReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
@@ -232,10 +231,10 @@ class MlirSmallColumnReductionFusion : public MlirReductionFusion {
   int64_t loop_size_;
 };
 
-std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(
+std::unique_ptr<ReductionFusion> CreateReductionFusion(
     const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_REDUCTION_H_

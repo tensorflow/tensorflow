@@ -20,22 +20,22 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
+#include "xla/backends/gpu/codegen/emitters/concatenate.h"
+#include "xla/backends/gpu/codegen/emitters/in_place_dynamic_update_slice.h"
+#include "xla/backends/gpu/codegen/emitters/input_slices.h"
+#include "xla/backends/gpu/codegen/emitters/loop.h"
+#include "xla/backends/gpu/codegen/emitters/reduction.h"
+#include "xla/backends/gpu/codegen/emitters/scatter.h"
+#include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/concatenate_mlir.h"
 #include "xla/service/gpu/fusions/copy.h"
 #include "xla/service/gpu/fusions/cudnn.h"
 #include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
-#include "xla/service/gpu/fusions/input_slices_mlir.h"
-#include "xla/service/gpu/fusions/loop_mlir.h"
-#include "xla/service/gpu/fusions/reduction_mlir.h"
-#include "xla/service/gpu/fusions/scatter_mlir.h"
-#include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -96,27 +96,27 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return std::make_unique<MlirInputSlicesFusion>(analysis);
+      return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(analysis);
+        return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
       if (auto copy_fusion = fusion_info.GetCopyFusion()) {
         return *std::move(copy_fusion);
       }
-      return std::make_unique<MlirLoopFusion>(analysis);
+      return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      return CreateMlirReductionFusion(analysis);
+      return CreateReductionFusion(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      return CreateMlirScatterFusion(analysis);
+      return CreateScatterFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      return std::make_unique<MlirTransposeFusion>(analysis);
+      return std::make_unique<TransposeFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-      return std::make_unique<MlirConcatenateFusion>(analysis);
+      return std::make_unique<ConcatenateFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);

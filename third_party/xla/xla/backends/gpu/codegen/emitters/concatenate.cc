@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/concatenate_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/concatenate.h"
 
 #include <cstdint>
 #include <numeric>
@@ -78,25 +78,23 @@ int ComputeUnrollFactor(const HloFusionAnalysis& analysis,
 
 }  // namespace
 
-MlirConcatenateFusion::MlirConcatenateFusion(const HloFusionAnalysis& analysis)
+ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       largest_shape_(GetLargestConcatOperandShape(analysis_)),
       config_(ComputeLoopFusionConfig(analysis_, largest_shape_)),
       unroll_factor_(ComputeUnrollFactor(analysis_, config_.unroll_factor)) {}
 
-LaunchDimensions MlirConcatenateFusion::launch_dimensions() const {
+LaunchDimensions ConcatenateFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(largest_shape_, analysis_.device_info(),
                                    config_);
 }
 
-std::optional<IndexingMap>
-MlirConcatenateFusion::ComputeThreadIdToOutputIndexing(
+std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   return std::nullopt;
 }
 
-std::optional<IndexingMap>
-MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
+std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   // TODO(b/331356433): Add constraints depending on the `hero_operand_index`.
@@ -104,15 +102,14 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
                                        largest_shape_, ctx);
 }
 
-std::vector<emitters::EpilogueSpecification>
-MlirConcatenateFusion::GetEpilogues(const HloFusionInstruction& fusion,
-                                    mlir::MLIRContext* mlir_context) const {
+std::vector<emitters::EpilogueSpecification> ConcatenateFusion::GetEpilogues(
+    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &analysis_.fusion_hero(0).instruction(),
       &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
-absl::Status MlirConcatenateFusion::EmitEntryFunction(
+absl::Status ConcatenateFusion::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
     const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,

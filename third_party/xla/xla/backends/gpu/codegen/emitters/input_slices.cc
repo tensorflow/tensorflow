@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/input_slices_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/input_slices.h"
 
 #include <cstdint>
 #include <iterator>
@@ -55,8 +55,7 @@ using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
-std::optional<IndexingMap>
-MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
+std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
     int64_t output_id, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
   auto* slice = &analysis_.fusion_root(output_id).instruction();
@@ -68,9 +67,8 @@ MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
               .begin();
 }
 
-std::vector<emitters::EpilogueSpecification>
-MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
-                                    mlir::MLIRContext* mlir_context) const {
+std::vector<emitters::EpilogueSpecification> InputSlicesFusion::GetEpilogues(
+    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
   std::vector<const HloInstruction*> roots;
   roots.reserve(analysis_.fusion_root_count());
   for (const auto& root : analysis_.fusion_roots()) {
@@ -82,7 +80,7 @@ MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
   return {GetEpilogueForOutputIndexing(analysis_, roots, roots, mlir_context)};
 }
 
-LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
+LaunchDimensions InputSlicesFusion::launch_dimensions() const {
   // Note: these launch dimensions are not optimal if the input isn't used
   // fully.
   const auto& root = analysis_.fusion_root(0).instruction();
@@ -91,7 +89,7 @@ LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
                                    {unroll_factor_});
 }
 
-absl::Status MlirInputSlicesFusion::EmitEntryFunction(
+absl::Status InputSlicesFusion::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
     const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,

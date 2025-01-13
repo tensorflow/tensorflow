@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/transpose_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/transpose.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -81,7 +81,7 @@ constexpr int kMaxVectorizedBytes = 4;
 
 }  // namespace
 
-MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
+TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
@@ -163,7 +163,7 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
   }
 }
 
-std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (!GetDescriptionForTiledTransposeEmitter(hero)) {
@@ -175,7 +175,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
   return GetIndexing(/*input=*/false, hero.shape(), mlir_context);
 }
 
-std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
@@ -193,11 +193,11 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
                      mlir_context);
 }
 
-LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
+LaunchDimensions TransposeFusion::launch_dimensions() const {
   return LaunchDimensions(Product(block_counts_), kNumThreadsPerBlock);
 }
 
-IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
+IndexingMap TransposeFusion::GetSharedMemoryIndexing(
     bool read, mlir::MLIRContext* ctx) const {
   auto thread_offsets = GetThreadOffsets(/*read=*/true, ctx);
   if (!read) {
@@ -221,7 +221,7 @@ IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
           {}};
 }
 
-MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
+TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
     const emitters::PartitionedComputation& root_computation,
@@ -345,7 +345,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   return result;
 }
 
-void MlirTransposeFusion::EmitReadFromShMemMlir(
+void TransposeFusion::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
@@ -390,7 +390,7 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
   builder.create<ReturnOp>(result_tensors);
 }
 
-std::vector<emitters::EpilogueSpecification> MlirTransposeFusion::GetEpilogues(
+std::vector<emitters::EpilogueSpecification> TransposeFusion::GetEpilogues(
     const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues{
       GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
@@ -404,7 +404,7 @@ std::vector<emitters::EpilogueSpecification> MlirTransposeFusion::GetEpilogues(
   return epilogues;
 }
 
-absl::Status MlirTransposeFusion::EmitEntryFunction(
+absl::Status TransposeFusion::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
     const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
@@ -425,7 +425,7 @@ absl::Status MlirTransposeFusion::EmitEntryFunction(
   return absl::OkStatus();
 }
 
-llvm::SmallVector<mlir::AffineExpr, 4> MlirTransposeFusion::GetThreadOffsets(
+llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
     bool read, mlir::MLIRContext* ctx) const {
   auto thread = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
@@ -440,9 +440,8 @@ llvm::SmallVector<mlir::AffineExpr, 4> MlirTransposeFusion::GetThreadOffsets(
                                   read ? block_sizes_ : output_block_sizes_);
 }
 
-IndexingMap MlirTransposeFusion::GetIndexing(bool input,
-                                             const xla::Shape& shape,
-                                             mlir::MLIRContext* ctx) const {
+IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
+                                         mlir::MLIRContext* ctx) const {
   auto raw_id = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
   auto block_ids = DelinearizeInBoundsIndex(raw_id, block_counts_);
@@ -479,7 +478,7 @@ IndexingMap MlirTransposeFusion::GetIndexing(bool input,
   return result;
 }
 
-bool MlirTransposeFusion::MostMinorDimensionUnchanged() const {
+bool TransposeFusion::MostMinorDimensionUnchanged() const {
   return permutation_.back() == permutation_.size() - 1;
 }
 

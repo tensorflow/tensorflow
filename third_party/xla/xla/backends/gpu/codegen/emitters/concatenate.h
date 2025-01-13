@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_
-#define XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_CONCATENATE_H_
+#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_CONCATENATE_H_
 
 #include <cstdint>
 #include <optional>
@@ -36,9 +36,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class MlirConcatenateFusion : public EmitterBase {
+class ConcatenateFusion : public EmitterBase {
  public:
-  explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis);
+  explicit ConcatenateFusion(const HloFusionAnalysis& analysis);
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -70,4 +70,4 @@ class MlirConcatenateFusion : public EmitterBase {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_CONCATENATE_H_

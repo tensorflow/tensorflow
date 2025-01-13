@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_LOOP_MLIR_H_
-#define XLA_SERVICE_GPU_FUSIONS_LOOP_MLIR_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_INPUT_SLICES_H_
+#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_INPUT_SLICES_H_
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,26 +26,31 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 
-// Generic loop fusion. Lowers to LLVM via MLIR.
-class MlirLoopFusion : public EmitterBase {
+// Generates code for input-fusible slices. Lowers to LLVM via MLIR.
+class InputSlicesFusion : public EmitterBase {
  public:
-  explicit MlirLoopFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
+  explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis),
+        unroll_factor_(CeilOfRatio(
+            8, analysis.input_output_info().smallest_output_dtype_bits)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t output_id, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
 
  protected:
   absl::Status EmitEntryFunction(
@@ -53,12 +59,16 @@ class MlirLoopFusion : public EmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
+  std::vector<emitters::EpilogueSpecification> GetEpilogues(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
+
  private:
   const HloFusionAnalysis& analysis_;
-  LaunchDimensionsConfig config_;
+  const int unroll_factor_;
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_LOOP_MLIR_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_INPUT_SLICES_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_SCATTER_MLIR_H_
-#define XLA_SERVICE_GPU_FUSIONS_SCATTER_MLIR_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_SCATTER_H_
+#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_SCATTER_H_
 
 #include <cstdint>
 #include <memory>
@@ -59,11 +59,11 @@ struct ScatterDescription {
 };
 ScatterDescription GetScatterDescription(const HloFusionAnalysis& analysis);
 
-class MlirScatterFusion : public EmitterBase {
+class ScatterFusion : public EmitterBase {
  public:
-  explicit MlirScatterFusion(const HloFusionAnalysis& analysis,
-                             const ScatterDescription& description,
-                             int64_t vector_size);
+  explicit ScatterFusion(const HloFusionAnalysis& analysis,
+                         const ScatterDescription& description,
+                         int64_t vector_size);
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -117,7 +117,7 @@ class MlirScatterFusion : public EmitterBase {
 // space corresponds to the shape of the updates tensor. In this case, GPU
 // performs a grid-stride loop over the updates and every warp computes at what
 // index to scatter an element(s) of the update.
-class ScatterWithDistributedUpdates : public MlirScatterFusion {
+class ScatterWithDistributedUpdates : public ScatterFusion {
  public:
   explicit ScatterWithDistributedUpdates(const HloFusionAnalysis& analysis,
                                          const ScatterDescription& description,
@@ -178,7 +178,7 @@ class ScatterWithDistributedUpdates : public MlirScatterFusion {
 }
 %final_out = WriteAccumulatorToOutput(%updated_accumulator, %updated_out);
 */
-class ScatterWithDistributedIndices : public MlirScatterFusion {
+class ScatterWithDistributedIndices : public ScatterFusion {
  public:
   explicit ScatterWithDistributedIndices(const HloFusionAnalysis& analysis,
                                          const ScatterDescription& description,
@@ -208,10 +208,10 @@ class ScatterWithDistributedIndices : public MlirScatterFusion {
   int64_t num_indices_per_warp_;
 };
 
-std::unique_ptr<MlirScatterFusion> CreateMlirScatterFusion(
+std::unique_ptr<ScatterFusion> CreateScatterFusion(
     const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_SCATTER_MLIR_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_SCATTER_H_

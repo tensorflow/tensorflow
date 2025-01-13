@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/in_place_dynamic_update_slice.h"
 
 #include <cstdint>
 #include <optional>
@@ -65,8 +65,7 @@ constexpr int kDUSUpdateIndex = 1;
 
 }  // namespace
 
-LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
-    const {
+LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info(),
@@ -74,7 +73,7 @@ LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
 }
 
 std::optional<IndexingMap>
-MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
+InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* indexing_context) const {
   // TODO(b/331355203): Implement thread ID -> operand indexing.
@@ -90,7 +89,7 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
 }
 
 std::vector<emitters::EpilogueSpecification>
-MlirInPlaceDynamicUpdateSliceFusion::GetEpilogues(
+InPlaceDynamicUpdateSliceFusion::GetEpilogues(
     const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
   // We don't actually support epilogues for DUS, but this is how we tell
   // the base class that we don't want it to generate code for the DUS.
@@ -103,7 +102,7 @@ MlirInPlaceDynamicUpdateSliceFusion::GetEpilogues(
   return epilogues;
 }
 
-absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
+absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
     const PartitionedComputations& computations,
     const CallTargetProvider& call_targets, mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/loop_mlir.h"
+#include "xla/backends/gpu/codegen/emitters/loop.h"
 
 #include <iterator>
 #include <optional>
@@ -62,7 +62,7 @@ const Shape& GetIndexShape(const Shape& shape) {
 
 }  // namespace
 
-std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
   return GetDefaultThreadIdIndexingMap(
@@ -70,7 +70,7 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
       GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
 }
 
-std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
@@ -93,13 +93,13 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
   return thread_id_to_input_indexing_map;
 }
 
-LaunchDimensions MlirLoopFusion::launch_dimensions() const {
+LaunchDimensions LoopFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(
       GetIndexShape(analysis_.fusion_root(0).shape()), analysis_.device_info(),
       config_);
 }
 
-absl::Status MlirLoopFusion::EmitEntryFunction(
+absl::Status LoopFusion::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
     const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
