@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -1180,6 +1181,32 @@ std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
     }
   }
   return memory_space_descriptions;
+}
+PJRT_Error* InvokePjRtEventWhenReady(
+    const PJRT_Api* api, PJRT_Event* event,
+    absl::AnyInvocable<void() &&> on_done_with_event) {
+  if (on_done_with_event) {
+    PJRT_Event_OnReady_Args event_args;
+    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+    event_args.extension_start = nullptr;
+    event_args.event = event;
+    event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
+        [on_done_with_event = std::move(on_done_with_event),
+         c_api = api](PJRT_Error* error) mutable {
+          if (error) {
+            ::pjrt::MakeErrorDeleter(c_api)(error);
+          }
+          std::move(on_done_with_event)();
+        });
+    event_args.callback = [](PJRT_Error* error, void* args) {
+      auto* on_done_with_event =
+          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
+      (*on_done_with_event)(error);
+      delete on_done_with_event;
+    };
+    return api->PJRT_Event_OnReady(&event_args);
+  }
+  return nullptr;
 }
 
 }  // namespace pjrt

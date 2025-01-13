@@ -80,7 +80,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 61
+#define PJRT_API_MINOR 62
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -660,6 +660,79 @@ PJRT_DEFINE_STRUCT_TRAITS(
     done_with_h2d_transfer);
 typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
     PJRT_AsyncHostToDeviceTransferManager_TransferData_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  int buffer_index;
+  PJRT_Buffer* buffer_out;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args, buffer_out);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(
+    PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_Device_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  PJRT_Device* device_out;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_AsyncHostToDeviceTransferManager_Device_Args,
+                          device_out);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_Device(
+    PJRT_AsyncHostToDeviceTransferManager_Device_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  size_t buffer_count;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args, buffer_count);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_BufferCount(
+    PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  int buffer_index;
+  size_t buffer_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args,
+                          buffer_size);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_BufferSize(
+    PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  int buffer_index;
+  PJRT_Error_Code error_code;
+  const char* error_message;
+  size_t error_message_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args,
+    error_message_size);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_SetBufferError(
+    PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args* args);
+
+struct PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  const PJRT_NamedValue* transfer_metadata;
+  size_t num_metadata;
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args, num_metadata);
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_AddMetadata(
+    PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args* args);
 
 typedef enum {
   // Invalid primitive type to serve as default.
@@ -2362,11 +2435,17 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferData);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateBuffersForAsyncHostToDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_Device);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferSize);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_SetBufferError);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateBuffersForAsyncHostToDevice)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
+      PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_AddMetadata)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

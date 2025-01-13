@@ -1,4 +1,6 @@
 # PJRT C API changelog
+## 0.62
+* Added more member functions for ``PJRT_AsyncHostToDeviceTransferManager``.
 
 ## 0.61
 * Added ``PJRT_KeyValueTryGet`` to the KV store interface,
