@@ -633,7 +633,7 @@ SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ImplicitLocOpBuilder& b) {
   map.ClearConstraints();
   SmallVector<Value, 3> results;
-  for (unsigned int i = 0; i < map.GetAffineMap().getNumResults(); ++i) {
+  for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
     SmallVector<Value, 1> result;
     b.createOrFold<ApplyIndexingOp>(result, dims, symbols, map.GetSubMap(i));
     results.append(result);
