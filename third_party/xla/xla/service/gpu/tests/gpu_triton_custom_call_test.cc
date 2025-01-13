@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
