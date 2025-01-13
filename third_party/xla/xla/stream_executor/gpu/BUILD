@@ -552,6 +552,7 @@ gpu_kernel_library(
     testonly = 1,
     srcs = ["gpu_test_kernels.cu.cc"],
     hdrs = ["gpu_test_kernels.h"],
+    linkstatic = True,
     tags = ["gpu"],
     deps = [
         "//xla/stream_executor:kernel_spec",
@@ -562,42 +563,20 @@ gpu_kernel_library(
     ]),
 )
 
-# Extract the .so file from the gpu_test_kernels library.
-# TODO: make gpu_test_kernels a direct dependency of gpu_test_kernels_fatbin.
-genrule(
-    name = "gpu_test_kernels_object_extractor",
-    testonly = True,
-    srcs = [":gpu_test_kernels"],
-    outs = ["gpu_test_kernels.so"],
-    cmd = """
-      SHARED_OBJECT=""
-      for src in $(SRCS); do
-      if [[ $$src == *.so ]]; then
-      SHARED_OBJECT=$$src
-      cp $$src $@ # Copy the .so file to the output
-      break
-      fi
-      done
-
-      if [[ -z $$SHARED_OBJECT ]]; then
-      echo "No .so file found in $(SRCS)" >&2
-      exit 1
-      fi
-      """,
-    tags = ["gpu"],
-    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-)
-
 cc_library(
     name = "gpu_test_kernels_fatbin",
     testonly = True,
     srcs = ["gpu_test_kernels_fatbin.cc"],
     hdrs = ["gpu_test_kernels_fatbin.h"],
     data = [
-        ":gpu_test_kernels_object_extractor",
+        ":gpu_test_kernels",
     ],
     tags = ["gpu"],
     deps = [
+        ":gpu_init_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
