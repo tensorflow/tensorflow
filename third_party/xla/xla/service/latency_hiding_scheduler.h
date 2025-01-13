@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_buffer.h"
@@ -377,10 +378,13 @@ class AnnotationTracker {
         annotations_[annotation].begin(), annotations_[annotation].end());
     for (const HloInstruction* instr : annotations_.at(annotation)) {
       bool has_annotated_user = false;
-      for (HloInstruction* user : instr->users()) {
-        if (seen_instructions.contains(user)) {
-          has_annotated_user = true;
-          break;
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (seen_instructions.contains(user)) {
+            has_annotated_user = true;
+            break;
+          }
         }
       }
       if (!has_annotated_user) {
