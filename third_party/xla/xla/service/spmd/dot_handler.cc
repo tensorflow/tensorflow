@@ -4128,15 +4128,10 @@ absl::StatusOr<HloInstruction*> PartitionDot(
         windowed_dot_general_loops,
     SpmdPartitioningVisitor* visitor) {
   // If lhs' hlo and rhs' hlo are identical, make a copy for rhs.
-  std::unique_ptr<PartitionedHlo> new_rhs;
-  if (lhs.hlo() == raw_rhs.hlo()) {
-    auto copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
-        raw_rhs.hlo()->shape(), HloOpcode::kCopy, raw_rhs.hlo()));
-    copy_hlo->copy_sharding(raw_rhs.hlo());
-    new_rhs = std::make_unique<PartitionedHlo>(copy_hlo, raw_rhs.base_shape(),
-                                               raw_rhs.state());
-  }
-  const PartitionedHlo& rhs = (lhs.hlo() == raw_rhs.hlo()) ? *new_rhs : raw_rhs;
+  const PartitionedHlo& rhs =
+      (lhs.hlo() == raw_rhs.hlo())
+          ? MakeACopyAndReturnItsPartitionedHlo(raw_rhs, b)
+          : raw_rhs;
 
   // Recursively partition on different types of dimensions.
 

@@ -958,6 +958,11 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   return std::make_pair(INT64_MAX, INT64_MAX);
 }
 
+// Creates a copy for the HloInstruction in the PartitionedHlo and returns a
+// new PartitionedHlo for the copy.
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b);
+
 }  // namespace spmd
 }  // namespace xla
 
