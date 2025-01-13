@@ -414,7 +414,8 @@ absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    absl::Span<const int> variable_arg_indices) {
   TF_ASSIGN_OR_RETURN(auto host_callback_modules,
                       GetHostCallbackModulesAndRemoveHostFuncs(*module_copy));
   if (VLOG_IS_ON(1)) {
@@ -422,7 +423,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
   Tf2HloArg tf2hlo_arg{
       .module = module_copy.get(),
-      .input_dtypes_and_shapes = dtypes_and_shapes,
+      .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
+          dtypes_and_shapes.begin(), dtypes_and_shapes.end()),
+      .variable_arg_indices = variable_arg_indices,
       .entry_function_name = signature_name(),
       .compile_metadata = compile_metadata,
       .shape_representation_fn = shape_representation_fn_,
@@ -533,7 +536,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    absl::Span<const int> variable_arg_indices) {
   std::vector<tensorflow::TensorShape> input_shapes;
   for (const auto& dtype_and_shape : dtypes_and_shapes) {
     input_shapes.push_back(dtype_and_shape.shape);
@@ -572,7 +576,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   LOG(INFO) << "Cache missed. Building executable";
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
       CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                    dtypes_and_shapes);
+                                    dtypes_and_shapes, variable_arg_indices);
   promise.Set(std::move(executable_bundle));
   return future;
 }
@@ -649,10 +653,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   } else {
     device_list = assigned_device_list_;
   }
-  TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
-                      LookUpOrCreateExecutable(
-                          compile_metadata, absl::MakeSpan(dtypes_and_shapes))
-                          .Await());
+  TF_ASSIGN_OR_RETURN(
+      SharedCachedExecutableBundle executable_bundle,
+      LookUpOrCreateExecutable(compile_metadata, dtypes_and_shapes,
+                               variable_arg_indices)
+          .Await());
 
   if (executable_bundle->compile_metadata.args().size() !=
       dtypes_and_shapes.size()) {
@@ -700,15 +705,28 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       args.push_back(std::move(single_array));
       variable_index++;
     } else {
+      // If the input shape is not the same as the shape after Tf2Hlo
+      // compilation, reshape the input tensor to the expected shape. Note that
+      // the tensor assignment here won't create a copy.
+      tensorflow::Tensor reshaped = inputs[i];
+      TF_ASSIGN_OR_RETURN(
+          tensorflow::TensorShape reshaped_shape,
+          tensorflow::TensorShape::BuildTensorShape(
+              executable_bundle->compile_metadata.args()[i].shape()));
+      if (reshaped.shape() != reshaped_shape &&
+          !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
+        return absl::InternalError("Failed to reshape tensor");
+      }
+
       TF_ASSIGN_OR_RETURN(
           auto single_array,
           ConvertTensorToArray(
-              inputs[i], device_list,
+              reshaped, device_list,
               executable_bundle->compile_metadata.args()[i].sharding()));
       args.push_back(single_array);
     }
   }
-  DCHECK_EQ(args.size(), dtypes_and_shapes.size());
+  DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
 
   VLOG(2) << "Start Execution";
 

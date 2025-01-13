@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_APPROX_TOPK_SHAPE_H_
 #define XLA_HLO_BUILDER_LIB_APPROX_TOPK_SHAPE_H_
 
+#include <cstdint>
 #include <utility>
 
 #include "absl/status/statusor.h"

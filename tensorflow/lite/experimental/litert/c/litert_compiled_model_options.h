@@ -15,18 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
 // The compilation options for the LiteRtCompiledModel.
-// WARNING: This is an experimental and subject to change.
-// TODO: b/379317134 - Add GPU support.
-typedef enum LiteRtComplicationOptions : int {
-  kHwAccelDefault = 0,
-  kHwAccelCpu = 1 << 0,
-  kHwAccelNpu = 1 << 1,
-} LiteRtComplicationOptions;
+typedef LiteRtHwAccelerators LiteRtCompilationOptions;
 
 #ifdef __cplusplus
 }

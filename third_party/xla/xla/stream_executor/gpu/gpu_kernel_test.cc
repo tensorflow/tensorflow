@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -74,7 +73,7 @@ class GpuKernelTest : public ::testing::Test {
 
     // Launch kernel.
     ASSERT_TRUE(
-        stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
+        add.Launch(ThreadDim(), BlockDim(4), stream.get(), a, b, c).ok());
 
     // Copy data back to host.
     std::vector<int32_t> dst(4, 42);

@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 
-#include <functional>
-#include <memory>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 
 namespace xla {
 namespace {

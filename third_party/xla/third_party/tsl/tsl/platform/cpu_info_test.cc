@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tsl/platform/cpu_info.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

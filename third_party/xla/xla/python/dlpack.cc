@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -419,7 +418,7 @@ absl::StatusOr<nb::capsule> BufferToDLPackManagedTensor(
                                      pjrt_buffer->dimensions().end());
 
   // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  Layout xla_layout = pjrt_buffer->layout()->xla_layout();
   pack->strides = StridesForShape(pjrt_buffer->element_type(),
                                   pjrt_buffer->dimensions(), xla_layout);
 
@@ -458,11 +457,11 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
   auto* cpu_pjrt_client = cpu_client ? (*cpu_client)->pjrt_client() : nullptr;
   auto* gpu_pjrt_client = gpu_client ? (*gpu_client)->pjrt_client() : nullptr;
 
-  if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
+  if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
         "Note that a DLPack tensor may be consumed at most once.",
-        std::string_view(tensor.name()));
+        absl::string_view(tensor.name()));
   }
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {
@@ -552,11 +551,11 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
         "DLPack is only supported for devices addressable by the current "
         "process.");
   }
-  if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
+  if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
         "Note that a DLPack tensor may be consumed at most once.",
-        std::string_view(tensor.name()));
+        absl::string_view(tensor.name()));
   }
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {

@@ -324,7 +324,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   return result;
 }
 
-Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
+absl::Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
   std::unique_ptr<GraphExecutionState> new_state;
   absl::MutexLock lock(&graph_execution_state_mu_);
   TF_RETURN_IF_ERROR(graph_execution_state_->Extend(graph, &new_state));
@@ -383,8 +383,8 @@ absl::StatusOr<const NodeDef*> FindLoopCondFromExitNode(
 
 }  // namespace
 
-Status PruneGraphDef(GraphDef& graph_def,
-                     const CallableOptions& callable_options) {
+absl::Status PruneGraphDef(GraphDef& graph_def,
+                           const CallableOptions& callable_options) {
   // Gather node names and create a map from names to NodeDefs.
   absl::flat_hash_map<std::string, NodeDef*> name_to_node;
   // All exit nodes in order to track all while loops.
@@ -515,7 +515,8 @@ Status PruneGraphDef(GraphDef& graph_def,
   return absl::OkStatus();
 }
 
-Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
+absl::Status EliminateRefVariablesFromV1ControlFlow(
+    tensorflow::GraphDef& graph_def) {
   auto* op_factory = OpRegistry::Global();
 
   absl::flat_hash_set<std::string> ref_nodes;
@@ -605,7 +606,7 @@ namespace {
 // `functions_to_optimize`) using `flib` and `fallback_state`. Each
 // function is converted to a graph and optimized with Placer and Grappler, then
 // converted back to a function to replace the old one.
-Status OptimizeFunctions(
+absl::Status OptimizeFunctions(
     FunctionDefLibrary& flib_proto, const FunctionLibraryDefinition& flib,
     const FallbackState& fallback_state,
     const absl::flat_hash_set<std::string>& functions_to_optimize) {

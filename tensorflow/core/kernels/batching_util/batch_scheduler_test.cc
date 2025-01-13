@@ -243,7 +243,7 @@ TEST(TaskQueueTest, RemoveAllTasksWhenArgGreaterThanTaskSize) {
   EXPECT_EQ(3, task_queue.num_tasks());
   EXPECT_EQ(6, task_queue.size());
 
-  // All tasks upto the size 6 shoule be remove when the size 8 is specified.
+  // All tasks upto the size 6 should be remove when the size 8 is specified.
   EXPECT_THAT(task_queue.RemoveTask(8),
               ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
                           Pointee(Property(&FakeTask::size, Eq(2))),

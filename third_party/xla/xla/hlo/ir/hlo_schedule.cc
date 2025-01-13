@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <queue>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 

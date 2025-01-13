@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"

@@ -7,10 +7,19 @@ load(
     "@local_tsl//third_party/py:py_import.bzl",
     "py_import",
 )
-load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
+load(
+    "@local_tsl//third_party/py:py_manylinux_compliance_test.bzl",
+    "verify_manylinux_compliance_test",
+)
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "tf_additional_license_deps")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_pywrap",
+    "tf_additional_license_deps",
+    "tf_cuda_tests_tags",
+    "tf_exec_properties",
+)
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
@@ -273,12 +282,6 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
-    manylinux_compliance_tag = select({
-        "@platforms//cpu:aarch64": "manylinux_2_17_aarch64",
-        "@platforms//cpu:arm64": "manylinux_2_17_aarch64",
-        "@platforms//cpu:x86_64": "manylinux_2_17_x86_64",
-        "//conditions:default": "",
-    }),
     platform_name = select({
         "@platforms//os:osx": "macosx",
         "@platforms//os:macos": "macosx",
@@ -311,7 +314,7 @@ tf_wheel(
                 "//tensorflow:tensorflow_framework",
             ],
             if_true = [
-                "//tensorflow/python:_pywrap_tensorflow_binaries",
+                "//tensorflow/python:pywrap_tensorflow_binaries",
             ],
         ),
         "//tensorflow:windows": if_pywrap(
@@ -341,7 +344,7 @@ sh_binary(
 )
 
 py_test(
-    name = "prebuilt_wheel_import_api_packages_test",
+    name = "prebuilt_wheel_import_api_packages_test_cpu",
     srcs = if_wheel_dependency(
         ["import_api_packages_test.py"],
         [":empty_test"],
@@ -349,20 +352,39 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "cpu",
-        "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
 
 py_test(
-    name = "import_api_packages_test",
+    name = "prebuilt_wheel_import_api_packages_test_gpu",
+    srcs = if_wheel_dependency(
+        ["import_api_packages_test.py"],
+        [":empty_test"],
+    ),
+    exec_properties = if_cuda(
+        tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+        {},
+    ),
+    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    tags = [
+        "gpu",
+        "manual",
+        "windows_excluded",
+    ],
+    deps = if_wheel_dependency(tf_wheel_dep()),
+)
+
+py_test(
+    name = "import_api_packages_test_cpu",
     srcs = ["import_api_packages_test.py"],
     main = "import_api_packages_test.py",
     tags = [
         "cuda-only", #TODO(rocm): weekly-sync 24-12-10
         "cpu",
-        "gpu",
+        "manual",
         "windows_excluded",
     ],
     deps = [
@@ -370,23 +392,51 @@ py_test(
     ],
 )
 
+py_test(
+    name = "import_api_packages_test_gpu",
+    srcs = ["import_api_packages_test.py"],
+    exec_properties = if_cuda(
+        tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+        {},
+    ),
+    main = "import_api_packages_test.py",
+    tags = [
+        "gpu",
+        "manual",
+        "windows_excluded",
+    ],
+    deps = [
+        ":tf_py_import",
+    ],
+)
+
+verify_manylinux_compliance_test(
+    name = "manylinux_compliance_test",
+    aarch64_compliance_tag = "manylinux_2_17_aarch64",
+    test_tags = [
+        "mac_excluded",
+        "windows_excluded",
+    ],
+    wheel = ":wheel",
+    x86_64_compliance_tag = "manylinux_2_17_x86_64",
+)
+
 py_import(
     name = "tf_py_import",
-    cc_deps = if_cuda_libs([
-        "@cuda_cublas//:cublas",
-        "@cuda_cublas//:cublasLt",
-        "@cuda_cudart//:cudart",
-        "@cuda_cudnn//:cudnn",
-        "@cuda_cufft//:cufft",
-        "@cuda_cupti//:cupti",
-        "@cuda_curand//:curand",
-        "@cuda_cusolver//:cusolver",
-        "@cuda_cusparse//:cusparse",
-        "@cuda_nccl//:nccl",
-        "@cuda_nvjitlink//:nvjitlink",
-        "@cuda_nvrtc//:nvrtc",
-    ]),
     wheel = ":wheel",
+    wheel_deps = if_cuda([
+        "@pypi_nvidia_cublas_cu12//:whl",
+        "@pypi_nvidia_cuda_cupti_cu12//:whl",
+        "@pypi_nvidia_cuda_nvrtc_cu12//:whl",
+        "@pypi_nvidia_cuda_runtime_cu12//:whl",
+        "@pypi_nvidia_cudnn_cu12//:whl",
+        "@pypi_nvidia_cufft_cu12//:whl",
+        "@pypi_nvidia_curand_cu12//:whl",
+        "@pypi_nvidia_cusolver_cu12//:whl",
+        "@pypi_nvidia_cusparse_cu12//:whl",
+        "@pypi_nvidia_nccl_cu12//:whl",
+        "@pypi_nvidia_nvjitlink_cu12//:whl",
+    ]),
     deps = [
         "@pypi_absl_py//:pkg",
         "@pypi_astunparse//:pkg",

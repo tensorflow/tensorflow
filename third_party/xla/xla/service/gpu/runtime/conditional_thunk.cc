@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -116,7 +115,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
                      [](bool* pred) { return *pred ? 0 : 1; }},
       branch_index_or_pred);
 
-  std::string_view branch_kind =
+  absl::string_view branch_kind =
       std::visit(VariantVisitor{[](int32_t*) { return "index"; },
                                 [](bool*) { return "pred"; }},
                  branch_index_or_pred);

@@ -251,7 +251,8 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
-bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
+bool MatchesAnyVersion(absl::string_view op_prefix,
+                       absl::string_view op_to_match);
 
 // Returns the index-th slice of a given tensor. If the index-th slice of
 // the tensor is not aligned, returns a deep copy of the tensor.

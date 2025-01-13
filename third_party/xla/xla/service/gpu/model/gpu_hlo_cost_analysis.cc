@@ -454,6 +454,90 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status GpuHloCostAnalysis::HandleAllReduceStart(
+    const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
+    const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        // Skip first element of a tuple as it expresses the input of the
+        // collective operation.
+        if (index.empty() || index.front() == 0) {
+          return;
+        }
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
+  auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
+  if (async_start->async_wrapped_opcode() != HloOpcode::kReduceScatter) {
+    VLOG(2) << "Only Reduce Scatter is supported.";
+    return absl::OkStatus();
+  }
+  int index_to_skip = 1;
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        // Skip second element of a tuple as it is an output but it is not
+        // actual bytes transferred.
+        if (index.empty() || index.front() == index_to_skip) {
+          return;
+        }
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleReduceScatter(
+    const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+
+  for (auto* operand : hlo->operands()) {
+    ShapeUtil::ForEachLeafShape(
+        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            output_bytes_accessed += GetShapeSize(subshape);
+          }
+        });
+  }
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+
+  return absl::OkStatus();
+}
+
 absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
     const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(hlo);

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
 #include "xla/python/types.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace nb = nanobind;
@@ -67,7 +68,7 @@ struct type_caster<xla::ConvolutionDimensionNumbers> {
       const_name("xla::ConvolutionDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       value.set_input_batch_dimension(
           cast<int64_t>(getattr(handle, "input_batch_dimension")));
@@ -147,7 +148,7 @@ struct type_caster<xla::GatherDimensionNumbers> {
                                   const_name("xla::GatherDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "offset_dims"));
@@ -179,7 +180,7 @@ struct type_caster<xla::ScatterDimensionNumbers> {
                                   const_name("xla::ScatterDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "update_window_dims"));
@@ -212,7 +213,7 @@ struct type_caster<xla::ReplicaGroup> {
                                   const_name("xla::ReplicaGroup"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       auto dims = cast<std::vector<int64_t>>(getattr(handle, "replica_ids"));
       std::copy(dims.begin(), dims.end(),
@@ -232,7 +233,7 @@ struct type_caster<xla::PaddingConfig> {
                                   const_name("xla::PaddingConfig"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       sequence dimensions = borrow<sequence>(getattr(handle, "dimensions"));
 
@@ -260,7 +261,7 @@ struct type_caster<xla::PrecisionConfig> {
                                   const_name("xla::PrecisionConfig"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       if (handle.is_none()) {
         return true;
@@ -286,7 +287,7 @@ struct type_caster<xla::ResultAccuracy> {
   NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::ResultAccuracy,
                                   const_name("xla::ResultAccuracy"));
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       if (handle.is_none()) {
         return true;

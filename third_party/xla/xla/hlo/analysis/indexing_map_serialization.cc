@@ -22,7 +22,6 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -407,24 +406,24 @@ bool ParseAffineExprsWithMLIR(ArrayRef<std::string> dim_var_names,
   return true;
 }
 
-std::string GetVarName(int64_t id, std::string_view name,
-                       std::string_view prefix) {
+std::string GetVarName(int64_t id, absl::string_view name,
+                       absl::string_view prefix) {
   if (!name.empty()) {
     return std::string(name);
   }
   return absl::StrFormat("%s%d", prefix, id);
 }
 
-std::string GetDimVarName(int64_t dim_id, std::string_view dim_name = "") {
+std::string GetDimVarName(int64_t dim_id, absl::string_view dim_name = "") {
   return GetVarName(dim_id, dim_name, "d");
 }
 
 std::string GetRangeVarName(int64_t range_id,
-                            std::string_view range_name = "") {
+                            absl::string_view range_name = "") {
   return GetVarName(range_id, range_name, "s");
 }
 
-std::string GetRTVarName(int64_t rt_id, std::string_view rt_name = "") {
+std::string GetRTVarName(int64_t rt_id, absl::string_view rt_name = "") {
   return GetVarName(rt_id, rt_name, "rt");
 }
 

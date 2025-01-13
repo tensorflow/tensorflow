@@ -18,7 +18,6 @@ limitations under the License.
 #include <iterator>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -42,7 +41,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-static std::string_view ToString(nvJitLinkResult status) {
+static absl::string_view ToString(nvJitLinkResult status) {
   switch (status) {
     case NVJITLINK_SUCCESS:
       return "SUCCESS";
@@ -65,7 +64,8 @@ static std::string_view ToString(nvJitLinkResult status) {
   }
 }
 
-static absl::Status ToStatus(nvJitLinkResult status, std::string_view message) {
+static absl::Status ToStatus(nvJitLinkResult status,
+                             absl::string_view message) {
   return absl::UnknownError(absl::StrCat(ToString(status), ": ", message));
 }
 
@@ -131,14 +131,15 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
     return std::vector<uint8_t>();
   }
 
-  TF_ASSIGN_OR_RETURN((auto [major, minor]), GetNvJitLinkVersion());
-  WarnIfBadPtxasVersion("nvJitLink", cc, {major, minor, 0});
+  TF_ASSIGN_OR_RETURN(NvJitLinkVersion version, GetNvJitLinkVersion());
+  auto [version_major, version_minor] = version;
+  WarnIfBadPtxasVersion("nvJitLink", cc, {version_major, version_minor, 0});
 
   std::vector<std::string> cli_args;
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));
 

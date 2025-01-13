@@ -93,6 +93,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
+<<<<<<< HEAD
 /* static */ BlasLtMatmulPlanCache& BlasLtMatmulPlanCache::i(se::Stream *stream) {
   static absl::Mutex m(absl::kConstInit);
   // Each GPU gets different cache instance
@@ -104,6 +105,9 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 }
 
 /* static */ auto BlasLtMatmulPlanCache::GetOrCreate(
+=======
+/* static */ StatusOr<const PlanAndAlgorithms*> PlanAndAlgorithms::GetOrCreate(
+>>>>>>> upstream/master
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
     absl::Mutex** ppmu, std::optional<int> max_algorithm_count) -> StatusOr<const Entry *>{
   static const int64_t max_scratch_size =
@@ -170,13 +174,21 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
                                        stream, cfg, params.epilogue));
 
     TF_ASSIGN_OR_RETURN(
+<<<<<<< HEAD
         entry.algorithms,
         entry.plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
+=======
+        auto algorithms,
+        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
+
+    ptr->second = {std::move(plan), std::move(algorithms)};
+>>>>>>> upstream/master
   }
   *ppmu = self.mutex_.get();
   return &entry;
 }
 
+<<<<<<< HEAD
 /*static */ Status BlasLtMatmulPlanCache::ExecuteOnStream(se::Stream* stream, 
                       const Entry& entry,
                       const se::DeviceMemoryBase& a,
@@ -202,6 +214,30 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 }
 
 
+=======
+Status PlanAndAlgorithms::ExecuteOnStream(
+    se::Stream* stream, const se::DeviceMemoryBase& a,
+    const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+    const se::DeviceMemoryBase& bias,
+    se::blas::ProfileResult* profile_result) const {
+  if (!plan || algorithm_idx >= algorithms.size()) {
+    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+  }
+  return plan->ExecuteOnStream(stream, a, b, c, c,
+                               bias,                    // bias_buffer
+                               se::DeviceMemoryBase{},  // aux_buffer
+                               se::DeviceMemoryBase{},  // a_scale_buffer
+                               se::DeviceMemoryBase{},  // b_scale_buffer
+                               se::DeviceMemoryBase{},  // c_scale_buffer
+                               se::DeviceMemoryBase{},  // d_scale_buffer
+                               se::DeviceMemoryBase{},  // d_amax_buffer
+                               algorithms[algorithm_idx],
+                               std::nullopt,  // workspace
+                               &scratch_allocator, profile_result);
+}
+
+>>>>>>> upstream/master
 }  // namespace tensorflow
 
 #endif

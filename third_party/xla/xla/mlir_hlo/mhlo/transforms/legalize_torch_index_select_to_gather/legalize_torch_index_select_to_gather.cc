@@ -139,8 +139,7 @@ struct LegalizeTorchIndexSelectToGatherPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateTorchIndexSelectToGatherPatterns(&getContext(), &patterns);
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };

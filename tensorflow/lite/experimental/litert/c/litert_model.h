@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_MODEL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_MODEL_H_
 
+#include <stdbool.h>  // NOLINT: To use bool type in C
 #include <stddef.h>
 #include <stdint.h>
 
@@ -36,15 +37,12 @@ LITERT_DEFINE_HANDLE(LiteRtWeights);
 
 // Values/edges of the models graph.
 LITERT_DEFINE_HANDLE(LiteRtTensor);
-LITERT_DEFINE_HANDLE_ARRAY(LiteRtTensor);
 
 // Operations/nodes of the models graph.
 LITERT_DEFINE_HANDLE(LiteRtOp);
-LITERT_DEFINE_HANDLE_ARRAY(LiteRtOp);
 
 // Fundamental block of program, i.e. a function body.
 LITERT_DEFINE_HANDLE(LiteRtSubgraph);
-LITERT_DEFINE_HANDLE_ARRAY(LiteRtSubgraph);
 
 // Signature of the model.
 LITERT_DEFINE_HANDLE(LiteRtSignature);
@@ -56,7 +54,7 @@ LITERT_DEFINE_HANDLE(LiteRtModel);
 LITERT_DEFINE_HANDLE(LiteRtOpList);
 
 // For indexing into litert collections or counting litert things.
-typedef uint64_t LiteRtParamIndex;
+typedef size_t LiteRtParamIndex;
 
 //
 // LiteRtTensor + Types
@@ -139,6 +137,14 @@ typedef struct {
   int64_t zero_point;
 } LiteRtQuantizationPerTensor;
 
+// Schema for tensors quantized with one set of q-params per channel.
+typedef struct {
+  int32_t quantized_dimension;
+  uint64_t num_channels;
+  float* scales;
+  int64_t* zero_points;
+} LiteRtQuantizationPerChannel;
+
 // The identifier for quantization scheme type union.
 typedef enum {
   // Tag for tensors without quantization.
@@ -162,6 +168,11 @@ LiteRtStatus LiteRtGetQuantizationTypeId(LiteRtTensor tensor,
 LiteRtStatus LiteRtGetPerTensorQuantization(
     LiteRtTensor tensor, LiteRtQuantizationPerTensor* per_tensor_quantization);
 
+// Get the per-channel quantization information for a given tensor if it has it.
+LiteRtStatus LiteRtGetPerChannelQuantization(
+    LiteRtTensor tensor,
+    LiteRtQuantizationPerChannel* per_channel_quantization);
+
 // EDGES
 
 // Information about the about that defines a tensor.
@@ -183,10 +194,11 @@ typedef struct LiteRtTensorUserOp {
 } LiteRtTensorUserOp;
 
 // Get all the ops that reference given tensor, and at what operand index.
-LiteRtStatus LiteRtGetTensorUses(LiteRtTensor tensor,
-                                 LiteRtParamIndex* num_uses,
-                                 LiteRtOpArray* users,
-                                 LiteRtParamIndex** user_arg_inds);
+LiteRtStatus LiteRtGetNumTensorUses(LiteRtTensor tensor,
+                                    LiteRtParamIndex* num_uses);
+LiteRtStatus LiteRtGetTensorUse(LiteRtTensor tensor, LiteRtParamIndex use_index,
+                                LiteRtOp* user,
+                                LiteRtParamIndex* user_arg_index);
 
 // Get the op that defines this tensor and the corresponding output index. If
 // tensor is a subgraph input, has_defining_op will be false.
@@ -217,31 +229,38 @@ LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
 LiteRtStatus LiteRtGetOpCode(LiteRtOp op, LiteRtOpCode* code);
 
 // Get input tensors of given op.
-LiteRtStatus LiteRtGetOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs,
-                               LiteRtTensorArray* inputs);
+LiteRtStatus LiteRtGetNumOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs);
+LiteRtStatus LiteRtGetOpInput(LiteRtOp op, LiteRtParamIndex input_index,
+                              LiteRtTensor* input);
 
 // Get output tensors of given op.
-LiteRtStatus LiteRtGetOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs,
-                                LiteRtTensorArray* outputs);
+LiteRtStatus LiteRtGetNumOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs);
+LiteRtStatus LiteRtGetOpOutput(LiteRtOp op, LiteRtParamIndex output_index,
+                               LiteRtTensor* output);
 
 //
 // LiteRtSubgraph
 //
 
 // Get input tensors for given subgraph.
-LiteRtStatus LiteRtGetSubgraphInputs(LiteRtSubgraph subgraph,
-                                     LiteRtParamIndex* num_inputs,
-                                     LiteRtTensorArray* inputs);
+LiteRtStatus LiteRtGetNumSubgraphInputs(LiteRtSubgraph subgraph,
+                                        LiteRtParamIndex* num_inputs);
+LiteRtStatus LiteRtGetSubgraphInput(LiteRtSubgraph subgraph,
+                                    LiteRtParamIndex input_index,
+                                    LiteRtTensor* input);
 
 // Get output tensors for given subgraph.
-LiteRtStatus LiteRtGetSubgraphOutputs(LiteRtSubgraph subgraph,
-                                      LiteRtParamIndex* num_outputs,
-                                      LiteRtTensorArray* outputs);
+LiteRtStatus LiteRtGetNumSubgraphOutputs(LiteRtSubgraph subgraph,
+                                         LiteRtParamIndex* num_outputs);
+LiteRtStatus LiteRtGetSubgraphOutput(LiteRtSubgraph subgraph,
+                                     LiteRtParamIndex output_index,
+                                     LiteRtTensor* output);
 
 // Get all ops in given subgraph in a topological order.
-LiteRtStatus LiteRtGetSubgraphOps(LiteRtSubgraph subgraph,
-                                  LiteRtParamIndex* num_ops,
-                                  LiteRtOpArray* ops);
+LiteRtStatus LiteRtGetNumSubgraphOps(LiteRtSubgraph subgraph,
+                                     LiteRtParamIndex* num_ops);
+LiteRtStatus LiteRtGetSubgraphOp(LiteRtSubgraph subgraph,
+                                 LiteRtParamIndex op_index, LiteRtOp* op);
 
 //
 // LiteRtSignature
@@ -255,9 +274,9 @@ LiteRtStatus LiteRtGetDefaultSignatureKey(const char** signature_key);
 LiteRtStatus LiteRtGetSignatureKey(LiteRtSignature signature,
                                    const char** signature_key);
 
-// Get the associated subgraph index for the given signature.
-LiteRtStatus LiteRtGetSignatureSubgraphIndex(LiteRtSignature signature,
-                                             LiteRtParamIndex* subgraph_index);
+// Get the associated subgraph for the given signature.
+LiteRtStatus LiteRtGetSignatureSubgraph(LiteRtSignature signature,
+                                        LiteRtSubgraph* subgraph);
 
 // Get the number of inputs for the given signature.
 LiteRtStatus LiteRtGetNumSignatureInputs(LiteRtSignature signature,

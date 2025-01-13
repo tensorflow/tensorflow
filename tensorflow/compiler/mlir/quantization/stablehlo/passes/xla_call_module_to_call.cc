@@ -74,7 +74,7 @@ void XlaCallModuleToCallPass::runOnOperation() {
   MLIRContext* ctx = module_op.getContext();
   RewritePatternSet patterns(&getContext());
   patterns.add<XlaCallModuleOpToCallOp>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     signalPassFailure();
   }
 }

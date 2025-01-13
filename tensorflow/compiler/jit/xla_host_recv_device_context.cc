@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
-    const Tensor* device_tensor, StringPiece tensor_name, Device* device,
+    const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
     Tensor* cpu_tensor, StatusCallback done) {
   DataType dtype = EncodePrimitiveTypeAsDataType(shape_.element_type()).value();
   TensorShape tensor_shape;

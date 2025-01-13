@@ -915,7 +915,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
+    PyErr_SetString(PyExc_ValueError, absl::StatusMessageAsCStr(status));
     return nullptr;
   }
 

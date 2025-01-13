@@ -21,6 +21,9 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+// The attribute name for attributes in MHLO ops.
+inline constexpr llvm::StringRef kMhloAttributesAttr = "mhlo.attributes";
+
 // The attribute name for xla::HloSharding.
 inline constexpr llvm::StringRef kXlaShardingAttr = "mhlo.sharding";
 
@@ -34,6 +37,14 @@ inline constexpr llvm::StringRef kSPMDFullToShardShapeCallTargetName =
 // The target name of the SPMDShardToFullShape custom call.
 inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
     "SPMDShardToFullShape";
+
+// The target name of the Python CPU callback custom call.
+inline constexpr llvm::StringRef kPythonCpuCallbackCustomCallTargetName =
+    "xla_python_cpu_callback";
+
+// The target name of the Python GPU callback custom call.
+inline constexpr llvm::StringRef kPythonGpuCallbackCustomCallTargetName =
+    "xla_python_gpu_callback";
 
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";

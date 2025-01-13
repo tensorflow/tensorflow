@@ -96,7 +96,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
     return false;
   }
   int64_t value = 0;
-  if (!strings::safe_strto64(match, &value)) {
+  if (!absl::SimpleAtoi(match, &value)) {
     return false;
   }
   *out = value;
@@ -664,7 +664,7 @@ OpDefBuilder& OpDefBuilder::AllowAttrTypeAny() {
   return *this;
 }
 
-Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
+absl::Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   std::vector<string> errors = errors_;
   *op_reg_data = op_reg_data_;
 

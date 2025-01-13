@@ -620,6 +620,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@local_tsl//tsl/platform:stacktrace",
     ],
 )
 
@@ -714,6 +715,7 @@ cc_library(
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -2210,7 +2212,6 @@ cc_library(
         "//tensorflow:internal",
         # For xla_launch_util
         "//tensorflow/compiler/jit:__pkg__",
-        "//tensorflow_models:__subpackages__",
     ],
     deps = [
         ":device",

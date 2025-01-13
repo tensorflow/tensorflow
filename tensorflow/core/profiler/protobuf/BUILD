@@ -290,3 +290,9 @@ tf_proto_library(
         "//learning/serving/tools/servo_model_profiler:__subpackages__",
     ],
 )
+
+tf_proto_library(
+    name = "tpu_input_pipeline_proto",
+    srcs = ["tpu_input_pipeline.proto"],
+    protodeps = [":input_pipeline_proto"],
+)

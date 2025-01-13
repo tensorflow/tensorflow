@@ -25,33 +25,28 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "ml_dtypes/include/float8.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/comparison_util.h"
 #include "xla/fp_util.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
-#include "xla/test.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
 
 namespace xla {
 namespace {
@@ -1752,11 +1747,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION == 50700
-  GTEST_SKIP()
-      << "This test fails on rocm-5.7.0 platform due to a compiler bug";
-#endif
-
+  auto device_description =
+      client_->backend().default_stream_executor()->GetDeviceDescription();
+  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
+      device_description.gpu_compute_capability());
+  if (is_rocm && device_description.runtime_version() ==
+                     stream_executor::SemanticVersion(5, 7, 0)) {
+    GTEST_SKIP()
+        << "This test fails on rocm-5.7.0 platform due to a compiler bug";
+  }
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto eps = std::numeric_limits<float>::epsilon();

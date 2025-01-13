@@ -1,4 +1,4 @@
-// RUN: xla_cpu_opt %s --xla-cpu-lower-trivial | FileCheck %s
+// RUN: emitters_opt %s --xla-cpu-lower-trivial | FileCheck %s
 
 func.func @call_frame_arg(%arg0: !xla_cpu.call_frame) {
   %0 = xla_cpu.load %arg0, 0 : tensor<32x32xf32>

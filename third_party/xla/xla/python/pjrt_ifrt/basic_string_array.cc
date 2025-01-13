@@ -55,35 +55,6 @@ namespace ifrt {
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// BasicStringArrayLayout
-//
-
-std::string BasicStringArrayLayout::Serialize() const {
-  // We currently do not have any state that need to be serialized. Return an
-  // empty string.
-  return std::string();
-}
-
-std::string BasicStringArrayLayout::ToString() const {
-  return "BasicStringArrayLayout: Dense, major-to-minor.";
-}
-
-bool BasicStringArrayLayout::operator==(const PjRtLayout& other) const {
-  auto* other_basic_string_array_layout =
-      dynamic_cast<const xla::ifrt::BasicStringArrayLayout*>(&other);
-  if (other_basic_string_array_layout == nullptr) {
-    return false;
-  }
-  // All BasicStringArrayLayout objects are the same - they are all dense,
-  // major-to-minor. So, all of them are equal.
-  return true;
-}
-
-void BasicStringArrayLayout::Hash(absl::HashState state) const {
-}  // Nothing to add to the hash state. Just return.
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // BasicStringArray
 //
 
@@ -446,12 +417,9 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLayout>> BasicStringArray::layout() const {
-  absl::MutexLock lock(&mu_);
-  if (is_deleted_) {
-    return absl::FailedPreconditionError("Array has already been deleted");
-  }
-  return std::make_unique<BasicStringArrayLayout>();
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> BasicStringArray::layout()
+    const {
+  return absl::UnimplementedError("String arrays do not support PjRtLayout");
 }
 
 std::string BasicStringArray::DebugString() const {

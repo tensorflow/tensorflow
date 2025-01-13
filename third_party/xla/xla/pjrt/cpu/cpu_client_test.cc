@@ -122,6 +122,10 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
                           client->Compile(xla_computation, {}));
 
+  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                          pjrt_executable->FingerprintExecutable());
+  ASSERT_TRUE(!fingerprint.empty());
+
   std::vector<float> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
   TF_ASSERT_OK_AND_ASSIGN(

@@ -203,12 +203,13 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
 
     if (ShapeUtil::IsScalar(return_shape)) {
       llvm::Value* ret_value =
-          Load(llvm_ir::ShapeToIrType(return_shape, module_), root_value,
-               "load_ret_value");
+          Load(llvm_ir::ShapeToIrType(return_shape, module_->getContext()),
+               root_value, "load_ret_value");
       Store(ret_value, out_parameter);
     } else {
       CHECK(return_shape.IsTuple());
-      llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);
+      llvm::Type* tuple_type =
+          llvm_ir::ShapeToIrType(return_shape, module_->getContext());
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
@@ -220,8 +221,11 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
             element_shape,
             /*index=*/i,
             /*alignment=*/1, root_value,
-            llvm_ir::ShapeToIrType(root_instruction->shape(), module_), &b_);
-        Store(Load(llvm_ir::ShapeToIrType(element_shape, module_), source),
+            llvm_ir::ShapeToIrType(root_instruction->shape(),
+                                   module_->getContext()),
+            &b_);
+        Store(Load(llvm_ir::ShapeToIrType(element_shape, module_->getContext()),
+                   source),
               destination);
       }
     }
@@ -347,8 +351,8 @@ absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();
-  llvm::Type* return_buffer_type = llvm_ir::ShapeToIrType(
-      return_shape, builder->GetInsertBlock()->getModule());
+  llvm::Type* return_buffer_type =
+      llvm_ir::ShapeToIrType(return_shape, builder->getContext());
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
       return_buffer_type, "return_buffer", builder);
 

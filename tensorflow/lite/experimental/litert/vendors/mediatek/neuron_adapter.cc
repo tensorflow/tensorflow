@@ -19,7 +19,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -55,30 +57,28 @@ litert::Expected<NeuronAdapter::Ptr> NeuronAdapter::Create(
 
 litert::Expected<void> NeuronAdapter::LoadSymbols(
     std::optional<std::string> shared_library_dir) {
-  // The following preinstalled library is for system partition applications.
-  if (litert::internal::OpenLib("libneuronusdk_adapter.mtk.so",
-                                &dlib_handle_) != kLiteRtStatusOk) {
-    // The next preinstalled library is in the vendor partition.
-    if (litert::internal::OpenLib("libneuron_adapter_mgvi.so", &dlib_handle_) !=
-        kLiteRtStatusOk) {
+  constexpr auto kLibNeuronAdapterLib = "libneuron_adapter.so";
+
+  const std::vector<std::string> so_paths = {
+      // The following preinstalled library is for system partition
+      // applications.
+      "libneuronusdk_adapter.mtk.so",
+      // The next preinstalled library is in the vendor partition.
+      "libneuron_adapter_mgvi.so",
       // Finally, the app may want to provide their own version of the library.
-      constexpr auto kLibNeuronAdapterLib = "libneuron_adapter.so";
-      std::string library_path =
-          shared_library_dir.has_value()
-              ? *shared_library_dir + kLibNeuronAdapterLib
-              : kLibNeuronAdapterLib;
-      if (litert::internal::OpenLib(library_path, &dlib_handle_) !=
-          kLiteRtStatusOk) {
-        return litert::Unexpected(
-            kLiteRtStatusErrorRuntimeFailure,
-            "Failed to load NeuronAdapter shared library");
-      }
-    }
+      shared_library_dir.has_value()
+          ? absl::StrCat(*shared_library_dir, "/", kLibNeuronAdapterLib)
+          : kLibNeuronAdapterLib};
+  if (litert::internal::OpenLib(so_paths, &dlib_handle_) != kLiteRtStatusOk) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Failed to load NeuronAdapter shared library");
   }
 
   // Binds all supported symbols from the shared library to the function
   // pointers.
   LOAD_SYMB(NeuronCompilation_create, api_->compilation_create);
+  LOAD_SYMB(NeuronCompilation_createWithOptions,
+            api_->compilation_create_with_options);
   LOAD_SYMB(NeuronCompilation_finish, api_->compilation_finish);
   LOAD_SYMB(NeuronCompilation_free, api_->compilation_free);
   LOAD_SYMB(NeuronCompilation_getInputPaddedDimensions,
@@ -96,6 +96,10 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
   LOAD_SYMB(NeuronExecution_compute, api_->execution_compute);
   LOAD_SYMB(NeuronExecution_create, api_->execution_create);
   LOAD_SYMB(NeuronExecution_free, api_->execution_free);
+  LOAD_SYMB(NeuronCompilation_getCompiledNetworkSize,
+            api_->compilation_get_compiled_network_size);
+  LOAD_SYMB(NeuronCompilation_storeCompiledNetwork,
+            api_->compilation_store_compiled_network);
   LOAD_SYMB(NeuronExecution_setBoostHint, api_->execution_set_boost_hint);
   LOAD_SYMB(NeuronExecution_setInputFromMemory,
             api_->execution_set_input_from_memory);
@@ -103,6 +107,7 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
             api_->execution_set_output_from_memory);
   LOAD_SYMB(NeuronMemory_createFromAHardwareBuffer,
             api_->memory_create_from_ahwb);
+  LOAD_SYMB(NeuronMemory_createFromFd, api_->memory_create_from_fd);
   LOAD_SYMB(NeuronMemory_free, api_->memory_free);
   LOAD_SYMB(NeuronModel_addOperand, api_->model_add_operand);
   LOAD_SYMB(NeuronModel_addOperation, api_->model_add_operation);
@@ -117,11 +122,52 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
             api_->model_identify_inputs_and_outputs);
   LOAD_SYMB(NeuronModel_restoreFromCompiledNetwork,
             api_->model_restore_from_compiled_network);
+  LOAD_SYMB(NeuronModel_setName, api_->model_set_name);
   LOAD_SYMB(NeuronModel_setOperandValue, api_->model_set_operand_value);
   LOAD_SYMB(Neuron_getVersion, api_->get_version);
 
   LITERT_LOG(LITERT_INFO, "NeuronAdapter symbols loaded");
   return {};
+}
+
+Expected<NeuronModelPtr> NeuronAdapter::CreateModel() const {
+  NeuronModel* model;
+  if (api().model_create(&model) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuroModel");
+  }
+  return NeuronModelPtr{model, api().model_free};
+}
+
+Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+    NeuronModel* model) const {
+  NeuronCompilation* compilation;
+  if (api().compilation_create(model, &compilation) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuronCompilation");
+  }
+  return NeuronCompilationPtr{compilation, api().compilation_free};
+}
+
+Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+    NeuronModel* model, const std::string& compile_options) const {
+  NeuronCompilation* compilation;
+  if (api().compilation_create_with_options(
+          model, &compilation, compile_options.c_str()) != NEURON_NO_ERROR) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create NeuronCompilation");
+  }
+  return NeuronCompilationPtr{compilation, api().compilation_free};
+}
+
+Expected<NeuronExecutionPtr> NeuronAdapter::CreateExecution(
+    NeuronCompilation* compilation) const {
+  NeuronExecution* execution;
+  if (api().execution_create(compilation, &execution) != NEURON_NO_ERROR) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Failed to create execution");
+  }
+  return NeuronExecutionPtr{execution, api().execution_free};
 }
 
 }  // namespace mediatek

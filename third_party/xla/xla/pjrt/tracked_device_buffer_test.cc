@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 

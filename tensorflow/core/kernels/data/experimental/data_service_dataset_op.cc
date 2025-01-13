@@ -265,7 +265,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     inputs.push_back(iteration_counter_handle);
 
     // Attributes
-    std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    std::vector<std::pair<absl::string_view, AttrValue>> attrs;
     AttrValue task_refresh_interval_hint_ms;
     b->BuildAttrValue(absl::ToInt64Milliseconds(task_refresh_interval_),
                       &task_refresh_interval_hint_ms);

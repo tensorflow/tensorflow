@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdbool.h>
 
+#include <cstdint>
 #include <map>
 #include <string>
 

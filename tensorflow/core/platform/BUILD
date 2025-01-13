@@ -810,6 +810,7 @@ cc_library(
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform:stringpiece",
     ],
 )
@@ -950,6 +951,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:device_type",
     ],
@@ -1152,6 +1154,8 @@ cc_library(
     deps = [
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1219,7 +1223,7 @@ tf_cc_tests(
         "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
         "@zlib",
     ],
 )
@@ -1300,6 +1304,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

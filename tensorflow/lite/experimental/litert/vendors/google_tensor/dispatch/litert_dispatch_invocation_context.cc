@@ -31,7 +31,8 @@ namespace {
 
 constexpr const size_t kEdgeTpuPadding = 64;
 
-inline constexpr auto Pad(auto x, auto align) {
+template <class X, class Align>
+inline constexpr auto Pad(X x, Align align) {
   return ((x + align - 1) / align) * align;
 }
 

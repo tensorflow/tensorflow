@@ -79,8 +79,8 @@ struct StridedSliceDenseSpec {
 }  // namespace
 
 template <class T>
-static absl::Status TF_MUST_USE_RESULT BuildDenseSpec(
-    const StridedSliceSparseSpec& sparse, StridedSliceDenseSpec* dense) {
+static absl::Status BuildDenseSpec(const StridedSliceSparseSpec& sparse,
+                                   StridedSliceDenseSpec* dense) {
   if (dense->dims < 0) {
     return errors::InvalidArgument("Unexpected negative dense.dims: %d",
                                    dense->dims);

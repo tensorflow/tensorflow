@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
+#include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,17 +43,38 @@ absl::StatusOr<int64_t> ExtractAnnotation(
     const ::google::protobuf::Map<std::string, std::string>& attrs,
     absl::string_view instr_name) {
   int64_t annotation_id;
-  if (!absl::SimpleAtoi(attrs.at("_scheduling_group_id"), &annotation_id)) {
+  if (!absl::SimpleAtoi(attrs.at(kXlaSchedulingGroupIdAttr), &annotation_id)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Instruction has a non-integer scheduling annotation, inst: ",
-        instr_name, ", annotation: ", attrs.at("_scheduling_group_id")));
+        instr_name, ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
   }
   if (annotation_id < 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Instruction has a negative scheduling annotation, inst: ", instr_name,
-        ", annotation: ", attrs.at("_scheduling_group_id")));
+        ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
   }
   return annotation_id;
+}
+
+void DropSchedulingAnnotation(HloInstruction* instr) {
+  VLOG(2) << "Dropping annotation from " << instr->name();
+  FrontendAttributes frontend_attributes = instr->frontend_attributes();
+  frontend_attributes.mutable_map()->erase("_scheduling_group_id");
+  instr->set_frontend_attributes(frontend_attributes);
+}
+
+bool IsSupportedAsyncOp(HloInstruction* instr) {
+  return HloPredicateIsOp<
+      HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
+      HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
+      HloOpcode::kCollectivePermuteDone, HloOpcode::kCollectivePermuteStart,
+      HloOpcode::kAsyncDone, HloOpcode::kAsyncStart, HloOpcode::kSendDone,
+      HloOpcode::kSend, HloOpcode::kRecvDone, HloOpcode::kRecv>(instr);
+}
+
+bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
+    HloInstruction* instr) {
+  return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
 }
 
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
@@ -61,16 +84,28 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   absl::flat_hash_map<int64_t, HloComputation*> annotation_to_computation;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
       annotation_to_instructions;
+  // Filter the annotated ops (using config) to keep the annotations only in the
+  // desired sync ops. Annotations in all async ops are kept.
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (!instr->frontend_attributes().map().contains(
+              "_scheduling_group_id") ||
+          KeepSchedulingAnnotation(instr)) {
+        continue;
+      }
+      DropSchedulingAnnotation(instr);
+    }
+  }
   // Find the annotated instructions and save relevant information.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       const auto& attrs = instr->frontend_attributes().map();
-      if (!attrs.contains("_scheduling_group_id")) {
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
         continue;
       }
       VLOG(1) << "Annotated instruction: " << instr->name() << " "
-              << attrs.at("_scheduling_group_id");
+              << attrs.at(kXlaSchedulingGroupIdAttr);
       TF_ASSIGN_OR_RETURN(int64_t annotation_id,
                           ExtractAnnotation(attrs, instr->name()));
       if (annotation_to_computation.contains(annotation_id) &&
@@ -93,13 +128,14 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   // there are some fused instructions with different annotations.
   for (HloComputation* computation : module->computations(execution_threads)) {
     if (!computation->IsFusionComputation() ||
+        !config_.keep_sync_annotation(computation->FusionInstruction()) ||
         annotation.contains(computation->FusionInstruction())) {
       continue;
     }
     int64_t seen_annotation = -1;
     for (HloInstruction* instr : computation->instructions()) {
       const auto& attrs = instr->frontend_attributes().map();
-      if (!attrs.contains("_scheduling_group_id")) {
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
         continue;
       }
       TF_ASSIGN_OR_RETURN(int64_t annotation_id,
@@ -123,13 +159,14 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     FrontendAttributes frontend_attributes =
         computation->FusionInstruction()->frontend_attributes();
     frontend_attributes.mutable_map()->insert(
-        {"_scheduling_group_id", std::to_string(seen_annotation)});
+        {kXlaSchedulingGroupIdAttr, std::to_string(seen_annotation)});
     computation->FusionInstruction()->set_frontend_attributes(
         frontend_attributes);
   }
   if (annotation_to_computation.empty()) {
     return false;
   }
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> parent;
   for (const auto& [id, annotated_instructions] : annotation_to_instructions) {
     // First find the frontier nodes that are not annotated with id but use an
     // annotated instruction with id.
@@ -147,13 +184,17 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
             "Done instruction's operand is not annotated with the same id: ",
             instr->operand(0)->name(), ", annotation: ", id));
       }
-      for (HloInstruction* user : instr->users()) {
-        if (!visited.contains(user) &&
-            (!annotation.contains(user) || annotation[user] != id)) {
-          stack.push_back(user);
-          visited.insert(user);
-          VLOG(2) << "Annotation group: " << id
-                  << ", frontier using a root: " << user->name();
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (!visited.contains(user) &&
+              (!annotation.contains(user) || annotation[user] != id)) {
+            stack.push_back(user);
+            parent[user] = instr;
+            visited.insert(user);
+            VLOG(2) << "Annotation group: " << id
+                    << ", frontier using a root: " << user->name();
+          }
         }
       }
     }
@@ -165,20 +206,31 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     while (!stack.empty()) {
       HloInstruction* instr = stack.back();
       stack.pop_back();
-      for (HloInstruction* user : instr->users()) {
-        if (annotation.contains(user) && annotation[user] == id) {
-          return absl::UnimplementedError(
-              absl::StrCat("Support for annotation groups with gaps doesn't "
-                           "exist yet, annotation: ",
-                           id, ", instr: ", user->name(),
-                           " has the same annotation in its operand tree but "
-                           "has gaps on the way from that operand to itself."));
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (annotation.contains(user) && annotation[user] == id) {
+            LOG(INFO) << "PATH: " << user->name();
+            HloInstruction* current = instr;
+            LOG(INFO) << "PATH: " << current->name();
+            while (parent.contains(current)) {
+              current = parent[current];
+              LOG(INFO) << "PATH: " << current->name();
+            }
+            return absl::UnimplementedError(absl::StrCat(
+                "Support for annotation groups with gaps doesn't "
+                "exist yet, annotation: ",
+                id, ", instr: ", user->name(),
+                " has the same annotation in its operand tree but "
+                "has gaps on the way from that operand to itself."));
+          }
+          if (visited.contains(user)) {
+            continue;
+          }
+          stack.push_back(user);
+          parent[user] = instr;
+          visited.insert(user);
         }
-        if (visited.contains(user)) {
-          continue;
-        }
-        stack.push_back(user);
-        visited.insert(user);
       }
     }
   }

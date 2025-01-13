@@ -90,7 +90,6 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
 // optimizing each function in that graph and later aggregating any new
 // functions introduced during these individual optimizations into that single
 // graph's collective function library).
-// TODO(mpcallanan): Look at deduping names in a more generic fashion upstream.
 string GetFusedName(const NodeDef& parent, const NodeDef& child) {
   return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
 }

@@ -143,6 +143,7 @@ class NcclCollectiveThunk : public Thunk {
    private:
     friend class NcclCollectiveThunk;
     friend class NcclCollectiveDoneThunk;
+    friend class NcclGroupThunk;
 
     absl::Status Initialize(se::StreamExecutor* executor);
     absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
@@ -209,7 +210,7 @@ class NcclCollectiveThunk : public Thunk {
   //
   // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
   // sure that all NCCL resources are allocated just once.
-  RendezvousSingleFlag first_call_rendezvous_flag_;
+  RendezvousFlag first_call_rendezvous_flag_;
 };
 
 //===----------------------------------------------------------------------===//

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
+#include <cstdlib>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -92,7 +94,7 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
 }
 
 absl::Status SetPragma(Sqlite* db, const char* pragma,
-                       const StringPiece& value) {
+                       const absl::string_view& value) {
   if (value.empty()) return absl::OkStatus();
   for (auto p = value.begin(); p < value.end(); ++p) {
     if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
@@ -107,9 +109,9 @@ absl::Status SetPragma(Sqlite* db, const char* pragma,
   return stmt.Step(&unused_done);
 }
 
-const StringPiece GetEnv(const char* var) {
+const absl::string_view GetEnv(const char* var) {
   const char* val = std::getenv(var);
-  return (val == nullptr) ? StringPiece() : StringPiece(val);
+  return (val == nullptr) ? absl::string_view() : absl::string_view(val);
 }
 
 absl::Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
@@ -171,7 +173,8 @@ Sqlite::~Sqlite() {
   CHECK_EQ(SQLITE_OK, sqlite3_close(db_));
 }
 
-absl::Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
+absl::Status Sqlite::Prepare(const absl::string_view& sql,
+                             SqliteStatement* stmt) {
   SqliteLock lock(*this);
   sqlite3_stmt* ps = nullptr;
   int rc = sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()),

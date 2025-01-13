@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 
-#include <cstdint>
-
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"

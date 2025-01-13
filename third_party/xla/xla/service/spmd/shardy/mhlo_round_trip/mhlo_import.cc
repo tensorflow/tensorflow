@@ -413,7 +413,7 @@ TensorShardingAttr convertToSdySharding(
   // device.
   if (hloSharding.HasUniqueDevice()) {
     return TensorShardingAttr::getFullyClosed(
-        ctx, rank,
+        ctx, /*rank=*/0,
         deviceIdToMaximalMeshName.lookup(hloSharding.GetUniqueDevice()));
   }
   CHECK(!hloSharding.IsTuple());
@@ -658,8 +658,8 @@ void addMhloImportPipeline(mlir::OpPassManager& pm,
 void registerMhloImportPipeline() {
   mlir::PassPipelineRegistration<> importPipeline(
       "xla-sdy-mhlo-import-pipeline",
-      "Run passes to import an mhlo module with `mhlo.shardings` into the SDY "
-      "(Shardy) dialect.",
+      "Run passes to import a StableHLO module with `mhlo.shardings` into the "
+      "SDY (Shardy) dialect.",
       std::bind(addMhloImportPipeline, std::placeholders::_1, ArrayRef<bool>(),
                 ArrayRef<bool>()));
 }

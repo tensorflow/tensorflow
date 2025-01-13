@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 
+#include <cstdint>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -49,8 +53,7 @@ absl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     data =
         wrapped_->AllocateRaw(tsl::Allocator::kAllocatorAlignment, size, attrs);
     if (data == nullptr) {
-      return absl::ResourceExhaustedError(absl::StrCat(
-          "Out of memory while trying to allocate ", size, " bytes."));
+      return MemoryAllocationError(size);
     }
   }
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
@@ -79,6 +82,20 @@ absl::StatusOr<tsl::Allocator *> TfAllocatorAdapter::GetAllocator(
                      " not equal to device_ordinal ", device_ordinal));
   }
   return wrapped_;
+}
+
+static constexpr absl::string_view kMemoryAllocationErrorPayloadKey =
+    "tf-allocator-allocation-error";
+
+absl::Status MemoryAllocationError(uint64_t size) {
+  absl::Status status = absl::ResourceExhaustedError(
+      absl::StrCat("Out of memory while trying to allocate ", size, " bytes."));
+  status.SetPayload(kMemoryAllocationErrorPayloadKey, absl::Cord());
+  return status;
+}
+
+bool IsMemoryAllocationError(absl::Status status) {
+  return status.GetPayload(kMemoryAllocationErrorPayloadKey).has_value();
 }
 
 }  // namespace stream_executor

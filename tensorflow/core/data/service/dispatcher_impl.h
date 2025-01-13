@@ -385,10 +385,10 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  // TODO(mpcallanan): Don't recover completed snapshots.
-  // TODO(mpcallanan): Garbage collect completed snapshots.
   // A manager for each snapshot resumed or started during the lifetime of this
-  // dispatcher instance.
+  // dispatcher instance.  Note that these are *not* garbage collected; managers
+  // for completed snapshots will remain here for the lifetime of the dispatcher
+  // instance.  They will even be recovered if the dispatcher is restarted.
   absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
       TF_GUARDED_BY(mu_);
   // A single stream assignment manager shared by all managers in `snapshots_`.

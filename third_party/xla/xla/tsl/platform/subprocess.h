@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

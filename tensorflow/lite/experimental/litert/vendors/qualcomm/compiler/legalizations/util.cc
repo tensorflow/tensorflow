@@ -37,6 +37,7 @@ using ::litert::internal::DumpOptions;
 // Dump source Op details.
 void DumpLegalization(const LiteRtOpT& op) {
   std::ostringstream dump;
+  // TODO Make dump tools part of stable api.
   Dump(op, dump);
   DumpOptions(op, dump);
   std::string s = dump.str();

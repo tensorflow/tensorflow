@@ -128,7 +128,7 @@ struct ApplyPluginRun {
   // select the first ".so" file found with prefix "libLiteRtPlugin" that has
   // the "soc_manufacturer" tag passed. Providing more than one plugin shared
   // library for the same manufacturer results in an error.
-  SmallVec<absl::string_view> lib_search_paths = {};
+  std::vector<absl::string_view> lib_search_paths = {};
 
   // Path to ".tflite" model the tool should operated on.
   std::optional<absl::string_view> model = {};
@@ -139,13 +139,13 @@ struct ApplyPluginRun {
   std::optional<absl::string_view> soc_manufacturer = {};
 
   // Collection of soc models tags the tool should target for compilation.
-  SmallVec<absl::string_view> soc_models = {};
+  std::vector<absl::string_view> soc_models = {};
 
   // Where the tool should write its result file(s) to. If the command runs
   // compilation, an "out" stream should be passed for each "soc_model" target
   // requested for compilation. Output for the "ith" target will be written to
   // the "ith" outs stream.
-  SmallVec<OutStream> outs = {std::cout};
+  std::vector<OutStream> outs = {std::cout};
 
   // Where to direct logging for this run. Passing nullopt here indicates
   // "silent" behavior and should only be used when this tool is part of a

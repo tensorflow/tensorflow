@@ -60,9 +60,15 @@ HloModule TestModule
 }
 )";
 
-  MatchOptimizedHlo(hlo, R"(
+  if (!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo, R"(
+// CHECK: (f32[1,23,136]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=b0f_o0i->b0f, custom_call_target="__cudnn$convBackwardInput"
+    )");
+  } else {
+    MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[1,136,23]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=bf0_oi0->bf0, custom_call_target="__cudnn$convBackwardInput"
   )");
+  }
 }
 
 TEST_F(ConvolutionLayoutNormalizationTest, Forward) {
@@ -76,9 +82,15 @@ ENTRY %TestComputation {
 }
 )";
 
-  MatchOptimizedHlo(hlo, R"(
+  if (!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo, R"(
+// CHECK: (f32[2,1,378,128]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+    )");
+  } else {
+    MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[2,128,1,378]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
-  )");
+    )");
+  }
 }
 
 TEST_F(ConvolutionLayoutNormalizationTest, FusedConv3D) {

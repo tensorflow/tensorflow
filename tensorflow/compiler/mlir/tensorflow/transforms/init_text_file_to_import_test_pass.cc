@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <system_error>
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"

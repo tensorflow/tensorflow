@@ -89,9 +89,11 @@ class CudaStream : public StreamCommon {
 
   absl::Status RecordCompletedEvent();
 
-  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
-                      const std::optional<ClusterDim>& cluster_dims,
-                      const Kernel& kernel, const KernelArgs& args) override;
+  absl::Status LaunchKernel(const ThreadDim& thread_dims,
+                            const BlockDim& block_dims,
+                            const std::optional<ClusterDim>& cluster_dims,
+                            void* function, absl::string_view name, void** args,
+                            int64_t shmem_bytes) override;
 
   StreamExecutor* executor_;
   CudaEvent completed_event_;

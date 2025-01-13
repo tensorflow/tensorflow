@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/compression.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
 
 namespace tsl {
 namespace io {

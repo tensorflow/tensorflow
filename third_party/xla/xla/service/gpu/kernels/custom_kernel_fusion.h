@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -126,7 +128,7 @@ class CustomKernelFusionRegistry {
                         std::unique_ptr<CustomKernelFusion> fusion);
 
   // Looks up custom kernel fusion by name. Return nullptr if it's not found.
-  CustomKernelFusion* Lookup(std::string_view name) const;
+  CustomKernelFusion* Lookup(absl::string_view name) const;
 
  private:
   mutable absl::Mutex mutex_;

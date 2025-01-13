@@ -79,7 +79,8 @@ absl::Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
               [](const Edge* a, const Edge* b) {
                 int a_src_output = a->src_output(),
                     b_src_output = b->src_output();
-                StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+                absl::string_view a_name(a->src()->name()),
+                    b_name(b->src()->name());
                 return std::tie(a_src_output, a_name) <
                        std::tie(b_src_output, b_name);
               });

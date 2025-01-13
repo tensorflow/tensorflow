@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/time/time.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 

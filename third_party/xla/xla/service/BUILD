@@ -214,8 +214,8 @@ xla_cc_test(
 cc_library(
     name = "all_reduce_folder",
     hdrs = ["all_reduce_folder.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:all_reduce_folder instead.",
-    deps = ["//xla/hlo/transforms:all_reduce_folder"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:all_reduce_folder instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:all_reduce_folder"],
 )
 
 cc_library(
@@ -231,22 +231,22 @@ cc_library(
 cc_library(
     name = "broadcast_canonicalizer",
     hdrs = ["broadcast_canonicalizer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:broadcast_canonicalizer instead.",
-    deps = ["//xla/hlo/transforms:broadcast_canonicalizer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:broadcast_canonicalizer instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:broadcast_canonicalizer"],
 )
 
 cc_library(
     name = "bfloat16_conversion_folding",
     hdrs = ["bfloat16_conversion_folding.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:bfloat16_conversion_folding instead.",
-    deps = ["//xla/hlo/transforms:bfloat16_conversion_folding"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:bfloat16_conversion_folding instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:bfloat16_conversion_folding"],
 )
 
 cc_library(
     name = "float_normalization",
     hdrs = ["float_normalization.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:float_normalization instead.",
-    deps = ["//xla/hlo/transforms:float_normalization"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:float_normalization instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:float_normalization"],
 )
 
 cc_library(
@@ -257,21 +257,46 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_permute_utils",
+    srcs = ["collective_permute_utils.cc"],
+    hdrs = ["collective_permute_utils.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/graphcycles",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_permute_utils_test",
+    srcs = ["collective_permute_utils_test.cc"],
+    deps = [
+        ":collective_permute_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "collective_permute_decomposer",
     srcs = ["collective_permute_decomposer.cc"],
     hdrs = ["collective_permute_decomposer.h"],
     deps = [
         ":collective_ops_utils",
+        ":collective_permute_utils",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/graphcycles",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -283,15 +308,16 @@ xla_cc_test(
         ":collective_ops_utils",
         ":collective_permute_decomposer",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/hlo/utils:hlo_query",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -380,7 +406,7 @@ cc_library(
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -413,8 +439,8 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
@@ -609,8 +635,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/transforms:hlo_constant_splitter",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_constant_splitter",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -634,6 +660,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service/spmd:shard_barrier_partitioner",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -772,13 +799,8 @@ cc_library(
     name = "pattern_matcher_gmock",
     testonly = 1,
     hdrs = ["pattern_matcher_gmock.h"],
-    deps = [
-        ":pattern_matcher",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:pattern_matcher_gmock instead.",
+    deps = ["//xla/hlo/testlib:pattern_matcher_gmock"],
 )
 
 xla_cc_test(
@@ -914,8 +936,8 @@ xla_cc_test(
 cc_library(
     name = "flatten_call_graph",
     hdrs = ["flatten_call_graph.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:flatten_call_graph instead.",
-    deps = ["//xla/hlo/transforms:flatten_call_graph"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:flatten_call_graph instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:flatten_call_graph"],
 )
 
 cc_library(
@@ -931,7 +953,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -958,8 +980,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
@@ -972,8 +994,8 @@ xla_cc_test(
 cc_library(
     name = "hlo_computation_deduplicator",
     hdrs = ["hlo_computation_deduplicator.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_computation_deduplicator instead.",
-    deps = ["//xla/hlo/transforms:hlo_computation_deduplicator"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_computation_deduplicator instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_computation_deduplicator"],
 )
 
 cc_library(
@@ -1157,12 +1179,14 @@ cc_library(
         ":hlo_value",
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1175,8 +1199,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -1720,9 +1742,9 @@ xla_cc_test(
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/transforms:flatten_call_graph",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:hlo_memory_scheduler",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/service/memory_space_assignment",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -1834,21 +1856,21 @@ xla_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
     deps = [
+        ":buffer_value",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test_helpers",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:hlo_memory_scheduler",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1873,9 +1895,9 @@ xla_cc_test(
 cc_library(
     name = "hlo_memory_scheduler",
     hdrs = ["hlo_memory_scheduler.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_memory_scheduler instead.",
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_memory_scheduler instead.",
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    deps = ["//xla/hlo/transforms:hlo_memory_scheduler"],
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_memory_scheduler"],
 )
 
 cc_library(
@@ -1947,7 +1969,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
@@ -2021,14 +2043,22 @@ xla_cc_test(
         ":hlo_creation_utils",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:test",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2227,13 +2257,16 @@ xla_cc_test(
     shard_count = 12,
     deps = [
         ":triangular_solve_expander",
+        "//xla:array2d",
+        "//xla:error_spec",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:reference_util",
-        "//xla:test",
-        "//xla:types",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
     ],
 )
 
@@ -2307,15 +2340,15 @@ cc_library(
     name = "algebraic_simplifier",
     hdrs = ["algebraic_simplifier.h"],
     copts = tsl_copts(),
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:algebraic_simplifier instead.",
-    deps = ["//xla/hlo/transforms:algebraic_simplifier"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:algebraic_simplifier instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:algebraic_simplifier"],
 )
 
 cc_library(
     name = "tree_reduction_rewriter",
     hdrs = ["tree_reduction_rewriter.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:tree_reduction_rewriter instead.",
-    deps = ["//xla/hlo/transforms:tree_reduction_rewriter"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:tree_reduction_rewriter instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:tree_reduction_rewriter"],
 )
 
 xla_test(
@@ -2332,8 +2365,8 @@ xla_test(
 cc_library(
     name = "simplify_fp_conversions",
     hdrs = ["simplify_fp_conversions.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:simplify_fp_conversions instead.",
-    deps = ["//xla/hlo/transforms:simplify_fp_conversions"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:simplify_fp_conversions instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:simplify_fp_conversions"],
 )
 
 cc_library(
@@ -2567,8 +2600,8 @@ xla_cc_test(
 cc_library(
     name = "batch_dot_simplification",
     hdrs = ["batch_dot_simplification.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:batch_dot_simplification instead.",
-    deps = ["//xla/hlo/transforms:batch_dot_simplification"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:batch_dot_simplification instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:batch_dot_simplification"],
 )
 
 xla_cc_test(
@@ -2645,8 +2678,8 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -2682,8 +2715,8 @@ xla_cc_test(
 cc_library(
     name = "convolution_group_converter",
     hdrs = ["convolution_group_converter.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convolution_group_converter instead.",
-    deps = ["//xla/hlo/transforms:convolution_group_converter"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:convolution_group_converter instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:convolution_group_converter"],
 )
 
 cc_library(
@@ -2754,7 +2787,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -2772,10 +2805,10 @@ xla_cc_test(
         ":scan_loop_accumulator_input_unification",
         "//xla:literal",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
@@ -2797,7 +2830,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -2832,11 +2865,13 @@ cc_library(
     deps = [
         ":call_inliner",
         ":collective_ops_utils",
+        ":constant_value",
         ":hlo_buffer",
         ":hlo_creation_utils",
         ":hlo_cse",
         ":hlo_value",
         ":pattern_matcher",
+        ":value_range",
         ":while_loop_constant_sinking",
         "//xla:comparison_util",
         "//xla:literal",
@@ -2850,11 +2885,12 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:flatten_call_graph",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -2873,9 +2909,9 @@ xla_cc_test(
         ":while_loop_unroller",
         "//xla:literal",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -2911,7 +2947,7 @@ cc_library(
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -2938,8 +2974,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -2974,22 +3010,22 @@ cc_library(
 cc_library(
     name = "dot_dimension_merger",
     hdrs = ["dot_dimension_merger.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:dot_dimension_merger instead.",
-    deps = ["//xla/hlo/transforms:dot_dimension_merger"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:dot_dimension_merger instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:dot_dimension_merger"],
 )
 
 cc_library(
     name = "dot_merger",
     hdrs = ["dot_merger.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:dot_merger instead.",
-    deps = ["//xla/hlo/transforms:dot_merger"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:dot_merger instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:dot_merger"],
 )
 
 cc_library(
     name = "convert_mover",
     hdrs = ["convert_mover.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convert_mover instead.",
-    deps = ["//xla/hlo/transforms:convert_mover"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:convert_mover instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:convert_mover"],
 )
 
 cc_library(
@@ -3047,15 +3083,15 @@ xla_cc_test(
 cc_library(
     name = "tuple_simplifier",
     hdrs = ["tuple_simplifier.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:tuple_simplifier instead.",
-    deps = ["//xla/hlo/transforms:tuple_simplifier"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:tuple_simplifier instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:tuple_simplifier"],
 )
 
 cc_library(
     name = "reshape_mover",
     hdrs = ["reshape_mover.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:reshape_mover instead.",
-    deps = ["//xla/hlo/transforms:reshape_mover"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:reshape_mover instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:reshape_mover"],
 )
 
 cc_library(
@@ -3130,8 +3166,8 @@ cc_library(
 cc_library(
     name = "dynamic_dimension_simplifier",
     hdrs = ["dynamic_dimension_simplifier.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:dynamic_dimension_simplifier instead.",
-    deps = ["//xla/hlo/transforms:dynamic_dimension_simplifier"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier"],
 )
 
 cc_library(
@@ -3156,7 +3192,7 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/tsl/lib/monitoring:gauge",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3176,7 +3212,7 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
-    tags = ["test_xla_cpu_thunks"],
+    tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":dynamic_dimension_inference",
         ":dynamic_padder",
@@ -3194,10 +3230,10 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/transforms:algebraic_simplifier",
-        "//xla/hlo/transforms:dynamic_dimension_simplifier",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:client_library_test_base",
         "//xla/tests:hlo_test_base",
@@ -3233,8 +3269,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
@@ -3490,25 +3526,35 @@ xla_cc_test(
     name = "hlo_module_test",
     srcs = ["hlo_module_test.cc"],
     deps = [
+        ":buffer_value",
         ":computation_placer_hdr",
+        ":hlo_module_config",
         ":test_compilation_environment_proto_cc",
-        "//xla:literal",
+        "//xla:comparison_util",
+        "//xla:debug_options_flags",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:hlo_memory_scheduler",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -3720,8 +3766,8 @@ cc_library(
         "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3765,8 +3811,8 @@ cc_library(
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3868,8 +3914,8 @@ cc_library(
 cc_library(
     name = "hlo_dce",
     hdrs = ["hlo_dce.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_dce instead.",
-    deps = ["//xla/hlo/transforms:hlo_dce"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_dce instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_dce"],
 )
 
 cc_library(
@@ -3884,8 +3930,8 @@ cc_library(
         "//xla/hlo/analysis:hlo_liveness_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
@@ -3989,16 +4035,16 @@ xla_cc_test(
 cc_library(
     name = "hlo_rematerialization",
     hdrs = ["hlo_rematerialization.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_rematerialization instead.",
-    deps = ["//xla/hlo/transforms:hlo_rematerialization"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_rematerialization instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_rematerialization"],
 )
 
 cc_library(
     name = "hlo_rematerialization_test_utils",
     testonly = 1,
     hdrs = ["hlo_rematerialization_test_utils.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_rematerialization_test_utils instead.",
-    deps = ["//xla/hlo/transforms:hlo_rematerialization_test_utils"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_rematerialization_test_utils instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_rematerialization_test_utils"],
 )
 
 xla_cc_test(
@@ -4036,7 +4082,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/transforms:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
@@ -4075,9 +4121,9 @@ cc_library(
     deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/pass:hlo_pass_pipeline instead.",
     deps = [
         ":compilation_stats",
-        ":hlo_pass",
         "//xla:types",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -4127,7 +4173,7 @@ xla_cc_test(
 cc_library(
     name = "hlo_constant_folding",
     hdrs = ["hlo_constant_folding.h"],
-    deps = ["//xla/hlo/transforms:hlo_constant_folding"],
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_constant_folding"],
 )
 
 cc_library(
@@ -4213,15 +4259,15 @@ xla_cc_test(
 cc_library(
     name = "hlo_element_type_converter",
     hdrs = ["hlo_element_type_converter.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:hlo_element_type_converter instead.",
-    deps = ["//xla/hlo/transforms:hlo_element_type_converter"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:hlo_element_type_converter instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:hlo_element_type_converter"],
 )
 
 cc_library(
     name = "conditional_canonicalizer",
     hdrs = ["conditional_canonicalizer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:conditional_canonicalizer instead.",
-    deps = ["//xla/hlo/transforms:conditional_canonicalizer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:conditional_canonicalizer instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:conditional_canonicalizer"],
 )
 
 cc_library(
@@ -4284,6 +4330,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -4496,8 +4543,8 @@ xla_cc_test(
 cc_library(
     name = "zero_sized_hlo_elimination",
     hdrs = ["zero_sized_hlo_elimination.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:zero_sized_hlo_elimination instead.",
-    deps = ["//xla/hlo/transforms:zero_sized_hlo_elimination"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination"],
 )
 
 cc_library(
@@ -4560,14 +4607,21 @@ cc_library(
     deps = [
         ":computation_placer",
         ":executable",
-        "//xla:status_macros",
-        "//xla:types",
+        ":hlo_module_config",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -4610,9 +4664,11 @@ cc_library(
     hdrs = ["hlo_runner_pjrt.h"],
     deps = [
         ":computation_layout",
+        ":computation_placer_hdr",
         ":executable",
         ":hlo_module_util",
         ":hlo_runner_interface",
+        "//xla:literal",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -4622,15 +4678,22 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -4650,8 +4713,8 @@ cc_library(
 cc_library(
     name = "sort_simplifier",
     hdrs = ["sort_simplifier.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:sort_simplifier instead.",
-    deps = ["//xla/hlo/transforms:sort_simplifier"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:sort_simplifier instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:sort_simplifier"],
 )
 
 cc_library(
@@ -4693,7 +4756,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -4703,8 +4765,8 @@ xla_cc_test(
 cc_library(
     name = "root_instruction_sinker",
     hdrs = ["root_instruction_sinker.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:root_instruction_sinker instead.",
-    deps = ["//xla/hlo/transforms:root_instruction_sinker"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:root_instruction_sinker instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:root_instruction_sinker"],
 )
 
 cc_library(
@@ -4725,8 +4787,8 @@ cc_library(
 cc_library(
     name = "host_memory_transfer_asyncifier",
     hdrs = ["host_memory_transfer_asyncifier.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:host_memory_transfer_asyncifier instead.",
-    deps = ["//xla/hlo/transforms:host_memory_transfer_asyncifier"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:host_memory_transfer_asyncifier instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:host_memory_transfer_asyncifier"],
 )
 
 cc_library(
@@ -4908,8 +4970,8 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4952,7 +5014,7 @@ cc_library(
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -5025,8 +5087,8 @@ xla_cc_test(
 cc_library(
     name = "fusion_constant_sinking",
     hdrs = ["fusion_constant_sinking.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:fusion_constant_sinking instead.",
-    deps = ["//xla/hlo/transforms:fusion_constant_sinking"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:fusion_constant_sinking instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:fusion_constant_sinking"],
 )
 
 cc_library(
@@ -5102,7 +5164,7 @@ xla_cc_test(
     deps = [
         ":while_loop_fusible_sinking",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log:check",
@@ -5165,6 +5227,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -5178,15 +5241,15 @@ cc_library(
 cc_library(
     name = "optimize_input_output_buffer_alias",
     hdrs = ["optimize_input_output_buffer_alias.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:optimize_input_output_buffer_alias instead.",
-    deps = ["//xla/hlo/transforms:optimize_input_output_buffer_alias"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:optimize_input_output_buffer_alias instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:optimize_input_output_buffer_alias"],
 )
 
 cc_library(
     name = "ar_crs_combiner",
     hdrs = ["ar_crs_combiner.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:ar_crs_combiner instead.",
-    deps = ["//xla/hlo/transforms:ar_crs_combiner"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:ar_crs_combiner instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:ar_crs_combiner"],
 )
 
 cc_library(
@@ -5224,6 +5287,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -5273,7 +5337,7 @@ cc_library(
     name = "slice_sinker",
     hdrs = ["slice_sinker.h"],
     deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:slice_sinker instead.",
-    deps = ["//xla/hlo/transforms:slice_sinker"],
+    deps = ["//xla/hlo/transforms/simplifiers:slice_sinker"],
 )
 
 cc_library(
@@ -5429,20 +5493,22 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -5505,8 +5571,8 @@ xla_cc_test(
         ":pattern_matcher_gmock",
         ":topk_rewriter",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
@@ -5527,8 +5593,8 @@ cc_library(
 cc_library(
     name = "result_caster",
     hdrs = ["result_caster.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:result_caster instead.",
-    deps = ["//xla/hlo/transforms:result_caster"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:result_caster instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:result_caster"],
 )
 
 cc_library(
@@ -5546,8 +5612,8 @@ cc_library(
 cc_library(
     name = "convert_operand_folding",
     hdrs = ["convert_operand_folding.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convert_operand_folding instead.",
-    deps = ["//xla/hlo/transforms:convert_operand_folding"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:convert_operand_folding instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:convert_operand_folding"],
 )
 
 cc_library(
@@ -5638,6 +5704,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -5659,6 +5726,7 @@ xla_cc_test(
     deps = [
         ":lockable",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -5670,16 +5738,18 @@ cc_library(
     srcs = ["rendezvous.cc"],
     hdrs = ["rendezvous.h"],
     deps = [
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -5788,8 +5858,8 @@ cc_library(
 cc_library(
     name = "instruction_hoister",
     hdrs = ["instruction_hoister.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:instruction_hoister instead.",
-    deps = ["//xla/hlo/transforms:instruction_hoister"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:instruction_hoister instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:instruction_hoister"],
 )
 
 cc_library(
@@ -5903,7 +5973,7 @@ cc_library(
     name = "gather_simplifier",
     hdrs = ["gather_simplifier.h"],
     deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:gather_simplifier instead.",
-    deps = ["//xla/hlo/transforms:gather_simplifier"],
+    deps = ["//xla/hlo/transforms/simplifiers:gather_simplifier"],
 )
 
 cc_library(
@@ -5929,8 +5999,8 @@ cc_library(
 cc_library(
     name = "reduce_window_rewriter",
     hdrs = ["reduce_window_rewriter.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:reduce_window_rewriter instead.",
-    deps = ["//xla/hlo/transforms:reduce_window_rewriter"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:reduce_window_rewriter instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:reduce_window_rewriter"],
 )
 
 cc_library(
@@ -5954,8 +6024,8 @@ cc_library(
 cc_library(
     name = "sub_byte_normalization",
     hdrs = ["sub_byte_normalization.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:sub_byte_normalization instead.",
-    deps = ["//xla/hlo/transforms:sub_byte_normalization"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/simplifiers:sub_byte_normalization instead.",
+    deps = ["//xla/hlo/transforms/simplifiers:sub_byte_normalization"],
 )
 
 cc_library(
@@ -6310,8 +6380,8 @@ cc_library(
         ":while_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:flatten_call_graph",
-        "//xla/hlo/transforms:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -6333,6 +6403,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -6349,8 +6420,11 @@ cc_library(
     srcs = ["legalize_scheduling_annotations.cc"],
     hdrs = ["legalize_scheduling_annotations.h"],
     deps = [
+        "//xla:side_effect_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -6369,14 +6443,15 @@ xla_cc_test(
     srcs = ["legalize_scheduling_annotations_test.cc"],
     deps = [
         ":legalize_scheduling_annotations",
+        "//xla:side_effect_util",
         "//xla:test_helpers",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/status",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

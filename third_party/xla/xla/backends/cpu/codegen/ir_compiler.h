@@ -68,7 +68,8 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   struct CompilationHooks {
     std::function<void(const llvm::Module&)> pre_optimization;
     std::function<void(const llvm::Module&)> post_optimization;
-    std::function<void(const llvm::object::ObjectFile&)> post_codegen;
+    std::function<void(const llvm::Module&, const llvm::object::ObjectFile&)>
+        post_codegen;
   };
 
   IrCompiler(TargetMachineBuilder target_machine_builder, Options options,

@@ -41,9 +41,8 @@ bool SupportsMinMax(const Array& array) {
 // When provided a set of min/max values for uint8 arrays this will rescale
 // the values for other data types as required and preserving the floating point
 // range within the new type.
-::tensorflow::Status PropagateDefaultMinMax::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status PropagateDefaultMinMax::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <vector>
 
 #include "absl/log/log.h"

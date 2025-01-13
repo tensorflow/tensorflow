@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"

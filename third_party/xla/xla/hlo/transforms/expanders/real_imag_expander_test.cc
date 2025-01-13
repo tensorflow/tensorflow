@@ -16,18 +16,18 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/real_imag_expander.h"
 
 #include <memory>
-#include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 

@@ -19,12 +19,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <string_view>
 
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -67,7 +66,7 @@ static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
 }
 
 void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
-                        std::string_view name,
+                        absl::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
   // Wait for `warn_stuck_timeout` for the rendezvous to be ready.
@@ -138,13 +137,12 @@ inline constexpr int32_t kPending = 0;
 inline constexpr int32_t kCompleted = std::numeric_limits<int32_t>::max();
 }  // namespace
 
-RendezvousSingleFlag::RendezvousSingleFlag() : state_(kPending) {}
+RendezvousFlag::RendezvousFlag() : state_(kPending) {}
 
-RendezvousSingleFlag::InFlightRendezvous::InFlightRendezvous(
-    RendezvousSingleFlag* flag)
+RendezvousFlag::InFlightRendezvous::InFlightRendezvous(RendezvousFlag* flag)
     : flag_(flag) {}
 
-RendezvousSingleFlag::InFlightRendezvous::~InFlightRendezvous() {
+RendezvousFlag::InFlightRendezvous::~InFlightRendezvous() {
   if (flag_ == nullptr) return;
 
   // Reload state and use CAS to decide if we are the one who
@@ -163,11 +161,11 @@ RendezvousSingleFlag::InFlightRendezvous::~InFlightRendezvous() {
   }
 }
 
-RendezvousSingleFlag::InFlightRendezvous::operator bool() const {
+RendezvousFlag::InFlightRendezvous::operator bool() const {
   return flag_ != nullptr;
 }
 
-RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
+RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   // If `state_` is `kCompleted` it means that we have at least one completed
   // rendezvous for this flag and can skip it.
   if (state_.load() == kCompleted) return InFlightRendezvous(nullptr);
@@ -185,8 +183,6 @@ RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
   return InFlightRendezvous(this);
 }
 
-bool RendezvousSingleFlag::IsCompleted() const {
-  return state_.load() == kCompleted;
-}
+bool RendezvousFlag::IsCompleted() const { return state_.load() == kCompleted; }
 
 }  // namespace xla

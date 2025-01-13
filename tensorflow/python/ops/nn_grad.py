@@ -661,7 +661,7 @@ def _LRNGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("AvgPool")
 def _AvgPoolGrad(op: ops.Operation, grad):
   return gen_nn_ops.avg_pool_grad(
-      array_ops.shape(op.inputs[0]),
+      array_ops.shape(op.inputs[0], out_type=dtypes.int32),
       grad,
       op.get_attr("ksize"),
       op.get_attr("strides"),

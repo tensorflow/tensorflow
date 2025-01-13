@@ -35,15 +35,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/xla_data.pb.h"
 
@@ -51,6 +51,7 @@ namespace xla {
 namespace gpu {
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -67,7 +68,7 @@ MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
               .begin();
 }
 
-std::vector<mlir_converter::EpilogueSpecification>
+std::vector<emitters::EpilogueSpecification>
 MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                     mlir::MLIRContext* mlir_context) const {
   std::vector<const HloInstruction*> roots;
@@ -91,8 +92,8 @@ LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
 }
 
 absl::Status MlirInputSlicesFusion::EmitEntryFunction(
-    const mlir_converter::PartitionedComputations& computations,
-    const mlir_converter::CallTargetProvider& call_targets,
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
@@ -109,9 +110,10 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
-  auto result_tensors = mlir_converter::EmitXlaLoopOp(
+  auto result_tensors = emitters::EmitXlaLoopOp(
       builder, thread_and_block_ids, output_tensor_args, input_indexing,
-      [&](ValueRange symbol_values, ValueRange map_results,
+      [&](ImplicitLocOpBuilder nested_b, ValueRange symbol_values,
+          ValueRange map_results,
           ValueRange output_tensors) -> SmallVector<Value> {
         SmallVector<Value> input_operands(
             entry_function.getArguments().take_front(num_inputs));
@@ -124,7 +126,7 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
           const auto* arg = root.instruction().operand(0);
           if (auto& value = input_values[arg]; !value) {
             value =
-                builder.create<PureCallOp>(call_targets(arg), input_operands)
+                nested_b.create<PureCallOp>(call_targets(arg), input_operands)
                     .getResult(0);
           }
         }
@@ -132,14 +134,14 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
         for (auto [output_index, output] : llvm::enumerate(output_tensors)) {
           auto output_indexing = ComputeThreadIdToOutputIndexing(
               output_index, entry_function.getContext());
-          mlir::Value in_bounds = mlir_converter::CheckConstraints(
-              *output_indexing, thread_and_block_ids, symbol_values, builder);
-          auto if_op = builder.create<mlir::scf::IfOp>(
+          mlir::Value in_bounds = emitters::CheckConstraints(
+              *output_indexing, thread_and_block_ids, symbol_values, nested_b);
+          auto if_op = nested_b.create<mlir::scf::IfOp>(
               in_bounds,
               [&, output_index = output_index, output = output](
                   mlir::OpBuilder b, mlir::Location loc) {
                 mlir::ImplicitLocOpBuilder then_builder(loc, b);
-                auto output_indices = mlir_converter::ApplyIndexing(
+                auto output_indices = emitters::ApplyIndexing(
                     *output_indexing, thread_and_block_ids, symbol_values,
                     then_builder);
                 const auto* arg = analysis_.fusion_root(output_index)

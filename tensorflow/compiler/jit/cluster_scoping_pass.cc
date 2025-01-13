@@ -60,7 +60,7 @@ std::optional<string> GetXlaInternalScope(Node* node) {
   return std::nullopt;
 }
 
-void SetXlaInternalScope(Node* node, StringPiece scope) {
+void SetXlaInternalScope(Node* node, absl::string_view scope) {
   node->AddAttr(kXlaInternalScopeAttr, scope);
 }
 

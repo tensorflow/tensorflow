@@ -55,7 +55,6 @@ namespace internal {
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
 
-using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
 absl::Status CompileFromMlirToXlaHlo(

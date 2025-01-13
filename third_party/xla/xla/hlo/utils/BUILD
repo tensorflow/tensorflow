@@ -111,7 +111,6 @@ cc_library(
     deps = [
         ":hlo_container_util",
         "//xla:array",
-        "//xla:literal",
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
@@ -122,6 +121,7 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:dot_as_convolution_util",
         "//xla/service:gather_scatter_utils",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -133,7 +133,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

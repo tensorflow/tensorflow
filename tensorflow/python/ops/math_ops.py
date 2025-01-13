@@ -4341,15 +4341,15 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 @tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
 @dispatch.add_dispatch_support
 def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
-  """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
+  """Compute the cumulative log-sum-exp of the tensor `x` along the `axis`.
 
-  By default, this op performs an inclusive cumulative log-sum-exp, which means
-  that the first element of the input is identical to the first element of
+  By default, this operation performs an inclusive cumulative log-sum-exp, which
+  means that the first element of the input is identical to the first element of
   the output.
 
   This operation is significantly more numerically stable than the equivalent
-  tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
-  computes the same result given infinite numerical precision. However, note
+  Tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
+  it computes the same result given infinite numerical precision. However, note
   that in some cases, it may be less stable than `tf.math.reduce_logsumexp`
   for a given element, as it applies the "log-sum-exp trick" in a different
   way.
@@ -4476,30 +4476,35 @@ def reduced_shape(input_shape, axes):
       constant_input_shape[constant_axes] = 1
       return constant_input_shape
 
-  # Example:
-  # cast needed for SparseTensor reductions
-  input_shape = cast(input_shape, dtypes.int32)  # [2, 3, 5, 7]
-  axes = cast(axes, dtypes.int32)  # [1, 2]
-
-  input_rank = array_ops.size(input_shape)  # 4
+  axes = ops.convert_to_tensor(axes)
+  input_rank = array_ops.size(input_shape, out_type=axes.dtype)  # 4
   axes = (axes + input_rank) % input_rank
   axes_shape = array_ops.shape(axes)  # [2]
   return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
-      [
-          range(input_rank),  # [0, 1, 2, 3]
-          axes
-      ],  # [1, 2]
+      [range(input_rank), axes],  # [0, 1, 2, 3]  # [1, 2]
       [
           input_shape,  # [2, 3, 5, 7]
-          array_ops.ones(axes_shape, dtype=dtypes.int32)
-      ])  # [1, 1]
+          array_ops.ones(axes_shape, dtype=input_shape.dtype),
+      ],
+  )  # [1, 1]
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
-  """ Helper function for unsorted_segment_mean/_sqrtN.
+  """Helper function for unsorted_segment_mean/_sqrtN.
 
-  Computes the number
-      of segment entries with 0-entries set to 1 to allow division by N.
+  Computes the number of segment entries with 0-entries set to 1 to allow
+  division by N.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    segment_ids: An integer tensor whose shape is a prefix of `data.shape`. The
+      values must be in the range `[0, num_segments)`. The values are always
+      validated to be in range on CPU, never validated on TPU/GPU.
+    num_segments: An integer scalar `Tensor`. The number of distinct segment
+      IDs.
+
+  Returns:
+    A `Tensor` with the number of segment entries with 0-entries set to 1.
   """
   num_segments = ops.convert_to_tensor(num_segments)
   # bincount doesn't support negative indices so we use unsorted_segment_sum
@@ -4839,7 +4844,7 @@ def sampled_addmm(
     dense_shape: `tf.Tensor` defining the dense shape of the output.
     mat1: `tf.Tensor` to be multiplied. Must have rank > 1.
     mat2: `tf.Tensor` to be multiplied. Must have rank > 1.
-    beta: Number to be multipled with `values`. Defaults to 1.0.
+    beta: Number to be multiplied with `values`. Defaults to 1.0.
     alpha: Number to be multiplied with the sampled dot product of `mat1` and
       `mat2`. Defaults to 1.0.
     output_type: The output datatype if needed. Defaults to float32.

@@ -52,6 +52,7 @@ void RegisterMlirDialects(mlir::MLIRContext& context) {
   mlir::DialectRegistry registry;
   InitializeMlirDialectRegistry(registry);
   context.appendDialectRegistry(registry);
+  context.loadAllAvailableDialects();
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(

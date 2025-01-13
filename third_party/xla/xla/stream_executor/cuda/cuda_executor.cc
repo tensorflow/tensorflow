@@ -97,7 +97,7 @@ bool ShouldLaunchDelayKernel() {
   // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
   static bool value = [] {
     const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
-    return !blocking || std::string_view{blocking} != "1";
+    return !blocking || absl::string_view{blocking} != "1";
   }();
   return value;
 }

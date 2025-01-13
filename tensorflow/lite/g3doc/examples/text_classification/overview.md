@@ -5,7 +5,7 @@ Use a TensorFlow Lite model to category a paragraph into predefined groups.
 Note: (1) To integrate an existing model, try
 [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/nl_classifier).
 (2) To customize a model, try
-[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
+[TensorFlow Lite Model Maker](https://ai.google.dev/edge/litert/libraries/modify/text_classification).
 
 ## Get started
 
@@ -13,10 +13,10 @@ Note: (1) To integrate an existing model, try
 
 If you are new to TensorFlow Lite and are working with Android, we recommend
 exploring the guide of
-[TensorFLow Lite Task Library](../../inference_with_metadata/task_library/nl_classifier)
+[TensorFLow Lite Task Library](../../inference_with_metadata/task_library/nl_classifier.md)
 to integrate text classification models within just a few lines of code. You can
 also integrate the model using the
-[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
+[TensorFlow Lite Interpreter Java API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/inference.md#load-and-run-a-model-in-java).
 
 The Android example below demonstrates the implementation for both methods as
 [lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android/lib_task_api)
@@ -108,7 +108,7 @@ Performance benchmark numbers are generated with the tool
 ## Use your training dataset
 
 Follow this
-[tutorial](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
+[tutorial](https://ai.google.dev/edge/litert/libraries/modify/text_classification)
 to apply the same technique used here to train a text classification model using
 your own datasets. With the right dataset, you can create a model for use cases
 such as document categorization or toxic comments detection.

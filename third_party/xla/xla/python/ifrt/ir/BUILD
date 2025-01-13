@@ -485,6 +485,7 @@ tsl_pybind_extension(
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/support:module_parsing",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:CAPIIRHeaders",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeaders",

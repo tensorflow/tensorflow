@@ -1,4 +1,4 @@
-// RUN: xla_cpu_opt %s --split-input-file | FileCheck %s
+// RUN: emitters_opt %s --split-input-file | FileCheck %s
 
 func.func @load(%arg0: !xla_cpu.call_frame) -> tensor<32x32xf32> {
   %0 = xla_cpu.load %arg0, 0 : tensor<32x32xf32>

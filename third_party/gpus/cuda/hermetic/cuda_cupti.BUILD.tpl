@@ -1,5 +1,10 @@
 licenses(["restricted"])  # NVIDIA proprietary license
 load("@local_config_cuda//cuda:build_defs.bzl", "if_version_equal_or_greater_than")
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
+
 exports_files([
     "version.txt",
 ])
@@ -13,6 +18,7 @@ cc_import(
 cc_library(
     name = "cupti",
     %{comment}deps = [":cupti_shared_library"],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/cuda_cupti/lib"),
     visibility = ["//visibility:public"],
 )
 

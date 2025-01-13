@@ -49,8 +49,8 @@ xla_cc_test(
         ":in_memory_key_value_store",
         ":protocol_proto_cc",
         ":topology_util",
-        "//xla:test_helpers",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
@@ -115,7 +115,6 @@ cc_library(
         ":key_value_store_interface",
         ":protocol_proto_cc",
         "//xla:util",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:utils",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -166,6 +165,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ],
 )

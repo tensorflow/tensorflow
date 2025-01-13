@@ -203,7 +203,7 @@ class StepDetails {
  private:
   // Accumulates the device memory transfers from another step to this step.
   void AggregateDeviceMemoryTransfers(
-      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+      const std::vector<DeviceMemoryTransfer>& device_memory_transfers);
 
   // All step-markers found for marking this step in the traces. There could be
   // multiple step-markers for a single step for different reasons. One such

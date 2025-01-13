@@ -421,6 +421,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
 
   std::variant<Shape, DynamicShape> shape_;
   std::variant<std::vector<Shape>, std::vector<DynamicShape>> shard_shapes_;
+  std::optional<Shape> shard_shape_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between

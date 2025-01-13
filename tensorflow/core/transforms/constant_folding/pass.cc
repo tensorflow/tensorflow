@@ -3705,7 +3705,7 @@ void ConstantFolding::runOnOperation() {
   GraphFuncOp func = getOperation();
 
   // The max iteration is the same as the max default iteration in
-  // applyPatternsAndFoldGreedily.
+  // applyPatternsGreedily.
   constexpr int max_iterations = 10;
   int iteration = 0;
 

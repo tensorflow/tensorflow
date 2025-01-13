@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -50,7 +49,7 @@ using tsl::profiler::TraceMeEncode;
 // For sharded buffers we should execute Send/Recv operations only on devices
 // with maximal sharding, and do nothing on every other device.
 static absl::StatusOr<bool> ShouldSkip(
-    std::string_view operation, const Thunk::ExecuteParams& params,
+    absl::string_view operation, const Thunk::ExecuteParams& params,
     const std::optional<GlobalDeviceId>& device_constraint) {
   if (!device_constraint.has_value()) return false;
 

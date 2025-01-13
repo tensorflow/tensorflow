@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "tsl/platform/errors.h"
@@ -97,6 +99,14 @@ using CuptiActivityMemsetTy = CUpti_ActivityMemset;
 // TODO: (b/350105610), Using Cupti_ActivityGraphTrace2 for CUDA 12.3 and later
 #if CUDA_VERSION >= 11070
 using CuptiActivityGraphTraceTy = CUpti_ActivityGraphTrace;
+#endif  // CUDA_VERSION >= 11070
+
+#if CUDA_VERSION >= 8000
+using CuptiActivityMarkerTy = CUpti_ActivityMarker2;
+constexpr int kCuptiActivityMarkerVersion = 2;
+#else
+using CuptiActivityMarkerTy = CUpti_ActivityMarker;
+constexpr int kCuptiActivityMarkerVersion = 1;
 #endif  // CUDA_VERSION >= 11070
 
 // Maps an OverheadKind enum to a const string.
@@ -206,6 +216,55 @@ void AddGraphTraceActivityEvent(CuptiEventCollectorDelegate &collector,
       /* .graph_id = */ graph_trace->graphId,
       /* .scope_range_id = */ info.scope_range_id,
   });
+}
+
+template <int CuptiActivityMarkerVersion>
+const char *GetActivityMarkerDomain(const CuptiActivityMarkerTy *marker_trace) {
+  if constexpr (CuptiActivityMarkerVersion == 1) {
+    return "";
+  } else {
+    return marker_trace->domain;
+  }
+}
+
+void AddMarkerActivityEvent(CuptiEventCollectorDelegate &collector,
+                            CuptiActivityMarkerTy *marker_trace) {
+  // Currently only support thread marker (i.e., nvtx range push/pop)
+  if (marker_trace->objectKind != CUPTI_ACTIVITY_OBJECT_THREAD) return;
+  if (marker_trace->flags == CUPTI_ACTIVITY_FLAG_MARKER_START) {
+    collector.receive(CuptiTracerEvent{
+        /* .type = */ CuptiTracerEventType::ThreadMarkerStart,
+        /* .source = */ CuptiTracerEventSource::Activity,
+        /* .name = */ marker_trace->name,
+        /* .annotation = */ "",
+        /* .nvtx_range = */
+        GetActivityMarkerDomain<kCuptiActivityMarkerVersion>(marker_trace),
+        /* .start_time_ns = */ marker_trace->timestamp,
+        /* .end_time_ns = */ marker_trace->timestamp,
+        /* .device_id = */ 0,
+        /* .correlation_id = */ 0,
+        /* .thread_id = */ marker_trace->objectId.pt.threadId,
+        /* .context_id = */ 0,
+        /* .stream_id = */ 0,
+        /* .graph_id = */ marker_trace->id,
+    });
+  } else if (marker_trace->flags == CUPTI_ACTIVITY_FLAG_MARKER_END) {
+    collector.receive(CuptiTracerEvent{
+        /* .type = */ CuptiTracerEventType::ThreadMarkerEnd,
+        /* .source = */ CuptiTracerEventSource::Activity,
+        /* .name = */ "",
+        /* .annotation = */ "",
+        /* .nvtx_range = */ "",
+        /* .start_time_ns = */ marker_trace->timestamp,
+        /* .end_time_ns = */ marker_trace->timestamp,
+        /* .device_id = */ 0,
+        /* .correlation_id = */ 0,
+        /* .thread_id = */ marker_trace->objectId.pt.threadId,
+        /* .context_id = */ 0,
+        /* .stream_id = */ 0,
+        /* .graph_id = */ marker_trace->id,
+    });
+  }
 }
 
 void AddMemcpyActivityEvent(CuptiEventCollectorDelegate &collector,
@@ -512,6 +571,10 @@ static absl::Status ConvertActivityBuffer(
               collector, reinterpret_cast<CuptiActivityGraphTraceTy *>(record));
           break;
 #endif
+        case CUPTI_ACTIVITY_KIND_MARKER:
+          AddMarkerActivityEvent(
+              collector, reinterpret_cast<CuptiActivityMarkerTy *>(record));
+          break;
         default:
           VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;

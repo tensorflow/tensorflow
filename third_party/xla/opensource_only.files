@@ -1,4 +1,5 @@
 compiler/xla/backends/cpu/nanort/package_groups.bzl:
+compiler/xla/backends/cpu/package_groups.bzl:
 compiler/xla/internal/package_groups.bzl:
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/package_groups.bzl:
@@ -56,5 +57,7 @@ tools/toolchains/win/20240424/BUILD:
 tools/toolchains/win/BUILD:
 tools/toolchains/win/bazel_211/BUILD:
 tools/toolchains/win/tf_win_05022023/BUILD:
+tools/toolchains/win2022/20241118/BUILD:
+tools/toolchains/win2022/BUILD:
 tools/toolchains/win_1803/py38/BUILD:
 tools/toolchains/win_1803/py39/BUILD:

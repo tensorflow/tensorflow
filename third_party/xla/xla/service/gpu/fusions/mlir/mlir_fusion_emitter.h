@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -34,13 +35,13 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/stream_executor/device_description.h"
@@ -74,7 +75,7 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // Returns the set of instructions that will be isolated in the partitioned,
   // i.e., they will get their own subgraph. We won't automatically emit
   // functions for these instructions.
-  virtual std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
+  virtual std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const {
     return {};
@@ -82,23 +83,22 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
 
   // Creates an epilogue with the raw thread/block/symbol indices, as defined
   // by the fusion's thread->output mapping.
-  mlir_converter::EpilogueSpecification GetEpilogueForOutputIndexing(
+  emitters::EpilogueSpecification GetEpilogueForOutputIndexing(
       const HloFusionAnalysis& analysis,
       const std::vector<const HloInstruction*>& heroes,
       const std::vector<const HloInstruction*>& roots,
       mlir::MLIRContext* mlir_context) const;
 
   virtual absl::Status EmitEntryFunction(
-      const mlir_converter::PartitionedComputations& computations,
-      const mlir_converter::CallTargetProvider& call_targets,
+      const emitters::PartitionedComputations& computations,
+      const emitters::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
   // Evaluates the epilogue of the fusion. Returns the results for each epilogue
   // root.
   absl::flat_hash_map<const HloInstruction*, mlir::ValueRange> EmitEpilogue(
-      int epilogue_index,
-      const mlir_converter::PartitionedComputations& computations,
+      int epilogue_index, const emitters::PartitionedComputations& computations,
       mlir::func::FuncOp entry_fn,
       const absl::flat_hash_map<const HloInstruction*,
                                 llvm::SmallVector<mlir::Value>>& injected,

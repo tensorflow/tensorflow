@@ -56,7 +56,7 @@ ENTRY main {
   send_sizes = s32[2] parameter(3)
   output_offsets = s32[2] parameter(4)
   recv_sizes = s32[2] parameter(5)
-  ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets, 
+  ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
     send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
 }
 )"));

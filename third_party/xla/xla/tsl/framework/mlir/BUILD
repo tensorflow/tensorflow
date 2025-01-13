@@ -20,10 +20,10 @@ cc_library(
         "status_scoped_diagnostic_handler.h",
     ],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:logging",
     ],
 )

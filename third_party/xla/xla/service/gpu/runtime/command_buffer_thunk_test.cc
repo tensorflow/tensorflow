@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -68,7 +69,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-using MemoryAccess = CommandBufferCmd::MemoryAccess;
+using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
 
 namespace {
@@ -799,7 +800,7 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
 
   std::vector<DynamicSliceThunk::Offset> lhs_offsets = {
-      DynamicSliceThunk::Offset(2UL), DynamicSliceThunk::Offset(0UL)};
+      DynamicSliceThunk::Offset(2l), DynamicSliceThunk::Offset(0l)};
 
   std::vector<std::optional<BufferAllocation::Slice>> arguments = {
       std::optional<BufferAllocation::Slice>(slice_lhs),

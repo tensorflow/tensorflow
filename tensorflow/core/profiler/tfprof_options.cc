@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/tfprof_options.h"
 
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"

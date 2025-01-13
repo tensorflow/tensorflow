@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

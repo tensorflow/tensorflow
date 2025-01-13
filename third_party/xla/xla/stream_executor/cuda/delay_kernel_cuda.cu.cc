@@ -66,9 +66,9 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   // Launch a delay kernel into this stream, which will spin until
   // GetElapsedDuration() is called, the timer is destroyed, or the timeout
   // in the kernel is reached.
-  TF_RETURN_IF_ERROR(stream->ThenLaunch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1),
-                                        kernel, semaphore.device(),
-                                        GpuSemaphoreState::kRelease));
+  TF_RETURN_IF_ERROR(kernel.Launch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1),
+                                   stream, semaphore.device(),
+                                   GpuSemaphoreState::kRelease));
 
   return semaphore;
 }

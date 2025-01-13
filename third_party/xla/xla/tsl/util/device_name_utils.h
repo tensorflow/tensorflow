@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {

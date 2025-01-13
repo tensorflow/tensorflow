@@ -662,8 +662,7 @@ def _GatherV2Grad(op: ops.Operation, grad):
   # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.cast(params_shape, dtypes.int32)
+    params_shape = array_ops.shape(params)
 
   indices = op.inputs[1]
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)

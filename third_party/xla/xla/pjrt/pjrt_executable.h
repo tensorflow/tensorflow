@@ -101,7 +101,9 @@ struct CompileOptions {
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
   using OptionOverride = std::variant<std::string, bool, int64_t, double>;
-  std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+  using EnvironmentOptionOverrides =
+      std::vector<std::pair<std::string, OptionOverride>>;
+  EnvironmentOptionOverrides env_option_overrides;
 
   std::optional<xla::Compiler::TargetConfig> target_config;
 
@@ -295,7 +297,7 @@ struct CompiledMemoryStats {
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
 
-  CompiledMemoryStatsProto ToProto();
+  CompiledMemoryStatsProto ToProto() const;
 
   static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
 
@@ -335,11 +337,11 @@ class PjRtExecutable {
   GetOutputDimensions() const;
 
   // Returns the layout of each input parameter.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const;
 
   // Returns the layout of each output.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
 
   // Returns a list of lists of memory kind strings for output. The returned

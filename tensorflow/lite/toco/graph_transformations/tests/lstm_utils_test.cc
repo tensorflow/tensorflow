@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 
+#include <initializer_list>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>

@@ -1,4 +1,8 @@
 licenses(["restricted"])  # NVIDIA proprietary license
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 
 exports_files([
     "version.txt",
@@ -13,6 +17,7 @@ cc_import(
 cc_library(
     name = "curand",
     %{comment}deps = [":curand_shared_library"],
+    %{comment}linkopts = cuda_rpath_flags("nvidia/curand/lib"),
     visibility = ["//visibility:public"],
 )
 

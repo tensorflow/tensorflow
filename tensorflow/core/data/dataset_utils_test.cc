@@ -523,7 +523,8 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   }
 }
 
-// TODO(mpcallanan): Remove randomness from unit tests (see go/python-tips/048).
+// Note: These tests use (deterministic) randomness. The behavior is correct but
+// this approach is generally frowned upon (see go/python-tips/048).
 INSTANTIATE_TEST_SUITE_P(
     Test, GetExperimentsJobNameTest,
     ::testing::Values(

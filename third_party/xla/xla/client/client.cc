@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/client/client.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_computation.h"

@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

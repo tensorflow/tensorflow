@@ -325,7 +325,16 @@ TEST_P(ConcreteShardingTest, IsFullyReplicated) {
   EXPECT_FALSE(sharding->IsFullyReplicated());
 }
 
-TEST_P(ConcreteShardingTest, GetShardShape) {
+TEST_P(ConcreteShardingTest, GetShardShapeSuccess) {
+  auto device_list = GetDevices({0, 1});
+  Shape shard_shape({30});
+  std::vector<Shape> shard_shapes(2, shard_shape);
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(shard_shape));
+}
+
+TEST_P(ConcreteShardingTest, GetShardShapeFailure) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);

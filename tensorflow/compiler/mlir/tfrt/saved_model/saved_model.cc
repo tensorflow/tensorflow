@@ -69,12 +69,12 @@ ProcessTensorSpec(mlir::TensorType type) {
 
 }  // namespace
 
-Status MapFunctionSignaturesFromTFSavedModelMLIR(
+absl::Status MapFunctionSignaturesFromTFSavedModelMLIR(
     mlir::ModuleOp module,
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn) {
   // Create bound inputs for each functions.
   mlir::SymbolTable symbol_table(module);
-  tensorflow::Status status = absl::OkStatus();
+  absl::Status status = absl::OkStatus();
   module.walk([&symbol_table, map_fn, &status](mlir::func::FuncOp func) {
     // Use the exported name as the function name, and skip non-exported
     // functions.

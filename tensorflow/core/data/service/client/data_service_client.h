@@ -163,7 +163,7 @@ class DataServiceClient {
   absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
   CreateGrpcWorkerClient(const TaskInfo& task_info);
   absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-  CreateAlternativeWorkerClientWithGrpcFallback(
+  CreateAlternativeWorkerClientMaybeWithGrpcFallback(
       const DataTransferServerInfo& transfer_server, const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);

@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-constexpr StringPiece kJournal = "journal";
+constexpr absl::string_view kJournal = "journal";
 
 absl::Status ParseSequenceNumber(const std::string& journal_file,
                                  int64_t* sequence_number) {
@@ -92,7 +92,7 @@ absl::Status FileJournalWriter::Write(const Update& update) {
   return absl::OkStatus();
 }
 
-FileJournalReader::FileJournalReader(Env* env, StringPiece journal_dir)
+FileJournalReader::FileJournalReader(Env* env, absl::string_view journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
 absl::Status FileJournalReader::EnsureInitialized() {

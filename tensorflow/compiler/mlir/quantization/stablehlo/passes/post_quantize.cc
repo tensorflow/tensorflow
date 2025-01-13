@@ -140,7 +140,7 @@ void PostQuantizePass::runOnOperation() {
   // TODO: b/307463853 - Consider splitting passes for each pattern set.
   patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
                RemoveVolatileQdqPattern>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 
@@ -148,7 +148,7 @@ void PostQuantizePass::runOnOperation() {
   patterns_2
       .add<QuantizeConstPattern, ConvertQuantizeCastToUniformQuantizePattern,
            ConvertDequantizeCastToUniformDequantizePattern>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns_2)))) {
     signalPassFailure();
   }
 }

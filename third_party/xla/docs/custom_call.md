@@ -33,7 +33,7 @@ end to end examples of integrating custom calls and XLA FFI with JAX.
 XLA FFI binding is a compile-time specification of the custom call signature:
 custom call arguments, attributes and their types, and additional parameters
 passed via the execution context (i.e., gpu stream for GPU backend). XLA FFI
-finding can be bound to any C++ callable (function pointer, lambda, etc.) with
+binding can be bound to any C++ callable (function pointer, lambda, etc.) with
 compatible `operator()` signature. Constructed handler decodes XLA FFI call
 frame (defined by the stable C API), type check all parameters, and forward
 decoded results to the user-defined callback.

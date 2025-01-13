@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>

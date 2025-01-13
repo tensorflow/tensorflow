@@ -206,13 +206,6 @@ class HloTestBase : public HloRunnerAgnosticTestBase {
   std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
-#define SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(x)                      \
-  int64_t num_devices = backend().device_count();                  \
-  if (num_devices < x) {                                           \
-    GTEST_SKIP() << "Test requires at least " << x << " devices (" \
-                 << num_devices << " available)";                  \
-  }
-
 }  // namespace xla
 
 #endif  // XLA_TESTS_HLO_TEST_BASE_H_

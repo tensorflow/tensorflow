@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -23,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -386,7 +386,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   return kernel;
 }
 
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    se::Stream* stream) {
@@ -394,11 +394,11 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                        kernel, *kernel_args);
+  return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                       stream, *kernel_args);
 }
 
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    const se::ClusterDim& cluster_dim,
@@ -407,8 +407,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                        cluster_dim, kernel, *kernel_args);
+  return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                       cluster_dim, stream, *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -509,10 +509,10 @@ static void InitializeTypedBuffer(se::Stream* stream,
   constexpr int threads_per_block = 256;
   constexpr int blocks_per_grid =
       (host_buffer_bytes + threads_per_block - 1) / threads_per_block;
-  TF_CHECK_OK(stream->ThenLaunch(se::ThreadDim(threads_per_block, 1, 1),
-                                 se::BlockDim(blocks_per_grid, 1, 1), *kernel,
-                                 buffer, host_buffer_bytes,
-                                 static_cast<int64_t>(buffer.size())));
+  TF_CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
+                             se::BlockDim(blocks_per_grid, 1, 1), stream,
+                             buffer, host_buffer_bytes,
+                             static_cast<int64_t>(buffer.size())));
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
@@ -641,7 +641,7 @@ std::vector<AutotuneResult> KeepNonFailures(
 }
 
 absl::Status AllAlgorithmsFailedInternalError(
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     absl::Span<AutotuneResult const> profile_results) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
@@ -659,7 +659,7 @@ absl::Status AllAlgorithmsFailedInternalError(
 }
 
 absl::Status NoAlgorithmSuppliedInternalError(
-    std::optional<std::string_view> instr_str) {
+    std::optional<absl::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
     msg << "There are no algorithm candidates for computing: \n  "
@@ -703,7 +703,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
 
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
   if (profile_results.empty()) {
     return NoAlgorithmSuppliedInternalError(instr_str);

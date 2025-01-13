@@ -223,7 +223,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
   return error;
 }
 
-// Repesents a value that might or might not be determined statically.
+// Represents a value that might or might not be determined statically.
 struct DynamicOrStaticInteger {
   std::optional<int64_t> static_value;
   bool is_dynamic() const { return !static_value.has_value(); }

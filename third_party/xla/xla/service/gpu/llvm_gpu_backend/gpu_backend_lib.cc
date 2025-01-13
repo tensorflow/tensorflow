@@ -15,37 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 
-#include <algorithm>
-#include <cstdint>
-#include <cstdlib>
-#include <fstream>
 #include <functional>
-#include <ios>
 #include <memory>
-#include <mutex>  // NOLINT
 #include <optional>
 #include <string>
-#include <string_view>
 #include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Any.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -64,71 +51,30 @@ limitations under the License.
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
-#include "xla/service/gpu/metrics.h"
-#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/random.h"
-#include "tsl/platform/rocm_rocdl_path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-#include "tsl/profiler/lib/traceme.h"
-
-#if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/subprocess_compilation.h"
-#endif
-
-#if TENSORFLOW_USE_SYCL
-#include "LLVMSPIRVLib.h"
-#include "LLVMSPIRVOpts.h"
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace xla {
 namespace gpu {
+
 namespace {
-
 static llvm::codegen::RegisterCodeGenFlags CGF;
-
-// Inline threshold value to use in LLVM AMDGPU backend.
-const int kAMDGPUInlineThreshold = 0x100000;
-
-// Default inline threshold value to use in llvm.
-const int kDefaultInlineThreshold = 1100;
-
-// NOLINTBEGIN: clang-diagnostic-unused-function
-// Convenience function for producing a name of a temporary compilation product
-// from the input filename.
-std::string MakeNameForTempProduct(absl::string_view input_filename,
-                                   absl::string_view extension) {
-  return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
 }
-// NOLINTEND: clang-diagnostic-unused-function
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
 void InitializePasses(llvm::PassRegistry* pass_registry) {
@@ -186,26 +132,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
-// Emits the given module to PTX. target_machine is an initialized TargetMachine
-// for the NVPTX target.
-std::string EmitModuleToPTX(llvm::Module* module,
-                            llvm::TargetMachine* target_machine) {
-  tsl::profiler::ScopedAnnotation annotation([&] {
-    return absl::StrFormat("XlaEmitGpuAsm:#module=%s#",
-                           module->getName().str());
-  });
-  std::string ptx;
-  llvm::raw_string_ostream stream(ptx);
-  llvm::buffer_ostream pstream(stream);
-  llvm::legacy::PassManager pm;
-  pm.add(new llvm::TargetLibraryInfoWrapperPass(
-      llvm::Triple(module->getTargetTriple())));
-  target_machine->addPassesToEmitFile(pm, pstream, nullptr,
-                                      llvm::CodeGenFileType::AssemblyFile);
-  pm.run(*module);
-  return ptx;
-}
-
 // Returns whether the module could use any device bitcode library functions.
 bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
@@ -254,85 +180,16 @@ absl::Status LinkWithBitcodeVector(
   return absl::OkStatus();
 }
 
-// Links libdevice into the given module if the module needs libdevice.
-absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                      const std::string& libdevice_path) {
-  if (!CouldNeedDeviceBitcode(*module)) {
-    return absl::OkStatus();
-  }
+namespace {
 
-  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::Internal("libdevice not found at %s", libdevice_path);
-  }
-
-  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  return LinkWithBitcodeVector(module, {libdevice_path});
+// NOLINTBEGIN: clang-diagnostic-unused-function
+// Convenience function for producing a name of a temporary compilation product
+// from the input filename.
+std::string MakeNameForTempProduct(absl::string_view input_filename,
+                                   absl::string_view extension) {
+  return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
 }
-
-absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
-                                     se::GpuComputeCapability gpu_version,
-                                     const DebugOptions& debug_options,
-                                     const std::string& device_bitcode_path) {
-  // Link the input module with libdevice, to pull in implementations of some
-  // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
-
-  // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
-  // can access it.
-  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
-                        debug_options.xla_gpu_ftz());
-
-  // If ftz is enabled, set it as an attribute on every function in the module.
-  if (debug_options.xla_gpu_ftz()) {
-    for (llvm::Function& fn : *module) {
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
-    }
-  }
-
-  return absl::OkStatus();
-}
-
-std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
-    llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
-    const DebugOptions& debug_options) {
-#ifdef GOOGLE_CUDA
-  absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
-      stream_executor::GetAsmCompilerVersion(
-          debug_options.xla_gpu_cuda_data_dir());
-
-  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
-      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
-
-  auto highest_supported_cuda_version = [&] {
-    if (runtime_cuda_version.ok()) {
-      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
-    }
-
-    return kCompileTimeCudaVersion;
-  }();
-
-  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-      highest_supported_cuda_version);
-  int highest_supported_ptx_version =
-      ptx_version.major() * 10 + ptx_version.minor();
-
-  VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
-  std::string feature_str =
-      absl::StrFormat("+ptx%d", highest_supported_ptx_version);
-
-#else
-  std::string feature_str;
-#endif  // GOOGLE_CUDA
-  return GetTargetMachine(target_triple, nvptx::GetSmName(compute_capability),
-                          debug_options, feature_str);
-}
-
-using TargetModuleLinker =
-    std::function<absl::Status(llvm::Module*, se::GpuComputeCapability,
-                               const DebugOptions&, const std::string&)>;
+// NOLINTEND: clang-diagnostic-unused-function
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
   std::error_code ec;
@@ -382,6 +239,8 @@ auto DumpCallbackForModule(std::string module_identifier,
     DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
   };
 }
+
+}  // namespace
 
 absl::Status LinkAndOptimizeModule(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
@@ -465,6 +324,7 @@ absl::Status LinkAndOptimizeModule(
   return absl::OkStatus();
 }
 
+<<<<<<< HEAD
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
 void NVPTXBackendInit() {
@@ -1216,5 +1076,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
 
 }  // namespace spir
 
+=======
+>>>>>>> upstream/master
 }  // namespace gpu
 }  // namespace xla

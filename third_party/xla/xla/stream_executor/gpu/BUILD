@@ -366,12 +366,23 @@ cc_library(
         "manual",
     ],
     deps = [
+        ":gpu_asm_opts",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/cuda:cuda_asm_compiler",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -386,10 +397,8 @@ gpu_kernel_library(
         ":gpu_asm_opts",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:statusor",
@@ -403,12 +412,11 @@ gpu_only_cc_library(
         "redzone_allocator_kernel.h",
     ],
     hdrs = ["redzone_allocator.h"],
-    visibility = internal_visibility([
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-        "//tensorflow/core/kernels:__subpackages__",
-    ]),
+    visibility = internal_visibility([":friends"]),
     deps = [
+        ":gpu_asm_opts",
+        "//xla:shape_util",
+        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:device_memory_handle",
@@ -555,6 +563,7 @@ gpu_kernel_library(
     testonly = 1,
     srcs = ["gpu_test_kernels.cu.cc"],
     hdrs = ["gpu_test_kernels.h"],
+    linkstatic = True,
     tags = ["gpu"],
     deps = [
         "//xla/stream_executor:kernel_spec",
@@ -565,50 +574,41 @@ gpu_kernel_library(
     ]),
 )
 
-genrule(
-    name = "gpu_test_kernels_fatbin_extractor",
-    testonly = True,
-    srcs = [":gpu_test_kernels"],
-    outs = ["gpu_test_kernels.fatbin"],
-    cmd = """
-      STATIC_LIBRARY=""
-      for src in $(SRCS); do
-        if [[ $$src == *.a ]]; then
-          STATIC_LIBRARY=$$src
-          break
-        fi
-      done
-
-      if [[ -z $$STATIC_LIBRARY ]]; then
-        echo "No static library found in $(SRCS)" >&2
-        exit 1
-      fi
-
-      $(OBJCOPY) "--dump-section=.nv_fatbin=$@" "$$STATIC_LIBRARY" || true
-      
-      if [ ! -f "$@" ]; then
-        # binutils' objcopy doesn't return a non-zero exit code if the
-        # section was not found, so we need to check for the file's existence instead.
-        $(OBJCOPY) "--dump-section=.hip_fatbin=$@" "$$STATIC_LIBRARY"
-      fi
-    """,
-    tags = ["gpu"],
-    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-)
-
 cc_library(
     name = "gpu_test_kernels_fatbin",
     testonly = True,
     srcs = ["gpu_test_kernels_fatbin.cc"],
     hdrs = ["gpu_test_kernels_fatbin.h"],
-    data = [":gpu_test_kernels_fatbin_extractor"],
+    data = [
+        ":gpu_test_kernels",
+    ],
     tags = ["gpu"],
     deps = [
+        ":gpu_init_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "gpu_test_kernels_fatbin_test",
+    srcs = ["gpu_test_kernels_fatbin_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_test_kernels_fatbin",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -787,6 +787,8 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",

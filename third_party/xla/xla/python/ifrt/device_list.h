@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -130,6 +131,9 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
 
   // Constructor with a pre-populated `devices`.
   static tsl::RCReference<DeviceList> Create(Devices devices);
+  static tsl::RCReference<DeviceList> Create(absl::Span<Device* const> devices);
+  static tsl::RCReference<DeviceList> Create(
+      std::initializer_list<Device*> devices);
 
   ~BasicDeviceList() override = default;
 

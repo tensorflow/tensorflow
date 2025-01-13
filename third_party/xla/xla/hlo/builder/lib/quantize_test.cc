@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/quantize.h"
 
+#include <cstdint>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/test.h"

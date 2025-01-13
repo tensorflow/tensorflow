@@ -587,7 +587,7 @@ absl::Status XlaDevice::RefreshStatus() {
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
     const char* device, const char* jit_device,
     OpKernel* (*factory)(OpKernelConstruction*),
-    StringPiece kernel_class_name) {
+    absl::string_view kernel_class_name) {
   XlaOpRegistry::RegisterCompilationKernels();
   XlaDeviceOpRegistrations* registrations = new XlaDeviceOpRegistrations;
   for (const KernelDef* jit_def : XlaOpRegistry::DeviceKernels(

@@ -140,7 +140,7 @@ class ShapeUtil {
     return product;
   }
 
-  // Returns the number of elements are contained within the provided shape;
+  // Returns the number of elements contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
@@ -1056,15 +1056,6 @@ class ShapeUtil {
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);
-
-  // Validates the shape size is sane. This makes sure it's safe to do
-  // calculations in int64_t without overflowing.
-  static absl::Status ValidateShapeSize(const Shape& shape);
-
-  // Validates all of the non-layout properties of the shape -- this is a helper
-  // used by both the layout-optional and layout-required public method.
-  static absl::Status ValidateShapeWithOptionalLayoutInternal(
-      const Shape& shape);
 
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.

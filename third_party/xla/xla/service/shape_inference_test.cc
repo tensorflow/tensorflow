@@ -129,7 +129,7 @@ struct BinaryOpTestCase {
   std::string rhs;
   absl::Span<const int64_t> broadcast_dimensions;
   std::string expected;
-  std::optional<std::string_view> error_message;
+  std::optional<absl::string_view> error_message;
 };
 
 // Subclass for testing unbounded dynamic logical ops

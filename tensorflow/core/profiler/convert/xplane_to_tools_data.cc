@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_roofline_model.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
@@ -277,6 +279,22 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
   return ConvertOpStatsToHloStats(combined_op_stats).SerializeAsString();
 }
 
+absl::StatusOr<std::string> ConvertMultiXSpacesToRooflineModel(
+    const SessionSnapshot& session_snapshot) {
+  OpStatsOptions op_stats_options;
+  op_stats_options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, op_stats_options, &combined_op_stats));
+  RooflineModelDatabase result =
+      ConvertOpStatsToRooflineModel(combined_op_stats, true);
+  RooflineModelDatabase result_without_infeed_outfeed =
+      ConvertOpStatsToRooflineModel(combined_op_stats, false);
+  result.mutable_roofline_model_record()->MergeFrom(
+      result_without_infeed_outfeed.roofline_model_record());
+  return result.SerializeAsString();
+}
+
 absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
     const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
@@ -377,6 +395,8 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "hlo_stats") {
     return ConvertMultiXSpacesToHloStats(session_snapshot);
+  } else if (tool_name == "roofline_model") {
+    return ConvertMultiXSpacesToRooflineModel(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "dcn_collective_stats") {

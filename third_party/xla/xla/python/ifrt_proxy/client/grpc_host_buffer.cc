@@ -105,8 +105,10 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
       }
 
       if (!writer->WritesDone()) {
+        writer->Finish().IgnoreError();
         promise.Set(
             absl::InternalError("Failed to write all host buffer chunks"));
+        return;
       }
     }
 
@@ -150,6 +152,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
       }
     }
     if (!writer->WritesDone()) {
+      writer->Finish().IgnoreError();
       return Future<>(
           absl::InternalError("Failed to write all host buffer chunks"));
     }

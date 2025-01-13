@@ -15,9 +15,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolverSp.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/logging.h"
 
 // Implements the cusolver API by forwarding to cusolver loaded from the DSO.
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
@@ -770,6 +771,7 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
   bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Function* function = b_->GetInsertBlock()->getParent();
+  llvm::LLVMContext& context = b_->getContext();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
   const char* fn_name;
@@ -797,13 +799,13 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC64SymbolName
                     : runtime::kEigenSingleThreadedMatMulC64SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C64, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C64, context);
       break;
     case C128:
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC128SymbolName
                     : runtime::kEigenSingleThreadedMatMulC128SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C128, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C128, context);
       break;
     case S32:
       fn_name = multi_threaded
@@ -1108,13 +1110,12 @@ Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
 
 llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
                                     const llvm_ir::IrArray& array, int64_t n) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
   CHECK_GE(shape.dimensions_size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
                           std::move(new_shape));
 }
@@ -1138,8 +1139,6 @@ absl::Status ValidateDotDimensionNumbers(
 llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
                                     llvm::Value* batch_index,
                                     llvm::IRBuilderBase* b) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
   std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
                                            b->getInt64(0));
@@ -1147,7 +1146,8 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
+  llvm::Type* new_ir_type =
+      llvm_ir::ShapeToIrType(inner_shape, b->getContext());
   return llvm_ir::IrArray(slice_ptr, new_ir_type, std::move(inner_shape));
 }
 

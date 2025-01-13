@@ -55,6 +55,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_cost_analyzer.pyi",
     ],
+    starlark_only = True,
     deps = [
         ":cost_analyzer_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -91,6 +92,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_model_analyzer.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

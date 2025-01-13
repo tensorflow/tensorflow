@@ -75,6 +75,8 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+  std::optional<tsl::profiler::ScopedAnnotation> seq_annotation =
+      GetKernelAnnotation(profile_annotation());
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(thunk->profile_annotation());

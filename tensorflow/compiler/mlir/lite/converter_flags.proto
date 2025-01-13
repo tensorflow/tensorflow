@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 67.
+// Next ID to use: 68.
 message ConverterFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -380,4 +380,9 @@ message ConverterFlags {
   // When set to true, debug metadata will be generated and attached to
   // serialized TFLite flatbuffer.
   optional bool serialize_debug_metadata = 66 [default = false];
+
+  // When set, adheres to the QDQ annotations added by the framework when
+  // possible rather than quantizing any op that is possible to quantize.
+  // WARNING: Experimental interface, subject to change.
+  optional bool strict_qdq_mode = 67 [default = false];
 }

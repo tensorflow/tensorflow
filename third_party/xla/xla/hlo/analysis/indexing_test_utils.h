@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,12 +35,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 
 namespace xla {
 
 // Matches two strings ignoring whitespaces.
-bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
+bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs);
 
 MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }
 

@@ -219,3 +219,8 @@ def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
 def ConstantLikePred : CPred<"::mlir::matchPattern($0, ::mlir::m_Constant())">;
 def IsConstantLike : Constraint<ConstantLikePred>;
 def NotConstantLike : Constraint<Neg<ConstantLikePred>>;
+
+// Here, the element type can be any integer or float type. But, note that only
+// 32 bit integers are supported for the values.
+class GetScalarOfType<int value> : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;

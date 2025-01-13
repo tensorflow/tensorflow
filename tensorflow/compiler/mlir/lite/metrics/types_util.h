@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_METRICS_TYPES_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_METRICS_TYPES_UTIL_H_
 
+#include <cstddef>
 #include <functional>
 #include <string>
 

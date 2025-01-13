@@ -121,21 +121,21 @@ cc_library(
             "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
             "@local_tsl//tsl/platform:stringprintf",
-            "@local_tsl//tsl/platform:env",
-            "@local_tsl//tsl/platform:env_impl",
-            "@local_tsl//tsl/platform:logging",
-            "@local_tsl//tsl/platform:macros",
+            "//xla/tsl/platform:env",
+            "//xla/tsl/platform:env_impl",
+            "//xla/tsl/platform:logging",
+            "//xla/tsl/platform:macros",
             "@local_tsl//tsl/platform:mutex",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:thread_annotations",
-            "@local_tsl//tsl/platform:types",
+            "//xla/tsl/platform:types",
         ],
         otherwise = [
             "//xla/tsl/lib/gtl:inlined_vector",
-            "@local_tsl//tsl/platform:logging",
+            "//xla/tsl/platform:logging",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:strcat",
-            "@local_tsl//tsl/platform:env",
+            "//xla/tsl/platform:env",
         ],
     ),
     alwayslink = 1,
@@ -164,17 +164,17 @@ cc_library(
         ":numeric_types",
         ":type_traits",
         "//xla/tsl/lib/gtl:inlined_vector",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringprintf",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
@@ -196,6 +196,9 @@ cc_library(
         ":metrics",
         ":shared_counter",
         "//xla/tsl/lib/core:bits",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -204,11 +207,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
@@ -248,15 +248,15 @@ cc_library(
     deps = [
         ":device_type",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -269,14 +269,14 @@ cc_library(
     deps = [
         ":device_id_impl",
         ":device_type",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:str_util",
     ],
 )
@@ -298,7 +298,7 @@ cc_library(
     ]),
     deps = [
         ":fixedpoint_types",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:types",
     ],
 )
 
@@ -308,7 +308,7 @@ cc_library(
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:types",
     ],
 )
 
@@ -339,7 +339,7 @@ cc_library(
     ]),
     deps = [
         ":numeric_types",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:types",
     ],
 )
 
@@ -366,16 +366,16 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/lib/gtl:flatmap",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:notification",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -385,10 +385,10 @@ cc_library(
     hdrs = ["serving_device_selector.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -414,12 +414,12 @@ tsl_cc_test(
     srcs = ["cancellation_test.cc"],
     deps = [
         ":cancellation",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
         "@local_tsl//tsl/platform:notification",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -467,10 +467,10 @@ tsl_cc_test(
         ":device_id_impl",
         ":device_id_utils",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -479,7 +479,7 @@ tsl_cc_test(
     srcs = ["real_time_in_memory_metric_test.cc"],
     deps = [
         ":real_time_in_memory_metric",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
     ],
 )

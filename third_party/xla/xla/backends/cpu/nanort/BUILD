@@ -1,7 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/backends/cpu/nanort:package_groups.bzl", "xla_cpu_nanort_packages")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -59,6 +58,7 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -103,5 +103,76 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
+    ],
+)
+
+cc_library(
+    name = "ifrt_client",
+    srcs = ["ifrt_client.cc"],
+    hdrs = ["ifrt_client.h"],
+    deps = [
+        ":nanort_client",
+        ":nanort_executable",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt:utils",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/python/pjrt_ifrt:pjrt_dtype",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "register_nanort_for_ifrt_tests",
+    testonly = True,
+    srcs = ["register_nanort_for_ifrt_tests.cc"],
+    deps = [
+        ":ifrt_client",
+        "//xla/python/ifrt:test_util",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "ifrt_client_test",
+    srcs = ["ifrt_client_test.cc"],
+    deps = [
+        ":register_nanort_for_ifrt_tests",
+        "//xla/python/ifrt:array_impl_test_lib",
+        "//xla/python/ifrt:client_impl_test_lib",
+        "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt:tuple_impl_test_lib",
+        "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

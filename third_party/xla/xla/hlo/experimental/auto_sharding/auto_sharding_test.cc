@@ -3124,6 +3124,44 @@ ENTRY %entry {
               op::Sharding("{devices=[8,16]<=[128] last_tile_dim_replicate}"));
 }
 
+TEST_F(AutoShardingTest, NegativeMemoryBudgetRatioTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+region {
+  Arg_0 = s32[] parameter(0)
+  ROOT Arg_1 = s32[] parameter(1)
+}
+
+ENTRY %Scatter {
+  call = s32[4,128]{1,0} parameter(0)
+  clamp = s32[4,2]{1,0} parameter(1)
+  broadcast = s32[4,8]{1,0} parameter(2)
+  ROOT scatter = s32[4,128]{1,0} scatter(call, clamp, broadcast), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  // Memory budget a tad higher than what would be required if the largest
+  // tensors are sharded 4-ways
+  option.memory_budget_per_device = 0;
+  option.memory_budget_ratio = -1.1;  // Disables the soft memory constraint.
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
+  ASSERT_NE(scatter, nullptr);
+  EXPECT_EQ(scatter->sharding().NumTiles(), 4);
+  TF_EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
+}
+
 TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
   EdgeReshardingCostMatrix edge_cost(2, 2);
   edge_cost(0, 0).communication_cost = -100;

@@ -759,7 +759,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
     })");
 
   // Test complex types
-  for (std::string_view type : {"c64", "c128"}) {
+  for (absl::string_view type : {"c64", "c128"}) {
     const std::string module_with_type =
         absl::StrReplaceAll(module_str, {{"TYPE", type}});
     TF_ASSERT_OK_AND_ASSIGN(auto m,

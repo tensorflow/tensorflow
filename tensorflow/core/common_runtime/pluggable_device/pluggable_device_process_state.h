@@ -117,10 +117,6 @@ class PluggableDeviceProcessState {
 
   std::vector<AllocatorParts> pluggable_device_host_allocators_
       TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>>
-      pluggable_device_host_alloc_visitors_ TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>>
-      pluggable_device_host_free_visitors_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

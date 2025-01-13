@@ -413,6 +413,24 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
   }
 };
 
+struct SetAsymmetricQuantizeInput : public OpRewritePattern<FullyConnectedOp> {
+  using OpRewritePattern<FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FullyConnectedOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getAsymmetricQuantizeInputs() == std::nullopt ||
+        op.getAsymmetricQuantizeInputs() == false) {
+      auto new_op = rewriter.create<FullyConnectedOp>(
+          op.getLoc(), op.getOutput().getType(), op.getInput(), op.getFilter(),
+          op.getBias(), op.getFusedActivationFunction(), op.getWeightsFormat(),
+          op.getKeepNumDims(), rewriter.getBoolAttr(true));
+      rewriter.replaceOp(op, new_op.getOutput());
+      return success();
+    }
+    return failure();
+  }
+};
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.getOutput().getType());
@@ -1624,6 +1642,7 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
 void FullyConnectedOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
   results.add<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+  results.add<SetAsymmetricQuantizeInput>(context);
 }
 
 int64_t FullyConnectedOp::GetArithmeticCount(Operation* op) {

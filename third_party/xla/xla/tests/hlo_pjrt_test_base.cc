@@ -17,18 +17,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
-#include "xla/service/platform_util.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/util.h"
@@ -57,21 +53,20 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
 }
 
 std::unique_ptr<HloRunnerInterface> GetHloRunnerForReference() {
-  absl::StatusOr<se::Platform*> platform =
-      PlatformUtil::GetPlatform("interpreter");
-  CHECK_OK(platform.status())
-      << "Failed to get interpreter platform. " << platform.status();
-  return std::make_unique<HloRunner>(*platform);
+  return std::make_unique<HloRunnerPjRt>(
+      std::make_unique<InterpreterClient>(),
+      InterpreterClient::DeviceShapeRepresentation,
+      InterpreterClient::ShapeSizeBytes,
+      /*use_parameter_layout_on_device=*/true);
 }
 
 }  // namespace
 
-HloPjRtTestBase::HloPjRtTestBase(
-    bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
-    HloPredicate instruction_can_change_layout_func)
-    : HloRunnerAgnosticTestBase(
-          GetHloRunnerForTest(), GetHloRunnerForReference(),
-          verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-          instruction_can_change_layout_func) {}
+HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
+    : HloRunnerAgnosticTestBase(GetHloRunnerForTest(),
+                                GetHloRunnerForReference(),
+                                options.verifier_layout_sensitive,
+                                options.allow_mixed_precision_in_hlo_verifier,
+                                options.instruction_can_change_layout_func) {}
 
 }  // namespace xla

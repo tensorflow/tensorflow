@@ -51,11 +51,12 @@ using StructuredValueDictEntry =
 // Maps from a Nodedef's name to its corresponding AttrValues, for a given
 // Graphdef
 using NodeAttrMap =
-    gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher>;
+    gtl::FlatMap<absl::string_view, const AttrValueMap*, StringPieceHasher>;
 
 // Maps from a FunctionDef's name to FunctionDef, for a given FunctionDefLibrary
-using FunctionDefMap = gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*,
-                                    StringPieceHasher>;
+using FunctionDefMap =
+    gtl::FlatMap<absl::string_view, const tensorflow::FunctionDef*,
+                 StringPieceHasher>;
 
 // Looks up a SavedConstant's associated tensorproto from the NodeAttrMap and
 // returns a tensorflow::Constant.
@@ -331,7 +332,7 @@ absl::Status FlattenSignature(
   }
 }
 
-absl::optional<int> FindNodeAtPath(StringPiece path,
+absl::optional<int> FindNodeAtPath(absl::string_view path,
                                    const SavedObjectGraph& object_graph) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
@@ -361,18 +362,21 @@ absl::optional<int> FindNodeAtPath(StringPiece path,
   return node_id;
 }
 
-gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher> NodeToAttrMap(
-    const tensorflow::GraphDef& graphdef) {
-  gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher> result;
+gtl::FlatMap<absl::string_view, const AttrValueMap*, StringPieceHasher>
+NodeToAttrMap(const tensorflow::GraphDef& graphdef) {
+  gtl::FlatMap<absl::string_view, const AttrValueMap*, StringPieceHasher>
+      result;
   for (const tensorflow::NodeDef& node : graphdef.node()) {
     result[node.name()] = &node.attr();
   }
   return result;
 }
 
-gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*, StringPieceHasher>
+gtl::FlatMap<absl::string_view, const tensorflow::FunctionDef*,
+             StringPieceHasher>
 FunctionNameToFunctionDefMap(const FunctionDefLibrary& library) {
-  gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*, StringPieceHasher>
+  gtl::FlatMap<absl::string_view, const tensorflow::FunctionDef*,
+               StringPieceHasher>
       result;
   for (const FunctionDef& function_def : library.function()) {
     result[function_def.signature().name()] = &function_def;

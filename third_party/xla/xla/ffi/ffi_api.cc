@@ -26,10 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -370,7 +372,7 @@ static absl::Status RegisterHandler(std::string_view name,
       api_version.minor_version != XLA_FFI_API_MINOR) {
     return InvalidArgument(
         "FFI handler registration for %s on platform %s (canonical %s) failed "
-        "because the hander's API version (%d.%d) is incompatible with the "
+        "because the handler's API version (%d.%d) is incompatible with the "
         "framework's API version (%d.%d)",
         name, platform, canonical_platform, api_version.major_version,
         api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);

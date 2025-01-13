@@ -35,7 +35,7 @@ using mlir::Builder;
 using mlir::ShapedType;
 using mlir::Type;
 
-Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
+absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
   switch (dtype) {
     case DT_HALF:
       *type = builder.getF16Type();
@@ -88,6 +88,15 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case tensorflow::DT_FLOAT8_E5M2:
       *type = builder.getFloat8E5M2Type();
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FNUZ:
+      *type = builder.getFloat8E4M3FNUZType();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3B11FNUZ:
+      *type = builder.getFloat8E4M3B11FNUZType();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2FNUZ:
+      *type = builder.getFloat8E5M2FNUZType();
+      return absl::OkStatus();
     case DT_INT4:
       *type = builder.getIntegerType(4, /*isSigned=*/true);
       return absl::OkStatus();
@@ -106,7 +115,7 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
   }
 }
 
-Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
+absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   if (type.isF16()) {
     *dtype = DT_HALF;
     return absl::OkStatus();
@@ -124,6 +133,15 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     return absl::OkStatus();
   } else if (type.isFloat8E5M2()) {
     *dtype = DT_FLOAT8_E5M2;
+    return absl::OkStatus();
+  } else if (type.isFloat8E4M3FNUZ()) {
+    *dtype = DT_FLOAT8_E4M3FNUZ;
+    return absl::OkStatus();
+  } else if (type.isFloat8E4M3B11FNUZ()) {
+    *dtype = DT_FLOAT8_E4M3B11FNUZ;
+    return absl::OkStatus();
+  } else if (type.isFloat8E5M2FNUZ()) {
+    *dtype = DT_FLOAT8_E5M2FNUZ;
     return absl::OkStatus();
   } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(type)) {
     switch (itype.getWidth()) {
@@ -174,7 +192,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
       absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
-Status ConvertToDataType(Type type, DataType* dtype) {
+absl::Status ConvertToDataType(Type type, DataType* dtype) {
   if (auto stype = mlir::dyn_cast<ShapedType>(type)) {
     TF_RETURN_IF_ERROR(
         ConvertScalarTypeToDataType(stype.getElementType(), dtype));
@@ -192,8 +210,8 @@ void ConvertToMlirShape(const TensorShape& input_shape,
   }
 }
 
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
+absl::Status ConvertToMlirShape(const TensorShapeProto& input_shape,
+                                llvm::SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dim_size());
   auto& dims = input_shape.dim();
   for (auto& d : dims) {

@@ -137,7 +137,7 @@ llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 // `custom_code` is used to identify CustomOp.
 // `custom_options` are opaque attribute used to store infomations for this
 // custom op.
-tensorflow::Status CustomOptionsToAttributes(
+absl::Status CustomOptionsToAttributes(
     const std::string &custom_code, const std::vector<uint8_t> &custom_options,
     mlir::Builder builder,
     // NOLINTNEXTLINE

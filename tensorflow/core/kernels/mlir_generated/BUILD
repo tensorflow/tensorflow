@@ -275,7 +275,7 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_cast_kernels",
         "@eigen_archive//:eigen3",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -414,6 +414,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
@@ -562,6 +563,7 @@ tf_cuda_cc_test(
         ":base_ops_test",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -132,6 +132,12 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
   // memory addresses will be updated at runtime.
   for (int i = 0; i < op_buffers.arguments_buffers.size(); ++i) {
     auto& shape = op_buffers.arguments_shapes[i];
+
+    if (shape.IsToken()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
@@ -144,6 +150,12 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
   // memory addresses will be updated at runtime.
   for (int i = 0; i < op_buffers.results_buffers.size(); ++i) {
     auto& shape = op_buffers.results_shapes[i];
+
+    if (shape.IsToken()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());

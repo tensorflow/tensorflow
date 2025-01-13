@@ -60,6 +60,10 @@ class CudaKernel : public Kernel {
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const std::optional<ClusterDim> &cluster_dims,
+                      Stream *stream, const KernelArgs &args) override;
+
   StreamExecutor* executor_ = nullptr;
 
   CUfunction gpu_function_ = nullptr;  // wrapped CUDA kernel handle

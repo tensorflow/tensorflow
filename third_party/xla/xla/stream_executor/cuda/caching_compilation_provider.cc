@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/stream_executor/cuda/caching_compilation_provider.h"
 
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
@@ -45,7 +45,7 @@ bool CachingCompilationProvider::SupportsCompileAndLink() const {
 }
 
 absl::StatusOr<Assembly> CachingCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   CacheKey cache_key{cc, std::string{ptx}, options};
   {
@@ -78,7 +78,7 @@ absl::StatusOr<Assembly> CachingCompilationProvider::Compile(
 
 absl::StatusOr<RelocatableModule>
 CachingCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   CacheKey cache_key{cc, std::string{ptx}, options};
   {

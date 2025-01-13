@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 
+#include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -41,11 +47,13 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
@@ -217,7 +225,8 @@ SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
                                   const std::unordered_set<std::string>& tags,
                                   absl::Span<std::string> exported_names,
                                   mlir::MLIRContext* context,
-                                  bool unconditionally_use_set_output_shapes) {
+                                  bool unconditionally_use_set_output_shapes,
+                                  bool import_variables_as_dense_resources) {
   tensorflow::SavedModelV2Bundle bundle;
   auto load_status = tensorflow::SavedModelV2Bundle::Load(
       std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
@@ -231,6 +240,8 @@ SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
   options.add_default_attributes = true;
   options.unconditionally_use_set_output_shapes =
       unconditionally_use_set_output_shapes;
+  options.import_variables_as_dense_resources =
+      import_variables_as_dense_resources;
 
   auto module_or =
       ConvertSavedModelToMlir(&bundle, context, exported_names, options);

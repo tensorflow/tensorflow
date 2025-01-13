@@ -479,10 +479,10 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         "first call to collective operation %d; run_id=%d", config().op_id,
         params.collective_params->run_id.ToInt());
 
-    RendezvousSingle(first_call_rendezvous_flag_, rendezvous_name,
-                     rendezvous_key, num_local_participants,
-                     /*warn_stuck_timeout=*/absl::Seconds(20),
-                     /*terminate_timeout=*/absl::Seconds(40));
+    Rendezvous(first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
+               num_local_participants,
+               /*warn_stuck_timeout=*/absl::Seconds(20),
+               /*terminate_timeout=*/absl::Seconds(40));
   }
 
   return absl::OkStatus();

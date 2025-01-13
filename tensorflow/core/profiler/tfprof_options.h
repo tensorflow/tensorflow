@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_TFPROF_OPTIONS_H_
 #define TENSORFLOW_CORE_PROFILER_TFPROF_OPTIONS_H_
 
+#include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"

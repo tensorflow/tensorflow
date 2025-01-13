@@ -34,29 +34,32 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.h"
+#include "xla/backends/cpu/codegen/transforms/passes.h"
+#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/transforms/passes.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
-#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mlir::DLTIDialect, mlir::LLVM::LLVMDialect,
-                  mlir::NVVM::NVVMDialect, mlir::affine::AffineDialect,
-                  mlir::arith::ArithDialect, mlir::complex::ComplexDialect,
-                  mlir::func::FuncDialect, mlir::gpu::GPUDialect,
-                  mlir::math::MathDialect, mlir::mhlo::MhloDialect,
-                  mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
-                  mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
-                  xla::XlaDialect, xla::gpu::XlaGpuDialect>();
+  registry.insert<
+      mlir::DLTIDialect, mlir::LLVM::LLVMDialect, mlir::NVVM::NVVMDialect,
+      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+      mlir::complex::ComplexDialect, mlir::func::FuncDialect,
+      mlir::gpu::GPUDialect, mlir::math::MathDialect, mlir::mhlo::MhloDialect,
+      mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
+      mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
+      xla::cpu::XlaCpuDialect, xla::gpu::XlaGpuDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
   mlir::registerInliner();
   xla::gpu::registerGpuFusionTransformsPasses();
+  xla::cpu::registerXlaCpuTransformsPasses();
   mlir::registerPassPipeline(
       "xla-gpu-test-optimize",
       "Test pipeline of passes up to inlining. No vectorization, also does not "

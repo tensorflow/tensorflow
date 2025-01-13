@@ -67,7 +67,7 @@ cc_library(
 cc_library(
     name = "rocm",
     deps = [
-        "@local_xla//xla/stream_executor/rocm:rocm_rpath",
+        "@local_config_rocm//rocm:rocm_rpath",
     ],
 )
 

@@ -43,7 +43,8 @@ namespace subgraph {
 
 namespace {
 
-typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
+typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
+    NameIndex;
 
 // Rewrite graph by replacing the output tensors specified in
 // "fed_outputs" with special feed nodes for each specified output

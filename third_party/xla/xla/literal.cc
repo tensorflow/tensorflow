@@ -87,9 +87,10 @@ void ConvertEndianShort(char* bytes, int64_t size) {
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
-  return !proto.s2s().empty() || !proto.s4s().empty() || !proto.s8s().empty() ||
-         !proto.s16s().empty() || proto.s32s_size() || proto.s64s_size() ||
-         !proto.u2s().empty() || !proto.u4s().empty() || !proto.u8s().empty() ||
+  return !proto.s1s().empty() || !proto.s2s().empty() || !proto.s4s().empty() ||
+         !proto.s8s().empty() || !proto.s16s().empty() || proto.s32s_size() ||
+         proto.s64s_size() || !proto.u1s().empty() || !proto.u2s().empty() ||
+         !proto.u4s().empty() || !proto.u8s().empty() ||
          !proto.u16s().empty() || proto.u32s_size() || proto.u64s_size() ||
          !proto.f8e5m2s().empty() || !proto.f8e4m3s().empty() ||
          !proto.f8e4m3fns().empty() || !proto.f8e4m3b11fnuzs().empty() ||
@@ -2207,6 +2208,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
+    case U1:
+      *proto->mutable_u1s() = std::string(
+          reinterpret_cast<const char*>(data<u1>().data()), size_bytes_dense());
+      break;
     case U2:
       *proto->mutable_u2s() = std::string(
           reinterpret_cast<const char*>(data<u2>().data()), size_bytes_dense());
@@ -2232,6 +2237,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case U64:
       CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
+      break;
+    case S1:
+      *proto->mutable_s1s() = std::string(
+          reinterpret_cast<const char*>(data<s1>().data()), size_bytes_dense());
       break;
     case S2:
       *proto->mutable_s2s() = std::string(

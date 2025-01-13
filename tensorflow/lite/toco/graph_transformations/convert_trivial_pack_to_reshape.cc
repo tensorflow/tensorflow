@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ConvertTrivialPackToReshape::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status ConvertTrivialPackToReshape::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   auto pack_it = model->operators.begin() + op_index;
   if (pack_it->get()->type != OperatorType::kPack) {

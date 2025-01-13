@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
@@ -73,8 +74,8 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
-  TF_ASSERT_OK(stream->Launch(custom_kernel.thread_dims(),
-                              custom_kernel.block_dims(), *gemm, arr));
+  TF_ASSERT_OK(gemm->Launch(custom_kernel.thread_dims(),
+                            custom_kernel.block_dims(), stream.get(), arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
@@ -122,8 +123,8 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
-                              custom_kernel->block_dims(), *gemm, arr));
+  TF_ASSERT_OK(gemm->Launch(custom_kernel->thread_dims(),
+                            custom_kernel->block_dims(), stream.get(), arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);

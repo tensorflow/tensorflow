@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_EXPANDERS_OP_EXPANDER_PASS_H_
 #define XLA_HLO_TRANSFORMS_EXPANDERS_OP_EXPANDER_PASS_H_
 
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {

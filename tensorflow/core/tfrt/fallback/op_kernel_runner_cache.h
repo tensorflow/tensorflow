@@ -18,6 +18,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tfrt/host_context/location.h"  // from @tf_runtime

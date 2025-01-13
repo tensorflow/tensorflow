@@ -150,7 +150,8 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
 void GetColocationGroup(const Node* node, string* group) {
   // We hoist the conversion from C-style string literal to string here,
   // so that we can avoid the many repeated calls to strlen().
-  static const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
+  static const absl::string_view kColocationAttrNameStringPiece(
+      kColocationAttrName);
   const AttrValue* attr_value =
       node->attrs().Find(kColocationAttrNameStringPiece);
   if (attr_value != nullptr && attr_value->has_list() &&

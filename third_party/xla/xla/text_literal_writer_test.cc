@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 

@@ -22,12 +22,13 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <new>
 #include <numeric>
 #include <optional>
 #include <string>
-#include <string_view>
+#include <thread>  // NOLINT
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
@@ -129,7 +131,7 @@ absl::StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
     }
     Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
     // TODO(b/327524065): fix this
-    *shape.mutable_layout() = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+    *shape.mutable_layout() = pjrt_buffer->layout()->xla_layout();
     scratch = std::move(shape);
   }
   return &scratch.value();
@@ -377,6 +379,7 @@ struct ShapedArrayCacheKey {
 nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
   using CacheT =
       LRUCache<ShapedArrayCacheKey, std::shared_ptr<std::optional<nb::object>>>;
+  static nb::ft_mutex mu;
   static auto* lru_list = new CacheT::LRUList(4096);
   static auto* cache = new CacheT(lru_list);
 
@@ -393,6 +396,7 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
     return nb::none();
   }
 
+  nb::ft_lock_guard lock(mu);
   auto value =
       cache->GetOrCreateIfAbsent(key, [](const ShapedArrayCacheKey& key) {
         return std::make_shared<std::optional<nb::object>>();
@@ -455,8 +459,15 @@ PyArray_Storage::PyArray_Storage(
       traceback(std::move(traceback)),
       ifrt_array(std::move(ifrt_array)),
       result_status(std::move(result_status)) {
-  next = this->py_client->arrays_;
-  this->py_client->arrays_ = this;
+  static_assert(PyClient::kNumArraysShards <
+                std::numeric_limits<uint8_t>::max());
+  thread_id_bucket = std::hash<std::thread::id>()(std::this_thread::get_id()) %
+                     PyClient::kNumArraysShards;
+
+  PyClient::ArraysShard& shard = this->py_client->arrays_[thread_id_bucket];
+  nanobind::ft_lock_guard lock(shard.mutex);
+  next = shard.arrays;
+  shard.arrays = this;
   if (next) {
     next->prev = this;
   }
@@ -501,7 +512,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto dtype = IfrtDtypeToDtypeWithTokenCanonicalization(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   nb::object py_memory_kind =
-      (jax::GetEnableMemories() && memory_kind.memory_kind().has_value())
+      (memory_kind.memory_kind().has_value())
           ? nb::object(nb::str(memory_kind.memory_kind()->data(),
                                memory_kind.memory_kind()->size()))
           : nb::none();
@@ -645,7 +656,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
 
   if (!nb::isinstance<nb::list>(obj)) {
     return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                           nb::cast<std::string_view>(nb::str(obj.type())));
+                           nb::cast<absl::string_view>(nb::str(obj.type())));
   }
 
   nb::list list(obj);
@@ -676,7 +687,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
       shapes.push_back(ifrt_arrays.back()->shape());
     } else {
       return InvalidArgument("Unsupported arg when setting Array._arrays: %s",
-                             nb::cast<std::string_view>(nb::str(obj.type())));
+                             nb::cast<absl::string_view>(nb::str(obj.type())));
     }
   }
   const ifrt::MemoryKind first_memory_kind =
@@ -786,7 +797,7 @@ absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
-absl::StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
+absl::StatusOr<PyArray> PyArray::AssertUnsharded(absl::string_view api) {
   if (ifrt_array() == nullptr) {
     return InvalidArgument("%s( called on deleted or donated buffer", api);
   }
@@ -858,7 +869,7 @@ nb::dict PyArray::CudaArrayInterface() {
       ValueOrThrow(TypeDescriptorForPrimitiveType(pjrt_buffer->element_type()));
 
   // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  Layout xla_layout = pjrt_buffer->layout()->xla_layout();
   if (!LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
     throw nb::attribute_error(
         "__cuda_array_interface__ is only currently supported for "
@@ -1055,14 +1066,18 @@ nb::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
-  if (py_client && py_client->arrays_ == this) {
-    py_client->arrays_ = next;
-  }
-  if (prev) {
-    prev->next = next;
-  }
-  if (next) {
-    next->prev = prev;
+  if (py_client) {
+    PyClient::ArraysShard& shard = py_client->arrays_[thread_id_bucket];
+    nanobind::ft_lock_guard lock(shard.mutex);
+    if (shard.arrays == this) {
+      shard.arrays = next;
+    }
+    if (prev) {
+      prev->next = next;
+    }
+    if (next) {
+      next->prev = prev;
+    }
   }
   // Release GIL and then explicitly destroy `ifrt_array` to prevent deadlock on
   // CPU backend caused by interactions between argument donations and host
@@ -1119,11 +1134,11 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
 
     auto transfer_guard_formatter = [&py_array, &dst_sharding] {
       return absl::StrCat(
-          "aval=", nb::cast<std::string_view>(nb::repr(py_array.aval())),
+          "aval=", nb::cast<absl::string_view>(nb::repr(py_array.aval())),
           ", sharding=",
-          nb::cast<std::string_view>(nb::repr(py_array.sharding())),
+          nb::cast<absl::string_view>(nb::repr(py_array.sharding())),
           ", dst_sharding=",
-          nb::cast<std::string_view>(nb::repr(dst_sharding)));
+          nb::cast<absl::string_view>(nb::repr(dst_sharding)));
     };
     TF_RETURN_IF_ERROR(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
@@ -1187,8 +1202,8 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   }
   auto transfer_guard_formatter = [&aval, &sharding] {
     return absl::StrCat(
-        "aval=", nb::cast<std::string_view>(nb::repr(aval)),
-        ", dst_sharding=", nb::cast<std::string_view>(nb::repr(sharding)));
+        "aval=", nb::cast<absl::string_view>(nb::repr(aval)),
+        ", dst_sharding=", nb::cast<absl::string_view>(nb::repr(sharding)));
   };
 
   GlobalPyRefManager()->CollectGarbage();
@@ -1297,13 +1312,16 @@ absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
   return AwaitBuffersReady(absl::MakeConstSpan(ifrt_arrays));
 }
 
-std::vector<nb::object> PyClient::LiveArrays() const {
-  std::vector<nb::object> result;
-  for (PyArray::Storage* array = arrays_; array; array = array->next) {
-    bool all_deleted =
-        (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
-    if (!all_deleted) {
-      result.push_back(nb::borrow(array->AsHandle()));
+std::vector<PyArray> PyClient::LiveArrays() const {
+  std::vector<PyArray> result;
+  for (auto& shard : arrays_) {
+    nb::ft_lock_guard lock(shard.mutex);
+    for (PyArray::Storage* array = shard.arrays; array; array = array->next) {
+      bool all_deleted =
+          (array->ifrt_array == nullptr || array->ifrt_array->IsDeleted());
+      if (!all_deleted) {
+        result.push_back(nb::borrow<PyArray>(array->AsHandle()));
+      }
     }
   }
   return result;
@@ -1400,7 +1418,7 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
 
     // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-    Layout xla_layout = GetXlaLayoutUnsafe(buffer.layout());
+    Layout xla_layout = buffer.layout()->xla_layout();
 
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
@@ -1495,8 +1513,8 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
   // to unpack the array. This could happen for the host buffer
   // pre-mapped to the TPU device, a.k.a., pinned host buffers for the
   // device.
-  bool has_default_layout = buf->layout() == nullptr ||
-                            HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
+  bool has_default_layout =
+      buf->layout() == nullptr || HasDefaultLayout(buf->layout()->xla_layout());
   // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
   // For sub-byte values, we must copy in order to unpack the array.
   return buf->IsOnCpu() &&
@@ -1702,7 +1720,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
           throw nb::type_error(
               absl::StrCat(
                   "Unsupported type for elements in `arrays`: ",
-                  nb::cast<std::string_view>(nb::str(arrays[0].type())))
+                  nb::cast<absl::string_view>(nb::str(arrays[0].type())))
                   .c_str());
         }
       },

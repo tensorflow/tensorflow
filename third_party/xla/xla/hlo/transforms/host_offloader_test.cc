@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <stack>
 #include <string>
 #include <vector>
 
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/host_offload_legalize.h"
 #include "xla/layout.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -64,7 +63,7 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
                                               after_layout);
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
-    HostOffloader host_offloader(Layout::kHostMemorySpace);
+    HostOffloader host_offloader;
     TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
     return changed;

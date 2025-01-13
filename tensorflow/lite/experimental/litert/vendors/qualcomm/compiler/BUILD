@@ -67,6 +67,12 @@ litert_test(
         # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
         "nosan",
     ],
+    # This test can be run only on Android and Linux.
+    target_compatible_with = select({
+        "@platforms//os:android": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     use_sys_malloc = True,
     deps = [
         ":qnn_compiler_plugin",  # buildcleaner: keep
@@ -119,6 +125,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:div_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:embedding_lookup_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:fully_connected_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:gelu_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:greater_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:less_op_legalization",
@@ -157,6 +164,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_element_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",

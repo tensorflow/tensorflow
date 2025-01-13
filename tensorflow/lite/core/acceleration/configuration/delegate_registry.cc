@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/synchronization/mutex.h"

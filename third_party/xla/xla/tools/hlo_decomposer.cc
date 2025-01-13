@@ -223,10 +223,10 @@ std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
 
 std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
     const HloComputation& computation) {
-  auto new_hlo_module =
-      std::make_unique<HloModule>("extracted", HloModuleConfig{},
-                                  std::make_unique<CompilationEnvironments>(
-                                      computation.parent()->comp_envs()));
+  auto new_hlo_module = std::make_unique<HloModule>(
+      std::string(computation.name()), HloModuleConfig{},
+      std::make_unique<CompilationEnvironments>(
+          computation.parent()->comp_envs()));
   HloCloneContext clone_context(new_hlo_module.get());
   new_hlo_module->AddEntryComputationWithLayouts(
       computation.CloneInContext(clone_context));

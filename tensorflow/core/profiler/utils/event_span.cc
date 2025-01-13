@@ -283,7 +283,7 @@ void StepDetails::AddMarker(const StepMarker& m) { markers_.push_back(m); }
 void StepDetails::AddEvent(const EventTypeSpan& e) { events_.push_back(e); }
 
 void StepDetails::AggregateDeviceMemoryTransfers(
-    const std::vector<DeviceMemoryTransfer> device_memory_transfers) {
+    const std::vector<DeviceMemoryTransfer>& device_memory_transfers) {
   if (device_memory_transfers.size() != device_memory_transfers_.size()) {
     return;  // Sanity check.
   }

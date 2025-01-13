@@ -151,7 +151,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
-            StringPiece current_pattern_view = StringPiece(current_pattern_);
+            absl::string_view current_pattern_view =
+                absl::string_view(current_pattern_);
 
             // Windows paths contain backslashes and Windows APIs accept forward
             // and backslashes equivalently, so we convert the pattern to use
@@ -168,7 +169,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               isWindows_ = false;
             }
 
-            StringPiece fixed_prefix = current_pattern_view.substr(
+            absl::string_view fixed_prefix = current_pattern_view.substr(
                 0, current_pattern_view.find_first_of("*?[\\"));
             string current_dir(io::Dirname(fixed_prefix));
 
@@ -277,8 +278,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       absl::Status UpdateIterator(IteratorContext* ctx, FileSystem* fs,
                                   const string& dir, const string& eval_pattern)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        StringPiece fixed_prefix =
-            StringPiece(eval_pattern)
+        absl::string_view fixed_prefix =
+            absl::string_view(eval_pattern)
                 .substr(0, eval_pattern.find_first_of("*?[\\"));
 
         filepath_queue_.push(PathStatus(dir, true));

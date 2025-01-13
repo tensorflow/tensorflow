@@ -602,9 +602,15 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
 
+<<<<<<< HEAD
     const auto& cc = stream->parent()->GetDeviceDescription().
                     gpu_compute_capability();
     if(auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
+=======
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+>>>>>>> upstream/master
       bCublasLtSupport = procm->gfx9_mi200_or_later();
     }
 
@@ -637,7 +643,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         std::optional<int> max_algorithm_count;
         if (!use_autotune) max_algorithm_count = 1;
         absl::Mutex* pmu = nullptr;
+<<<<<<< HEAD
         auto plan_and_algorithms_or = BlasLtMatmulPlanCache::GetOrCreate(
+=======
+        auto plan_and_algorithms_or = PlanAndAlgorithms::GetOrCreate(
+>>>>>>> upstream/master
             stream, matmul_params, &pmu, max_algorithm_count);
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
         absl::MutexLock lock(pmu);
@@ -659,11 +669,17 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // Create a new scratch allocator with every autotuning run so that
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+<<<<<<< HEAD
             Status cublas_launch_status =
                 BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
                     *plan_and_algorithms,
                     *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
                                se::DeviceMemoryBase{}, &profile_result);
+=======
+            Status cublas_launch_status = plan_and_algorithms->ExecuteOnStream(
+                stream, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i,
+                scratch_allocator, se::DeviceMemoryBase{}, &profile_result);
+>>>>>>> upstream/master
 
             VLOG(4) << "  Autotune algorithm " << i
                     << " result: " << profile_result.elapsed_time_in_ms()
@@ -701,12 +717,18 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 << "trans_x = " << trans_x << "trans_y = " << trans_y
                 << "adj_x = " << adj_x << "adj_y = " << adj_y;
 
+<<<<<<< HEAD
         OP_REQUIRES_OK(
             context,
             BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
             *plan_and_algorithms,
             *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], 
             algorithm_idx, scratch_allocator, se::DeviceMemoryBase{}));
+=======
+        OP_REQUIRES_OK(context, plan_and_algorithms->ExecuteOnStream(
+                                    stream, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0],
+                                    algorithm_idx, scratch_allocator));
+>>>>>>> upstream/master
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
         const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();

@@ -31,9 +31,9 @@ namespace xla {
 // implementation we might emit a single LLVM module with multiple kernels or a
 // separate LLVM module for each kernel. Kernel function signature is defined by
 // the backend specific ABI.
-class LlvmIrKernelSource : public KernelSource {
+class LlvmIrKernelSource final : public KernelSource {
  public:
-  LlvmIrKernelSource(std::unique_ptr<llvm::LLVMContext> context,
+  LlvmIrKernelSource(llvm::orc::ThreadSafeContext context,
                      std::unique_ptr<llvm::Module> module,
                      std::string kernel_name)
       : context_(std::move(context)),
@@ -44,7 +44,7 @@ class LlvmIrKernelSource : public KernelSource {
   LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) = default;
 
   llvm::orc::ThreadSafeModule thread_safe_module() && {
-    return llvm::orc::ThreadSafeModule(std::move(module_), std::move(context_));
+    return llvm::orc::ThreadSafeModule(std::move(module_), context_);
   }
 
   const std::string& kernel_name() const { return kernel_name_; }
@@ -53,8 +53,10 @@ class LlvmIrKernelSource : public KernelSource {
     return module_->getFunction(kernel_name_);
   }
 
+  std::string ToString() const final;
+
  private:
-  std::unique_ptr<llvm::LLVMContext> context_;
+  llvm::orc::ThreadSafeContext context_;
   std::unique_ptr<llvm::Module> module_;
   std::string kernel_name_;
 };

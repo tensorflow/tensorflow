@@ -24,7 +24,6 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -785,17 +784,17 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
-static constexpr std::string_view kVarKindDefault = "default";
-static constexpr std::string_view kVarKindThreadX = "th_x";
-static constexpr std::string_view kVarKindThreadY = "th_y";
-static constexpr std::string_view kVarKindThreadZ = "th_z";
-static constexpr std::string_view kVarKindBlockX = "bl_x";
-static constexpr std::string_view kVarKindBlockY = "bl_y";
-static constexpr std::string_view kVarKindBlockZ = "bl_z";
-static constexpr std::string_view kVarKindWarp = "warp";
-static constexpr std::string_view kVarKindWarpThread = "th_w";
+static constexpr absl::string_view kVarKindDefault = "default";
+static constexpr absl::string_view kVarKindThreadX = "th_x";
+static constexpr absl::string_view kVarKindThreadY = "th_y";
+static constexpr absl::string_view kVarKindThreadZ = "th_z";
+static constexpr absl::string_view kVarKindBlockX = "bl_x";
+static constexpr absl::string_view kVarKindBlockY = "bl_y";
+static constexpr absl::string_view kVarKindBlockZ = "bl_z";
+static constexpr absl::string_view kVarKindWarp = "warp";
+static constexpr absl::string_view kVarKindWarpThread = "th_w";
 
-std::string_view ToVariableName(VariableKind var_kind) {
+absl::string_view ToVariableName(VariableKind var_kind) {
   switch (var_kind) {
     case VariableKind::kDefault:
       return kVarKindDefault;
@@ -819,7 +818,7 @@ std::string_view ToVariableName(VariableKind var_kind) {
   llvm_unreachable("Unknown VariableType");
 }
 
-VariableKind ToVariableType(std::string_view var_name) {
+VariableKind ToVariableType(absl::string_view var_name) {
   if (var_name == kVarKindThreadX) return VariableKind::kThreadX;
   if (var_name == kVarKindThreadY) return VariableKind::kThreadY;
   if (var_name == kVarKindThreadZ) return VariableKind::kThreadZ;

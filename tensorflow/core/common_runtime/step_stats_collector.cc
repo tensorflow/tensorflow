@@ -223,7 +223,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
     string ordered_capture(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
-    CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
+    CHECK(absl::SimpleAtoi(ordered_capture, &gpu_id));
     return gpu_id;
   }
 }
@@ -252,7 +252,7 @@ static int ExtractGpuWithoutStream(string device_name) {
     string ordered_capture(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
-    CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
+    CHECK(absl::SimpleAtoi(ordered_capture, &gpu_id));
     return gpu_id;
   }
 }

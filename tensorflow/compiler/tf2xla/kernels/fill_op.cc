@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Fill Op.
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"

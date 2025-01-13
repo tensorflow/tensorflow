@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

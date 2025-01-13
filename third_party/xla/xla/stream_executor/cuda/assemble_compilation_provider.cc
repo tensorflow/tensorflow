@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -137,7 +136,7 @@ AssembleCompilationProvider(const xla::DebugOptions& debug_options) {
   TF_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(debug_options));
 
   std::string decision_log;
-  const auto append_to_decision_log = [&](std::string_view decision) {
+  const auto append_to_decision_log = [&](absl::string_view decision) {
     VLOG(4) << decision;
     absl::StrAppend(&decision_log, " - ", decision, "\n");
   };

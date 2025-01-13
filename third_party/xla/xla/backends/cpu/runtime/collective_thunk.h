@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
@@ -86,8 +85,8 @@ class CollectiveThunk : public Thunk {
 
  protected:
   // Callback for collective thunk implementations.
-  using Callback = absl::AnyInvocable<absl::Status(
-      const RendezvousKey& key, CollectivesCommunicator& comm)>;
+  using Callback = absl::AnyInvocable<absl::Status(const RendezvousKey& key,
+                                                   Communicator& comm)>;
 
   static bool IsDataTypeSupportedByCollectiveReduce(PrimitiveType datatype);
 

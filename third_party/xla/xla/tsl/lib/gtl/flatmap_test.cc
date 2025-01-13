@@ -22,9 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/hash.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

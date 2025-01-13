@@ -15,15 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offloader.h"
 
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
-#include <optional>
 #include <queue>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,7 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -56,6 +51,7 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -259,7 +255,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           instruction_and_shape_index.shape_index);
       CHECK(output_shape.has_layout())
           << "Expecting output shape of entry computation to have a layout.";
-      if (output_shape.layout().memory_space() == kHostMemorySpaceColor) {
+      if (output_shape.layout().memory_space() == Layout::kHostMemorySpace) {
         VLOG(2) << absl::StreamFormat(
             "Memory offloaded starting from %s is output streamed",
             starting_instruction_and_index.ToString());
@@ -284,7 +280,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   // Finished walking all host memory paths. Now we'll make all the necessary
   // changes.
   const bool set_buffers_changed = SetBuffersToMemorySpaceColor(
-      buffers_to_set_to_host_memory, kHostMemorySpaceColor);
+      buffers_to_set_to_host_memory, Layout::kHostMemorySpace);
   changed = changed || set_buffers_changed;
 
   for (HloInstruction* dus : dynamic_update_slices) {
@@ -353,7 +349,7 @@ absl::StatusOr<bool> HostOffloader::HandleInputStreaming(
         entry_computation_layout.parameter_shape(i),
         [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.has_layout() &&
-              subshape.layout().memory_space() == kHostMemorySpaceColor) {
+              subshape.layout().memory_space() == Layout::kHostMemorySpace) {
             HloInstruction* parameter_instruction =
                 entry_computation->parameter_instruction(i);
             VLOG(1) << "Host parameter streamed into program with shape: "
@@ -399,7 +395,7 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
       HloInstruction* copy_to_host =
           data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
               data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
-      SetMemorySpace(copy_to_host->mutable_shape(), kHostMemorySpaceColor);
+      SetMemorySpace(copy_to_host->mutable_shape(), Layout::kHostMemorySpace);
       TF_RETURN_IF_ERROR(
           custom_call_instruction->ReplaceAllUsesWith(copy_to_host));
       VLOG(2) << absl::StreamFormat(
@@ -491,7 +487,7 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
         copy_to_host =
             data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
                 data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
-        SetMemorySpace(copy_to_host->mutable_shape(), kHostMemorySpaceColor);
+        SetMemorySpace(copy_to_host->mutable_shape(), Layout::kHostMemorySpace);
         copies_created_after_[data_to_copy] = copy_to_host;
       } else {
         // We already have a copy which feeds into this instruction.
@@ -623,7 +619,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
     SetMemorySpace(ShapeUtil::GetMutableSubshape(
                        instruction_and_shape.instruction->mutable_shape(),
                        instruction_and_shape.shape_index),
-                   kHostMemorySpaceColor);
+                   Layout::kHostMemorySpace);
     HloInstruction* instruction = instruction_and_shape.instruction;
     if (instruction->opcode() == HloOpcode::kParameter) {
       // If this is a parameter of a while_body, we also need to find the
@@ -649,7 +645,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           SetMemorySpace(ShapeUtil::GetMutableSubshape(
                              while_condition_parameter->mutable_shape(),
                              instruction_and_shape.shape_index),
-                         kHostMemorySpaceColor);
+                         Layout::kHostMemorySpace);
           // Walk further down the graph and set the memory spaces of all uses
           // too. This includes verifying that no compute is done on the buffer.
           // Another, better way, to do this, is to walk down the graph starting
@@ -673,7 +669,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                 ShapeUtil::GetMutableSubshape(
                     nested_instruction_and_shape.instruction->mutable_shape(),
                     nested_instruction_and_shape.shape_index),
-                kHostMemorySpaceColor);
+                Layout::kHostMemorySpace);
             TF_ASSIGN_OR_RETURN(
                 const std::vector<InstructionAndShapeIndex> successors,
                 host_offload_utils::GetSuccessors(
@@ -715,7 +711,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
         VLOG(1) << absl::StreamFormat(
             "Created new AllocateBuffer instruction \"%s\"",
             allocate_buffer->ToString());
-        SetMemorySpace(allocate_buffer->mutable_shape(), kHostMemorySpaceColor);
+        SetMemorySpace(allocate_buffer->mutable_shape(),
+                       Layout::kHostMemorySpace);
         for (int64_t index : operand_indices) {
           TF_RETURN_IF_ERROR(
               broadcast_user->ReplaceOperandWith(index, allocate_buffer));
@@ -797,7 +794,7 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
         continue;
       }
       if (instruction->shape().layout().memory_space() !=
-          kHostMemorySpaceColor) {
+          Layout::kHostMemorySpace) {
         continue;
       }
       // Replace DynamicUpdateSlice's 1st operand with a copy in case it
@@ -859,7 +856,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
       // If instruction is MoveToHost, we will replace usage.
       if (instr_and_shape.instruction->IsCustomCall(
               host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
-        to_replace.emplace_back(instr_and_shape);
+        to_replace.push_back(instr_and_shape);
         continue;
       }
 
@@ -1018,7 +1015,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
             queue.push(successor);
             host_instrs_tree.mutable_element(output_shape_index)
-                ->emplace_back(successor);
+                ->push_back(successor);
           }
         }
 
@@ -1064,7 +1061,7 @@ absl::StatusOr<bool> HostOffloader::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  // First remove redundant copies to and from host (conservatively) starting
+  // Remove redundant copies to and from host (conservatively) starting
   // from the outputs of the host offloaded computations. Iterate over all
   // instructions and look for XLA host offload annotations.
   bool changed_in_loop;

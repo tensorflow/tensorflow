@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_SNAPPY_H_
 #define TENSORFLOW_TSL_PLATFORM_SNAPPY_H_
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 #if !defined(PLATFORM_WINDOWS)
 #include <sys/uio.h>

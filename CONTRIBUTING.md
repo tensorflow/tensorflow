@@ -250,7 +250,7 @@ There are two ways to run TensorFlow unit tests.
     bazel by doing as follows:
 
     ```bash
-    export flags="--config=opt -k"
+    export flags="--config=linux -k"
     ```
 
     If the tests are to be run on the GPU:
@@ -259,7 +259,7 @@ There are two ways to run TensorFlow unit tests.
         flag.
 
         ```bash
-        export flags="--config=opt --config=cuda -k"
+        export flags="--config=linux --config=cuda -k"
         ```
 
     *   For TensorFlow versions prior v.2.18.0: Add CUDA paths to
@@ -267,7 +267,7 @@ There are two ways to run TensorFlow unit tests.
 
         ```bash
         export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-        export flags="--config=opt --config=cuda -k"
+        export flags="--config=linux --config=cuda -k"
         ```
 
     For example, to run all tests under tensorflow/python, do:

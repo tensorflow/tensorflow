@@ -30,13 +30,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

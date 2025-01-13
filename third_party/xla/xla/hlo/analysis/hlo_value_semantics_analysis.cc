@@ -24,7 +24,6 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -944,7 +943,7 @@ std::string HloValueSemanticsTreeToString(
 
 HloValueSemanticsAnalysis::HloValueSemanticsAnalysis(
     const HloModule& module,
-    const absl::flat_hash_set<std::string_view>& execution_threads)
+    const absl::flat_hash_set<absl::string_view>& execution_threads)
     : module_(module), execution_threads_(execution_threads), next_id_(0) {}
 
 const HloValueSemantics* HloValueSemanticsAnalysis::GetSemantics(
@@ -969,7 +968,7 @@ int HloValueSemanticsAnalysis::GetHeight(const HloInstruction* instruction,
 absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>>
 HloValueSemanticsAnalysis::Run(
     const HloModule& module,
-    const absl::flat_hash_set<std::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<HloValueSemanticsAnalysis> value_semantics_analysis =
       absl::WrapUnique(
           new HloValueSemanticsAnalysis(module, execution_threads));

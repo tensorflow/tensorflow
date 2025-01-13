@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -56,7 +55,7 @@ using ::testing::UnorderedElementsAre;
 
 class HloComputationTest : public HloTestBase {
  protected:
-  HloComputationTest() {}
+  HloComputationTest() = default;
 
   // Create a computation which takes a scalar and returns its negation.
   std::unique_ptr<HloComputation> CreateNegateComputation() {
@@ -849,7 +848,7 @@ ENTRY entry {
 }
 
 TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
-  std::string_view mod_txt = R"(
+  absl::string_view mod_txt = R"(
   HloModule Module
   region_X {
     Arg_0.5 = s32[] parameter(0)
@@ -890,7 +889,7 @@ TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
 
-  absl::flat_hash_map<std::string_view, std::string_view> replace_map;
+  absl::flat_hash_map<absl::string_view, absl::string_view> replace_map;
   replace_map["region_X"] = "region_A";
   replace_map["region_Y"] = "region_B";
   auto compare_func = [&replace_map](const HloComputation* a,
@@ -974,7 +973,7 @@ TEST_F(HloComputationTest, CompositeCall) {
 }
 
 TEST_F(HloComputationTest, CloneComputationWithAsyncInstructions) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 comp.0 {

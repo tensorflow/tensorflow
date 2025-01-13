@@ -180,9 +180,9 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 ![](images/ops_alltoall.png)
 
 In this example, there are 4 cores participating in the Alltoall. On each core,
-the operand is split into 4 parts along dimension 0, so each part has shape
+the operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order of core 0-4. So the output on
+the received parts along dimension 0, in the order of core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad

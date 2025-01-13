@@ -67,20 +67,21 @@ struct ConvBackpropDimensions {
 // Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
 // sizes/padding for the spatial dimensions. Does not support explicit padding.
 absl::Status ConvBackpropComputeDimensions(
-    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& strides, Padding padding,
-    TensorFormat data_format, ConvBackpropDimensions* dims);
+    absl::string_view label, int num_spatial_dims,
+    const TensorShape& input_shape, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape, const std::vector<int32>& strides,
+    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 
 // The V2 version computes the same outputs with arbitrary dilation rate and
 // supports explicit padding.
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
 absl::Status ConvBackpropComputeDimensionsV2(
-    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    absl::Span<const int32> dilations, const std::vector<int32>& strides,
-    Padding padding, absl::Span<const int64_t> explicit_paddings,
-    TensorFormat data_format, ConvBackpropDimensions* dims);
+    absl::string_view label, int num_spatial_dims,
+    const TensorShape& input_shape, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape, absl::Span<const int32> dilations,
+    const std::vector<int32>& strides, Padding padding,
+    absl::Span<const int64_t> explicit_paddings, TensorFormat data_format,
+    ConvBackpropDimensions* dims);
 
 // Computes the shape of the in_backprop.
 absl::Status Conv2DBackpropComputeInputShape(

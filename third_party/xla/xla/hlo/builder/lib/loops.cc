@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/loops.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>

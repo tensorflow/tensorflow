@@ -45,9 +45,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-using BufferUsage = CommandBufferCmd::BufferUsage;
-using BufferUsageVector = CommandBufferCmd::BufferUsageVector;
-using MemoryAccess = CommandBufferCmd::MemoryAccess;
+using xla::BufferUse;
+using BufferUseVector = CommandBufferCmd::BufferUseVector;
+using MemoryAccess = BufferUse::MemoryAccess;
 
 static se::StreamExecutor* GpuExecutor() {
   auto name =
@@ -65,7 +65,7 @@ static constexpr auto s1 = ExecutionStreamId(1);
 // buffer usage vector to the command buffer cmd sequence.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
-                           BufferUsageVector buffer_usage)
+                           BufferUseVector buffer_usage)
       : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd,
                          execution_stream_id),
         buffer_usage(buffer_usage) {}
@@ -75,9 +75,9 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
     return absl::OkStatus();
   }
 
-  BufferUsageVector buffers() override { return buffer_usage; }
+  BufferUseVector buffers() override { return buffer_usage; }
 
-  BufferUsageVector buffer_usage;
+  BufferUseVector buffer_usage;
 };
 
 class FakeCmd : public CommandBufferCmd {
@@ -91,7 +91,7 @@ class FakeCmd : public CommandBufferCmd {
                       se::CommandBuffer* command_buffer) override {
     return absl::OkStatus();
   }
-  BufferUsageVector buffers() override { return BufferUsageVector{}; }
+  BufferUseVector buffers() override { return BufferUseVector{}; }
 };
 
 TEST(CommandBufferCmdTest, SerializeExecution) {
@@ -101,13 +101,13 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers by default.
-  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
-  auto use1 = BufferUsage(slice1, MemoryAccess::kRead);
+  auto use0 = BufferUse(slice0, BufferUse::kRead);
+  auto use1 = BufferUse(slice1, BufferUse::kRead);
 
   CommandBufferCmdSequence commands(
       CommandBufferCmdSequence::SynchronizationMode::kSerialize);
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -121,12 +121,12 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers.
-  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
-  auto use1 = BufferUsage(slice1, MemoryAccess::kRead);
+  auto use0 = BufferUse(slice0, BufferUse::kRead);
+  auto use1 = BufferUse(slice1, BufferUse::kRead);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -140,12 +140,12 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 200, 100);
 
-  auto use0 = BufferUsage(slice0, MemoryAccess::kWrite);
-  auto use1 = BufferUsage(slice1, MemoryAccess::kWrite);
+  auto use0 = BufferUse(slice0, BufferUse::kWrite);
+  auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -160,14 +160,14 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
 
   // Reads from overlapping slices can be done in parallel, and before a write
   // into overlapping slice we need to insert a barrier.
-  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
-  auto use1 = BufferUsage(slice0, MemoryAccess::kRead);
-  auto use2 = BufferUsage(slice1, MemoryAccess::kWrite);
+  auto use0 = BufferUse(slice0, BufferUse::kRead);
+  auto use1 = BufferUse(slice0, BufferUse::kRead);
+  auto use2 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use2});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
 
   ASSERT_EQ(commands.barriers().size(), 3);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -183,12 +183,12 @@ TEST(CommandBufferCmdTest, NoWriteConflictsAcrossStreams) {
 
   // Read and write happens on different execution streams and we do not insert
   // any automatic barriers between streams.
-  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
-  auto use1 = BufferUsage(slice1, MemoryAccess::kWrite);
+  auto use0 = BufferUse(slice0, BufferUse::kRead);
+  auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s1, BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s1, BufferUseVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -350,8 +350,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
-                      MemoryAccess::kWrite};
+  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
@@ -422,9 +421,9 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
-    CommandBufferCmd::BufferUsageVector buffers = {
-        {BufferAllocation::Slice(&alloc0, 0, 1024), MemoryAccess::kRead},
-        {BufferAllocation::Slice(&alloc1, 0, 1024), MemoryAccess::kWrite}};
+    CommandBufferCmd::BufferUseVector buffers = {
+        {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
+        {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
 
     TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
@@ -512,9 +511,9 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
-  CommandBufferCmd::BufferUsageVector buffers = {
-      {BufferAllocation::Slice(&alloc0, 0, 1024), MemoryAccess::kRead},
-      {BufferAllocation::Slice(&alloc1, 0, 1024), MemoryAccess::kWrite}};
+  CommandBufferCmd::BufferUseVector buffers = {
+      {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
+      {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
 
   se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));

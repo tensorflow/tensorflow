@@ -26,7 +26,8 @@ namespace tf_saved_model {
 
 // Creates GlobalTensorOp for each variable from function arguments and converts
 // them to the corresponding saved model arguments.
-LogicalResult LiftVariables(ModuleOp module, ::tensorflow::Session* session);
+LogicalResult LiftVariables(ModuleOp module, ::tensorflow::Session* session,
+                            bool import_variables_as_dense_resources = false);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

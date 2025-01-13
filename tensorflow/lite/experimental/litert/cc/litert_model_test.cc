@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -210,7 +211,8 @@ TEST(CcTensorTest, SimpleModel) {
     ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
 
     auto input_ranked_tensor_type = input_tensor.RankedTensorType();
-    ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
+    EXPECT_TRUE(input_ranked_tensor_type);
+    ASSERT_EQ(input_ranked_tensor_type->ElementType(), ElementType::Float32);
 
     EXPECT_FALSE(input_tensor.HasWeights());
 
@@ -249,7 +251,7 @@ TEST(CcTensorTest, WeightsData) {
 TEST(CcTensorTest, Name) {
   static constexpr absl::string_view kName = "foo";
   LiteRtTensorT tensor;
-  tensor.name = kName;
+  tensor.SetName(std::string(kName));
 
   Tensor cc_tensor(&tensor);
   EXPECT_EQ(cc_tensor.Name(), kName);
@@ -257,7 +259,7 @@ TEST(CcTensorTest, Name) {
 
 TEST(CcTensorTest, QuantizationNone) {
   LiteRtTensorT litert_tensor;
-  litert_tensor.q_type_id = kLiteRtQuantizationNone;
+  litert_tensor.Qparams().first = kLiteRtQuantizationNone;
 
   Tensor tensor(&litert_tensor);
   EXPECT_EQ(tensor.QTypeId(), kLiteRtQuantizationNone);
@@ -269,8 +271,7 @@ TEST(CcTensorTest, QuantizationPerTensor) {
   static constexpr auto kZeroPoint = 1;
 
   LiteRtTensorT litert_tensor;
-  litert_tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  litert_tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  litert_tensor.SetQarams(MakePerTensorQuantization(kScale, kZeroPoint));
 
   Tensor tensor(&litert_tensor);
   ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerTensor);
@@ -279,6 +280,32 @@ TEST(CcTensorTest, QuantizationPerTensor) {
   const auto per_tensor_quantization = tensor.PerTensorQuantization();
   EXPECT_EQ(per_tensor_quantization.scale, kScale);
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
+TEST(CcTensorTest, QuantizationPerChannel) {
+  static constexpr auto kNumChannels = 2;
+  static constexpr auto kQuantizedDimension = 0;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZeroPoints[kNumChannels] = {0, 0};
+
+  LiteRtTensorT litert_tensor;
+  auto per_channel = MakePerChannelQuantization(
+      kScales, kZeroPoints, kQuantizedDimension, litert_tensor);
+  litert_tensor.SetQarams(per_channel);
+
+  Tensor tensor(&litert_tensor);
+  ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerChannel);
+  ASSERT_TRUE(tensor.HasQuantization());
+
+  const auto per_channel_quantization = tensor.PerChannelQuantization();
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      ::testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      ::testing::ElementsAreArray(kZeroPoints));
+  EXPECT_EQ(per_channel_quantization.num_channels, kNumChannels);
+  EXPECT_EQ(per_channel_quantization.quantized_dimension, kQuantizedDimension);
 }
 
 //===----------------------------------------------------------------------===//

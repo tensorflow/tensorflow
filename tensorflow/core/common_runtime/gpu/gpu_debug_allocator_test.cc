@@ -49,7 +49,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              stream_executor::MemoryType::kDevice, {}, {})),
+                              stream_executor::MemoryType::kDevice, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -79,7 +79,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
               new GPUBFCAllocator(
                   absl::WrapUnique(new DeviceMemAllocator(
                       stream_exec, platform_device_id,
-                      stream_executor::MemoryType::kDevice, {}, {})),
+                      stream_executor::MemoryType::kDevice, {})),
                   1 << 30, "", {}),
               platform_device_id);
 
@@ -118,7 +118,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
               new GPUBFCAllocator(
                   absl::WrapUnique(new DeviceMemAllocator(
                       stream_exec, platform_device_id,
-                      stream_executor::MemoryType::kDevice, {}, {})),
+                      stream_executor::MemoryType::kDevice, {})),
                   1 << 30, "", {}),
               platform_device_id);
 
@@ -153,7 +153,7 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
   GPUNanResetAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              stream_executor::MemoryType::kDevice, {}, {})),
+                              stream_executor::MemoryType::kDevice, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -198,7 +198,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   GPUNanResetAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              stream_executor::MemoryType::kDevice, {}, {})),
+                              stream_executor::MemoryType::kDevice, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -242,7 +242,7 @@ TEST(GPUDebugAllocatorTest, TracksSizes) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              stream_executor::MemoryType::kDevice, {}, {})),
+                              stream_executor::MemoryType::kDevice, {})),
                           1 << 30, "", {}),
       platform_device_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
@@ -254,7 +254,7 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              stream_executor::MemoryType::kDevice, {}, {})),
+                              stream_executor::MemoryType::kDevice, {})),
                           1 << 30, "", {}),
       platform_device_id);
   float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});

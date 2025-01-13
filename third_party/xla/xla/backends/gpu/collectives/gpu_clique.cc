@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"

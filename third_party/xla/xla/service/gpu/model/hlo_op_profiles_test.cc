@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"

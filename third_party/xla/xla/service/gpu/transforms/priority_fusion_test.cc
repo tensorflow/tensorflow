@@ -521,8 +521,8 @@ TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
     ENTRY FuseIntoScatter {
       p0 = s32[3,3] parameter(0)
       operand = s32[3,3] add(p0, p0)
-      p1 = s32[2] parameter(1)
-      indices = s32[2] add(p1, p1)
+      p1 = s32[2,1] parameter(1)
+      indices = s32[2,1] add(p1, p1)
       p2 = s32[2,3] parameter(2)
       updates = s32[2,3] add(p2, p2)
       scatter = s32[3,3] scatter(operand, indices, updates),

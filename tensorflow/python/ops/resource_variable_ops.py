@@ -23,6 +23,7 @@ import weakref
 from absl import logging
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
+from tensorflow.core.config import flags
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.function import trace_type
@@ -447,7 +448,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
         deduplicate copying through `Switch` and other conditional statements.
       in_graph_mode: whether we are executing in TF1 graph mode. If None, will
         detect within the function. This is to avoid repeated init_scope()
-        conetxt entrances which can add up.
+        context entrances which can add up.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -1675,8 +1676,8 @@ class ResourceVariableGradient(
 
     For a ResourceVariable, its gradient component is its handle tensor.
     For now, we return the ResourceVariable because the gradient infrastructure
-    has special logics to handle ResourceVariables. We should remove those
-    special logics and return the handle tensor.
+    has special logic to handle ResourceVariables. We should remove the special
+    logic and return the handle tensor.
 
     Args:
       value: A `ResourceVariable`.
@@ -2521,7 +2522,24 @@ def _ReadGrad(_, grad):
   return grad
 
 
-def variable_shape(handle, out_type=dtypes.int32):
+def variable_shape(handle, out_type=None):
+  """Returns the shape of the variable from the handle.
+
+  If the output shape dtype is not specified, it will be set to int64 if
+  tf_shape_default_int64 is enabled, otherwise it will be set to int32.
+
+  Args:
+    handle: The handle of the variable.
+    out_type: The dtype of the output shape.
+
+  Returns:
+    The shape of the variable.
+  """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   handle_data = get_eager_safe_handle_data(handle)
   if handle_data is None or not handle_data.is_set:
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)

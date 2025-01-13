@@ -576,8 +576,12 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> OneDnnOpsRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(3, "OneDnnOpsRewriter::Run(), before:\n" + module->ToString());
   OneDnnOpsRewriterVisitor visitor;
-  return visitor.RunOnModule(module, execution_threads);
+  TF_ASSIGN_OR_RETURN(auto result,
+                      visitor.RunOnModule(module, execution_threads));
+  XLA_VLOG_LINES(3, "OneDnnOpsRewriter::Run(), after:\n" + module->ToString());
+  return result;
 }
 
 }  // namespace cpu

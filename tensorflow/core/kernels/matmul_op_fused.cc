@@ -525,7 +525,19 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       default:
         use_cudnn = false;
     }
+<<<<<<< HEAD
 
+=======
+#if !(GOOGLE_CUDA || TF_HIPBLASLT)
+    use_cudnn = true;
+#endif
+
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
+>>>>>>> upstream/master
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
@@ -595,7 +607,11 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          epilog_op};
     absl::Mutex* pmu;
     auto plan_and_algorithms_or =
+<<<<<<< HEAD
         BlasLtMatmulPlanCache::GetOrCreate(stream, matmul_params, &pmu);
+=======
+        PlanAndAlgorithms::GetOrCreate(stream, matmul_params, &pmu);
+>>>>>>> upstream/master
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
     const auto& entry = *plan_and_algorithms_or.value();
@@ -605,9 +621,15 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
+<<<<<<< HEAD
         return BlasLtMatmulPlanCache::ExecuteOnStream(
           stream, entry, a_ptr, b_ptr, c_ptr, alg_idx,
           scratch_allocator, bias_ptr, profile_result);
+=======
+      return plan_and_algorithms->ExecuteOnStream(stream, a_ptr, b_ptr, c_ptr,
+                                                  alg_idx, scratch_allocator,
+                                                  bias_ptr, profile_result);
+>>>>>>> upstream/master
     };
 
     size_t alg_idx = 0;

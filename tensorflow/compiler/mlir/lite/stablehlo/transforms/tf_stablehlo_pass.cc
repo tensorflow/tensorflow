@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"

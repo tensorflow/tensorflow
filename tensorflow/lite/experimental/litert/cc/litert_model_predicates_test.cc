@@ -38,8 +38,10 @@ TEST(MatchRankedTensorTypeTest, HasAll) {
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
+  auto input_tensor_type = input.RankedTensorType();
+  EXPECT_TRUE(input_tensor_type);
   EXPECT_TRUE(MatchRankedTensorType(
-      input.RankedTensorType(), TensorTypeInfo(ElementType::Float32, {2, 2})));
+      *input_tensor_type, TensorTypeInfo(ElementType::Float32, {2, 2})));
 }
 
 TEST(MatchRankedTensorTypeTest, NoMatch) {
@@ -49,8 +51,10 @@ TEST(MatchRankedTensorTypeTest, NoMatch) {
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
+  auto input_tensor_type = input.RankedTensorType();
+  EXPECT_TRUE(input_tensor_type);
   EXPECT_FALSE(MatchRankedTensorType(
-      input.RankedTensorType(), TensorTypeInfo(ElementType::Float32, {3, 2})));
+      *input_tensor_type, TensorTypeInfo(ElementType::Float32, {3, 2})));
 }
 
 TEST(MatchRankedTensorTypeTest, AnyDims) {
@@ -60,7 +64,9 @@ TEST(MatchRankedTensorTypeTest, AnyDims) {
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
-  EXPECT_TRUE(MatchRankedTensorType(input.RankedTensorType(),
+  auto input_tensor_type = input.RankedTensorType();
+  EXPECT_TRUE(input_tensor_type);
+  EXPECT_TRUE(MatchRankedTensorType(*input_tensor_type,
                                     TensorTypeInfo(ElementType::Float32)));
 }
 
@@ -71,8 +77,10 @@ TEST(MatchRankedTensorTypeTest, AnyElementType) {
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
+  auto input_tensor_type = input.RankedTensorType();
+  EXPECT_TRUE(input_tensor_type);
   EXPECT_TRUE(
-      MatchRankedTensorType(input.RankedTensorType(), TensorTypeInfo({2, 2})));
+      MatchRankedTensorType(*input_tensor_type, TensorTypeInfo({2, 2})));
 }
 
 TEST(MatchOpTypeTest, HasAll) {

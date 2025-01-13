@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "rocm/rocm_config.h"
@@ -52,8 +54,8 @@ namespace {
 // GetCachedTID() caches the thread ID in thread-local storage (which is a
 // userspace construct) to avoid unnecessary system calls. Without this caching,
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
-int32_t GetCachedTID() {
-  static thread_local int32_t current_thread_id =
+int64_t GetCachedTID() {
+  static thread_local int64_t current_thread_id =
       tsl::Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }

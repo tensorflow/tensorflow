@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"

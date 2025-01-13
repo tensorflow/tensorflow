@@ -30,12 +30,12 @@ limitations under the License.
 #include <unistd.h>
 
 #include "xla/tsl/platform/default/posix_file_system.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system_helper.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system_helper.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 
 namespace tsl {

@@ -316,7 +316,7 @@ absl::Status ReadEventFromFile(const string& dump_file_path, Event* event) {
     return s;
   }
 
-  StringPiece result;
+  absl::string_view result;
   s = file->Read(0, file_size, &result, &(content)[0]);
   if (!s.ok()) {
     return s;

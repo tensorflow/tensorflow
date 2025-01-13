@@ -20,6 +20,8 @@ limitations under the License.
 #include <set>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"

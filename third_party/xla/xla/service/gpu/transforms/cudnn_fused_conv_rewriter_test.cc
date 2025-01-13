@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
@@ -50,9 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -2197,7 +2197,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2224,7 +2224,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2251,7 +2251,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
   MAYBE_SKIP_TEST("I8");
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {
@@ -2277,7 +2277,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
-  const std::string_view module_str = R"(
+  const absl::string_view module_str = R"(
     HloModule Test
 
     ENTRY test_entry {

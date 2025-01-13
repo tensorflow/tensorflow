@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/transforms/split_into_island_per_op_pass.h"
 
-#include <cstdint>
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"

@@ -21,10 +21,20 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+
+// Annotate the op_metrics with the metadata from the instr_wrapper.
+void EnterOpMetadata(OpMetrics* op_metrics,
+                     const HloInstructionWrapper* instr_wrapper);
+void EnterOpMetadataFromHloModuleMap(OpMetrics* op_metrics,
+                                     const HloModuleMap& hlo_module_map);
+
+void AddFusionChildrenToOpMetricsFromHloInstruction(
+    OpMetrics* op_metrics, const HloInstructionWrapper* instr_wrapper);
 
 class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
  public:
@@ -84,6 +94,10 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                        absl::string_view category, absl::string_view provenance,
                        absl::string_view deduplicated_name, bool is_eager,
                        absl::string_view long_name = "");
+
+  void EnterOpMetadataFromHloModuleMap(uint64 program_id,
+                                       absl::string_view op_name,
+                                       const HloModuleMap& hlo_module_map);
 };
 
 }  // namespace profiler

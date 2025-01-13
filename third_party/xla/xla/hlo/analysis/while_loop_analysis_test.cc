@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
-#include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -301,27 +301,27 @@ bool RangeEqualIgnoreBitwidth(const Range& range, int init, int limit,
                               : r.min().GetUnsignedValue();
   };
   auto range_max = [](const Range& r) {
-    return r.min().IsSigned() ? r.max().GetSignedValue()
-                              : r.max().GetUnsignedValue();
+    return r.max()->IsSigned() ? r.max()->GetSignedValue()
+                               : r.max()->GetUnsignedValue();
   };
   return range_min(range) == init && range_max(range) == limit &&
-         range.step().GetSignedValue() == step;
+         range.step()->GetSignedValue() == step;
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
   // LT cases
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLt).value(), 0,
-      42, 1));
+      41, 1));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLt).value(), 0,
-      42, 2));
+      40, 2));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLt).value(), 0,
-      42, 5));
+      40, 5));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLt).value(), 0,
-      40, 5));
+      35, 5));
 
   // LE cases
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
@@ -332,7 +332,7 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
       42, 2));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLe).value(), 0,
-      42, 5));
+      40, 5));
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLe).value(), 0,
       40, 5));

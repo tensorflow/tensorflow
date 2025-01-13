@@ -77,8 +77,14 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   const auto& src_input_tensor = op_ins.front();
-  auto src_input_tensor_rank =
-      src_input_tensor.RankedTensorType().Layout().Rank();
+  auto src_input_tensor_type = src_input_tensor.RankedTensorType();
+  if (!src_input_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_input_tensor_type.Error().Message().data());
+    return src_input_tensor_type.Error().Status();
+  }
+
+  auto src_input_tensor_rank = src_input_tensor_type->Layout().Rank();
 
   // Prepare qnn strided slice parameters.
 
@@ -104,7 +110,8 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
     // Copy begin, end, and stride values from src_begin_indices and
     // src_size_indices to range_tensor_data. Stride is always 1.
     range_tensor_data[i * kRangesParamArgSize] = src_begin_indices->at(i);
-    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices->at(i);
+    range_tensor_data[i * kRangesParamArgSize + 1] =
+        src_begin_indices->at(i) + src_size_indices->at(i);
     range_tensor_data[i * kRangesParamArgSize + 2] = 1;
   }
 

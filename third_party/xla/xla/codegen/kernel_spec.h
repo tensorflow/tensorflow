@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_CODEGEN_KERNEL_SPEC_H_
 
 #include <cstddef>
-#include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
 #include "xla/runtime/buffer_use.h"
@@ -32,6 +32,9 @@ namespace xla {
 class KernelSource {
  public:
   virtual ~KernelSource() = default;
+
+  // Get a human readable string representation of the kernel source.
+  virtual std::string ToString() const = 0;
 };
 
 // KernelSpec is a specification of an XLA kernel produced by the XLA codegen.

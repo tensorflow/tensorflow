@@ -51,6 +51,25 @@ struct BlasLtMatmulPlanParams {
   se::gpu::BlasLt::Epilogue epilogue = se::gpu::BlasLt::Epilogue::kDefault;
 };
 
+<<<<<<< HEAD
+=======
+struct PlanAndAlgorithms {
+  static StatusOr<const PlanAndAlgorithms*> GetOrCreate(
+      se::Stream* stream, const BlasLtMatmulPlanParams& params,
+      absl::Mutex** pmu, std::optional<int> max_algorithm_count = std::nullopt);
+
+  Status ExecuteOnStream(
+      se::Stream* stream, const se::DeviceMemoryBase& a,
+      const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+      size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+      const se::DeviceMemoryBase& bias = se::DeviceMemoryBase{},
+      se::blas::ProfileResult* profile_result = nullptr) const;
+
+  se::gpu::BlasLt::MatmulPlanPtr plan;
+  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
+};
+
+>>>>>>> upstream/master
 namespace internal {
 
 inline auto AsTuple(const BlasLtMatmulPlanParams& p) {
@@ -66,6 +85,7 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
 
+<<<<<<< HEAD
 struct BlasLtMatmulPlanCache {
   struct Entry { 
     se::gpu::BlasLt::MatmulPlanPtr plan;
@@ -103,5 +123,10 @@ private:
 }  // namespace tensorflow
 
 #endif // GOOGLE_CUDA || TF_HIPBLASLT
+=======
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+>>>>>>> upstream/master
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_

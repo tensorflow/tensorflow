@@ -14,6 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <set>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"

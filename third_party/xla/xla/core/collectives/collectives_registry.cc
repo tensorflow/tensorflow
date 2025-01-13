@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/service/platform_util.h"
@@ -65,7 +65,7 @@ static Registry& GetCollectivesRegistry() {
 }
 
 absl::Status CollectivesRegistry::Register(
-    std::string_view platform_name, std::string_view name, int32_t priority,
+    absl::string_view platform_name, absl::string_view name, int32_t priority,
     std::unique_ptr<Collectives> collectives) {
   TF_ASSIGN_OR_RETURN(std::string canonical_platform_name,
                       PlatformUtil::CanonicalPlatformName(platform_name));
@@ -83,7 +83,7 @@ absl::Status CollectivesRegistry::Register(
 }
 
 absl::StatusOr<Collectives*> CollectivesRegistry::Default(
-    std::string_view platform_name) {
+    absl::string_view platform_name) {
   TF_ASSIGN_OR_RETURN(std::string canonical_platform_name,
                       PlatformUtil::CanonicalPlatformName(platform_name));
 

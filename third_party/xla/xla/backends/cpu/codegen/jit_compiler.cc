@@ -20,14 +20,17 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 
+#include "absl/base/call_once.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -54,7 +58,6 @@ limitations under the License.
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -63,6 +66,14 @@ namespace xla::cpu {
 
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
+
+// Initialize LLVM the first time `JitCompiler` is created.
+static void InitializeLLVMTarget() {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+}
+
+absl::once_flag initialize_llvm_flag;
 
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 JitCompiler::InferTargetMachine(
@@ -76,10 +87,11 @@ JitCompiler::InferTargetMachine(
   // If `max_cpu_feature` is newer than the host CPU, we should keep the host
   // CPU name, e.g., we don't want to set the target CPU to Skylake when we are
   // on a Broadwell host.
-  std::string_view cpu = result.num_filtered_features
-                             ? CpuTargetFromMaxFeature(*max_cpu_feature)
-                             : std::string_view(llvm::sys::getHostCPUName());
+  absl::string_view cpu = result.num_filtered_features
+                              ? CpuTargetFromMaxFeature(*max_cpu_feature)
+                              : absl::string_view(llvm::sys::getHostCPUName());
 
+  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -107,13 +119,7 @@ IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
 absl::StatusOr<JitCompiler> JitCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     TaskRunner task_runner) {
-  // Initialize LLVM the first time `JitCompiler` is created.
-  static bool llvm_initialized = [] {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-    return true;
-  }();
-  CHECK(llvm_initialized) << "LLVM must be initialized";
+  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
 
   // Infer target machine from the current host CPU.
   IrCompiler::TargetMachineBuilder target_machine_builder =
@@ -257,7 +263,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
 
   // Mangle symbol names for the target machine data layout.
   llvm::DataLayout data_layout = target_machine_->createDataLayout();
-  auto mangle = [&](std::string_view name) {
+  auto mangle = [&](absl::string_view name) {
     llvm::SmallVector<char, 40> mangled;
     llvm::Mangler::getNameWithPrefix(mangled, name, data_layout);
     return std::string(mangled.begin(), mangled.end());
@@ -334,43 +340,14 @@ void JitCompiler::TaskDispatcher::dispatch(
 
     absl::MutexLock lock(&mu_);
     --num_dispatched_tasks_;
-    cv_.SignalAll();
   });
 }
 
 void JitCompiler::TaskDispatcher::shutdown() {
-  absl::MutexLock lock(&mu_);
-  while (num_dispatched_tasks_ > 0) {
-    cv_.Wait(&mu_);
-  }
-}
-
-JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
-    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer,
-    absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map)
-    : execution_session_(std::move(execution_session)),
-      object_layer_(std::move(object_layer)),
-      symbols_map_(std::move(symbols_map)) {
-  DCHECK(execution_session_) << "Execution session must not be null";
-}
-
-JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
-  if (auto err = execution_session_->endSession()) {
-    execution_session_->reportError(std::move(err));
-  }
-}
-
-absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(
-    TypeId type_id, std::string_view name) {
-  if (auto it = symbols_map_.find(name); it != symbols_map_.end()) {
-    if (it->second.type_id != type_id) {
-      return Internal("Symbol %s has type id %d, expected %d", name,
-                      it->second.type_id.value(), type_id.value());
-    }
-    return it->second.ptr;
-  }
-  return NotFound("Function %s not found (type id: %d)", name, type_id.value());
+  auto all_tasks_finished = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return num_dispatched_tasks_ == 0;
+  };
+  absl::MutexLock lock(&mu_, absl::Condition(&all_tasks_finished));
 }
 
 }  // namespace xla::cpu

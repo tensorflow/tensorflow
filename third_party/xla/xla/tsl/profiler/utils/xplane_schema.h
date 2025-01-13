@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 
 namespace tsl {
@@ -264,6 +264,7 @@ enum StatType {
   kFlops,
   kModelFlops,
   kBytesAccessed,
+  kRawBytesAccessed,
   kMemoryAccessBreakdown,
   kShapeWithLayout,
   kSourceInfo,
@@ -296,6 +297,8 @@ enum StatType {
   kDevCapPeakSramRdBwGigabytesPerSecond,
   kDevCapPeakSramWrBwGigabytesPerSecond,
   kDevVendor,
+  kDevHasMegacore,
+  kDevHasMergedVmem,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,
@@ -343,7 +346,8 @@ enum StatType {
   kDeviceOffsetPs,
   kDeviceDurationPs,
   kScopeRangeId,
-  kLastStatType = kScopeRangeId,
+  kCoreDetails,
+  kLastStatType = kCoreDetails,
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -361,6 +365,7 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleActionInputs,
   kMegaScaleTransferSource,
   kMegaScaleTransferDestinations,
+  kMegaScaleTransferDcnTopologyLevel,
   kMegaScaleBufferSizes,
   kMegaScaleComputeOperation,
   kMegaScaleChunk,

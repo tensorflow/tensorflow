@@ -31,12 +31,19 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   // 'platform_device_id' refers to the ID of the device within
   // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
-  explicit DeviceMemAllocator(StreamExecutor* stream_exec,
-                              tsl::PlatformDeviceId device_id,
-                              MemoryType memory_type,
-                              const std::vector<Visitor>& alloc_visitors,
-                              const std::vector<Visitor>& free_visitors)
-      : SubAllocator(alloc_visitors, free_visitors),
+  DeviceMemAllocator(StreamExecutor* stream_exec,
+                     tsl::PlatformDeviceId device_id, MemoryType memory_type,
+                     const std::vector<Visitor>& alloc_visitors)
+      : SubAllocator(alloc_visitors, {}),
+        stream_exec_(stream_exec),
+        device_id_(device_id),
+        memory_type_(memory_type) {
+    CHECK(stream_exec_ != nullptr);
+  }
+
+  DeviceMemAllocator(StreamExecutor* stream_exec,
+                     tsl::PlatformDeviceId device_id, MemoryType memory_type)
+      : SubAllocator({}, {}),
         stream_exec_(stream_exec),
         device_id_(device_id),
         memory_type_(memory_type) {

@@ -31,9 +31,9 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #endif
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 
@@ -46,7 +46,7 @@ std::vector<std::string> CandidateCudaRoots() {
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();
   std::string cuda_nvcc_dir =
       io::JoinPath(executable_path + "." + runfiles_suffix, "cuda_nvcc");
-  roots.emplace_back(cuda_nvcc_dir);
+  roots.push_back(cuda_nvcc_dir);
 
   // The CUDA candidate root for python targets.
   std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
@@ -54,10 +54,11 @@ std::vector<std::string> CandidateCudaRoots() {
   cuda_nvcc_dir = io::JoinPath(
       runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
       "cuda_nvcc");
-  roots.emplace_back(cuda_nvcc_dir);
+  roots.push_back(cuda_nvcc_dir);
 
-  roots.emplace_back(TF_CUDA_TOOLKIT_PATH);
+  roots.push_back(TF_CUDA_TOOLKIT_PATH);
   roots.emplace_back(std::string("/usr/local/cuda"));
+  roots.emplace_back(std::string("/opt/cuda"));
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
   Dl_info info;

@@ -680,6 +680,7 @@ class TFLiteConverterBase:
     self._experimental_enable_composite_direct_lowering = False
     self.model_origin_framework = constants.UNSET
     self.canonicalizing_inf_as_min_max_float = True
+    self._experimental_strict_qdq = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -779,6 +780,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
+          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -836,6 +838,7 @@ class TFLiteConverterBase:
             self.experimental_stablehlo_quantizer_config
         ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "strict_qdq_mode": self._experimental_strict_qdq,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
         ),

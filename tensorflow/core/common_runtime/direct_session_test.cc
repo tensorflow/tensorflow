@@ -2569,8 +2569,8 @@ void TestFeedAndFetchTensorsInDeviceMemory(
         << DataType_Name(dtype);
     TF_ASSERT_OK(session->ReleaseCallable(handle)) << DataType_Name(dtype);
     ASSERT_EQ(1, outputs.size());
-    const StringPiece actual_data = outputs[0].tensor_data();
-    const StringPiece expected_data = host_tensor.tensor_data();
+    const absl::string_view actual_data = outputs[0].tensor_data();
+    const absl::string_view expected_data = host_tensor.tensor_data();
     EXPECT_EQ(expected_data.size(), actual_data.size()) << DataType_Name(dtype);
     EXPECT_EQ(0, memcmp(expected_data.data(), actual_data.data(),
                         std::min(expected_data.size(), actual_data.size())))

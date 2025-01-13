@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -205,13 +206,25 @@ void KernelExecuteState::CallSync(uint64_t task_index) {
 
 void KernelExecuteState::CallAsync(uint64_t start_index, uint64_t end_index) {
   CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
-  while (end_index - start_index > 1) {
-    uint64_t mid_index = (start_index + end_index) / 2;
-    task_runner_([self = this, mid_index, end_index] {
-      self->CallAsync(mid_index, end_index);
-    });
-    end_index = mid_index;
+
+  auto dispatch = [&](auto index_type) {
+    using Index = decltype(index_type);
+    while (end_index - start_index > 1) {
+      uint64_t mid_index = (start_index + end_index) / 2;
+      task_runner_([self = this, mid = Index(mid_index),
+                    end = Index(end_index)] { self->CallAsync(mid, end); });
+      end_index = mid_index;
+    }
+  };
+
+  // If the number of tasks is small, we can use uint16_t to index them and hit
+  // small object optimization in the std::function and avoid a heap allocation.
+  if (ABSL_PREDICT_TRUE(end_index <= std::numeric_limits<uint16_t>::max())) {
+    dispatch(uint16_t{});
+  } else {
+    dispatch(uint64_t{});
   }
+
   CallSync(start_index);
 }
 

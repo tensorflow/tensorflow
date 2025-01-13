@@ -34,9 +34,8 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
 }
 }  // namespace
 
-::tensorflow::Status PropagateArrayDataTypes::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status PropagateArrayDataTypes::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

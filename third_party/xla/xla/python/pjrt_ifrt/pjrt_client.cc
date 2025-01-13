@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -45,9 +44,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/topology_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -466,7 +467,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
     int64_t slice_index = -1;
     if (!node.boot_id().empty()) {
       // Every new boot_id seen is treated as a new host/slice.
-      std::string_view boot_id = node.boot_id();
+      absl::string_view boot_id = node.boot_id();
       auto [it, inserted] =
           boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
       slice_index = it->second;
@@ -1117,14 +1118,18 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
                                                           topology));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLayout>>
-PjRtClient::GetDefaultLayoutForDevice(DType dtype,
-                                      absl::Span<const int64_t> dims,
-                                      Device* device) const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtClient::GetDefaultLayout(
+    DType dtype, absl::Span<const int64_t> dims, Device* device,
+    MemoryKind memory_kind) const {
+  static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
+  if (memory_kind == kUnpinnedHostMemoryKind) {
+    return std::make_shared<PjRtLayout>(
+        LayoutUtil::MakeDescendingLayout(dims.size()));
+  }
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
   TF_ASSIGN_OR_RETURN(xla::Layout layout,
                       pjrt_client_->GetDefaultLayout(element_type, dims));
-  return std::make_unique<PjRtXlaLayout>(std::move(layout));
+  return std::make_shared<PjRtLayout>(std::move(layout));
 }
 
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,

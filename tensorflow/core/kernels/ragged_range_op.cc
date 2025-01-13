@@ -87,16 +87,29 @@ class RaggedRangeOp : public OpKernel {
         size = 0;
       } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
-        size = Eigen::divup(Eigen::numext::abs(limit - start),
-                            Eigen::numext::abs(delta));
+        uint64_t range;
+        if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit)) +
+                  static_cast<uint64_t>(Eigen::numext::abs(start));
+        } else {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+        }
+
+        uint64_t size_unsigned = Eigen::divup(
+            range, static_cast<uint64_t>(Eigen::numext::abs(delta)));
+        OP_REQUIRES(context,
+                    size_unsigned <= std::numeric_limits<SPLITS_TYPE>::max(),
+                    InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                    std::numeric_limits<SPLITS_TYPE>::max()));
+        size = static_cast<SPLITS_TYPE>(size_unsigned);
       } else {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
             Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
         OP_REQUIRES(
-            context, size_auto <= std::numeric_limits<int64_t>::max(),
+            context, size_auto <= std::numeric_limits<SPLITS_TYPE>::max(),
             errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                    std::numeric_limits<int64_t>::max()));
+                                    std::numeric_limits<SPLITS_TYPE>::max()));
         size = static_cast<SPLITS_TYPE>(size_auto);
       }
       OP_REQUIRES(context, size >= 0, InvalidArgument("Requires size >= 0"));
@@ -122,7 +135,9 @@ class RaggedRangeOp : public OpKernel {
       T delta = broadcast_deltas ? deltas(0) : deltas(row);
       for (SPLITS_TYPE i = 0; i < row_size; ++i) {
         rt_dense_values(value_index++) = T(value);
-        value += delta;
+        if (i < row_size - 1) {
+          value += delta;
+        }
       }
     }
   }

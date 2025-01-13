@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1526,18 +1525,6 @@ R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
 ENTRY %test (p: f32[100]) -> u32[100] {
   %p = f32[100]{0} parameter(0)
   ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" scheduling_name="foo"}
-}
-
-)"
-},
-
-{
-"MetadataPreserveLayout",
-R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
-
-ENTRY %test (p: f32[100]) -> u32[100] {
-  %p = f32[100]{0} parameter(0)
-  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" preserve_layout=true}
 }
 
 )"
@@ -4720,7 +4707,7 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
 }
 
 TEST_F(HloParserTest, ParseInvalidDimLevel) {
-  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  constexpr absl::string_view shape_string = "f32[123]{0:D(D+~)}";
   absl::StatusOr<Shape> result = ParseShape(shape_string);
   ASSERT_THAT(
       result.status(),
@@ -5727,6 +5714,20 @@ ENTRY %test {
                                      HasSubstr("expects instruction shape")));
 }
 
+TEST_F(HloParserTest, EmptyLeafInOriginalValue) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  ROOT op = ((f32[], f32[3]{0}), f32[2,3]) parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
@@ -5841,22 +5842,6 @@ ENTRY main {
   EXPECT_NE(absl::OkStatus(), result.status());
   ExpectHasSubstr(result.status().message(),
                   "error: unexpected attribute \"result_accuracy\"");
-}
-
-TEST_F(HloParserTest, EmptyOriginalValueIsPrintedCorrectly) {
-  const std::string hlo_string = R"(HloModule test
-
-ENTRY %test {
-  ROOT op = f32[] parameter(0), origin={}
-}
-
-
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  ExpectHasSubstr(module->ToString(HloPrintOptions::Fingerprint()),
-                  "origin={}");
 }
 
 }  // namespace

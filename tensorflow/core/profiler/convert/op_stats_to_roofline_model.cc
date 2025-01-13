@@ -244,7 +244,9 @@ RooflineModelDatabase InitializeRooflineModelDatabaseFromOpStats(
 RooflineModelDatabase ConvertOpStatsToRooflineModel(
     const OpStats& op_stats, bool include_infeed_outfeed) {
   HardwareType hardware_type = op_stats.run_environment().hardware_type();
-  DCHECK(hardware_type == GPU || hardware_type == TPU);
+  if (hardware_type != GPU && hardware_type != TPU) {
+    return RooflineModelDatabase();
+  }
 
   RooflineModelDatabase roofline_model_db =
       InitializeRooflineModelDatabaseFromOpStats(op_stats,

@@ -19,10 +19,12 @@
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
 
@@ -291,6 +293,43 @@ TEST(TensorBuffer, FastRpc) {
       kLiteRtStatusOk);
   ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
   ASSERT_EQ(LiteRtUnlockTensorBuffer(tensor_buffer), kLiteRtStatusOk);
+
+  LiteRtDestroyTensorBuffer(tensor_buffer);
+}
+
+TEST(TensorBuffer, Event) {
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeHostMemory;
+  LiteRtTensorBuffer tensor_buffer;
+  ASSERT_EQ(
+      LiteRtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
+                                      sizeof(kTensorData), &tensor_buffer),
+      kLiteRtStatusOk);
+
+  bool has_event = true;
+  ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
+            kLiteRtStatusOk);
+  EXPECT_FALSE(has_event);
+
+  LiteRtEventT event;
+  ASSERT_EQ(LiteRtSetTensorBufferEvent(tensor_buffer, &event), kLiteRtStatusOk);
+
+  has_event = false;
+  ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
+            kLiteRtStatusOk);
+  EXPECT_TRUE(has_event);
+
+  LiteRtEvent actual_event;
+  ASSERT_EQ(LiteRtGetTensorBufferEvent(tensor_buffer, &actual_event),
+            kLiteRtStatusOk);
+  ASSERT_EQ(actual_event, &event);
+
+  ASSERT_EQ(LiteRtClearTensorBufferEvent(tensor_buffer), kLiteRtStatusOk);
+  ASSERT_EQ(actual_event, &event);
+
+  has_event = true;
+  ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
+            kLiteRtStatusOk);
+  EXPECT_FALSE(has_event);
 
   LiteRtDestroyTensorBuffer(tensor_buffer);
 }

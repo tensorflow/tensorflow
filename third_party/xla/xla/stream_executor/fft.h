@@ -37,8 +37,7 @@ limitations under the License.
 //  TF_CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
-// kernel launches (via StreamExecutor::ThenLaunch()) with these pre-canned FFT
-// routines.
+// kernel launches with these pre-canned FFT routines.
 
 #ifndef XLA_STREAM_EXECUTOR_FFT_H_
 #define XLA_STREAM_EXECUTOR_FFT_H_

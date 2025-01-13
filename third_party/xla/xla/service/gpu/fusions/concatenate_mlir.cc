@@ -33,12 +33,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -49,6 +49,7 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 
@@ -103,22 +104,22 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
                                        largest_shape_, ctx);
 }
 
-std::vector<mlir_converter::EpilogueSpecification>
+std::vector<emitters::EpilogueSpecification>
 MlirConcatenateFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                     mlir::MLIRContext* mlir_context) const {
-  return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+  return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &analysis_.fusion_hero(0).instruction(),
       &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(
-    const mlir_converter::PartitionedComputations& computations,
-    const mlir_converter::CallTargetProvider& call_targets,
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
   auto* ctx = entry_function.getContext();
@@ -152,32 +153,34 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](
-            ValueRange symbol_values, ValueRange output_indices,
+            ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
+            ValueRange output_indices,
             ValueRange output_tensors) -> SmallVector<Value> {
-      auto input_indices = mlir_converter::ApplyIndexing(
-          thread_id_to_input_map, thread_and_block_ids, symbol_values, builder);
+      auto input_indices =
+          emitters::ApplyIndexing(thread_id_to_input_map, thread_and_block_ids,
+                                  symbol_values, nested_b);
 
-      auto result_scalar = mlir_converter::ProvideParameter(
+      auto result_scalar = emitters::ProvideParameter(
           root_computation, concat, operand_index, input_indices, call_targets,
-          entry_function, builder);
+          entry_function, nested_b);
       absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
           hero_value{{concat, result_scalar}};
       auto result_scalars = EmitEpilogue(
           /*epilogue_index=*/0, computations, entry_function, hero_value,
-          output_indices, builder)[&analysis_.fusion_root(0).instruction()];
+          output_indices, nested_b)[&analysis_.fusion_root(0).instruction()];
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());
       for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
         result_tensors.push_back(
-            builder
+            nested_b
                 .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
                 .getResult());
       }
 
       return result_tensors;
     };
-    result_tensors = mlir_converter::EmitXlaLoopOp(
+    result_tensors = emitters::EmitXlaLoopOp(
         builder, thread_and_block_ids, result_tensors, thread_id_to_output_map,
         loop_nest_body_builder);
   }

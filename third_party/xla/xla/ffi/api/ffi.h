@@ -893,6 +893,22 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
 #undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
 
+template <>
+struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
+  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
+                                                void* attr,
+                                                DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_STRING << " but got " << type;
+    }
+
+    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
+    return std::string_view(span->ptr, span->len);
+  }
+};
+
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>
 struct Pointer {};
@@ -1310,30 +1326,14 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 // Type Registration
 //===----------------------------------------------------------------------===//
 
-namespace internal {
-
-inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
-                                   std::string_view name,
-                                   XLA_FFI_TypeId* type_id) {
-  XLA_FFI_TypeId_Register_Args args;
-  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
-  args.type_id = type_id;
-  return api->XLA_FFI_TypeId_Register(&args);
-}
-
-}  // namespace internal
-
 #define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
   XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)                 \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                 \
-      xla_ffi_type_##N##_registered_ = [] {                            \
-        return ::xla::ffi::internal::RegisterType(API, NAME, TYPE_ID); \
-      }()
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N) \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
+      xla_ffi_type_##N##_registered_ =                 \
+          [] { return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID); }()
 
 //===----------------------------------------------------------------------===//
 // UserData

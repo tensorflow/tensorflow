@@ -19,10 +19,10 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace {

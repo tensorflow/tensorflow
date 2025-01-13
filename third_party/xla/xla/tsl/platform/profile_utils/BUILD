@@ -53,10 +53,10 @@ cc_library(
     ],
     copts = tsl_copts(),
     deps = [
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = 1,
 )

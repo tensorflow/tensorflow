@@ -90,7 +90,7 @@ const absl::flat_hash_set<std::string>& DevicePropagationOpList() {
   return *op_list;
 }
 
-bool IsPropagatableDevice(StringPiece device_string) {
+bool IsPropagatableDevice(absl::string_view device_string) {
   DeviceNameUtils::ParsedName device;
   return DeviceNameUtils::ParseFullName(device_string, &device) &&
          device.type == DEVICE_TPU;
