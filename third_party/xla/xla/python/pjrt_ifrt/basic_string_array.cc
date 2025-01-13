@@ -367,14 +367,12 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  // Some user code paths (e.g.: through JAX) may not correctly set the
-  // `is_fully_replicated` flag when they are using ConcreteEvenSharding. If
-  // and when that causes a problem, we should investigate a way to actually
-  // looking into the sharding to determine if it is a fully replicated
-  // sharding.
-  if (!sharding_->IsFullyReplicated()) {
-    return absl::FailedPreconditionError("This array is not fully replicated");
-  }
+  // Consider a check here to make sure that the first shard contains the full
+  // array - i.e., this indeed is a fully replicated array. Checking the shading
+  // object may not be sufficient since currently IFRT users (e.g., JAX) can
+  // sometimes use ConcreteSharding even for single device arrays, and
+  // ConcreteSharding is currently hardcoded to be non-fully-replicated.
+
   struct StringStore {  // Data (strings) for a single shard.
     void CopyFrom(absl::Span<const absl::Cord> input_buffer) {
       strings.reserve(input_buffer.size());
