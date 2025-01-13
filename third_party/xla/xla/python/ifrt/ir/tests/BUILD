@@ -51,6 +51,7 @@ xla_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
