@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -61,6 +61,8 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -75,8 +77,6 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
@@ -84,8 +84,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 namespace {
 
 using llvm::SmallVector;
@@ -1481,8 +1480,8 @@ ValueRange EmitLoopNestImpl(
                 ValueRange symbol_values,
                 ValueRange iter_args) -> scf::ValueVector {
     ImplicitLocOpBuilder nested_b(loc, nested_builder);
-    auto is_in_bounds = mlir_converter::CheckConstraints(
-        indexing_map, dim_values, symbol_values, nested_b);
+    auto is_in_bounds =
+        CheckConstraints(indexing_map, dim_values, symbol_values, nested_b);
     auto if_op = nested_b.create<scf::IfOp>(
         is_in_bounds,
         [&](OpBuilder& then_builder, Location then_loc) -> void {
@@ -1701,6 +1700,5 @@ SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
   return mapped_results;
 }
 
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

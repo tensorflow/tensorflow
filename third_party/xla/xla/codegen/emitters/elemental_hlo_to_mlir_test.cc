@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 
 #include <functional>
 #include <string>
@@ -38,13 +38,13 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
@@ -53,8 +53,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 namespace {
 
 using ::testing::HasSubstr;
@@ -1802,6 +1801,5 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
 }
 
 }  // namespace
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

@@ -45,6 +45,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -52,9 +55,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -75,6 +75,10 @@ namespace scf = ::mlir::scf;
 namespace vector = ::mlir::vector;
 namespace tensor = ::mlir::tensor;
 
+using emitters::CallTargetProvider;
+using emitters::EmitXlaLoopOp;
+using emitters::PartitionedComputations;
+using emitters::ProvideParameter;
 using llvm::APFloat;
 using llvm::APInt;
 using llvm::SmallVector;
@@ -92,10 +96,6 @@ using mlir::ValueRange;
 using mlir::VectorType;
 using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
-using mlir_converter::CallTargetProvider;
-using mlir_converter::EmitXlaLoopOp;
-using mlir_converter::PartitionedComputations;
-using mlir_converter::ProvideParameter;
 using primitive_util::IsUnsignedIntegralType;
 
 constexpr int64_t kNumWarpsPerBlock = 4;
@@ -310,8 +310,8 @@ class EmitterHelper {
 
   const ScatterDescription* description_;
   FuncOp entry_function_;
-  const mlir_converter::CallTargetProvider* call_targets_;
-  const mlir_converter::PartitionedComputation* root_computation_;
+  const emitters::CallTargetProvider* call_targets_;
+  const emitters::PartitionedComputation* root_computation_;
 };
 
 SmallVector<Value, 4> EmitterHelper::ExtractOffsets(ImplicitLocOpBuilder& b,
@@ -340,15 +340,15 @@ Value EmitterHelper::EmitScatterComputation(ImplicitLocOpBuilder& b,
   FuncOp reducer = GetReducer();
   if (description_->scatter->unique_indices()) {
     auto operand_elem = GetOperandElement(b, indices);
-    auto reduced_val = mlir_converter::InlineBlock(
-        b, reducer.getBody().front(), {operand_elem, update_elem})[0];
+    auto reduced_val = emitters::InlineBlock(b, reducer.getBody().front(),
+                                             {operand_elem, update_elem})[0];
     return b.create<tensor::InsertOp>(reduced_val, output_tensor, indices);
   }
   auto atomic_rmw = b.create<AtomicRMWOp>(output_tensor, indices);
   OpBuilder body_b = atomic_rmw.getBodyBuilder();
-  auto reduced_val = mlir_converter::InlineBlock(
-      body_b, reducer.getBody().front(),
-      {atomic_rmw.getCurrentValue(), update_elem})[0];
+  auto reduced_val =
+      emitters::InlineBlock(body_b, reducer.getBody().front(),
+                            {atomic_rmw.getCurrentValue(), update_elem})[0];
   body_b.create<xla::YieldOp>(reducer->getLoc(), reduced_val);
   return atomic_rmw->getResult(0);
 }
@@ -432,12 +432,11 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
   return map;
 }
 
-std::vector<mlir_converter::EpilogueSpecification>
-MlirScatterFusion::GetEpilogues(const HloFusionInstruction& fusion,
-                                MLIRContext* mlir_context) const {
+std::vector<emitters::EpilogueSpecification> MlirScatterFusion::GetEpilogues(
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
-  return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+  return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &analysis_.fusion_hero(0).instruction(),
       &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
@@ -523,8 +522,8 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
       updates_map.GetDimVars(),
       /*range_vars = */ {}, /*rt vars = */ {});
   Value thread_id_to_index_id_value =
-      mlir_converter::ApplyIndexing(thread_id_to_update_id_map,
-                                    thread_and_block_ids, {}, b)
+      emitters::ApplyIndexing(thread_id_to_update_id_map, thread_and_block_ids,
+                              {}, b)
           .front();
 
   SmallVector<Value, 4> update_offsets =
@@ -680,8 +679,7 @@ DenseElementsAttr GetShapedZeroConstantAttr(VectorType vector_type) {
 
 Value ScatterWithDistributedIndices::InitializeAccumulator(
     ImplicitLocOpBuilder& b) const {
-  auto elem_type =
-      mlir_converter::PrimitiveTypeToMlirType(description_.elem_type, b);
+  auto elem_type = emitters::PrimitiveTypeToMlirType(description_.elem_type, b);
   auto num_elements_per_slice = Product(description_.slice_shape);
   auto update_iterations_per_thread = CeilOfRatio(
       num_elements_per_slice, num_warps_per_slice_ * warp_size_ * vector_size_);
@@ -816,7 +814,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
             auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
             Value accumulator_elem = update_loop_b.create<vector::ExtractOp>(
                 acc_arg, acc_ind_opfold);
-            auto reduced_val = mlir_converter::InlineBlock(
+            auto reduced_val = emitters::InlineBlock(
                 update_loop_b, helper.GetReducer().getBody().front(),
                 {accumulator_elem, update_elem})[0];
             return update_loop_b

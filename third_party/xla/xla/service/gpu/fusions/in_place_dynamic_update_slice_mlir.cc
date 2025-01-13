@@ -31,6 +31,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -38,8 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/xla_data.pb.h"
@@ -48,6 +48,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using emitters::ApplyIndexing;
+using emitters::CallTargetProvider;
+using emitters::ClampIndex;
+using emitters::PartitionedComputations;
+using emitters::ProvideParameter;
 using llvm::SmallVector;
 using mlir::ImplicitLocOpBuilder;
 using mlir::Value;
@@ -55,11 +60,6 @@ using mlir::ValueRange;
 using mlir::arith::AddIOp;
 using mlir::func::ReturnOp;
 using mlir::tensor::InsertOp;
-using mlir_converter::ApplyIndexing;
-using mlir_converter::CallTargetProvider;
-using mlir_converter::ClampIndex;
-using mlir_converter::PartitionedComputations;
-using mlir_converter::ProvideParameter;
 
 constexpr int kDUSUpdateIndex = 1;
 
@@ -89,17 +89,16 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
                                        update_shape, indexing_context);
 }
 
-std::vector<mlir_converter::EpilogueSpecification>
+std::vector<emitters::EpilogueSpecification>
 MlirInPlaceDynamicUpdateSliceFusion::GetEpilogues(
     const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
   // We don't actually support epilogues for DUS, but this is how we tell
   // the base class that we don't want it to generate code for the DUS.
-  std::vector<mlir_converter::EpilogueSpecification> epilogues;
+  std::vector<emitters::EpilogueSpecification> epilogues;
   for (const auto& [dus_op, root] :
        llvm::zip(dus_ops_, analysis_.fusion_roots())) {
-    epilogues.push_back(
-        mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-            &dus_op.instruction(), &root.instruction(), mlir_context));
+    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
+        &dus_op.instruction(), &root.instruction(), mlir_context));
   }
   return epilogues;
 }
@@ -126,7 +125,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  auto result_tensors = mlir_converter::EmitXlaLoopOp(
+  auto result_tensors = emitters::EmitXlaLoopOp(
       b, thread_and_block_ids, output_tensor_args, indexing,
       [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
           ValueRange input_indices,

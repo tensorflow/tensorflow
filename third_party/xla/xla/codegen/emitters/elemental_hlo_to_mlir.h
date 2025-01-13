@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_ELEMENTAL_HLO_TO_MLIR_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_ELEMENTAL_HLO_TO_MLIR_H_
+#ifndef XLA_CODEGEN_EMITTERS_ELEMENTAL_HLO_TO_MLIR_H_
+#define XLA_CODEGEN_EMITTERS_ELEMENTAL_HLO_TO_MLIR_H_
 
 #include <cstdint>
 #include <functional>
@@ -30,16 +30,15 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 
 using OperandProvider =
     std::function<absl::StatusOr<llvm::SmallVector<mlir::Value, 1>>(
@@ -144,8 +143,7 @@ void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
                                   llvm::SmallVectorImpl<mlir::Value>* ubs,
                                   llvm::SmallVectorImpl<mlir::Value>* steps);
 
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_ELEMENTAL_HLO_TO_MLIR_H_
+#endif  // XLA_CODEGEN_EMITTERS_ELEMENTAL_HLO_TO_MLIR_H_

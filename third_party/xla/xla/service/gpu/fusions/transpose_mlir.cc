@@ -41,6 +41,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -49,9 +52,6 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -64,6 +64,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using emitters::ApplyIndexing;
 using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::ImplicitLocOpBuilder;
@@ -73,7 +74,6 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
-using mlir_converter::ApplyIndexing;
 
 constexpr int kNumRows = 4;
 constexpr int kNumThreadsPerBlock = 128;
@@ -224,8 +224,8 @@ IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
 MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
-    const mlir_converter::PartitionedComputation& root_computation,
-    const mlir_converter::CallTargetProvider& call_target_provider,
+    const emitters::PartitionedComputation& root_computation,
+    const emitters::CallTargetProvider& call_target_provider,
     ValueRange output_args, mlir::ValueRange thread_and_block_ids) const {
   MLIRContext* ctx = builder.getContext();
   auto shmem_tensor_size = block_sizes_;
@@ -265,7 +265,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
                                          operand_shape.dimensions().end());
   SmallVector<Value> shmem_tensors;
   for (auto* transpose : shmem_transposes_) {
-    auto elem_type = mlir_converter::PrimitiveTypeToMlirType(
+    auto elem_type = emitters::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
     auto shmem = builder.create<AllocateSharedOp>(
         RankedTensorType::get(shmem_tensor_size, elem_type));
@@ -309,7 +309,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       side_output_indices.push_back(input_indices(root));
-      ValueRange param_values = mlir_converter::ProvideParameter(
+      ValueRange param_values = emitters::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
           nested_b);
@@ -327,9 +327,9 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   };
   mlir::ValueRange side_output_vector;
   if (!side_output_inits.empty()) {
-    side_output_vector = mlir_converter::EmitXlaLoopOp(
-        builder, thread_and_block_ids, side_output_inits, indexing,
-        body_builder);
+    side_output_vector =
+        emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
+                                side_output_inits, indexing, body_builder);
   }
 
   WriteResult result;
@@ -348,14 +348,14 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
 void MlirTransposeFusion::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
-    const mlir_converter::PartitionedComputations& computations,
+    const emitters::PartitionedComputations& computations,
     const WriteResult& written, mlir::ValueRange thread_and_block_ids) const {
   auto* mlir_context = builder.getContext();
   auto output_indexing = *ComputeThreadIdToOutputIndexing(
       shmem_transpose_root_indices_[0], mlir_context);
   auto shmem_read_indexing =
       GetSharedMemoryIndexing(/*read=*/true, mlir_context);
-  auto result_tensors = mlir_converter::EmitXlaLoopOp(
+  auto result_tensors = emitters::EmitXlaLoopOp(
       builder, thread_and_block_ids, written.updated_outputs, output_indexing,
       [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
           ValueRange map_results,
@@ -390,25 +390,23 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
   builder.create<ReturnOp>(result_tensors);
 }
 
-std::vector<mlir_converter::EpilogueSpecification>
-MlirTransposeFusion::GetEpilogues(const HloFusionInstruction& fusion,
-                                  MLIRContext* mlir_context) const {
-  std::vector<mlir_converter::EpilogueSpecification> epilogues{
+std::vector<emitters::EpilogueSpecification> MlirTransposeFusion::GetEpilogues(
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
+  std::vector<emitters::EpilogueSpecification> epilogues{
       GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
                                    shmem_transpose_roots_, mlir_context)};
   // Add empty epilogues for the side outputs. This ensures their roots don't
   // get "fused" into the tuple function.
   for (const auto* root : side_output_roots_) {
-    epilogues.push_back(
-        mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-            root, root, mlir_context));
+    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
+        root, root, mlir_context));
   }
   return epilogues;
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(
-    const mlir_converter::PartitionedComputations& computations,
-    const mlir_converter::CallTargetProvider& call_targets,
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   const auto& root_computation = computations.FindPartitionedComputation(

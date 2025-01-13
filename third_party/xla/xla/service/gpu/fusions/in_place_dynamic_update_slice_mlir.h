@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -68,12 +68,12 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
 
  protected:
   absl::Status EmitEntryFunction(
-      const mlir_converter::PartitionedComputations& computations,
-      const mlir_converter::CallTargetProvider& call_targets,
+      const emitters::PartitionedComputations& computations,
+      const emitters::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
+  std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 

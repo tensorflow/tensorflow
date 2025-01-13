@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 
 #include <cstdint>
 #include <functional>
@@ -44,19 +44,18 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 namespace {
 
 int Arity(const Shape& shape) {
@@ -443,6 +442,5 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   return func_op;
 }
 
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

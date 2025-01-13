@@ -33,14 +33,14 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -100,8 +100,8 @@ LaunchDimensions MlirLoopFusion::launch_dimensions() const {
 }
 
 absl::Status MlirLoopFusion::EmitEntryFunction(
-    const mlir_converter::PartitionedComputations& computations,
-    const mlir_converter::CallTargetProvider& call_targets,
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
@@ -143,7 +143,7 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     result_tensors.reserve(output_tensor_args.size());
     for (auto [root_shape, tensor, value] :
          llvm::zip(result_shapes, output_tensors, result_scalars)) {
-      llvm::SmallVector<Value> output_indices = mlir_converter::ApplyIndexing(
+      llvm::SmallVector<Value> output_indices = emitters::ApplyIndexing(
           GetBitcastMap(*result_shapes.front(), *root_shape,
                         nested_b.getContext()),
           map_results, {}, nested_b);
@@ -153,9 +153,9 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     return result_tensors;
   };
 
-  builder.create<mlir::func::ReturnOp>(mlir_converter::EmitXlaLoopOp(
-      builder, thread_and_block_ids, output_tensor_args, *indexing,
-      body_builder));
+  builder.create<mlir::func::ReturnOp>(
+      emitters::EmitXlaLoopOp(builder, thread_and_block_ids, output_tensor_args,
+                              *indexing, body_builder));
 
   return absl::OkStatus();
 }

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_TYPE_UTIL_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_TYPE_UTIL_H_
+#ifndef XLA_CODEGEN_EMITTERS_TYPE_UTIL_H_
+#define XLA_CODEGEN_EMITTERS_TYPE_UTIL_H_
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
@@ -22,8 +22,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 
 // Converts an XLA tensor to an MLIR ranked tensor. The layout is stored in the
 // encoding attribute, if it is not the default layout. `shape` must be an
@@ -42,8 +41,7 @@ mlir::Type PrimitiveTypeToMlirTypeWithSign(PrimitiveType type,
 llvm::SmallVector<mlir::Type> ShapeToMlirTypes(const Shape& shape,
                                                mlir::OpBuilder& b);
 
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_TYPE_UTIL_H_
+#endif  // XLA_CODEGEN_EMITTERS_TYPE_UTIL_H_

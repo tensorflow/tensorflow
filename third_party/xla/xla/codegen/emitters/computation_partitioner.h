@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
+#ifndef XLA_CODEGEN_EMITTERS_COMPUTATION_PARTITIONER_H_
+#define XLA_CODEGEN_EMITTERS_COMPUTATION_PARTITIONER_H_
 
 #include <cstdint>
 #include <functional>
@@ -33,8 +33,7 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 
 struct EpilogueSpecification {
   // Creates an epilogue with output indices matching the given root's shape.
@@ -206,8 +205,7 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
     const PartitionedComputation::Subgraph& subgraph,
     mlir::ImplicitLocOpBuilder& b);
 
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
+#endif  // XLA_CODEGEN_EMITTERS_COMPUTATION_PARTITIONER_H_

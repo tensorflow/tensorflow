@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/transforms/passes.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -97,7 +98,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/triton/compilation_pipeline.h"
 #include "xla/service/gpu/fusions/triton/emitter_helpers.h"
 #include "xla/service/gpu/fusions/triton/passes.h"
@@ -422,9 +422,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
                       tiled_iota.tile_offsets_indexing());
 
   auto iota_dim_offset = b.create<arith::IndexCastUIOp>(
-      b.getI32Type(), mlir_converter::ApplyIndexing(
-                          tile_offsets_indexing, /*dims=*/tile_multi_index,
-                          /*symbols=*/{}, b)[iota_dim]);
+      b.getI32Type(),
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b)[iota_dim]);
 
   // First, stride as needed between the iota components.
   Value range = b.create<arith::MulIOp>(
@@ -809,9 +809,9 @@ absl::StatusOr<Value> ComputeBasePtrOffset(
   compose_indexing_maps.Simplify();
 
   return b.create<arith::IndexCastUIOp>(
-      b.getI64Type(), mlir_converter::ApplyIndexing(compose_indexing_maps,
-                                                    /*dims=*/tile_multi_index,
-                                                    /*symbols=*/{}, b)[0]);
+      b.getI64Type(), emitters::ApplyIndexing(compose_indexing_maps,
+                                              /*dims=*/tile_multi_index,
+                                              /*symbols=*/{}, b)[0]);
 }
 
 }  // namespace
@@ -835,9 +835,9 @@ SmallVector<Value, 3> ComputeDelinearizedTileIndex(
       /*dim_upper_bounds=*/{Product(num_output_tiles_per_dim)},
       /*symbol_upper_bounds=*/{});
 
-  return mlir_converter::ApplyIndexing(program_id_to_root_tile_offset,
-                                       /*dims=*/pid,
-                                       /*symbols=*/{}, b);
+  return emitters::ApplyIndexing(program_id_to_root_tile_offset,
+                                 /*dims=*/pid,
+                                 /*symbols=*/{}, b);
 }
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
@@ -863,9 +863,9 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                       tiled_hlo.tile_offsets_indexing());
   auto tile_offsets_as_indices =
-      mlir_converter::ApplyIndexing(tile_offsets_indexing,
-                                    /*dims=*/tile_multi_index,
-                                    /*symbols=*/{}, b);
+      emitters::ApplyIndexing(tile_offsets_indexing,
+                              /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b);
 
   // Triton requires that all block dimensions are a power of 2.
   SmallVector<int64_t> padded_tile_sizes =

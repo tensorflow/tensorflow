@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/type_util.h"
+#include "xla/codegen/emitters/type_util.h"
 
 #include <string>
 
@@ -28,8 +28,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace gpu {
-namespace mlir_converter {
+namespace emitters {
 namespace {
 
 using ::testing::ElementsAre;
@@ -92,6 +91,5 @@ TEST(ShapeTest, ConvertsTuple) {
 }
 
 }  // namespace
-}  // namespace mlir_converter
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
