@@ -159,7 +159,7 @@ class NcclCollectiveThunk : public Thunk {
       const Thunk::CollectiveExecuteParams& params);
 
   absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequests& resource_requests) override;
+                       ResourceRequestsInterface& resource_requests) override;
 
   absl::Status Initialize(const InitializeParams& params) override;
 

@@ -87,8 +87,8 @@ DynamicSliceThunk::DynamicSliceThunk(
   }
 }
 
-absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params,
-                                        ResourceRequests& resource_requests) {
+absl::Status DynamicSliceThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (SliceDef& slice : slices_) {
     if (slice.offsets.has_value()) {
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());

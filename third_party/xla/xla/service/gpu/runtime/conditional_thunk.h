@@ -60,7 +60,7 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
   absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequests& resource_requests) override;
+                       ResourceRequestsInterface& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

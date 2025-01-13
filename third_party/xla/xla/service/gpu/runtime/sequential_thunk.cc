@@ -59,8 +59,8 @@ std::string SequentialThunk::ToString(int indent) const {
   return result;
 }
 
-absl::Status SequentialThunk::Prepare(const PrepareParams& params,
-                                      ResourceRequests& resource_requests) {
+absl::Status SequentialThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }

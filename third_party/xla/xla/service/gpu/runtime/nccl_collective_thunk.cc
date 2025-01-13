@@ -374,8 +374,8 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
   return event->second.get();
 }
 
-absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
-                                          ResourceRequests& resource_requests) {
+absl::Status NcclCollectiveThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,

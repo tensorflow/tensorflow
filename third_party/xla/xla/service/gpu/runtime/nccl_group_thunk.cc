@@ -45,8 +45,8 @@ NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
     thunks_.emplace_back(std::move(thunk));
   }
 }
-absl::Status NcclGroupThunk::Prepare(const PrepareParams& params,
-                                     ResourceRequests& resource_requests) {
+absl::Status NcclGroupThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }

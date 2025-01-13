@@ -111,8 +111,8 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
   return should_update;
 }
 
-absl::Status CommandBufferThunk::Prepare(const PrepareParams& params,
-                                         ResourceRequests& resource_requests) {
+absl::Status CommandBufferThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();

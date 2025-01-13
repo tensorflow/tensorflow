@@ -38,7 +38,7 @@ class NcclGroupThunk : public Thunk {
                  std::vector<std::unique_ptr<Thunk>> thunks,
                  AsyncStreamKind stream_kind);
   absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequests& resource_requests) override;
+                       ResourceRequestsInterface& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events() const {

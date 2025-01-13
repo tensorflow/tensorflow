@@ -46,8 +46,8 @@ ConditionalThunk::ConditionalThunk(
       config_(std::move(config)),
       branch_index_buffer_index_(branch_index_buffer_index) {}
 
-absl::Status ConditionalThunk::Prepare(const PrepareParams& params,
-                                       ResourceRequests& resource_requests) {
+absl::Status ConditionalThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   if (config_.branch_index_is_bool) {
     TF_RET_CHECK(config_.branch_thunks.size() == 2);
   } else {

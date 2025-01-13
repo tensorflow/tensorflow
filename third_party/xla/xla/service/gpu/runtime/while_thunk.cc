@@ -74,7 +74,7 @@ WhileThunk::WhileThunk(
       trip_count_(trip_count) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params,
-                                 ResourceRequests& resource_requests) {
+                                 ResourceRequestsInterface& resource_requests) {
   TF_RETURN_IF_ERROR(
       condition_thunk_sequence_->Prepare(params, resource_requests));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));

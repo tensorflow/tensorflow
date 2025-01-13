@@ -217,8 +217,8 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   return Call(handler, call_frame, options, stage);
 }
 
-absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
-                                      ResourceRequests& resource_requests) {
+absl::Status CustomCallThunk::Prepare(
+    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   if (!bundle_ || !bundle_->prepare) {
     return absl::OkStatus();
   }

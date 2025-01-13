@@ -225,7 +225,7 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
 
 absl::Status CommandBufferCmdSequence::Prepare(
     const Thunk::PrepareParams& params,
-    Thunk::ResourceRequests& resource_requests) {
+    Thunk::ResourceRequestsInterface& resource_requests) {
   for (auto& command : commands_) {
     TF_RETURN_IF_ERROR(command.cmd->Prepare(params, resource_requests));
   }
@@ -1592,7 +1592,7 @@ absl::Status CollectiveCmd::BarrierIfAsync(
 
 absl::Status CollectiveCmd::Prepare(
     const Thunk::PrepareParams& params,
-    Thunk::ResourceRequests& resource_requests) {
+    Thunk::ResourceRequestsInterface& resource_requests) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
@@ -2021,7 +2021,7 @@ absl::Status DynamicSliceFusionCmd::Initialize(
 
 absl::Status DynamicSliceFusionCmd::Prepare(
     const Thunk::PrepareParams& params,
-    Thunk::ResourceRequests& resource_requests) {
+    Thunk::ResourceRequestsInterface& resource_requests) {
   for (DynamicSliceThunk::SliceDef& slice : slices_) {
     if (slice.offsets.has_value()) {
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
