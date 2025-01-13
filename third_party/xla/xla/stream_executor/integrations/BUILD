@@ -44,6 +44,7 @@ cc_library(
     srcs = ["tf_allocator_adapter.cc"],
     hdrs = ["tf_allocator_adapter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:memory_allocation",
