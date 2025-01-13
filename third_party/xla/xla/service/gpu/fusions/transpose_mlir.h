@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -51,7 +51,7 @@ namespace gpu {
 
 // This is similar to the following CUDA algorithm in TensorFlow:
 // https://goo.gl/MStRV6.
-class MlirTransposeFusion : public MlirFusionEmitterBase {
+class MlirTransposeFusion : public EmitterBase {
  public:
   explicit MlirTransposeFusion(const HloFusionAnalysis& analysis);
   LaunchDimensions launch_dimensions() const override;

@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/util.h"
@@ -34,7 +34,7 @@ namespace xla {
 namespace gpu {
 
 // Generates code for input-fusible slices. Lowers to LLVM via MLIR.
-class MlirInputSlicesFusion : public MlirFusionEmitterBase {
+class MlirInputSlicesFusion : public EmitterBase {
  public:
   explicit MlirInputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),

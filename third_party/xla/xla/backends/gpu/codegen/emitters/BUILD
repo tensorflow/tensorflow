@@ -14,9 +14,9 @@ package_group(
 )
 
 cc_library(
-    name = "mlir_fusion_emitter",
-    srcs = ["mlir_fusion_emitter.cc"],
-    hdrs = ["mlir_fusion_emitter.h"],
+    name = "emitter_base",
+    srcs = ["emitter_base.cc"],
+    hdrs = ["emitter_base.h"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -95,10 +95,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "mlir_fusion_emitter_test",
-    srcs = ["mlir_fusion_emitter_test.cc"],
+    name = "emitter_base_test",
+    srcs = ["emitter_base_test.cc"],
     deps = [
-        ":mlir_fusion_emitter",
+        ":emitter_base",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",

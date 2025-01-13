@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -44,7 +44,7 @@ namespace gpu {
 //    dynamic-update-slice ops
 //
 // Lowers to LLVM via MLIR.
-class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
+class MlirInPlaceDynamicUpdateSliceFusion : public EmitterBase {
  public:
   explicit MlirInPlaceDynamicUpdateSliceFusion(
       const HloFusionAnalysis& analysis)

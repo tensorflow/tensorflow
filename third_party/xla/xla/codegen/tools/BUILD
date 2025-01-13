@@ -21,12 +21,12 @@ xla_cc_binary(
     deps = [
         "//xla/backends/cpu/codegen/ir:xla_cpu",
         "//xla/backends/cpu/codegen/transforms:passes",
+        "//xla/backends/gpu/codegen/emitters:emitter_base",
         "//xla/backends/gpu/codegen/ir:xla_gpu",
         "//xla/backends/gpu/codegen/transforms:passes",
         "//xla/codegen/ir:xla",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",

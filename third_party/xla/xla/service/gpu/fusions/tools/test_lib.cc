@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -82,7 +83,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
   return module;
 }
 
-absl::StatusOr<std::unique_ptr<EmitterData>> GetMlirFusionEmitter(
+absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
     const HloModule& module) {
   auto data = std::make_unique<EmitterData>();
   data->fusion = DynCast<HloFusionInstruction>(
@@ -92,14 +93,13 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetMlirFusionEmitter(
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  auto emitter = GetFusionEmitter(info);
+  auto fusion_emitter = GetFusionEmitter(info);
 
-  auto mlir_emitter = dynamic_cast<MlirFusionEmitterBase*>(emitter.get());
-  TF_RET_CHECK(mlir_emitter != nullptr)
-      << "Expected emitter to be an MlirFusionEmitter";
+  auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
+  TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
 
-  emitter.release();
-  data->emitter.reset(mlir_emitter);
+  fusion_emitter.release();
+  data->emitter.reset(emitter);
   return data;
 }
 

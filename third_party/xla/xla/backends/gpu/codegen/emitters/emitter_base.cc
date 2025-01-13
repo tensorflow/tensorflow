@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
 #include <cstdint>
 #include <functional>
@@ -197,8 +197,8 @@ bool Needs64BitIndices(const HloComputation* computation) {
 
 }  // namespace
 
-Value MlirFusionEmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
-                                         int dim) const {
+Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
+                               int dim) const {
   const auto& counts = launch_dimensions().block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto block_id = builder.create<mlir::gpu::BlockIdOp>(
@@ -207,8 +207,8 @@ Value MlirFusionEmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
   return block_id;
 }
 
-Value MlirFusionEmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
-                                          int dim) const {
+Value EmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
+                                int dim) const {
   const auto& counts = launch_dimensions().thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto thread_id = builder.create<mlir::gpu::ThreadIdOp>(
@@ -217,14 +217,14 @@ Value MlirFusionEmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
   return thread_id;
 }
 
-llvm::SmallVector<Value> MlirFusionEmitterBase::EmitThreadAndBlockIds(
+llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
     mlir::ImplicitLocOpBuilder& builder) const {
   auto& b = builder;
   return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
 }
 
-absl::StatusOr<FusionEmissionResult> MlirFusionEmitterBase::Emit(
+absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
@@ -287,8 +287,7 @@ absl::StatusOr<FusionEmissionResult> MlirFusionEmitterBase::Emit(
   return result;
 }
 
-absl::StatusOr<std::unique_ptr<llvm::Module>>
-MlirFusionEmitterBase::CreateLLVMModule(
+absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
@@ -323,8 +322,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   return llvm_module;
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-MlirFusionEmitterBase::CreateMLIRModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment,
@@ -416,8 +414,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
   return module;
 }
 
-emitters::EpilogueSpecification
-MlirFusionEmitterBase::GetEpilogueForOutputIndexing(
+emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
     const std::vector<const HloInstruction*>& roots,
@@ -460,9 +457,8 @@ MlirFusionEmitterBase::GetEpilogueForOutputIndexing(
   return result;
 }
 
-absl::Status MlirFusionEmitterBase::EmitMlir(
-    mlir::ModuleOp module, FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
+absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
+                                   const HloFusionInstruction& fusion) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
       GetEpilogues(fusion, module->getContext());
   emitters::PartitionedComputations computations(
@@ -521,7 +517,7 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
 }
 
 absl::flat_hash_map<const HloInstruction*, ValueRange>
-MlirFusionEmitterBase::EmitEpilogue(
+EmitterBase::EmitEpilogue(
     int epilogue_index, const emitters::PartitionedComputations& computations,
     FuncOp entry_fn,
     const absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>&
@@ -556,7 +552,7 @@ MlirFusionEmitterBase::EmitEpilogue(
   return results_per_root;
 }
 
-absl::Status MlirFusionEmitterBase::RunPassPipeline(
+absl::Status EmitterBase::RunPassPipeline(
     mlir::ModuleOp module, mlir::PassManager& pm,
     mlir::interpreter::MlirCompilationTrace* trace) const {
   if (VLOG_IS_ON(5)) {

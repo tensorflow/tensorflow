@@ -108,7 +108,7 @@ std::pair<std::string, std::vector<int64_t>> ParseHeroAndIds(
 TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto context = GetMlirContextForTest();
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetMlirFusionEmitter(*module));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
@@ -130,7 +130,7 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
 TEST_F(CorrectnessTest, OutputIndexingIsBijection) {
   auto context = GetMlirContextForTest();
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetMlirFusionEmitter(*module));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module));
   for (const auto& hero_name : flags.bijection_outputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));

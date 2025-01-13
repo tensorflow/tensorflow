@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
 #include <cstdint>
 #include <optional>
@@ -60,7 +60,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
+class DummyCopyEmitter : public EmitterBase {
  public:
   LaunchDimensions launch_dimensions() const final { return {1, 100}; }
 
@@ -92,9 +92,9 @@ class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
   }
 };
 
-class MlirFusionEmitterTest : public HloTestBase {
+class EmitterBaseTest : public HloTestBase {
  protected:
-  MlirFusionEmitterTest() {
+  EmitterBaseTest() {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                          mlir::complex::ComplexDialect, mlir::math::MathDialect,
@@ -125,9 +125,9 @@ constexpr absl::string_view kModule = R"(
       ROOT fusion = f32[100] fusion(%p0), kind=kLoop, calls=fused_computation
     })";
 
-TEST_F(MlirFusionEmitterTest, CreateMlirModule) {
+TEST_F(EmitterBaseTest, CreateMlirModule) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
-  DummyCopyFusionEmitter emitter;
+  DummyCopyEmitter emitter;
   TF_ASSERT_OK_AND_ASSIGN(
       auto mlir_module,
       emitter.CreateMLIRModule(
@@ -154,11 +154,11 @@ TEST_F(MlirFusionEmitterTest, CreateMlirModule) {
   EXPECT_TRUE(filecheck_result);
 }
 
-TEST_F(MlirFusionEmitterTest, CreateLLVMModule) {
+TEST_F(EmitterBaseTest, CreateLLVMModule) {
   llvm::LLVMContext llvm_context;
 
   auto module = ParseAndReturnVerifiedModule(kModule).value();
-  DummyCopyFusionEmitter emitter;
+  DummyCopyEmitter emitter;
   TF_ASSERT_OK_AND_ASSIGN(
       auto llvm_module,
       emitter.CreateLLVMModule(

@@ -24,11 +24,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class MlirConcatenateFusion : public MlirFusionEmitterBase {
+class MlirConcatenateFusion : public EmitterBase {
  public:
   explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis);
 

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
-#define XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_EMITTER_BASE_H_
+#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_EMITTER_BASE_H_
 
 #include <functional>
 #include <memory>
@@ -49,7 +49,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class MlirFusionEmitterBase : public KernelFusionInterface {
+class EmitterBase : public KernelFusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
@@ -137,4 +137,4 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_EMITTER_BASE_H_

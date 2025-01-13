@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -51,7 +51,7 @@ using HloValueMap =
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
-class MlirReductionFusion : public MlirFusionEmitterBase {
+class MlirReductionFusion : public EmitterBase {
  public:
   explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
 
