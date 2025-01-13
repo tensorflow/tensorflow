@@ -785,7 +785,9 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         options.elem_size_in_bytes = primitive_util::ByteWidth(type);
         options.dims = dims;
         options.permutation = permutation;
-        options.input_layout = TransposePlan::Striding{*byte_strides};
+        if (byte_strides) {
+          options.input_layout = TransposePlan::Striding{*byte_strides};
+        }
         absl::MutexLock lock(transpose_mu);
         TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
       }
