@@ -37,14 +37,14 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -94,10 +94,10 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          HloPredicate instruction_can_change_layout_func)
-    : HloRunnerAgnosticTestBase(
+    : HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase>(
+          /*reference_runner=*/GetHloRunnerForReference(reference_platform)
+              .value(),
           /*test_runner=*/GetHloRunnerForTest(test_platform).value(),
-          /*reference_runner=*/
-          GetHloRunnerForReference(reference_platform).value(),
           verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier),
       test_platform_(test_platform) {}
 

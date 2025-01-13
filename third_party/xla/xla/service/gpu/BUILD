@@ -2594,9 +2594,10 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

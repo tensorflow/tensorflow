@@ -21,14 +21,12 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -52,21 +50,12 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
       *std::move(client), device_shape_representation_fn, device_shape_size_fn);
 }
 
-std::unique_ptr<HloRunnerInterface> GetHloRunnerForReference() {
-  return std::make_unique<HloRunnerPjRt>(
-      std::make_unique<InterpreterClient>(),
-      InterpreterClient::DeviceShapeRepresentation,
-      InterpreterClient::ShapeSizeBytes,
-      /*use_parameter_layout_on_device=*/true);
-}
-
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(GetHloRunnerForTest(),
-                                GetHloRunnerForReference(),
-                                options.verifier_layout_sensitive,
-                                options.allow_mixed_precision_in_hlo_verifier,
-                                options.instruction_can_change_layout_func) {}
+    : HloPjRtInterpreterReferenceMixin<HloRunnerAgnosticTestBase>(
+          GetHloRunnerForTest(), options.verifier_layout_sensitive,
+          options.allow_mixed_precision_in_hlo_verifier,
+          options.instruction_can_change_layout_func) {}
 
 }  // namespace xla
