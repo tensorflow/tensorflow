@@ -4114,7 +4114,7 @@ absl::StatusOr<HloInstruction*> PartitionDotRemovingOutputPartialReplication(
 // in the operands and output, group the devices and recursively partition
 // the in-group dot.
 absl::StatusOr<HloInstruction*> PartitionDot(
-    const PartitionedHlo& lhs, const PartitionedHlo& raw_rhs,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
     const DotConvolutionDimsInfo& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
@@ -4127,12 +4127,6 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
     SpmdPartitioningVisitor* visitor) {
-  // If lhs' hlo and rhs' hlo are identical, make a copy for rhs.
-  const PartitionedHlo& rhs =
-      (lhs.hlo() == raw_rhs.hlo())
-          ? MakeACopyAndReturnItsPartitionedHlo(raw_rhs, b)
-          : raw_rhs;
-
   // Recursively partition on different types of dimensions.
 
   // Case 0: Try partition the purely spatially-partitioned convolution with
@@ -4306,8 +4300,14 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
-  auto& lhs = GetPartitionedHlo(hlo->operand(0));
-  auto& rhs = GetPartitionedHlo(hlo->operand(1));
+  PartitionedHlo& lhs = GetPartitionedHlo(hlo->operand(0));
+  PartitionedHlo& raw_rhs = GetPartitionedHlo(hlo->operand(1));
+  // If lhs and rhs are the same instruction, make a copy for rhs.
+  const PartitionedHlo& rhs =
+      (lhs.hlo() == raw_rhs.hlo())
+          ? MakeACopyAndReturnItsPartitionedHlo(raw_rhs, builder())
+          : raw_rhs;
+
   Window conv_window;
   if (hlo->opcode() == HloOpcode::kConvolution) {
     conv_window = hlo->window();
