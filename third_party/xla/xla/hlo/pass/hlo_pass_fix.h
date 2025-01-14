@@ -77,8 +77,8 @@ class HloPassFix : public Pass {
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
       if (iteration_count == kIterationLimit) {
-        LOG(WARNING) << "Unexpectedly high number of iterations in HLO passes, "
-                        "exiting fixed point loop.";
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
+                   "exiting fixed point loop.";
         // Return false in case this is fixed point is nested.
         return false;
       }
@@ -99,9 +99,9 @@ class HloPassFix : public Pass {
               << !run_state->changed_last_iteration.empty();
       run_state->IncrementIteration();
       if (run_state->iteration == kIterationLimit) {
-        LOG(WARNING) << "Unexpectedly high number of iterations in HLO passes '"
-                     << Pass::name() << "' for module '" << module->name()
-                     << "'. Exiting fixed point loop.";
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
+                << Pass::name() << "' for module '" << module->name()
+                << "'. Exiting fixed point loop.";
         // Clear changed and abort in case this is fixed point is nested.
         run_state->changed.clear();
         break;
