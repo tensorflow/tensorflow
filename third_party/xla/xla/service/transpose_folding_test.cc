@@ -559,5 +559,25 @@ ENTRY entry_computation {
   EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(TransposeFoldingTest, FoldTransposeWithBackendConfig) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldTransposeWithBackendConfig
+
+ENTRY entry_computation {
+  x = f32[7,2,7,3]{3,2,1,0} parameter(0)
+  y = f32[7,2,7,3]{3,2,1,0} parameter(1)
+  transpose = f32[7,3,7,2]{3,2,1,0} transpose(y), dimensions={0,3,2,1}
+  ROOT dot = f32[7,7,2,2]{3,2,1,0} dot(x, transpose), lhs_contracting_dims={3},
+            rhs_contracting_dims={1}, lhs_batch_dims={0,2}, rhs_batch_dims={0,2}, backend_config={"force_earliest_schedule":false}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_TRUE(
+      module->entry_computation()->root_instruction()->has_backend_config());
+}
+
 }  // namespace
 }  // namespace xla
