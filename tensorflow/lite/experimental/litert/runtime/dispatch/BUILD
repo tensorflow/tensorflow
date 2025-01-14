@@ -137,6 +137,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:QnnLiteRTDelegate",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",

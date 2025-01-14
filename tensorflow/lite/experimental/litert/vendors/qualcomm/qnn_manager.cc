@@ -1,3 +1,9 @@
+//==============================================================================
+//
+//  Copyright (c) Qualcomm Innovation Center, Inc.
+//  All Rights Reserved.
+//
+//==============================================================================
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,18 +29,19 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/htp_backend.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnLog.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 
 namespace litert::qnn {
 
@@ -89,6 +96,7 @@ absl::Span<const QnnSystemInterface_t*> LoadSystemProvidersFromLib(
 }  // namespace
 
 QnnManager::~QnnManager() {
+  if (htp_backend_) htp_backend_->Terminate();
   (void)FreeDevice();
   (void)FreeBackend();
   (void)FreeLogging();
@@ -243,9 +251,11 @@ LiteRtStatus QnnManager::GenerateContextBinary(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
-                              std::optional<std::string> shared_library_dir,
-                              std::optional<QnnHtpDevice_Arch_t> soc_model) {
+LiteRtStatus QnnManager::Init(
+    absl::Span<const QnnBackend_Config_t*> configs,
+    std::optional<std::string> shared_library_dir,
+    std::optional<QnnHtpDevice_Arch_t> soc_model,
+    const TfLiteQnnDelegateHtpBackendOptions* options) {
   if (shared_library_dir.has_value()) {
     // We must change the variable environment used to load DSP libraries.
     std::string new_adsp_library_path;
@@ -275,12 +285,15 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
           : kLibQnnSystemSo;
   LITERT_RETURN_STATUS_IF_NOT_OK(LoadSystemLib(lib_qnn_system_so_path));
   LITERT_RETURN_STATUS_IF_NOT_OK(ResolveSystemApi());
-
-  if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
-                                     QNN_LOG_LEVEL_INFO, &LogHandle());
-      status != QNN_SUCCESS) {
-    LITERT_LOG(LITERT_ERROR, "Failed to create QNN logger: %d", status);
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (options!=nullptr && options->log_level <= QNN_LOG_LEVEL_DEBUG &&
+      options->log_level >= QNN_LOG_LEVEL_ERROR) {
+    if (auto status = Api()->logCreate(
+            GetDefaultStdOutLogger(),
+            static_cast<QnnLog_Level_t>(options->log_level), &LogHandle());
+        status != QNN_SUCCESS) {
+      LITERT_LOG(LITERT_ERROR, "Failed to create QNN logger: %d", status);
+      return kLiteRtStatusErrorRuntimeFailure;
+    }
   }
 
   if (auto status =
@@ -314,8 +327,10 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
       LITERT_LOG(LITERT_ERROR, "Failed to create QNN device: %d", status);
       return kLiteRtStatusErrorRuntimeFailure;
     }
+  } else {
+    htp_backend_ = std::make_unique<HtpBackend>(Api(), options);
+    htp_backend_->Init(&DeviceHandle());
   }
-
   return kLiteRtStatusOk;
 }
 
@@ -365,9 +380,11 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
 Expected<QnnManager::Ptr> QnnManager::Create(
     absl::Span<const QnnBackend_Config_t*> configs,
     std::optional<std::string> shared_library_dir,
-    std::optional<QnnHtpDevice_Arch_t> soc_model) {
+    std::optional<QnnHtpDevice_Arch_t> soc_model,
+    const TfLiteQnnDelegateHtpBackendOptions* options) {
   Ptr qnn_manager(new QnnManager);
-  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_model);
+  if (auto status =
+          qnn_manager->Init(configs, shared_library_dir, soc_model, options);
       status != kLiteRtStatusOk) {
     return Unexpected(status, "Failed to set up QNN manager");
   }

@@ -1,3 +1,9 @@
+//==============================================================================
+//
+//  Copyright (c) Qualcomm Innovation Center, Inc.
+//  All Rights Reserved.
+//
+//==============================================================================
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +32,11 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/htp_backend.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/latest/include/QNN/QnnBackend.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
@@ -33,10 +44,6 @@
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 //===----------------------------------------------------------------------===//
 //
@@ -82,7 +89,8 @@ class QnnManager {
   static Expected<Ptr> Create(
       absl::Span<const QnnBackend_Config_t*> configs,
       std::optional<std::string> shared_library_dir = std::nullopt,
-      std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt);
+      std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt,
+      const TfLiteQnnDelegateHtpBackendOptions* options = nullptr);
 
   static absl::Span<const QnnBackend_Config_t*> DefaultBackendConfigs();
   static absl::Span<const QnnContext_Config_t*> DefaultContextConfigs();
@@ -125,7 +133,8 @@ class QnnManager {
 
   LiteRtStatus Init(absl::Span<const QnnBackend_Config_t*> configs,
                     std::optional<std::string> shared_library_dir,
-                    std::optional<QnnHtpDevice_Arch_t> soc_model);
+                    std::optional<QnnHtpDevice_Arch_t> soc_model,
+                    const TfLiteQnnDelegateHtpBackendOptions* options);
 
   //
   // Manage libQnn*.so Loading
@@ -183,6 +192,9 @@ class QnnManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+
+  // For dispatch options
+  std::unique_ptr<HtpBackend> htp_backend_{nullptr};
 };
 
 // Unfortunately we can't use std::unique_ptr with a deleter because

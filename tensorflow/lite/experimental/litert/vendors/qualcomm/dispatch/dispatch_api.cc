@@ -1,3 +1,9 @@
+//==============================================================================
+//
+//  Copyright (c) Qualcomm Innovation Center, Inc.
+//  All Rights Reserved.
+//
+//==============================================================================
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/QnnLiteRTDelegate.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_invocation_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -56,6 +63,19 @@ const char* GetSharedLibraryDir(const LiteRtDispatchOption* options,
   return nullptr;
 }
 
+const TfLiteQnnDelegateHtpBackendOptions* GetQnnOptions(
+    const LiteRtDispatchOption* options, int num_options) {
+  TfLiteQnnDelegateHtpBackendOptions qnn_options = QNN_DELEGATE_HTP_OPTION_INIT;
+  for (auto i = 0; i < num_options; ++i) {
+    auto& option = options[i];
+    if (!strcmp(option.name, kDispatchOptionQnnDelegateHtpBackendOptions)) {
+      return static_cast<const TfLiteQnnDelegateHtpBackendOptions*>(
+          option.value.ptr_value);
+    }
+  }
+  return nullptr;
+}
+
 LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   auto* shared_library_dir = GetSharedLibraryDir(options, num_options);
   std::optional<std::string> shared_library_dir_opt =
@@ -63,7 +83,11 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
                          : std::nullopt;
 
   auto configs = QnnManager::DefaultBackendConfigs();
-  if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
+  if (auto qnn_manager = QnnManager::Create(
+          /*configs=*/configs,
+          /*shared_library_dir=*/shared_library_dir_opt,
+          /*soc_model*/ std::nullopt,
+          /*options=*/GetQnnOptions(options, num_options));
       !qnn_manager) {
     LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
     return qnn_manager.Error().Status();

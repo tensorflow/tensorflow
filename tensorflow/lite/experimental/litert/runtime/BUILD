@@ -37,7 +37,6 @@ cc_library(
     srcs = [
         "ahwb_buffer.cc",
         "dmabuf_buffer.cc",
-        "event.cc",
         "fastrpc_buffer.cc",
         "ion_buffer.cc",
         "tensor_buffer.cc",
@@ -45,7 +44,6 @@ cc_library(
     hdrs = [
         "ahwb_buffer.h",
         "dmabuf_buffer.h",
-        "event.h",
         "fastrpc_buffer.h",
         "ion_buffer.h",
         "tensor_buffer.h",
@@ -54,6 +52,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_requirements.h",
     ],
     deps = [
+        ":event",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
