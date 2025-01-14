@@ -62,8 +62,10 @@ mlir_api_version: int
 
 bfloat16: type[numpy.generic]
 # TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float4_e2m1fn: type[numpy.generic]
 # float8_e3m4: type[numpy.generic]
 # float8_e4m3: type[numpy.generic]
+# float8_e8m0fnu: type[numpy.generic]
 float8_e4m3fn: type[numpy.generic]
 float8_e4m3b11fnuz: type[numpy.generic]
 float8_e4m3fnuz: type[numpy.generic]

@@ -2993,9 +2993,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
               Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
           if (instruction->opcode() == HloOpcode::kConvert ||
               instruction->opcode() == HloOpcode::kCompare ||
+              instruction->opcode() == HloOpcode::kIsFinite ||
               (instruction->opcode() == HloOpcode::kSelect &&
                operand_shape.element_type() == PRED)) {
-            // Convert and Compare instructions can change element_size_in_bits
+            // Some instructions can change element_size_in_bits
             // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
           } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||

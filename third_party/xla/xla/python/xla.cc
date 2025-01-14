@@ -204,9 +204,11 @@ NB_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F4E2M1FN", F4E2M1FN)
       // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
       // .value("F8E3M4", F8E3M4)
       // .value("F8E4M3", F8E4M3)
+      .value("F8E8M0FNU", F8E8M0FNU)
       .value("F8E4M3FN", F8E4M3FN)
       .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E4M3FNUZ", F8E4M3FNUZ)
