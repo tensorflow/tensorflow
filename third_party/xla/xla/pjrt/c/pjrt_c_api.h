@@ -1531,8 +1531,9 @@ struct PJRT_ExecuteOptions {
   // during the call.
   const int64_t* non_donatable_input_indices;
   size_t num_non_donatable_input_indices;
+  PJRT_ExecuteContext* context;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_non_donatable_input_indices);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, context);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
