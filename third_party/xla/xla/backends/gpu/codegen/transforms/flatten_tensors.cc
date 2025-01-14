@@ -700,7 +700,7 @@ class FlattenTensorsPass
     // clang-format on
     ApplyIndexingOp::getCanonicalizationPatterns(patterns, mlir_context);
     if (mlir::failed(
-            mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+            mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;
     }

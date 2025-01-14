@@ -133,8 +133,7 @@ struct PeelLoopsPass : public impl::PeelLoopsPassBase<PeelLoopsPass> {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<PeelLoop>(mlir_context);
-    if (mlir::failed(
-            mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
     }

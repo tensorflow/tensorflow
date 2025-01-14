@@ -388,8 +388,8 @@ class LowerXlaGpuToScfPass
     patterns.add<RewritePredicatedInsert, RewritePredicatedExtract,
                  RewriteShuffleReduce, RewriteMaterialize, RewriteInsert>(
         ctx, options_);
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -405,8 +405,8 @@ class LowerXlaGpuLoopsToScfPass
     auto* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteXlaGpuLoop>(ctx);
-    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                        std::move(patterns)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

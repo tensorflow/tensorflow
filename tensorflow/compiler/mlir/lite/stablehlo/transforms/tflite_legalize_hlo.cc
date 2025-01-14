@@ -383,8 +383,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
         // clang-format on
         >(context);
 
-    (void)applyPatternsAndFoldGreedily(getOperation().getOperation(),
-                                       std::move(patterns));
+    (void)applyPatternsGreedily(getOperation().getOperation(),
+                                std::move(patterns));
   }
 
   {
