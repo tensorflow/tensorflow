@@ -98,7 +98,7 @@ class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
 TEST_F(PlainInt4ToPackedInt4RewritePassTest,
        DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
-    HloModule hlo
+    HloModule DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue
 
     fusion {
       p_0 = s4[1,128,32]{1,2,0:E(4)} parameter(0)
@@ -383,7 +383,7 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule NonstandardLayoutWithManyNonContractingDims
 
     ENTRY main {
           p0 = s4[128,64,192]{1,0,2} parameter(0)
@@ -402,7 +402,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule NonstandardLayoutWithManyNonContractingDimsReversedLayout
 
     ENTRY main {
           lhs = s4[128,64,192]{0,1,2} parameter(0)
@@ -420,7 +420,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
 
 TEST_F(TritonTest, NegatePlusConvertHLO) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule NegatePlusConvertHLO
 
     ENTRY main {
       lhs = s4[16,32,64]{2,1,0} parameter(0)
@@ -440,7 +440,7 @@ TEST_F(TritonTest, NegatePlusConvertHLO) {
 
 TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RejectTritonFusionForWithMinorBatchDim
 
     ENTRY main {
       lhs = s4[32,64,16]{2,1,0} parameter(0)
@@ -465,7 +465,7 @@ TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule LHSWithMinorDimEqualTo1
 
     triton_computation {
       lhs = s4[16,1024,1]{2,1,0} parameter(0)
@@ -494,7 +494,7 @@ TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RHSWithMinorDimEqualTo1
 
     triton_computation {
       lhs = bf16[16,1024,64]{2,1,0} parameter(0)
@@ -524,7 +524,7 @@ TEST_F(TritonTest, LHSNonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule LHSNonMinorContractingDim
 
     triton_computation {
       lhs = s4[1024,8]{1,0} parameter(0)
@@ -552,7 +552,7 @@ TEST_F(TritonTest, LHSNonMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule LHSNonMinorContractingDimWithBatchDim0
 
     triton_computation {
       lhs = s4[16,1024,8]{2,1,0} parameter(0)
@@ -580,7 +580,7 @@ TEST_F(TritonTest, LHSNonMinorContractingDimWithBatchDim0) {
 TEST_F(TritonTest, LHSMinorContractingDim) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule LHSMinorContractingDim
 
     triton_computation {
       lhs = s4[8,1024]{1,0} parameter(0)
@@ -604,7 +604,7 @@ TEST_F(TritonTest, LHSMinorContractingDim) {
 
 TEST_F(TritonTest, ConvertPlusNegate) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule ConvertPlusNegate
 
     triton_computation {
       lhs = s4[8,1024]{1,0} parameter(0)
@@ -630,7 +630,7 @@ TEST_F(TritonTest, ConvertPlusNegate) {
 TEST_F(TritonTest, LHSMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule LHSMinorContractingDimWithBatchDim0
 
     triton_computation {
       lhs = s4[16,8,1024]{2,1,0} parameter(0)
@@ -657,7 +657,7 @@ TEST_F(TritonTest, LHSMinorContractingDimWithBatchDim0) {
 
 TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RHSTestWithNotMinorContractingDim
 
     triton_computation {
       lhs = bf16[8,1024]{1,0} parameter(0)
@@ -682,7 +682,7 @@ TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
 
 TEST_F(TritonTest, RHSTestWithMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RHSTestWithMinorContractingDim
 
     triton_computation {
       lhs = bf16[8,1024]{1,0} parameter(0)
@@ -707,7 +707,7 @@ TEST_F(TritonTest, RHSTestWithMinorContractingDim) {
 
 TEST_F(TritonTest, RHSTestWithMinorContractingDimWithBatchDim) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RHSTestWithMinorContractingDimWithBatchDim
 
     triton_computation {
       lhs = bf16[16,8,1024]{2,1,0} parameter(0)
@@ -734,7 +734,7 @@ TEST_F(TritonTest, RHSTestWithMinorContractingDimWithBatchDim) {
 
 TEST_F(TritonTest, RHSTestWithNotMinorContractingDimWithBatchDim0) {
   constexpr absl::string_view kHloText = R"(
-    HloModule t
+    HloModule RHSTestWithNotMinorContractingDimWithBatchDim0
 
     triton_computation {
       lhs = bf16[16,8,1024]{2,1,0} parameter(0)
