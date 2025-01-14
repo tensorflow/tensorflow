@@ -61,6 +61,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -73,6 +75,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
@@ -82,6 +85,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -1477,7 +1483,8 @@ class MatMulEmitterHelper {
             .getResult());
     if (hlo->shape().element_type() == PrimitiveType::S4 &&
         IsTritonInt4RewritesEnabled(*hlo)) {
-      tensor_ptr.getDefiningOp()->setAttr("packed_dim", GetPackedDimAttr(side));
+      tensor_ptr.getDefiningOp()->setAttr(
+          "packed_dim", GetPackedDimAttr(side, hlo->shape().layout()));
     }
     tensor_ptr = b_.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
                                           block_offsets);
@@ -1486,16 +1493,22 @@ class MatMulEmitterHelper {
 
   // Naive implementation of the packed_dim attribute for the int4 tensors.
   // It doesn't take into account different layout schemes.
-  mlir::IntegerAttr GetPackedDimAttr(const Side& side) const {
+  mlir::IntegerAttr GetPackedDimAttr(const Side& side,
+                                     const Layout& layout) const {
     int packed_dim = 0;
+    const std::vector<int64_t> logical_to_physical =
+        LayoutUtil::MakeLogicalToPhysical(layout);
+
     if (side.scope == TritonFusionAnalysis::Scope::LHS) {
-      if (dims_.lhs_contracting_dim_idx > dims_.lhs_noncontracting_dim_idx) {
+      if (logical_to_physical[dims_.lhs_contracting_dim_idx] >
+          logical_to_physical[dims_.lhs_noncontracting_dim_idx]) {
         packed_dim = 0;
       } else {
         packed_dim = 1;
       }
     } else if (side.scope == TritonFusionAnalysis::Scope::RHS) {
-      if (dims_.rhs_contracting_dim_idx > dims_.rhs_noncontracting_dim_idx) {
+      if (logical_to_physical[dims_.rhs_contracting_dim_idx] >
+          logical_to_physical[dims_.rhs_noncontracting_dim_idx]) {
         packed_dim = 1;
       } else {
         packed_dim = 0;

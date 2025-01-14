@@ -96,7 +96,48 @@ class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
 };
 
 TEST_F(PlainInt4ToPackedInt4RewritePassTest,
-       DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales) {
+       DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule hlo
+
+    fusion {
+      p_0 = s4[1,128,32]{1,2,0:E(4)} parameter(0)
+      p_0.1 = s4[1,32,128]{2,1,0:E(4)} bitcast(p_0)
+      p_0.2 = bf16[1,32,128]{2,1,0} convert(p_0.1)
+      p_0.3 = bf16[1,128,32]{1,2,0} bitcast(p_0.2)
+      p_1 = bf16[128,1,64]{2,1,0} parameter(1)
+      dot = bf16[1,32,64]{2,1,0} dot(p_0.3, p_1),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={1},
+        rhs_contracting_dims={0}
+      p_2 = bf16[1,1,32]{2,0,1} parameter(2)
+      p_2.1 = bf16[1,32]{1,0} bitcast(p_2)
+      p_2.2 = bf16[1,32,64]{2,1,0} broadcast(p_2.1), dimensions={0,1}
+      m = bf16[1,32,64]{2,1,0} multiply(dot, p_2.2)
+      ROOT m.1 = bf16[1,1,32,64]{3,2,1,0} bitcast(m)
+    }
+
+    ENTRY %entry_computation {
+      p_0 = s4[1,128,32]{1,2,0:E(4)} parameter(0)
+      p_1 = bf16[128,1,64]{2,1,0} parameter(1)
+      p_2 = bf16[1,1,32]{2,0,1} parameter(2)
+      ROOT gemm_fusion_dot.2 = bf16[1,1,32,64]{3,2,1,0} fusion(p_0, p_1, p_2),
+        kind=kCustom,
+        calls=fusion,
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
+TEST_F(PlainInt4ToPackedInt4RewritePassTest,
+       DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
@@ -131,6 +172,23 @@ TEST_F(PlainInt4ToPackedInt4RewritePassTest,
   )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
+TEST_F(PlainInt4ToPackedInt4RewritePassTest, NonstandardLayoutInt4) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule NonstandardLayoutInt4
+
+    ENTRY main {
+      p0 = s4[64,128]{0,1} parameter(0)
+      p1 = bf16[256,64]{1,0} parameter(1)
+      ROOT %dot = bf16[128,256]{1,0} dot(s4[64,128]{0,1} p0, bf16[256,64]{1,0} p1),
+        lhs_contracting_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 using ::testing::TestParamInfo;
