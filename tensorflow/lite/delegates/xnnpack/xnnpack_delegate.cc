@@ -6197,7 +6197,8 @@ class Subgraph {
 
     const auto CheckParamTensorShape = [&](const TfLiteTensor& param_tensor,
                                            const char* param_tensor_name) {
-      if (input_tensor.dims->size != GetTensorData<int32_t>(&param_tensor)[0]) {
+      if (param_tensor.dims->size != 1 ||
+          input_tensor.dims->size != param_tensor.dims->data[0]) {
         TF_LITE_MAYBE_KERNEL_LOG(
             logging_context,
             "%s shape (%d) must be equal to input shape (%d) "
@@ -6236,15 +6237,6 @@ class Subgraph {
     std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
     std::array<size_t, XNN_MAX_TENSOR_DIMS> ends;
     for (size_t i = 0; i < num_dims; i++) {
-      if (begin_data[i] < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "begin %d must be greater than or equal to zero "
-            "in STRIDED_SLICE node #%d",
-            begin_data[i], node_index);
-        return kTfLiteError;
-      }
       begins[i] = begin_data[i] < 0 ? input_shape->data[i] + begin_data[i]
                                     : begin_data[i];
       if ((params->begin_mask & (1 << i)) != 0) {
@@ -6255,35 +6247,48 @@ class Subgraph {
       if (params->offset) {
         actual_end_data += begin_data[i];
       }
-      // If end is negative, we count from the back, -1 is the last element.
-      if (actual_end_data < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "end %d must be greater than or equal to zero "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
-        return kTfLiteError;
-      } else {
-        ends[i] = actual_end_data;
+
+      ends[i] = actual_end_data < 0 ? input_shape->data[i] + actual_end_data
+                                    : actual_end_data;
+      if ((params->end_mask & (1 << i)) != 0) {
+        // produce the number required to create the largest open interval
+        ends[i] = input_shape->data[i];
       }
 
-      if ((params->end_mask & (1 << i)) != 0) {
-        // TODO(b/329228576): Add support for negative begin.
+      if (begins[i] < 0) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "begin %zu must be greater than or equal to zero "
+            "in STRIDED_SLICE node #%d at bit #%zu",
+            begins[i], node_index, i);
+        return kTfLiteError;
+      }
+
+      if (ends[i] > input_shape->data[i]) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "non-zero end mask not supported "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
+                                 "end %zu must be less than input extent %d "
+                                 "in STRIDED_SLICE node #%d at bit #%zu",
+                                 ends[i], input_shape->data[i], node_index, i);
         return kTfLiteError;
       }
 
       if (begins[i] >= ends[i]) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "begin index %zu must be less than end index "
-                                 "%zu for STRIDED_SLICE node #%d",
-                                 begins[i], ends[i], node_index);
+                                 "%zu for STRIDED_SLICE node #%d at bit #%zu",
+                                 begins[i], ends[i], node_index, i);
+        return kTfLiteError;
       }
 
       sizes[i] = ends[i] - begins[i];
+      if (sizes[i] <= 1) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "xnn_define_static_slice doesn't handle size=1 for STRIDED_SLICE "
+            "node #%d at bit #%zu",
+            node_index, i);
+        return kTfLiteError;
+      }
     }
 
     if (subgraph != nullptr) {
