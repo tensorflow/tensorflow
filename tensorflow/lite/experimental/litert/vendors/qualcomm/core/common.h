@@ -18,6 +18,42 @@ typedef enum LiteRtQnnLogLevel {  // NOLINT(modernize-use-using)
   kLogLevelDebug = 5,
 } LiteRtQnnLogLevel;
 
+typedef enum LiteRtQnnHtpPerformanceMode {  // NOLINT(modernize-use-using)
+  kHtpDefault = 0,
+  kHtpSustainedHighPerformance = 1,
+  kHtpBurst = 2,
+  kHtpHighPerformance = 3,
+  kHtpPowerSaver = 4,
+  kHtpLowPowerSaver = 5,
+  kHtpHighPowerSaver = 6,
+  kHtpLowBalanced = 7,
+  kHtpBalanced = 8,
+  kHtpExtremePowerSaver = 9,
+} LiteRtQnnHtpPerformanceMode;
+
+typedef struct {  // NOLINT
+  /// The default performance mode sets no configurations on the HTP.
+  LiteRtQnnHtpPerformanceMode performance_mode;
+} LiteRtQnnHtpBackendOptions;
+
+// This option can be used to specify QNN options.
+static const char* kDispatchOptionLiteRtQnnOptions = "litert_qnn_options";
+
+typedef struct {  // NOLINT
+  /// Optional backend specific options for the HTP backend.
+  LiteRtQnnHtpBackendOptions htp_options;
+  /// Log level
+  LiteRtQnnLogLevel log_level;
+} LiteRtQnnOptions;
+
+#define LITERT_QNN_HTP_OPTION_INIT \
+  { kHtpDefault /*performance_mode*/ }
+#define LITERT_QNN_OPTION_INIT                  \
+  {                                             \
+    LITERT_QNN_HTP_OPTION_INIT, /*htp_options*/ \
+        kLogOff,                /*log_level*/   \
+  }
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

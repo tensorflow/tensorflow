@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <cstddef>
 #include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -37,6 +38,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
 
@@ -79,6 +81,19 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
       CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
+
+  LiteRtQnnOptions litert_qnn_options = LITERT_QNN_OPTION_INIT;
+  litert_qnn_options.log_level = kLogLevelInfo;
+  litert_qnn_options.htp_options.performance_mode = kHtpBurst;
+  LiteRtAddDispatchDelegateOption(dispatch_delegate_options.get(),
+                                  LiteRtDispatchOption{
+                                      .name = kDispatchOptionLiteRtQnnOptions,
+                                      .value =
+                                          LiteRtAny{
+                                              .type = kLiteRtAnyTypeVoidPtr,
+                                              .ptr_value = &litert_qnn_options,
+                                          },
+                                  });
   auto dispatch_delegate = CreateDispatchDelegatePtr(
       *env->Get(), std::move(dispatch_delegate_options));
 
@@ -153,6 +168,19 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
       CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
+
+  LiteRtQnnOptions litert_qnn_options = LITERT_QNN_OPTION_INIT;
+  litert_qnn_options.log_level = kLogLevelInfo;
+  litert_qnn_options.htp_options.performance_mode = kHtpBurst;
+  LiteRtAddDispatchDelegateOption(dispatch_delegate_options.get(),
+                                  LiteRtDispatchOption{
+                                      .name = kDispatchOptionLiteRtQnnOptions,
+                                      .value =
+                                          LiteRtAny{
+                                              .type = kLiteRtAnyTypeVoidPtr,
+                                              .ptr_value = &litert_qnn_options,
+                                          },
+                                  });
   auto dispatch_delegate = CreateDispatchDelegatePtr(
       *env->Get(), std::move(dispatch_delegate_options));
 

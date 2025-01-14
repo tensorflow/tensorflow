@@ -155,6 +155,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",

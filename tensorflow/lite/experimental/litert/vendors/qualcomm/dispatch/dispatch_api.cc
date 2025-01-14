@@ -1,3 +1,6 @@
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+//
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +23,11 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_any.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_invocation_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -41,25 +46,38 @@ char BuildId[256];
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-const char* GetSharedLibraryDir(const LiteRtDispatchOption* options,
-                                int num_options) {
+litert::Expected<std::any> FindDispatchOption(
+    const LiteRtDispatchOption* options, int num_options,
+    const char* option_name) {
   for (auto i = 0; i < num_options; ++i) {
     auto& option = options[i];
-    if (!strcmp(option.name, kDispatchOptionSharedLibraryDir)) {
-      return option.value.str_value;
+    if (!strcmp(option.name, option_name)) {
+      return litert::ToStdAny(option.value);
     }
   }
-  return nullptr;
+  return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
 }
 
 LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
-  auto* shared_library_dir = GetSharedLibraryDir(options, num_options);
-  std::optional<std::string> shared_library_dir_opt =
-      shared_library_dir ? std::make_optional(std::string(shared_library_dir))
-                         : std::nullopt;
+  auto shared_library_dir =
+      FindDispatchOption(options, num_options, kDispatchOptionSharedLibraryDir);
+  std::optional<std::string> shared_library_dir_opt;
+  if (shared_library_dir.HasValue()) {
+    shared_library_dir_opt.emplace(
+        std::any_cast<const char*>(shared_library_dir.Value()));
+  }
 
   auto configs = QnnManager::DefaultBackendConfigs();
-  if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
+  auto qnn_options =
+      reinterpret_cast<const LiteRtQnnOptions*>(std::any_cast<const void*>(
+          FindDispatchOption(options, num_options,
+                             kDispatchOptionLiteRtQnnOptions)
+              .Value()));
+  if (auto qnn_manager = QnnManager::Create(
+          /*configs=*/configs,
+          /*shared_library_dir=*/shared_library_dir_opt,
+          /*soc_model*/ std::nullopt,
+          /*options=*/qnn_options);
       !qnn_manager) {
     LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();

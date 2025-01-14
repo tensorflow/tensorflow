@@ -1,3 +1,6 @@
+# Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
 # Copyright 2024 Google LLC.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,6 +61,8 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
+        "//tensorflow/lite/experimental/litert/cc:litert_any",
     ],
 )
 
