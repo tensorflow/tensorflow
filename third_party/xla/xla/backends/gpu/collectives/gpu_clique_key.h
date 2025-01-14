@@ -58,7 +58,8 @@ class GpuCliqueKey : public CliqueKey {
       std::vector<GlobalDeviceId> devices,
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
-      std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
+      std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
+      GlobalDeviceId root_device = GlobalDeviceId(-1));
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -68,9 +69,18 @@ class GpuCliqueKey : public CliqueKey {
 
   CollectiveStreamId stream_id() const;
 
+  // Device generating the unique id for this key
+  GlobalDeviceId root_device() const;
+
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const CliqueKey& other) const final;
+
+  // For multi-root initialization, generate `nroots` copies (subkeys) of the
+  // key each with a different root device. Root devices are distributed evenly
+  // accross the ranks. The subkeys are used to exchange the CliqueIds during
+  // clique initialization.
+  std::vector<GpuCliqueKey> GetSubKeys(int64_t nroots) const;
 
   // Returns the stream kind for this clique key, stream kind will be used to
   // specify what configuration to pass for each type of operation.
@@ -105,6 +115,8 @@ class GpuCliqueKey : public CliqueKey {
   // Having the participating groups as part of the cache key will prevent such
   // situations
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
+
+  GlobalDeviceId root_device_;
 };
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);

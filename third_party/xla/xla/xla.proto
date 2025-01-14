@@ -863,6 +863,9 @@ message DebugOptions {
   // Enable NCCL per stream communicators.
   bool xla_gpu_enable_nccl_per_stream_comms = 276;
 
+  // Set number of ranks per root rank for NCCL init.
+  int64 xla_gpu_nccl_init_max_rank_per_root_ratio = 277;
+
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
