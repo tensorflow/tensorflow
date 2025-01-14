@@ -1012,6 +1012,7 @@ cc_library(
         ":cuda_stream",
         ":cuda_timer",
         ":cuda_version_parser",
+        ":tma_util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
@@ -1036,8 +1037,11 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/gpu:scoped_activate_context",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/cuda",  # buildcleaner: keep
         "//xla/tsl/cuda:cudart",  # buildcleaner: keep
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -1862,5 +1866,39 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "tma_util",
+    srcs = ["tma_util.cc"],
+    hdrs = ["tma_util.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor/gpu:tma_metadata",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_test(
+    name = "tma_util_test",
+    srcs = ["tma_util_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":tma_util",
+        "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )

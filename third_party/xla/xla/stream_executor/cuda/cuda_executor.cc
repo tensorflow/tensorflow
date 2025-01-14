@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
+#include "xla/stream_executor/cuda/tma_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -78,6 +80,8 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -1333,5 +1337,37 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
   }
   return static_cast<const CudaKernel*>(*it);
 }
+
+absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
+    TmaDescriptor tma_desc, void* global_address) {
+  TF_ASSIGN_OR_RETURN(CUtensorMapDataType data_type,
+                      GetTensorMapDataType(tma_desc.element_size()));
+  CUtensorMapSwizzle swizzle = GetTensorMapSwizzle(tma_desc.swizzle());
+  CUtensorMapL2promotion l2_promotion =
+      GetTensorMapL2Promotion(tma_desc.l2_promotion());
+  CUtensorMapFloatOOBfill float_oob_fill =
+      GetTensorMapFloatOOBFill(tma_desc.float_oob_fill());
+  CUtensorMapInterleave interleave =
+      GetTensorMapInterleave(tma_desc.interleave());
+
+  CUtensorMap tensor_map;
+  auto result = cuTensorMapEncodeTiled(
+      &tensor_map, data_type, tma_desc.rank(), global_address,
+      &tma_desc.global_dims()[0], &tma_desc.global_strides()[0],
+      &tma_desc.box_dims()[0], &tma_desc.element_strides()[0], interleave,
+      swizzle, l2_promotion, float_oob_fill);
+  if (result != CUDA_SUCCESS) {
+    const char* error_message;
+    cuGetErrorString(result, &error_message);
+    return absl::InternalError(absl::StrFormat(
+        "Failed to create tensormap with cuTensorMapEncodeTiled: %s",
+        error_message));
+  }
+  DeviceMemoryBase device_tensor_map = Allocate(sizeof(tensor_map), 0);
+  TF_RETURN_IF_ERROR(
+      SynchronousMemcpy(&device_tensor_map, &tensor_map, sizeof(tensor_map)));
+  return device_tensor_map;
+}
+
 }  // namespace gpu
 }  // namespace stream_executor

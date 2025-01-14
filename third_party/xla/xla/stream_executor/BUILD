@@ -411,6 +411,7 @@ cc_library(
         ":module_spec",
         ":platform",
         ":stream",
+        "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
