@@ -2,6 +2,10 @@
 // RUN: -xla-gpu-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 6}'" -cse -canonicalize \
 // RUN: | FileCheck %s
 
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-gpu-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 9}'" -cse -canonicalize \
+// RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
+
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
   "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
@@ -492,3 +496,34 @@ module {
 
 // CHECK-LABEL: @apply_indexing_sequence_same_block
 // CHECK-NOT: vector.transfer_read
+
+// -----
+
+func.func @simple_atomic_rmw(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c42 = arith.constant 42.0 : f32
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+  -> tensor<2xf32> {
+    %atomic = xla.atomic_rmw %iter[%j] : tensor<2xf32> {
+      ^bb0(%current: f32):
+        %add = arith.addf %current, %c42 : f32
+        xla.yield %add : f32
+      }
+    scf.yield %atomic : tensor<2xf32>
+  }
+  return %loop : tensor<2xf32>
+}
+
+// CHECK-HOPPER-LABEL:       @simple_atomic_rmw
+// CHECK-HOPPER-SAME:          (%[[ARG0:.*]]: tensor{{.*}})
+// CHECK-HOPPER-DAG:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-HOPPER:               %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-HOPPER:               %[[LOOP:.*]] = scf.for
+// CHECK-HOPPER-SAME:          iter_args(%[[ITER:.*]] = %[[INIT]])
+// CHECK-HOPPER-NEXT:            vector.insert
+// CHECK-HOPPER-NEXT:            scf.yield
+// CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
+// CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
+// CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]

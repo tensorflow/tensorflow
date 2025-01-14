@@ -73,6 +73,7 @@ namespace {
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/backends/gpu/codegen/transforms/passes.h.inc"
 
+using llvm::dyn_cast_or_null;
 using mlir::failure;
 using mlir::Location;
 using mlir::LogicalResult;
@@ -93,6 +94,7 @@ using mlir::ValueRange;
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+namespace vector = ::mlir::vector;
 
 bool IsAMD(const se::DeviceDescription& device_description) {
   return std::holds_alternative<se::RocmComputeCapability>(
@@ -114,7 +116,7 @@ Value GetDestinationBuffer(Value dest) {
                dest.getDefiningOp<AllocateSharedOp>()) {
       break;
     } else if (auto transfer_write =
-                   dest.getDefiningOp<mlir::vector::TransferWriteOp>()) {
+                   dest.getDefiningOp<vector::TransferWriteOp>()) {
       dest = transfer_write.getSource();
     } else {
       dest.getDefiningOp()->emitOpError("unsupported dest type");
@@ -168,7 +170,7 @@ struct RewriteFunctionSignatures : OpRewritePattern<mlir::func::FuncOp> {
         auto cast = rewriter.create<UnrealizedConversionCastOp>(
             op.getLoc(), operand, op.getArgument(index));
         op.getArgument(index).replaceAllUsesExcept(cast.getResult(0), cast);
-        operand = mlir::LLVM::LLVMPointerType::get(op.getContext());
+        operand = ml::LLVMPointerType::get(op.getContext());
       }
     }
 
@@ -188,7 +190,7 @@ Value GetPtr(Value value) {
   }
   if (auto cast = value.getDefiningOp<UnrealizedConversionCastOp>()) {
     if (cast.getNumOperands() == 1 && cast.getNumResults() == 1 &&
-        mlir::isa<mlir::LLVM::LLVMPointerType>(cast.getOperand(0).getType())) {
+        mlir::isa<ml::LLVMPointerType>(cast.getOperand(0).getType())) {
       return cast.getOperand(0);
     }
   }
@@ -294,25 +296,25 @@ std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
   return {i8_index, is_low_nibble};
 }
 
-mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
-                            Value linear_index, mlir::ImplicitLocOpBuilder& b) {
+ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
+                    Value linear_index, mlir::ImplicitLocOpBuilder& b) {
   Type element_type = tensor.getType().getElementType();
   if (element_type == b.getI4Type()) {
     element_type = b.getI8Type();
   }
-  auto ptr = mlir::LLVM::LLVMPointerType::get(b.getContext());
+  auto ptr = ml::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
       b.create<UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  auto gep = b.create<mlir::LLVM::GEPOp>(ptr, llvm_element_type, tensor_ptr,
-                                         linear_index);
+  auto gep =
+      b.create<ml::GEPOp>(ptr, llvm_element_type, tensor_ptr, linear_index);
   gep.setInbounds(true);
   return gep;
 }
 
-mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
-                            ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
+ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
+                    ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
   return CreateGep(tensor, GetLinearIndex(indices, b), b);
 }
 
@@ -333,8 +335,7 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
 
     auto gep = CreateGep(op.getTensor(), linear_index, b);
     auto load =
-        rewriter
-            .create<mlir::LLVM::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
+        rewriter.create<ml::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
             .getResult();
 
     if (is_low_nibble) {
@@ -359,19 +360,19 @@ Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
   int size = ty.getNumElements();
   Value result = vector;
   for (int i = 0; i < size; i += 2) {
-    auto v0 = b.create<mlir::vector::ExtractOp>(vector, i);
-    auto v1 = b.create<mlir::vector::ExtractOp>(vector, i + 1);
-    result = b.create<mlir::vector::InsertOp>(v1, result, i);
-    result = b.create<mlir::vector::InsertOp>(v0, result, i + 1);
+    auto v0 = b.create<vector::ExtractOp>(vector, i);
+    auto v1 = b.create<vector::ExtractOp>(vector, i + 1);
+    result = b.create<vector::InsertOp>(v1, result, i);
+    result = b.create<vector::InsertOp>(v0, result, i + 1);
   }
   return result;
 }
 
-struct RewriteTransferRead : OpRewritePattern<mlir::vector::TransferReadOp> {
+struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
-      mlir::vector::TransferReadOp op,
+      vector::TransferReadOp op,
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
 
@@ -394,8 +395,7 @@ struct RewriteTransferRead : OpRewritePattern<mlir::vector::TransferReadOp> {
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
-    auto loaded =
-        b.create<mlir::LLVM::LoadOp>(llvm_vector_type, gep).getResult();
+    auto loaded = b.create<ml::LoadOp>(llvm_vector_type, gep).getResult();
 
     if (source.getType().getElementType().isInteger(1)) {
       Value zero = b.create<mlir::arith::ConstantOp>(
@@ -484,7 +484,7 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       scalar_value =
           b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
               .getResult(0);
-      b.create<mlir::LLVM::StoreOp>(scalar_value, gep);
+      b.create<ml::StoreOp>(scalar_value, gep);
       op.replaceAllUsesWith(op.getDest());
     }
 
@@ -493,11 +493,11 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
   }
 };
 
-struct RewriteTransferWrite : OpRewritePattern<mlir::vector::TransferWriteOp> {
+struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
-      mlir::vector::TransferWriteOp op,
+      vector::TransferWriteOp op,
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
     Value dest = GetDestinationBuffer(op.getSource());
@@ -526,7 +526,7 @@ struct RewriteTransferWrite : OpRewritePattern<mlir::vector::TransferWriteOp> {
     auto llvm_type = converter.convertType(vector_value.getType());
     vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
                        .getResult(0);
-    b.create<mlir::LLVM::StoreOp>(vector_value, gep);
+    b.create<ml::StoreOp>(vector_value, gep);
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
     return success();
@@ -550,8 +550,7 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
             index,
             rewriter
                 .create<UnrealizedConversionCastOp>(
-                    op.getLoc(),
-                    mlir::LLVM::LLVMPointerType::get(op.getContext()), arg)
+                    op.getLoc(), ml::LLVMPointerType::get(op.getContext()), arg)
                 .getResult(0));
       }
     }
@@ -559,12 +558,11 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
   }
 };
 
-mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
-                                    const std::string& name_prefix,
-                                    mlir::ShapedType shaped_ty,
-                                    mlir::ModuleOp module, bool is_constant,
-                                    int addr_space,
-                                    mlir::ImplicitLocOpBuilder& b) {
+ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
+                            const std::string& name_prefix,
+                            mlir::ShapedType shaped_ty, mlir::ModuleOp module,
+                            bool is_constant, int addr_space,
+                            mlir::ImplicitLocOpBuilder& b) {
   if (auto elements = mlir::dyn_cast_or_null<mlir::DenseElementsAttr>(value)) {
     // The lowering to LLVM only works for 1d tensors or those with trailing
     // unit dimensions.
@@ -593,8 +591,7 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
           packed_data);
     }
   }
-  auto array_ty =
-      mlir::LLVM::LLVMArrayType::get(llvm_element_type, num_elements);
+  auto array_ty = ml::LLVMArrayType::get(llvm_element_type, num_elements);
   std::string name;
   int index = 0;
   do {
@@ -602,10 +599,9 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
     ++index;
   } while (module.lookupSymbol(name));
   b.setInsertionPointToStart(module.getBody());
-  return b.create<mlir::LLVM::GlobalOp>(
-      array_ty, is_constant,
-      /*linkage=*/mlir::LLVM::Linkage::Private, name, value, /*alignment=*/0,
-      addr_space);
+  return b.create<ml::GlobalOp>(array_ty, is_constant,
+                                /*linkage=*/ml::Linkage::Private, name, value,
+                                /*alignment=*/0, addr_space);
 }
 
 struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
@@ -623,13 +619,12 @@ struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
                        /*is_constant=*/false, kGPUSharedMemoryAddrSpace, b);
 
     rewriter.setInsertionPoint(op);
-    auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
+    auto addr = rewriter.create<ml::AddressOfOp>(op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
         rewriter
-            .create<mlir::LLVM::AddrSpaceCastOp>(
-                op.getLoc(), mlir::LLVM::LLVMPointerType::get(op.getContext()),
-                addr)
+            .create<ml::AddrSpaceCastOp>(
+                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
             .getResult());
     return success();
   }
@@ -659,13 +654,12 @@ struct RewriteNonScalarConstants : OpRewritePattern<mlir::arith::ConstantOp> {
                        /*is_constant=*/true, kGPUGlobalMemoryAddrSpace, b);
 
     rewriter.setInsertionPoint(op);
-    auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
+    auto addr = rewriter.create<ml::AddressOfOp>(op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
         rewriter
-            .create<mlir::LLVM::AddrSpaceCastOp>(
-                op.getLoc(), mlir::LLVM::LLVMPointerType::get(op.getContext()),
-                addr)
+            .create<ml::AddrSpaceCastOp>(
+                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
             .getResult());
     return success();
   }
@@ -727,7 +721,7 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
   // direct bitcast from a struct to an int is possible.
   Type llvm_input_ty = converter.convertType(value.getType());
   Type llvm_result_ty = converter.convertType(ty);
-  Type ptr_ty = mlir::LLVM::LLVMPointerType::get(b.getContext());
+  Type ptr_ty = ml::LLVMPointerType::get(b.getContext());
 
   Value llvm_value =
       b.create<UnrealizedConversionCastOp>(llvm_input_ty, value).getResult(0);
@@ -747,7 +741,19 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
   LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
-    if (failed(rewriteAsDirectAtomicRMW(op, rewriter))) {
+    auto modifier_parameters = GetAtomicModifierParameters(op);
+    if (modifier_parameters.has_value()) {
+      if (mlir::isa<mlir::VectorType>(modifier_parameters->first.getType()) &&
+          (IsAMD(*device_description_) ||
+           !device_description_->cuda_compute_capability().IsAtLeastHopper())) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "atomic vectorization currently only supported on Hopper or later");
+      }
+    }
+
+    if (!modifier_parameters.has_value() ||
+        failed(rewriteAsDirectAtomicRMW(op, modifier_parameters, rewriter))) {
       rewriteAsAtomicCAS(op, rewriter);
     }
     rewriter.replaceOp(op, op.getInput());
@@ -760,11 +766,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   // If "computation" is one of this kind, emits code to do that and returns
   // true; otherwise, returns false.
   LogicalResult rewriteAsDirectAtomicRMW(
-      AtomicRMWOp op, mlir::PatternRewriter& rewriter) const {
-    auto modifier_parameters = GetAtomicModifierParameters(op);
-    if (!modifier_parameters.has_value()) {
-      return failure();
-    }
+      AtomicRMWOp op,
+      std::optional<std::pair<mlir::Value, ml::AtomicBinOp>>
+          modifier_parameters,
+      mlir::PatternRewriter& rewriter) const {
     Value modifier_arg = modifier_parameters->first;
     Type element_type = modifier_arg.getType();
     ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
@@ -803,7 +808,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                       : emitNVidiaAtomicFAdd(
                             loc, modifier_arg, addr, sync_scope,
                             device_description_->cuda_compute_capability(),
-                            rewriter);
+                            rewriter, op);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -817,8 +822,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
   LogicalResult emitNVidiaAtomicFAdd(
       Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
-      const se::CudaComputeCapability& cuda_compute_capability,
-      OpBuilder& b) const {
+      const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
+      AtomicRMWOp& op) const {
     Type element_type = modifier_arg.getType();
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
@@ -831,9 +836,33 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     bool is_supported_f64_atomic =
         element_type.isF64() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
+    auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type);
+    bool is_supported_vector_atomic =
+        vector_type && vector_type.getElementType().isF32() &&
+        (vector_type.getNumElements() == 2 ||
+         vector_type.getNumElements() == 4) &&
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
     if (!element_type.isF32() && !is_supported_f16_atomic &&
-        !is_supported_bf16_atomic && !is_supported_f64_atomic) {
+        !is_supported_bf16_atomic && !is_supported_f64_atomic &&
+        !is_supported_vector_atomic) {
       return failure();
+    }
+
+    // TODO(389862360): Currently vectorized AtomicRMWOp lowers incorrectly to
+    // PTX due to a bug in NVPTX. We scalarize it for now.
+    if (is_supported_vector_atomic) {
+      mlir::ImplicitLocOpBuilder imp_b(loc, b);
+      auto base = GetLinearIndex(op.getIndices(), imp_b);
+      for (int i = 0; i < vector_type.getNumElements(); ++i) {
+        auto modifier_arg_i = imp_b.create<vector::ExtractOp>(modifier_arg, i);
+        auto offset = imp_b.create<ml::ConstantOp>(base.getType(), i);
+        auto addr_i = imp_b.create<ml::AddOp>(base, offset);
+        Value gep = CreateGep(op.getInput(), addr_i, imp_b);
+        imp_b.create<ml::AtomicRMWOp>(ml::AtomicBinOp::fadd, gep,
+                                      modifier_arg_i,
+                                      ml::AtomicOrdering::seq_cst, sync_scope);
+      }
+      return success();
     }
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
                               ml::AtomicOrdering::seq_cst, sync_scope);
@@ -1116,17 +1145,17 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       return;
     }
 
-    getOperation()->walk([this](mlir::LLVM::LoadOp load) {
+    getOperation()->walk([this](ml::LoadOp load) {
       Value addr = load.getAddr();
-      while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
+      while (auto gep = addr.getDefiningOp<ml::GEPOp>()) {
         addr = gep.getBase();
       }
       while (auto cast = addr.getDefiningOp<UnrealizedConversionCastOp>()) {
         addr = cast.getOperand(0);
       }
-      if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||
-          addr.getDefiningOp<mlir::LLVM::AddressOfOp>() ||
-          addr.getDefiningOp<mlir::LLVM::AllocaOp>()) {
+      if (addr.getDefiningOp<ml::AddrSpaceCastOp>() ||
+          addr.getDefiningOp<ml::AddressOfOp>() ||
+          addr.getDefiningOp<ml::AllocaOp>()) {
         // Shared memory, global constant or temporary - no need to annotate
         // anything.
         return;

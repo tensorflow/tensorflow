@@ -81,6 +81,7 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
     "mlir::tensor::TensorDialect",
     "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
+    "mlir::vector::VectorDialect",
   ];
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
