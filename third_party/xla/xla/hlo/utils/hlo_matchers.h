@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef XLA_HLO_UTILS_HLO_MATCHERS_H_
 #define XLA_HLO_UTILS_HLO_MATCHERS_H_
 
+#include <cstdint>
 #include <optional>
+#include <ostream>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/test.h"
