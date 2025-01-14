@@ -2087,8 +2087,8 @@ cc_library(
 cc_library(
     name = "op_expander_pass",
     hdrs = ["op_expander_pass.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:op_expander_pass instead.",
-    deps = ["//xla/hlo/transforms:op_expander_pass"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:op_expander_pass instead.",
+    deps = ["//xla/hlo/transforms/expanders:op_expander_pass"],
 )
 
 cc_library(
@@ -2102,7 +2102,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -2113,15 +2113,15 @@ cc_library(
 cc_library(
     name = "optimization_barrier_expander",
     hdrs = ["optimization_barrier_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:optimization_barrier_expander instead.",
-    deps = ["//xla/hlo/transforms:optimization_barrier_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:optimization_barrier_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:optimization_barrier_expander"],
 )
 
 cc_library(
     name = "comparison_expander",
     hdrs = ["comparison_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:comparison_expander instead.",
-    deps = ["//xla/hlo/transforms:comparison_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:comparison_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:comparison_expander"],
 )
 
 cc_library(
@@ -2155,7 +2155,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -2177,7 +2177,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -2238,7 +2238,7 @@ cc_library(
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/builder/lib:slicing",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -2271,42 +2271,43 @@ xla_cc_test(
 cc_library(
     name = "cholesky_expander",
     hdrs = ["cholesky_expander.h"],
-    deps = ["//xla/hlo/transforms:cholesky_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:cholesky_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:cholesky_expander"],
 )
 
 cc_library(
     name = "qr_expander",
     hdrs = ["qr_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:qr_expander instead.",
-    deps = ["//xla/hlo/transforms:qr_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:qr_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:qr_expander"],
 )
 
 cc_library(
     name = "real_imag_expander",
     hdrs = ["real_imag_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:real_imag_expander instead.",
-    deps = ["//xla/hlo/transforms:real_imag_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:real_imag_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:real_imag_expander"],
 )
 
 cc_library(
     name = "eigh_expander",
     hdrs = ["eigh_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:eigh_expander instead.",
-    deps = ["//xla/hlo/transforms:eigh_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:eigh_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:eigh_expander"],
 )
 
 cc_library(
     name = "convolution_4d_expander",
     hdrs = ["convolution_4d_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convolution_4d_expander instead.",
-    deps = ["//xla/hlo/transforms:convolution_4d_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:convolution_4d_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:convolution_4d_expander"],
 )
 
 cc_library(
     name = "convolution_pred_expander",
     hdrs = ["convolution_pred_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convolution_pred_expander instead.",
-    deps = ["//xla/hlo/transforms:convolution_pred_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:convolution_pred_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:convolution_pred_expander"],
 )
 
 xla_test(
@@ -2370,8 +2371,8 @@ cc_library(
 cc_library(
     name = "logistic_expander",
     hdrs = ["logistic_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:logistic_expander instead.",
-    deps = ["//xla/hlo/transforms:logistic_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:logistic_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:logistic_expander"],
 )
 
 cc_library(
@@ -2425,8 +2426,8 @@ cc_library(
 cc_library(
     name = "bitcast_dtypes_expander",
     hdrs = ["bitcast_dtypes_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:bitcast_dtypes_expander instead.",
-    deps = ["//xla/hlo/transforms:bitcast_dtypes_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:bitcast_dtypes_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:bitcast_dtypes_expander"],
 )
 
 cc_library(
@@ -3001,8 +3002,8 @@ cc_library(
 cc_library(
     name = "dot_decomposer",
     hdrs = ["dot_decomposer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:dot_decomposer instead.",
-    deps = ["//xla/hlo/transforms:dot_decomposer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:dot_decomposer instead.",
+    deps = ["//xla/hlo/transforms/expanders:dot_decomposer"],
 )
 
 cc_library(
@@ -3034,7 +3035,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -3095,15 +3096,15 @@ cc_library(
 cc_library(
     name = "reshape_decomposer",
     hdrs = ["reshape_decomposer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:reshape_decomposer instead.",
-    deps = ["//xla/hlo/transforms:reshape_decomposer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:reshape_decomposer instead.",
+    deps = ["//xla/hlo/transforms/expanders:reshape_decomposer"],
 )
 
 cc_library(
     name = "reduce_decomposer",
     hdrs = ["reduce_decomposer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:reduce_decomposer instead.",
-    deps = ["//xla/hlo/transforms:reduce_decomposer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:reduce_decomposer instead.",
+    deps = ["//xla/hlo/transforms/expanders:reduce_decomposer"],
 )
 
 cc_library(
@@ -4718,8 +4719,8 @@ cc_library(
 cc_library(
     name = "stable_sort_expander",
     hdrs = ["stable_sort_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:stable_sort_expander instead.",
-    deps = ["//xla/hlo/transforms:stable_sort_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:stable_sort_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:stable_sort_expander"],
 )
 
 cc_library(
@@ -5266,8 +5267,8 @@ cc_library(
 cc_library(
     name = "dynamic_index_splitter",
     hdrs = ["dynamic_index_splitter.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:dynamic_index_splitter instead.",
-    deps = ["//xla/hlo/transforms:dynamic_index_splitter"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:dynamic_index_splitter instead.",
+    deps = ["//xla/hlo/transforms/expanders:dynamic_index_splitter"],
 )
 
 xla_cc_test(
@@ -5438,15 +5439,15 @@ cc_library(
 cc_library(
     name = "rng_expander",
     hdrs = ["rng_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:rng_expander instead.",
-    deps = ["//xla/hlo/transforms:rng_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:rng_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:rng_expander"],
 )
 
 cc_library(
     name = "rng_bit_generator_expander",
     hdrs = ["rng_bit_generator_expander.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:rng_bit_generator_expander instead.",
-    deps = ["//xla/hlo/transforms:rng_bit_generator_expander"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:rng_bit_generator_expander instead.",
+    deps = ["//xla/hlo/transforms/expanders:rng_bit_generator_expander"],
 )
 
 cc_library(
@@ -5874,7 +5875,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
@@ -5904,7 +5905,7 @@ cc_library(
         ":call_inliner",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
     ],
 )
 
@@ -5984,7 +5985,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -6005,8 +6006,8 @@ cc_library(
 cc_library(
     name = "stochastic_convert_decomposer",
     hdrs = ["stochastic_convert_decomposer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:stochastic_convert_decomposer instead.",
-    deps = ["//xla/hlo/transforms:stochastic_convert_decomposer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/expanders:stochastic_convert_decomposer instead.",
+    deps = ["//xla/hlo/transforms/expanders:stochastic_convert_decomposer"],
 )
 
 cc_library(
