@@ -153,9 +153,7 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
     starlark_only = True,
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
