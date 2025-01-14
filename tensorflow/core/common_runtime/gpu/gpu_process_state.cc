@@ -124,7 +124,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
       executor, platform_device_id,
       use_unified_memory ? stream_executor::MemoryType::kUnified
                          : stream_executor::MemoryType::kDevice,
-      alloc_visitors, {}));
+      alloc_visitors));
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(

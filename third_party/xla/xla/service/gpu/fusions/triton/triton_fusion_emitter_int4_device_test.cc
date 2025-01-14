@@ -16,8 +16,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
@@ -34,7 +39,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonInt4Test : public GpuCodegenTest {
+class TritonTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
@@ -76,7 +81,231 @@ class TritonInt4Test : public GpuCodegenTest {
   }
 };
 
-TEST_F(TritonInt4Test, NonstandardLayout) {
+// The test class for the Triton MLIR pass that converts MLIR code that works
+// with the plain int4 tensors to the packed int4 tensors. The goal is to prove
+// that the pass generates the correct MLIR and it produces the same
+// results. Eventually the pass will be enabled by default and the support for
+// the int4 tensors will be removed from the Legacy Triton emitter.
+class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_triton_i4_rewrites(true);
+    return debug_options;
+  }
+};
+
+TEST_F(PlainInt4ToPackedInt4RewritePassTest,
+       DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
+
+    DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales {
+      w = s4[32,64,128]{2,1,0} parameter(0)
+      w.i8 = s8[32,64,128]{2,1,0} convert(w)
+      w.f32 = f32[32,64,128]{2,1,0} convert(w.i8)
+      scales = f32[32,128]{1,0} parameter(1)
+      scales.broadcast = f32[32,64,128]{2,1,0} broadcast(scales), dimensions={0,2}
+      weights.scaled = f32[32,64,128]{2,1,0} multiply(w.f32, scales.broadcast)
+      activations = f32[32,64,256]{2,1,0} parameter(2)
+      ROOT dot = f32[32,128,256]{2,1,0} dot(weights.scaled, activations),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+
+    ENTRY main {
+      w = s4[32,64,128]{2,1,0} parameter(0)
+      scales = f32[32,128]{1,0} parameter(1)
+      p2 = f32[32,64,256]{2,1,0} parameter(2)
+      ROOT dot = f32[32,128,256]{2,1,0} fusion(w, scales, p2),
+        kind=kCustom,
+        calls=DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales,
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
+using ::testing::TestParamInfo;
+using ::testing::WithParamInterface;
+
+struct I4TestParams {
+  static std::string ToString(const TestParamInfo<I4TestParams>& params) {
+    return params.param.name;
+  }
+
+  std::string Format(absl::string_view format) const {
+    return absl::StrReplaceAll(
+        format, {{"${name}", name},
+                 {"${lhs}", lhs},
+                 {"${rhs}", rhs},
+                 {"${lhs_contracting_dim}", absl::StrCat(lhs_contracting_dim)},
+                 {"${rhs_contracting_dim}", absl::StrCat(rhs_contracting_dim)},
+                 {"${out}", out}});
+  }
+  bool HasBatchDim() const {
+    return std::vector<std::string>(absl::StrSplit(lhs, ',')).size() > 2;
+  }
+
+  std::string name;         // The name of the test.
+  std::string lhs;          // The lhs shape like "128,16".
+  std::string rhs;          // The rhs shape like "128,256".
+  int lhs_contracting_dim;  // The contracting dimension of the lhs.
+  int rhs_contracting_dim;  // The contracting dimension of the rhs.
+  std::string out;          // The output shape like "16,256".
+};
+
+class ParametrizedPlainInt4ToPackedInt4RewritePassTest
+    : public PlainInt4ToPackedInt4RewritePassTest,
+      public WithParamInterface<I4TestParams> {};
+
+TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
+  if (GetParam().HasBatchDim()) {
+    GTEST_SKIP() << "2d test ignores batch dim case.";
+  }
+  constexpr absl::string_view kHloTextTemplate = R"(
+    HloModule lhs_${name}
+
+    lhs_${name} {
+      w.s4 = s4[${lhs}]{1,0} parameter(0)
+      w.s8 = s8[${lhs}]{1,0} convert(w.s4)
+      w.f32 = f32[${lhs}]{1,0} convert(w.s8)
+      a = f32[${rhs}]{1,0} parameter(1)
+      ROOT lhs_${name} = f32[${out}]{1,0} dot(w.f32, a),
+        lhs_contracting_dims={${lhs_contracting_dim}},
+        rhs_contracting_dims={${rhs_contracting_dim}}
+    }
+
+    ENTRY main {
+      w = s4[${lhs}]{1,0} parameter(0)
+      a = f32[${rhs}]{1,0} parameter(1)
+      ROOT gemm_fusion_dot.2 = f32[${out}]{1,0} fusion(w, a),
+        kind=kCustom,
+        calls=lhs_${name},
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  std::string hlo_text = GetParam().Format(kHloTextTemplate);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
+                                       ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}))
+      << "Failed for HLO: " << hlo_text;
+}
+
+TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest,
+       Int4WeightsOnTheLhsWithBatchDim) {
+  if (!GetParam().HasBatchDim()) {
+    GTEST_SKIP() << "3d test ignores 2d case.";
+  }
+  constexpr absl::string_view kHloTextTemplate = R"(
+    HloModule ${name}
+
+    fusion {
+      w.s4 = s4[${lhs}]{2,1,0} parameter(0)
+      w.s8 = s8[${lhs}]{2,1,0} convert(w.s4)
+      w.f32 = f32[${lhs}]{2,1,0} convert(w.s8)
+      a = f32[${rhs}]{2,1,0} parameter(1)
+      ROOT dot.0 = f32[${out}]{2,1,0} dot(w.f32, a),
+        lhs_contracting_dims={${lhs_contracting_dim}},
+        rhs_contracting_dims={${rhs_contracting_dim}},
+        lhs_batch_dims={0},
+        rhs_batch_dims={0}
+    }
+
+    ENTRY gemm_fusion_dot_computation {
+      w = s4[${lhs}]{2,1,0} parameter(0)
+      a = f32[${rhs}]{2,1,0} parameter(1)
+      ROOT gemm_fusion_dot.2 = f32[${out}]{2,1,0} fusion(w, a),
+        kind=kCustom,
+        calls=fusion,
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  std::string hlo_text = GetParam().Format(kHloTextTemplate);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
+                                       ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}))
+      << "Failed for HLO: " << hlo_text;
+}
+
+TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheRhs) {
+  if (GetParam().HasBatchDim()) {
+    GTEST_SKIP() << "2d test ignores batch dim case.";
+  }
+
+  constexpr absl::string_view kHloTextTemplate = R"(
+    HloModule rhs_${name}
+
+    rhs_${name} {
+      a = f32[${lhs}]{1,0} parameter(0)
+      w.s4 = s4[${rhs}]{1,0} parameter(1)
+      w.s8 = s8[${rhs}]{1,0} convert(w.s4)
+      w.f32 = f32[${rhs}]{1,0} convert(w.s8)
+      ROOT rhs_${name} = f32[${out}]{1,0} dot(a, w.f32),
+        lhs_contracting_dims={${lhs_contracting_dim}},
+        rhs_contracting_dims={${rhs_contracting_dim}}
+    }
+
+    ENTRY main {
+      a = f32[${lhs}]{1,0} parameter(0)
+      w = s4[${rhs}]{1,0} parameter(1)
+      ROOT rhs_${name} = f32[${out}]{1,0} fusion(a, w),
+        kind=kCustom,
+        calls=rhs_${name},
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  std::string hlo_text = GetParam().Format(kHloTextTemplate);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
+                                       ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}))
+      << "Failed for HLO: " << hlo_text;
+}
+
+std::vector<I4TestParams> Int4TestCases() {
+  return {
+      {"int4_dot_128_16_x_128_256", "128,16", "128,256", 0, 0, "16,256"},
+      {"int4_dot_128_16_x_256_128", "128,16", "256,128", 0, 1, "16,256"},
+      {"int4_dot_16_128_x_256_128", "16,128", "256,128", 1, 1, "16,256"},
+      {"int4_dot_16_128_x_128_256", "16,128", "128,256", 1, 0, "16,256"},
+      {"int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
+      {"int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
+      {"int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
+      {"int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
+
+      {"dot_8_128_16_x_8_128_256", "8,128,16", "8,128,256", 1, 1, "8,16,256"},
+      {"dot_8_128_16_x_8_256_128", "8,128,16", "8,256,128", 1, 2, "8,16,256"},
+      {"dot_8_16_128_x_8_256_128", "8,16,128", "8,256,128", 2, 2, "8,16,256"},
+      {"dot_8_16_128_x_8_128_256", "8,16,128", "8,128,256", 2, 1, "8,16,256"},
+      {"dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2, "8,1,256"},
+      {"dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2, "8,1,256"},
+      {"dot_8_16_128_x_8_128_1", "8,16,128", "8,128,1", 2, 1, "8,16,1"},
+      {"dot_8_16_128_x_8_1_128", "8,16,128", "8,1,128", 2, 2, "8,16,1"},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(PlainInt4ToPackedInt4RewritePassTests,
+                         ParametrizedPlainInt4ToPackedInt4RewritePassTest,
+                         ::testing::ValuesIn(Int4TestCases()),
+                         I4TestParams::ToString);
+
+TEST_F(TritonTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayout
 
@@ -100,7 +329,7 @@ TEST_F(TritonInt4Test, NonstandardLayout) {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, NonstandardLayoutWithManyNonContractingDims) {
+TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule t
@@ -119,16 +348,15 @@ TEST_F(TritonInt4Test, NonstandardLayoutWithManyNonContractingDims) {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test,
-       NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
+TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
     ENTRY main {
-          p0 = s4[128,64,192]{0,1,2} parameter(0)
-          p1 = bf16[256,64]{1,0} parameter(1)
-          ROOT %dot = bf16[128,192,256]{2,1,0} dot(p0, p1),
+          lhs = s4[128,64,192]{0,1,2} parameter(0)
+          rhs = bf16[256,64]{1,0} parameter(1)
+          ROOT %dot = bf16[128,192,256]{2,1,0} dot(lhs, rhs),
             lhs_contracting_dims={1},
             rhs_contracting_dims={1}
     }
@@ -139,7 +367,7 @@ TEST_F(TritonInt4Test,
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, NegatePlusConvertHLO) {
+TEST_F(TritonTest, NegatePlusConvertHLO) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -159,7 +387,7 @@ TEST_F(TritonInt4Test, NegatePlusConvertHLO) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, RejectTritonFusionForWithMinorBatchDim) {
+TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -182,16 +410,16 @@ TEST_F(TritonInt4Test, RejectTritonFusionForWithMinorBatchDim) {
   EXPECT_TRUE(ok);
 }
 
-TEST_F(TritonInt4Test, LHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
     triton_computation {
-      lhs = s4[16,32,1]{2,1,0} parameter(0)
-      lhs_converted = bf16[16,32,1]{2,1,0} convert(lhs)
-      rhs = bf16[16,64,32]{2,1,0} parameter(1)
+      lhs = s4[16,1024,1]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,1024,1]{2,1,0} convert(lhs)
+      rhs = bf16[16,64,1024]{2,1,0} parameter(1)
       ROOT dot = bf16[16,1,64]{2,1,0} dot(lhs_converted, rhs),
           lhs_contracting_dims={1},
           rhs_contracting_dims={2},
@@ -200,8 +428,8 @@ TEST_F(TritonInt4Test, LHSWithMinorDimEqualTo1) {
     }
 
     ENTRY main {
-      lhs = s4[16,32,1]{2,1,0} parameter(0)
-      rhs = bf16[16,64,32]{2,1,0} parameter(1)
+      lhs = s4[16,1024,1]{2,1,0} parameter(0)
+      rhs = bf16[16,64,1024]{2,1,0} parameter(1)
       ROOT dot = bf16[16,1,64]{2,1,0} fusion(lhs, rhs), kind=kCustom,
         calls=triton_computation,
         backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
@@ -211,16 +439,16 @@ TEST_F(TritonInt4Test, LHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, RHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
     triton_computation {
-      lhs = bf16[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,32,1]{2,1,0} parameter(1)
-      rhs_converted = bf16[16,32,1]{2,1,0} convert(rhs)
+      lhs = bf16[16,1024,64]{2,1,0} parameter(0)
+      rhs = s4[16,1024,1]{2,1,0} parameter(1)
+      rhs_converted = bf16[16,1024,1]{2,1,0} convert(rhs)
       ROOT dot = bf16[16,64,1]{2,1,0} dot(lhs, rhs_converted),
           lhs_contracting_dims={1},
           rhs_contracting_dims={1},
@@ -229,8 +457,8 @@ TEST_F(TritonInt4Test, RHSWithMinorDimEqualTo1) {
     }
 
     ENTRY main {
-      lhs = bf16[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,32,1]{2,1,0} parameter(1)
+      lhs = bf16[16,1024,64]{2,1,0} parameter(0)
+      rhs = s4[16,1024,1]{2,1,0} parameter(1)
       ROOT dot = bf16[16,64,1]{2,1,0} fusion(lhs, rhs), kind=kCustom,
         calls=triton_computation,
         backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
@@ -241,7 +469,7 @@ TEST_F(TritonInt4Test, RHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, LHSNonMinorContractingDim) {
+TEST_F(TritonTest, LHSNonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
@@ -269,7 +497,7 @@ TEST_F(TritonInt4Test, LHSNonMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, LHSNonMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, LHSNonMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
@@ -298,7 +526,7 @@ TEST_F(TritonInt4Test, LHSNonMinorContractingDimWithBatchDim0) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonInt4Test, LHSMinorContractingDim) {
+TEST_F(TritonTest, LHSMinorContractingDim) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
     HloModule t
@@ -323,7 +551,7 @@ TEST_F(TritonInt4Test, LHSMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, ConvertPlusNegate) {
+TEST_F(TritonTest, ConvertPlusNegate) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -348,7 +576,7 @@ TEST_F(TritonInt4Test, ConvertPlusNegate) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, LHSMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, LHSMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
     HloModule t
@@ -376,7 +604,7 @@ TEST_F(TritonInt4Test, LHSMinorContractingDimWithBatchDim0) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, RHSTestWithMinorContractingDim) {
+TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -401,7 +629,7 @@ TEST_F(TritonInt4Test, RHSTestWithMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, RHSTestWithNotMinorContractingDim) {
+TEST_F(TritonTest, RHSTestWithMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -426,7 +654,7 @@ TEST_F(TritonInt4Test, RHSTestWithNotMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, RHSTestWithMinorContractingDimWithBatchDim) {
+TEST_F(TritonTest, RHSTestWithMinorContractingDimWithBatchDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 
@@ -453,7 +681,7 @@ TEST_F(TritonInt4Test, RHSTestWithMinorContractingDimWithBatchDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonInt4Test, RHSTestWithNotMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, RHSTestWithNotMinorContractingDimWithBatchDim0) {
   constexpr absl::string_view kHloText = R"(
     HloModule t
 

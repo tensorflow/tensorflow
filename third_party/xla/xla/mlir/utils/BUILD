@@ -41,7 +41,6 @@ cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -70,9 +69,9 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

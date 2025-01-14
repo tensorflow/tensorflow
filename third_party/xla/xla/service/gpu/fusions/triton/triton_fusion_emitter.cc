@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
@@ -82,6 +83,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/transforms/passes.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -97,7 +99,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/triton/compilation_pipeline.h"
 #include "xla/service/gpu/fusions/triton/emitter_helpers.h"
 #include "xla/service/gpu/fusions/triton/passes.h"
@@ -173,31 +174,24 @@ Value AddPtr(EmitterLocOpBuilder& b, Value ptr, Value offset) {
 
 ScalarOrTensor EmitParameterLoad(EmitterLocOpBuilder& b, Value pointer,
                                  ArrayRef<int32_t> boundary_checks) {
-  if (auto make_tensor_ptr = pointer.getDefiningOp<ttir::MakeTensorPtrOp>()) {
-    if (make_tensor_ptr.getOffsets().empty()) {
-      return ScalarOrTensor(b.create<ttir::LoadOp>(make_tensor_ptr.getBase(),
-                                                   ttir::CacheModifier::NONE,
-                                                   ttir::EvictionPolicy::NORMAL,
-                                                   /*isVolatile*/ false));
-    }
+  // For a pointer to a scalar or a zero-dimensional tensor, load the base
+  // pointer directly. This shortcut is necessary because Triton does not
+  // support 0-D tensors. Looking for the defining make_tensor_ptr op is
+  // sufficient because pointers to 0-D tensors are never modified by e.g.
+  // `tt.advance`.
+  if (auto make_tensor_ptr = pointer.getDefiningOp<ttir::MakeTensorPtrOp>();
+      make_tensor_ptr && make_tensor_ptr.getShape().empty()) {
+    pointer = make_tensor_ptr.getBase();
   }
 
-  // Any other tensor pointer.
-  if (ttir::isTensorPointerType(pointer.getType())) {
-    std::optional<ttir::PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = ttir::PaddingOption::PAD_ZERO;
-    }
-    return ScalarOrTensor(b.create<ttir::LoadOp>(
-        pointer, boundary_checks, padding, ttir::CacheModifier::NONE,
-        ttir::EvictionPolicy::NORMAL,
-        /*isVolatile*/ false));
+  std::optional<ttir::PaddingOption> padding;
+  if (!boundary_checks.empty()) {
+    padding = ttir::PaddingOption::PAD_ZERO;
   }
-
-  // Non-tensor pointer.
+  bool is_volatile = false;
   return ScalarOrTensor(b.create<ttir::LoadOp>(
-      pointer, ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
-      /*isVolatile*/ false));
+      pointer, boundary_checks, padding, ttir::CacheModifier::NONE,
+      ttir::EvictionPolicy::NORMAL, is_volatile));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -422,9 +416,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
                       tiled_iota.tile_offsets_indexing());
 
   auto iota_dim_offset = b.create<arith::IndexCastUIOp>(
-      b.getI32Type(), mlir_converter::ApplyIndexing(
-                          tile_offsets_indexing, /*dims=*/tile_multi_index,
-                          /*symbols=*/{}, b)[iota_dim]);
+      b.getI32Type(),
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b)[iota_dim]);
 
   // First, stride as needed between the iota components.
   Value range = b.create<arith::MulIOp>(
@@ -809,9 +803,9 @@ absl::StatusOr<Value> ComputeBasePtrOffset(
   compose_indexing_maps.Simplify();
 
   return b.create<arith::IndexCastUIOp>(
-      b.getI64Type(), mlir_converter::ApplyIndexing(compose_indexing_maps,
-                                                    /*dims=*/tile_multi_index,
-                                                    /*symbols=*/{}, b)[0]);
+      b.getI64Type(), emitters::ApplyIndexing(compose_indexing_maps,
+                                              /*dims=*/tile_multi_index,
+                                              /*symbols=*/{}, b)[0]);
 }
 
 }  // namespace
@@ -835,15 +829,14 @@ SmallVector<Value, 3> ComputeDelinearizedTileIndex(
       /*dim_upper_bounds=*/{Product(num_output_tiles_per_dim)},
       /*symbol_upper_bounds=*/{});
 
-  return mlir_converter::ApplyIndexing(program_id_to_root_tile_offset,
-                                       /*dims=*/pid,
-                                       /*symbols=*/{}, b);
+  return emitters::ApplyIndexing(program_id_to_root_tile_offset,
+                                 /*dims=*/pid,
+                                 /*symbols=*/{}, b);
 }
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     EmitterLocOpBuilder& b, ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, Value parent_base_ptr) {
-  const llvm::SmallVector<int64_t>& tile_strides = tiled_hlo.tile_strides();
   const Shape& shape = tiled_hlo.hlo()->shape();
 
   // Compute physical strides of the tile. `tile_strides` contains strides for
@@ -851,6 +844,7 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   // taking into account physical layout.
   // TODO(b/331332678): Compute indexing maps to physical layout indexing in
   // SymbolicTileAnalysis.
+  const llvm::SmallVector<int64_t>& tile_strides = tiled_hlo.tile_strides();
   llvm::SmallVector<Value> strides(tile_strides.size());
   int64_t current_stride = 1;
   for (int64_t cur_dim : LayoutUtil::MinorToMajor(shape)) {
@@ -863,48 +857,37 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                       tiled_hlo.tile_offsets_indexing());
   auto tile_offsets_as_indices =
-      mlir_converter::ApplyIndexing(tile_offsets_indexing,
-                                    /*dims=*/tile_multi_index,
-                                    /*symbols=*/{}, b);
+      emitters::ApplyIndexing(tile_offsets_indexing,
+                              /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b);
 
   // Triton requires that all block dimensions are a power of 2.
   SmallVector<int64_t> padded_tile_sizes =
       GetPaddedTileSizes(tiled_hlo.tile_sizes());
 
-  llvm::SmallVector<Value> residual_shape;
-  llvm::SmallVector<Value> offsets;
-  llvm::SmallVector<int32_t> order;
-  llvm::SmallVector<int32_t> boundary_checks;
+  // TensorPtr is intended to be a  base pointer of the TiledHloInstruction and
+  // plus the necessary offsets so that Triton can compute the pointer to the
+  // block specific to the given pid. This option would yield simpler code, but
+  // cannot handle all combinations of strides and offsets, because Triton
+  // always multiplies the offset by the stride. E.g., it's not possible to
+  // slice [10] with [1:5:2] because the first element will always be at an even
+  // offset.
+  //
+  // Instead, we output a TensorPtr that points directly to the tile specific
+  // to the pid. All offset computation is done in advance. MakeTensorPtrOp
+  // sees 0 offsets. This allows Triton to read any block regardless of strides
+  // size or offsets. To make sure that masking is correct, we compute a
+  // "residual shape" which is the original parent shape minus the offsets.
 
+  llvm::SmallVector<Value> residual_shape;
+  llvm::SmallVector<int32_t> boundary_checks;
   for (int dim_idx = 0; dim_idx < padded_tile_sizes.size(); ++dim_idx) {
-    // In general, there are two options for computing a block:
-    //
-    //   - Output a TensorPtr whose base pointer is the base pointer of the
-    //     TiledHloInstruction and provide the necessary offsets so that Triton
-    //     can compute the pointer to the block specific to the given pid. This
-    //     option yields simpler code, but has limitations. Triton cannot handle
-    //     many combinations of strides and offsets. E.g., if we want to slice
-    //     [10] with [1:5:2], we have no way of specifying this: Triton
-    //     always multiplies the stride by the offset, and with a stride of 2
-    //     it's not possible to start reading from element 1.
-    //
-    //   - Output a TensorPtr that points directly to the tile specific to the
-    //     pid. All offset computation is done in advance. MakeTensorPtrOp
-    //     sees 0 offsets. This allows Triton to read any block regardless of
-    //     strides size or offsets. To make sure that masking is correct, we
-    //     compute a "residual shape" which is the original parent shape minus
-    //     the offsets.
     Value parent_size =
         CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx))
             .UnwrapScalar();
     Value offset = b.create<arith::IndexCastOp>(
         b.getI64Type(), tile_offsets_as_indices[dim_idx]);
     residual_shape.push_back(b.create<arith::SubIOp>(parent_size, offset));
-    offsets.push_back(CreateConst(b, b.getI32Type(), 0).UnwrapScalar());
-
-    // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
-    // entirely clear from the Triton docs.
-    order.insert(order.begin(), dim_idx);
 
     if (shape.dimensions(dim_idx) % padded_tile_sizes[dim_idx] != 0) {
       boundary_checks.push_back(dim_idx);
@@ -915,15 +898,24 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
                       ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
   auto tile_ptr = AddPtr(b, parent_base_ptr, ptr_offset);
 
-  return MakeTensorPtrOpAndBoundaryChecks{
-      b.create<ttir::MakeTensorPtrOp>(
-          /*base*/ tile_ptr,
-          /*shape*/ residual_shape,
-          /*strides*/ strides,
-          /*offsets*/ offsets,
-          /*tensorShape*/ llvm::to_vector_of<int32_t>(padded_tile_sizes),
-          /*order*/ order),
-      boundary_checks};
+  llvm::SmallVector<Value> offsets(
+      padded_tile_sizes.size(),
+      CreateConst(b, b.getI32Type(), 0).UnwrapScalar());
+
+  // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
+  // entirely clear from the Triton docs.
+  llvm::SmallVector<int32_t> order(padded_tile_sizes.size());
+  std::iota(order.rbegin(), order.rend(), 0);
+
+  auto make_tensor_ptr = b.create<ttir::MakeTensorPtrOp>(
+      /*base*/ tile_ptr,
+      /*shape*/ residual_shape,
+      /*strides*/ strides,
+      /*offsets*/ offsets,
+      /*tensorShape*/ llvm::to_vector_of<int32_t>(padded_tile_sizes),
+      /*order*/ order);
+
+  return MakeTensorPtrOpAndBoundaryChecks{make_tensor_ptr, boundary_checks};
 }
 
 }  // namespace ir_emitter_triton_internal
@@ -1098,7 +1090,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     if (type == U16) {
       ir_type = b.getI16Type();
     } else if (type == S4) {
-      ir_type = b.getI8Type();
+      if (debug_options.xla_gpu_experimental_enable_triton_i4_rewrites()) {
+        ir_type = b.getI4Type();
+      } else {
+        ir_type = b.getI8Type();
+      }
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
@@ -1212,7 +1208,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   const HloModule* hlo_module = fusion->GetModule();
   return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
                              device_info, block_level_parameters,
-                             triton_module.get(), llvm_module, mlir_context);
+                             triton_module.get(), llvm_module, mlir_context,
+                             /*is_xla_fusion=*/true);
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
@@ -1220,7 +1217,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context, bool emit_kernel) {
+    mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   const auto& cc = device_info.gpu_compute_capability();
   const std::string arch_name =
       std::visit([](auto& cc) { return cc.ToString(); }, cc);
@@ -1285,7 +1282,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   if (!CreateTritonPipeline(&pm, arch_name, block_level_parameters.num_warps,
                             block_level_parameters.num_ctas,
-                            block_level_parameters.num_stages, cluster_info)
+                            block_level_parameters.num_stages, cluster_info,
+                            is_xla_fusion)
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }

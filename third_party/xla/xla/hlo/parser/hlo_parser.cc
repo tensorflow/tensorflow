@@ -4586,6 +4586,9 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         elems_seen_per_dim[0] = shape.dimensions(0);
         lexer_.Lex();
+        if (!options_.fill_shortform_constants_with_random_values()) {
+          break;
+        }
         // Fill data with deterministic (garbage) values. Use static to avoid
         // creating identical constants which could potentially got CSE'ed
         // away. This is a best-effort approach to make sure replaying a HLO

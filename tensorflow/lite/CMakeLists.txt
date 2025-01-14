@@ -622,7 +622,7 @@ populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
 )
 populate_tflite_source_vars("kernels/internal/optimized/4bit"
   TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS
-  FILTER "(.*neon.*|.*sse.*)\\.(cc|h)"
+  FILTER "(.*neon_.*|.*sse_.*)\\.(cc|h)"
 )
 set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
@@ -746,7 +746,7 @@ target_link_libraries(tensorflow-lite
 )
 
 if (NOT BUILD_SHARED_LIBS)
-  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")
 endif()
 
 target_compile_options(tensorflow-lite

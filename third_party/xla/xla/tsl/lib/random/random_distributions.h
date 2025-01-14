@@ -23,7 +23,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/random_distributions_utils.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace random {

@@ -61,30 +61,6 @@ class PjRtMemory final
   std::vector<Device*> devices_;
 };
 
-class PjRtMemoryDescription final
-    : public llvm::RTTIExtends<PjRtMemoryDescription, PjRtCompatibleMemory> {
- public:
-  PjRtMemoryDescription(PjRtClient* client, absl::Span<Device*> devices,
-                        const xla::PjRtMemorySpaceDescription* desc);
-
-  PjRtClient* client() const { return client_; }
-  xla::PjRtMemorySpace* pjrt_memory() override { return nullptr; }
-
-  MemoryId Id() const override;
-  const MemoryKind& Kind() const override;
-  absl::string_view ToString() const override;
-  absl::string_view DebugString() const override;
-  absl::Span<Device* const> Devices() const override { return devices_; }
-
-  static char ID;  // NOLINT
-
- private:
-  PjRtClient* client_;
-  const xla::PjRtMemorySpaceDescription* desc_;
-  MemoryKind kind_;
-  std::vector<Device*> devices_;
-};
-
 // Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,
 // returns a default `MemoryKind` chosen for the PjRt device. If there is no
 // default indicated by the device, simply returns `MemoryKind` with no memory

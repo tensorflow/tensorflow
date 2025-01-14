@@ -796,7 +796,7 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
 }  // namespace
 
 // Verifies that,
-// * Broadcast compatability for input shapes.
+// * Broadcast compatibility for input shapes.
 // * Output shape dimension matches the expected dimension size for input
 // shapes.
 LogicalResult BroadcastGradientArgsOp::verify() {
@@ -1635,15 +1635,13 @@ LogicalResult ConcatOffsetOp::fold(FoldAdaptor adaptor,
   if (concat_dim >= num_dims || concat_dim < 0) return failure();
 
   // Check all elements besides at concat_dim match across all shape tensors.
-  SmallVector<int32_t, 4> shape0;
-  shape0.reserve(num_dims);
-  for (int32_t dim : shapes.front().getValues<int32_t>()) shape0.push_back(dim);
+  DenseIntElementsAttr shape0 = shapes.front();
 
   for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1)) {
     for (const auto& dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
       if (dims_and_idx.index() == concat_dim) continue;
 
-      if (std::get<0>(dims_and_idx.value()) !=
+      if (std::get<0>(dims_and_idx.value()).getSExtValue() !=
           std::get<1>(dims_and_idx.value()).getSExtValue())
         return failure();
     }
@@ -1651,14 +1649,25 @@ LogicalResult ConcatOffsetOp::fold(FoldAdaptor adaptor,
 
   // Compute an exclusive cumulative sum of elements at concat_dim.
   results.reserve(shapes.size());
-  SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
-  RankedTensorType offset_type = tensorflow::GetTypeFromTFTensorShape(
-      {num_dims}, IntegerType::get(getContext(), 32));
-  for (DenseIntElementsAttr shape : shapes) {
-    results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
-    cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
+  if (getShapeType().isInteger(32)) {
+    SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
+    RankedTensorType offset_type = tensorflow::GetTypeFromTFTensorShape(
+        {num_dims}, IntegerType::get(getContext(), 32));
+    for (DenseIntElementsAttr shape : shapes) {
+      results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
+      cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
+    }
+  } else if (getShapeType().isInteger(64)) {
+    SmallVector<int64_t, 4> cumulative_sum(num_dims, 0);
+    RankedTensorType offset_type = tensorflow::GetTypeFromTFTensorShape(
+        {num_dims}, IntegerType::get(getContext(), 64));
+    for (DenseIntElementsAttr shape : shapes) {
+      results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
+      cumulative_sum[concat_dim] += shape.getValues<int64_t>()[concat_dim];
+    }
+  } else {
+    return failure();
   }
-
   return success();
 }
 
@@ -2278,7 +2287,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
     // TF::ConstOp, i.e., if `y` is defined by an op and it is the tf.Const op.
     // In that case, `yDefOp` stores this tf.Const op.
     // Note that if `y` is a block argument, `y.getDefiningOp()` will return
-    // null, which will get propogated by dyn_cast_or_null to `yDefOp`.
+    // null, which will get propagated by dyn_cast_or_null to `yDefOp`.
     // Further, if `y` is defined by an op other than tf.Const,
     // `y.getDefiningOp()` will not return null but dyn_cast_or_null will.
     if (auto yDefOp = dyn_cast_or_null<TF::ConstOp>(y.getDefiningOp())) {
@@ -2630,7 +2639,8 @@ namespace {
 // Flips the incompatible_shape_error attribute to true if the shapes are known
 // to be compatible.
 template <typename Ty>
-static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter& rewriter) {
+static LogicalResult flipCompatibleShapeError(Ty op,
+                                              PatternRewriter& rewriter) {
   if (op.getIncompatibleShapeError()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
@@ -2663,12 +2673,12 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter& rewriter) {
 
 void EqualOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.add(flipComatibleShapeError<EqualOp>);
+  results.add(flipCompatibleShapeError<EqualOp>);
 }
 
 void NotEqualOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                              MLIRContext* context) {
-  results.add(flipComatibleShapeError<NotEqualOp>);
+  results.add(flipCompatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2861,9 +2871,6 @@ OpFoldResult FillOp::fold(FoldAdaptor adaptor) {
 // FusedBatchNormGradOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/150954845): Add benchmarks to verify that layout preference didn't
-// change in the latest GPU generations.
-
 LogicalResult FusedBatchNormGradV3Op::UpdateDataFormat(StringRef data_format) {
   return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
@@ -2923,7 +2930,7 @@ LogicalResult FusedBatchNormOp::verify() {
 template <class Op>
 static LogicalResult InferenceFoldOperandsPermutation(
     ArrayRef<int64_t> permutation, Op* op) {
-  // FusedBatchNorm in training mode is a layout sentitive operation, and should
+  // FusedBatchNorm in training mode is a layout sensitive operation, and should
   // have already assigned an optimal data format.
   if (op->getIsTraining()) return failure();
   return ::mlir::TF::FoldOperandsPermutation(permutation, op);

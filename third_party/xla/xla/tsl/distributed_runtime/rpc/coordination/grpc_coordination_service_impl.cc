@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
 #include "absl/synchronization/mutex.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl {
 

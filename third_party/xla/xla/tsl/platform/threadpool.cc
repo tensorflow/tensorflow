@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "xla/tsl/platform/env.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 #define EIGEN_USE_THREADS
 

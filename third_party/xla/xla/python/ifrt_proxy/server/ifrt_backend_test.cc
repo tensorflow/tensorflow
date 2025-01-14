@@ -38,6 +38,7 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -68,7 +69,6 @@
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -1244,15 +1244,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
-    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
-    parameter_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
-    output_layouts.push_back(std::make_shared<xla::PjRtXlaLayout>(
+    output_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));

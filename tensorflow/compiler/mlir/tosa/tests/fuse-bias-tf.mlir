@@ -1,4 +1,5 @@
 // RUN: tf-opt --tosa-fuse-bias-tf --verify-each %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // Operations for testing --tosa-fuse-bias-tf
 

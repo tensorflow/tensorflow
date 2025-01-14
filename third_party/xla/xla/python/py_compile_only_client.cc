@@ -342,13 +342,13 @@ class CompileOnlyIfRtClient final
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override {
     if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
-      return std::make_shared<PjRtXlaLayout>(
+      return std::make_shared<PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
-    return std::make_unique<PjRtXlaLayout>(std::move(layout));
+    return std::make_shared<PjRtLayout>(std::move(layout));
   }
 
  private:

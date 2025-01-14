@@ -72,17 +72,17 @@ absl::Status ValidateArrayCreationInput(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
-  if (sharding->devices()->size() != pjrt_buffers.size()) {
+  absl::Span<Device* const> sharding_devices =
+      sharding->devices()->AddressableDeviceList()->devices();
+  if (sharding_devices.size() != pjrt_buffers.size()) {
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
-                           sharding->devices()->size(), pjrt_buffers.size());
+                           sharding_devices.size(), pjrt_buffers.size());
   }
 
   // Canonicalize memory kind in case it hasn't been done before.
-  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      sharding->memory_kind(), sharding->devices()->devices().front());
-  const absl::Span<Device* const> sharding_devices =
-      sharding->devices()->devices();
-  for (int i = 0; i < sharding->devices()->size(); ++i) {
+  MemoryKind canonicalized_sharding_memory_kind =
+      CanonicalizeMemoryKind(sharding->memory_kind(), sharding_devices.front());
+  for (int i = 0; i < sharding_devices.size(); ++i) {
     PjRtCompatibleDevice* device =
         llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {

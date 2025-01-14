@@ -35,13 +35,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -85,7 +85,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
  protected:
   explicit HloRunnerAgnosticTestBase(
       absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
-      absl::Nonnull<std::unique_ptr<HloRunnerInterface>> reference_runner,
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
       HloPredicate instruction_can_change_layout_func = {});
@@ -163,59 +162,15 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
-  // Executes the given hlo module on two backends and compares results.
-  //
-  // 'arguments': the input of the hlo module.
-  //
-  // 'error': if has value, expects the results to be near (within the error
-  // bound). Otherwise, expects the results to be equal.
-  //
-  // 'reference_preprocessor': the module should be ready to run on the test
-  // backend, but it might need to be tailored so that it is able to run on the
-  // reference backend. Note that the program shape of the module must not be
-  // modified.
-  ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
-
-  // Same as above, except that the module will be executed without Hlo
-  // optimization.
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
-
-  // Executes an hlo module with fake inputs and compares the results.
-  ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
-      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
-
-  // Same as above, except that the module will be executed without Hlo
-  // optimization.
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
-
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
   ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
-  // Convenient wrappers for executing and comparing an hlo module with fake
+  // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
-  ::testing::AssertionResult RunAndCompare(
-      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
-      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
@@ -296,10 +251,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::vector<ExecutionProfile>* profiles,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Override this method to add a default preprocessing step that is applied to
   // the test module in all Run* methods. The intended usecase for this is to
@@ -313,25 +264,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   }
 
   HloRunnerInterface& test_runner() const { return *test_runner_; }
-  HloRunnerInterface& reference_runner() const { return *reference_runner_; }
 
  private:
-  // Given the test module, makes a reference module that is ready to run on the
-  // reference platform. This assumes that the given module is ready to run on
-  // the test platform.
-  absl::StatusOr<std::unique_ptr<HloModule>> MakeReferenceModule(
-      const HloModule& test_module,
-      const std::function<void(HloModule*)>& reference_preprocessor);
-
-  // Runs the module on two platforms with or without running hlo passes and
-  // compares the results. Returns whether the results are near or equal. If any
-  // error happens before the results are computed, returns the error status.
-  absl::StatusOr<::testing::AssertionResult> RunAndCompareInternal(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      const std::optional<ErrorSpec>& error, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& reference_preprocessor,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
-
   // Runs the two module with or without running hlo passes and compares
   // the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
@@ -350,7 +284,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   std::unique_ptr<HloRunnerInterface> test_runner_;
-  std::unique_ptr<HloRunnerInterface> reference_runner_;
 };
 
 }  // namespace xla

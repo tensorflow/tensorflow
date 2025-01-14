@@ -724,6 +724,7 @@ cc_library(
         "//learning/brain/google/data/core/parse_proto:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
+        "//learning/processing/hydra/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
@@ -840,6 +841,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
+        "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
@@ -890,6 +892,7 @@ tf_cuda_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_xla//xla/tsl/framework:device_type",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],

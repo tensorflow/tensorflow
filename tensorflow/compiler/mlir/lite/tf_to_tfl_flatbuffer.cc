@@ -608,7 +608,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
       return status_handler->Combine(status);
     }
   } else {
-    *result = translated_result;
+    *result = std::move(translated_result);
   }
 
   if (mlir::failed(module->verifyInvariants())) {

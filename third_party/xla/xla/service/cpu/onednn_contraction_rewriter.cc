@@ -121,8 +121,12 @@ inline auto OneDnnFusibleInstr(HloInstruction** instr) {
       m::CustomCall(instr, {"__onednn$convolution"}));
 }
 
-inline bool IsOneDnnMatmulInstr(HloInstruction* instr) {
+inline bool IsOneDnnMatmulInstr(const HloInstruction* instr) {
   return Match(instr, m::CustomCall({"__onednn$matmul"}));
+}
+
+inline bool IsOneDnnConvolutionInstr(const HloInstruction* instr) {
+  return Match(instr, m::CustomCall({"__onednn$convolution"}));
 }
 
 inline auto ConvertBF16ToF32(HloInstruction** instr) {
@@ -323,8 +327,23 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
 // broadcasting along the addend's dimensions that are 1s. When compatible,
 // Broadcast can be replaced by Bitcast, which is much cheaper. Compute new
 // shape for the Bitcast.
-absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
-                                      const Shape& instr_shape) {
+absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
+                                        const HloInstruction* addend,
+                                        const HloInstruction* broadcast_instr) {
+  if (!broadcast_instr) {
+    // TODO(intel-tf): Modify this condition when Contraction + Bias +
+    // Add is enabled.
+    if (IsOneDnnConvolutionInstr(contraction) &&
+        ShapeUtil::TrueRank(addend->shape()) == 1 &&
+        addend->shape().rank() != 1) {
+      return ShapeUtil::FilterDimensions(
+          [&addend](int64_t dim) {
+            return ShapeUtil::GetDimension(addend->shape(), dim) != 1;
+          },
+          addend->shape());
+    }
+    return addend->shape();
+  }
   if (broadcast_instr->opcode() != HloOpcode::kBroadcast) {
     return absl::InvalidArgumentError(
         "Hlo instruction is not a Broadcast insruction.");
@@ -350,6 +369,7 @@ absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
 
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
+  auto instr_shape = contraction->shape();
   int64_t rank_difference = new_shape.rank() - instr_shape.rank();
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
@@ -683,16 +703,17 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           m::Op(&addend));
       if (!Match(addend_intermediate, addend_pattern)) return absl::OkStatus();
 
-      if (optional_addend_broadcast &&
-          (IsOneDnnMatmulInstr(contraction) || addend->shape().rank() != 1)) {
+      // oneDNN library requires Convolution biases to always have rank 1.
+      // Therefore, these bias shapes should remain unchanged.
+      if (IsOneDnnMatmulInstr(contraction) || addend->shape().rank() != 1) {
         auto new_shape =
-            AdjustBiasShape(optional_addend_broadcast, contraction->shape());
-        if (new_shape.ok()) {
-          addend = addend->AddInstruction(
-              HloInstruction::CreateBitcast(new_shape.value(), addend));
-        } else {
+            AdjustAddendShape(contraction, addend, optional_addend_broadcast);
+        if (!new_shape.ok()) {
           VLOG(2) << new_shape.status();
           return absl::OkStatus();
+        } else if (!ShapeUtil::Equal(*new_shape, addend->shape())) {
+          addend = addend->AddInstruction(
+              HloInstruction::CreateBitcast(new_shape.value(), addend));
         }
       }
 
@@ -1276,6 +1297,8 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
 absl::StatusOr<bool> OneDnnContractionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
   OneDnnContractionRewriteVisitor visitor;
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
@@ -1284,7 +1307,8 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
                                            compile_threadpool_);
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
-
+  XLA_VLOG_LINES(
+      3, "OneDnnContractionRewriter::Run(), after:\n" + module->ToString());
   return {result || result2};
 }
 

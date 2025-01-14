@@ -474,6 +474,16 @@ This pass fails if
   ];
 }
 
+def IfrtDumpAtomProgramsPass
+    : Pass<"ifrt-dump-atom-programs", "mlir::ModuleOp"> {
+  let summary = "Extracts atom programs from module and dumps them to files.";
+  let constructor = "CreateIfrtDumpAtomProgramsPass()";
+  let options = [
+    Option<"dump_dir", "dump_dir", "std::string", "",
+           "The directory to dump the atom programs and the main function to.">,
+  ];
+}
+
 def IfrtLegalizeToVifrtPass : Pass<"ifrt-legalize-to-vifrt", "mlir::ModuleOp"> {
   let summary = "Legalize IFRT to VIFRT.";
   let dependentDialects = ["xla::ifrt::VifrtDialect"];

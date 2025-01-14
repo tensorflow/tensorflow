@@ -256,9 +256,9 @@ xla_cc_test(
     deps = [
         "//xla/tsl/platform:subprocess",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -339,10 +339,10 @@ xla_cc_test(
     deps = [
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -408,11 +408,11 @@ xla_cc_test(
     srcs = ["prepare_reference_module_test.cc"],
     deps = [
         ":prepare_reference_module",
-        "//xla:test",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -494,9 +494,9 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -553,11 +553,11 @@ xla_cc_test(
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

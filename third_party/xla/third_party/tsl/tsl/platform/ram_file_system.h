@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile

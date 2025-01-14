@@ -118,42 +118,42 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #endif  // TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/runtime/cholesky_thunk.h"
-#include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
-#include "xla/service/gpu/runtime/command_buffer_thunk.h"
-#include "xla/service/gpu/runtime/conditional_thunk.h"
-#include "xla/service/gpu/runtime/convolution_thunk.h"
-#include "xla/service/gpu/runtime/copy_thunk.h"
-#include "xla/service/gpu/runtime/cub_sort_thunk.h"
-#include "xla/service/gpu/runtime/cudnn_thunk.h"
-#include "xla/service/gpu/runtime/custom_call_target.h"
-#include "xla/service/gpu/runtime/custom_call_thunk.h"
-#include "xla/service/gpu/runtime/fft_thunk.h"
-#include "xla/service/gpu/runtime/gemm_thunk.h"
-#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#include "xla/service/gpu/runtime/infeed_thunk.h"
-#include "xla/service/gpu/runtime/kernel_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
-#include "xla/service/gpu/runtime/nccl_group_thunk.h"
-#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
-#include "xla/service/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
-#include "xla/service/gpu/runtime/nccl_recv_thunk.h"
-#include "xla/service/gpu/runtime/nccl_send_thunk.h"
-#include "xla/service/gpu/runtime/norm_thunk.h"
-#include "xla/service/gpu/runtime/outfeed_thunk.h"
-#include "xla/service/gpu/runtime/replica_id_thunk.h"
-#include "xla/service/gpu/runtime/send_recv_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/gpu/runtime/triangular_solve_thunk.h"
-#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
-#include "xla/service/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/runtime/cholesky_thunk.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
+#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/convolution_thunk.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_sort_thunk.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_target.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/fft_thunk.h"
+#include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/infeed_thunk.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_group_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_recv_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_send_thunk.h"
+#include "xla/backends/gpu/runtime/norm_thunk.h"
+#include "xla/backends/gpu/runtime/outfeed_thunk.h"
+#include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
+#include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -232,7 +232,12 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   for (auto comp : instr->branch_computations()) {
     auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
     TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
-    branch_thunks.push_back(ir_emitter->ConsumeThunkSequence());
+    Thunk::ThunkInfo branch_thunk_info =
+        Thunk::ThunkInfo::WithProfileAnnotation(instr);
+    branch_thunk_info.profile_annotation +=
+        absl::StrCat("_branch_", comp->name());
+    branch_thunks.push_back(
+        ir_emitter->ConsumeThunkSequence(branch_thunk_info));
   }
 
   ConditionalThunkConfig config =
@@ -1421,7 +1426,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
                             ir_emitter_context_->llvm_module(), mlir_context,
-                            emit_kernels));
+                            /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
@@ -2263,9 +2268,17 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   TF_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
+  Thunk::ThunkInfo cond_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  cond_thunk_info.profile_annotation += "_condition";
+  Thunk::ThunkInfo body_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  body_thunk_info.profile_annotation += "_body";
+
   return std::unique_ptr<Thunk>(new WhileThunk(
-      thunk_info, pred, ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence(), trip_count));
+      thunk_info, pred,
+      ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
+      ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
 }
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(

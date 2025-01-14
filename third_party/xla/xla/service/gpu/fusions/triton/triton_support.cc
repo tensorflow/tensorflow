@@ -313,12 +313,12 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
                                    gpu_version);
     }
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kParameter:
+    case HloOpcode::kReshape:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-    case HloOpcode::kParameter:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kBitcast:
-    case HloOpcode::kReshape:
       return CodegenDecision::Allow();
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();

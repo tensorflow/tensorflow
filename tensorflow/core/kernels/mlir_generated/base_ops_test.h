@@ -17,10 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
 #include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/core/framework/tensor_shape.h"

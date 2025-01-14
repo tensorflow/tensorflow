@@ -83,8 +83,8 @@ xla_cc_test(
     srcs = ["context_map_test.cc"],
     deps = [
         ":context_map",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -94,7 +94,7 @@ cc_library(
     hdrs = ["mock_context.h"],
     deps = [
         ":context",
-        "//xla:test",
+        "//xla/hlo/testlib:test",
     ],
 )
 
@@ -131,7 +131,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -459,9 +458,9 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -507,9 +506,9 @@ xla_test(
         "//xla/tsl/framework:device_id",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -552,6 +551,7 @@ gpu_kernel_library(
     testonly = 1,
     srcs = ["gpu_test_kernels.cu.cc"],
     hdrs = ["gpu_test_kernels.h"],
+    linkstatic = True,
     tags = ["gpu"],
     deps = [
         "//xla/stream_executor:kernel_spec",
@@ -562,42 +562,20 @@ gpu_kernel_library(
     ]),
 )
 
-# Extract the .so file from the gpu_test_kernels library.
-# TODO: make gpu_test_kernels a direct dependency of gpu_test_kernels_fatbin.
-genrule(
-    name = "gpu_test_kernels_object_extractor",
-    testonly = True,
-    srcs = [":gpu_test_kernels"],
-    outs = ["gpu_test_kernels.so"],
-    cmd = """
-      SHARED_OBJECT=""
-      for src in $(SRCS); do
-      if [[ $$src == *.so ]]; then
-      SHARED_OBJECT=$$src
-      cp $$src $@ # Copy the .so file to the output
-      break
-      fi
-      done
-
-      if [[ -z $$SHARED_OBJECT ]]; then
-      echo "No .so file found in $(SRCS)" >&2
-      exit 1
-      fi
-      """,
-    tags = ["gpu"],
-    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-)
-
 cc_library(
     name = "gpu_test_kernels_fatbin",
     testonly = True,
     srcs = ["gpu_test_kernels_fatbin.cc"],
     hdrs = ["gpu_test_kernels_fatbin.h"],
     data = [
-        ":gpu_test_kernels_object_extractor",
+        ":gpu_test_kernels",
     ],
     tags = ["gpu"],
     deps = [
+        ":gpu_init_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -616,9 +594,9 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_test_kernels_fatbin",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -645,9 +623,9 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -680,13 +658,13 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_platform",
     ]) + if_rocm([
@@ -705,9 +683,9 @@ xla_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_platform",
     ]) + if_rocm([
@@ -728,9 +706,9 @@ xla_test(
         "//xla/stream_executor:stream_finder",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_platform",
     ]) + if_rocm([
@@ -790,11 +768,11 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

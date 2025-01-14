@@ -107,6 +107,7 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
             api_->execution_set_output_from_memory);
   LOAD_SYMB(NeuronMemory_createFromAHardwareBuffer,
             api_->memory_create_from_ahwb);
+  LOAD_SYMB(NeuronMemory_createFromFd, api_->memory_create_from_fd);
   LOAD_SYMB(NeuronMemory_free, api_->memory_free);
   LOAD_SYMB(NeuronModel_addOperand, api_->model_add_operand);
   LOAD_SYMB(NeuronModel_addOperation, api_->model_add_operation);

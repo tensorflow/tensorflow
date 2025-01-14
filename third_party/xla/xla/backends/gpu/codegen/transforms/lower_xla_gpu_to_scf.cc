@@ -44,8 +44,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/transforms/passes.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/util.h"
 
@@ -213,14 +213,13 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
 
     IndexingMap indexing_map = op.getIndexingMap();
     SmallVector<Value, 4> lbs, ubs, steps;
-    mlir_converter::GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs,
-                                                 &steps);
+    emitters::GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs, &steps);
     mlir::scf::LoopNest loop_nest = mlir::scf::buildLoopNest(
         b, loc, lbs, ubs, steps, op.getInits(),
         [&](OpBuilder& nested_builder, Location loc, ValueRange symbol_values,
             ValueRange iter_args) -> mlir::scf::ValueVector {
           mlir::ImplicitLocOpBuilder nested_b(loc, nested_builder);
-          auto is_in_bounds = mlir_converter::CheckConstraints(
+          auto is_in_bounds = emitters::CheckConstraints(
               indexing_map, op.getDims(), symbol_values, nested_b);
           auto if_op = nested_b.create<mlir::scf::IfOp>(
               is_in_bounds,
@@ -228,10 +227,9 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
                 ImplicitLocOpBuilder then_b(then_loc, then_builder);
                 mlir::IRMapping mapping;
                 mapping.map(op.getInductionVars(), symbol_values);
-                mapping.map(
-                    op.getIndexingMapResults(),
-                    mlir_converter::ApplyIndexing(indexing_map, op.getDims(),
-                                                  symbol_values, then_b));
+                mapping.map(op.getIndexingMapResults(),
+                            emitters::ApplyIndexing(indexing_map, op.getDims(),
+                                                    symbol_values, then_b));
                 mapping.map(op.getRegionIterArgs(), iter_args);
                 mlir::Block* old_block = op.getBody();
                 for (auto& old_op : old_block->without_terminator()) {

@@ -364,7 +364,7 @@ def xla_test(
     if test_names:
         native.test_suite(name = name, tags = tags + ["manual"], tests = test_names)
     else:
-        native.cc_test(name = name, deps = ["@local_tsl//tsl/platform:test_main"])
+        native.cc_test(name = name, deps = ["@com_google_googletest//:gtest_main"])
 
 def xla_test_library(
         name,

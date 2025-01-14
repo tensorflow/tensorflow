@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -63,14 +64,14 @@ class CuDnnFusionTest : public GpuCodegenTest {
     // Let this group of tests just use first available plan skipping
     // autotuning.
     debug_options.set_xla_gpu_autotune_level(0);
-    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
     return debug_options;
   }
-  bool IsAtLeastHopperWithCuDnn9() {
+  bool IsAtLeastAmpereWithCuDnn9() {
     se::StreamExecutor* executor = backend().default_stream_executor();
     return executor->GetDeviceDescription()
                .cuda_compute_capability()
-               .IsAtLeastHopper() &&
+               .IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
   bool IsAtLeastCuDnn91() {
@@ -82,9 +83,9 @@ class CuDnnFusionTest : public GpuCodegenTest {
 
  protected:
   void SetUp() override {
-    if (!IsAtLeastHopperWithCuDnn9()) {
+    if (!IsAtLeastAmpereWithCuDnn9()) {
       GTEST_SKIP()
-          << "cuDNN GEMM fusion is not enabled before Hopper / cuDNN 9.";
+          << "cuDNN GEMM fusion is not tested before Ampere / cuDNN 9.";
     }
   }
 };
@@ -609,17 +610,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-class CuDnnFusionLevel2Test : public CuDnnFusionExecutionTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        CuDnnFusionExecutionTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
-    return debug_options;
-  }
-};
-
-TEST_F(CuDnnFusionLevel2Test, BroadcastToDim2ExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, BroadcastToDim2ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = f16[16,32,128] parameter(0)
@@ -642,7 +633,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, BroadcastToDim1ExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, BroadcastToDim1ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = f16[16,32,128] parameter(0)
@@ -665,7 +656,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, BroadcastToDim0ExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, BroadcastToDim0ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = bf16[32,128] parameter(0)
@@ -685,7 +676,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, BroadcastTo2DimsExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, BroadcastTo2DimsExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = f16[16,32,128] parameter(0)
@@ -708,7 +699,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, BroadcastTo3DimsExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, BroadcastTo3DimsExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = f16[16,32,128] parameter(0)
@@ -731,7 +722,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, ConstantExecutesCorrectly) {
   if (!IsAtLeastCuDnn91()) {
     GTEST_SKIP() << "Fused scalar constants require cuDNN 9.1+.";
   }
@@ -760,7 +751,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, ClampExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, ClampExecutesCorrectly) {
   if (!IsAtLeastCuDnn91()) {
     GTEST_SKIP() << "Clamp test requires cuDNN 9.1+.";
   }
@@ -789,7 +780,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, DotF8ExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, DotF8ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 
 fusion1 {
@@ -814,7 +805,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, SlicingExecutesCorrectly) {
+TEST_F(CuDnnFusionExecutionTest, SlicingExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = f16[11,23,64] parameter(0)
@@ -834,17 +825,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        CuDnnFusionExecutionTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(3);
-    return debug_options;
-  }
-};
-
-TEST_F(CuDnnFusionLevel3Test,
+TEST_F(CuDnnFusionExecutionTest,
        DotWithSplitNonContractingInputExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
@@ -867,7 +848,7 @@ ENTRY r {
                             ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel3Test,
+TEST_F(CuDnnFusionExecutionTest,
        DotWithSplitNonContractingInOutExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
@@ -1098,7 +1079,6 @@ class CuDnnFusionRewriteTest : public CuDnnFusionTest {
     // Reset autotuning level to default.
     debug_options.set_xla_gpu_autotune_level(
         GetDebugOptionsFromFlags().xla_gpu_autotune_level());
-    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -1131,6 +1111,12 @@ TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
   // The test case relies on measurements by the autotuner and current
   // performance comparison of the backends. May need to be updated if
   // the situation changes.
+  if (backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .cuda_compute_capability() != se::CudaComputeCapability::Hopper()) {
+    GTEST_SKIP() << "The test is for Hopper.";
+  }
   MatchOptimizedHlo(R"(
 e {
   p0 = bf16[720,720,720] parameter(0)

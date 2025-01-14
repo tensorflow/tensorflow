@@ -71,10 +71,10 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/status/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/status.h"
 
 // Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
 #if defined(PLATFORM_GOOGLE)

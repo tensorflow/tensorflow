@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -39,8 +41,6 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {

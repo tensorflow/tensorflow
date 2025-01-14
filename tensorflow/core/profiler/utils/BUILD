@@ -467,13 +467,37 @@ tf_cuda_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
 cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
-    deps = ["@local_xla//xla/hlo/ir:hlo"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:__subpackages__",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_utils_test",
+    srcs = ["hlo_module_utils_test.cc"],
+    deps = [
+        ":hlo_module_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tests:hlo_test_base",
+    ],
 )
 
 cc_library(
@@ -514,9 +538,9 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:test_helpers",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/testlib:test_helpers",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service/gpu/model:hlo_op_profiles",
         "@local_xla//xla/tests:hlo_test_base",

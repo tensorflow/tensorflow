@@ -24,14 +24,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {

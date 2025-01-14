@@ -20,9 +20,9 @@ limitations under the License.
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/table_options.h"
 #include "xla/tsl/lib/io/two_level_iterator.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 namespace tsl {
 namespace table {

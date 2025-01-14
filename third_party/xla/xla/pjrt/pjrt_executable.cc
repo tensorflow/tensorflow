@@ -442,7 +442,7 @@ PjRtExecutable::GetParameterLayouts() const {
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }
@@ -467,7 +467,7 @@ PjRtExecutable::GetOutputLayouts() const {
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }

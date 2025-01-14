@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/buffer.h"  // from @flatbuffers

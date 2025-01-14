@@ -118,10 +118,6 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
       dot_canonical_dims_.lhs_column_major, dot_canonical_dims_.lhs_canonical,
       dot_canonical_dims_.rhs_column_major, dot_canonical_dims_.rhs_canonical);
 
-  if (params.intra_op_threadpool == nullptr) {
-    return InvalidArgument("Intra-op threadpool must be provided for DotThunk");
-  }
-
   // Eigen expects column-major layout. If the matrices are row major, then use
   // the following identity to compute the product:
   //

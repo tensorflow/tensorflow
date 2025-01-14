@@ -16,7 +16,14 @@ tensorflow {
     *tsl*;
     *lite*;
     *TFL*;
+    *TfLite*;
     *quantization*;
+    *mlir*detail*;
+    *mlir*func*;
+    *mlir*TF*;
+    *mlir*shape*;
+    *mlir*scf*;
+    *mlir*quant*;
   local:
     *;
 };

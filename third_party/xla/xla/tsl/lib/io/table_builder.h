@@ -27,7 +27,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "xla/tsl/lib/io/table_options.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {

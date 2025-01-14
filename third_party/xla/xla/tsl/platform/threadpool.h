@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/threadpool_interface.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/macros.h"
 
 namespace Eigen {
 class Allocator;

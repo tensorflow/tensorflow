@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_IR_XLA_OPS_H_
 #define XLA_CODEGEN_IR_XLA_OPS_H_
 
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"

@@ -354,9 +354,9 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/c:tsl_status",
         "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -698,10 +698,10 @@ tf_cc_test(
     deps = [
         ":tf_status",
         ":tf_status_helper",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

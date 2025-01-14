@@ -27,7 +27,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 // Android versions older than 28 do not have posix_spawn().
 #if !defined(__ANDROID_API__) || __ANDROID_API__ >= 28

@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_UTIL_ENV_VAR_H_
 #define XLA_TSL_UTIL_ENV_VAR_H_
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

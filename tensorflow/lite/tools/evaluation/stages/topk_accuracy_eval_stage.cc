@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"

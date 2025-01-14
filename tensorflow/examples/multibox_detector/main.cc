@@ -79,7 +79,7 @@ Status ReadLocationsFile(const string& file_name, std::vector<float>* result,
     result->reserve(string_tokens.size());
     for (const string& string_token : string_tokens) {
       float number;
-      CHECK(tensorflow::strings::safe_strtof(string_token, &number));
+      CHECK(absl::SimpleAtof(string_token, &number));
       result->push_back(number);
     }
   }

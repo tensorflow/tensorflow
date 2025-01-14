@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -535,29 +536,10 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
   std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
       args.done_with_host_buffer, ::pjrt::MakeEventDeleter(c_api_));
 
-  if (on_done_with_host_buffer) {
-    PJRT_Event_OnReady_Args event_args;
-    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
-    event_args.extension_start = nullptr;
-    event_args.event = event.get();
-    event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         c_api = c_api_](PJRT_Error* error) mutable {
-          if (error) {
-            ::pjrt::MakeErrorDeleter(c_api)(error);
-          }
-          std::move(on_done_with_host_buffer)();
-        });
-    event_args.callback = [](PJRT_Error* error, void* args) {
-      auto* on_done_with_host_buffer =
-          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
-      (*on_done_with_host_buffer)(error);
-      delete on_done_with_host_buffer;
-    };
-
-    RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Event_OnReady(&event_args),
-                                c_api_);
-  }
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt::InvokePjRtEventWhenReady(c_api_, event.get(),
+                                     std::move(on_done_with_host_buffer)),
+      c_api_);
 
   return buffer;
 }
@@ -688,10 +670,10 @@ absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
 
   std::string serialized_layout(serialize_args.serialized_bytes,
                                 serialize_args.serialized_bytes_size);
-  TF_ASSIGN_OR_RETURN(PjRtXlaLayout pjrt_xla_layout,
-                      PjRtXlaLayout::Deserialize(serialized_layout));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                      PjRtLayout::Deserialize(serialized_layout));
 
-  return pjrt_xla_layout.xla_layout();
+  return pjrt_layout->xla_layout();
 }
 
 class PjRtCApiAsyncHostToDeviceTransferManager
@@ -703,24 +685,40 @@ class PjRtCApiAsyncHostToDeviceTransferManager
       : c_client_(client), c_transfer_manager_(std::move(c_transfer_manager)) {}
 
   size_t buffer_count() const override {
-    LOG(FATAL) << "PJRT C API does not support buffer_count. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_BufferCount(&args), api);
+    return args.buffer_count;
   }
 
   PjRtDevice* device() const override {
-    LOG(FATAL) << "PJRT C API does not support device. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_Device_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_Device_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_Device(&args), api);
+    return c_client_->GetCppDevice(args.device_out);
   }
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
-    LOG(FATAL) << "PJRT C API does not support RetrieveBuffer. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(&args), api);
+    return std::make_unique<PjRtCApiBuffer>(c_client_, args.buffer_out);
   }
 
   absl::Status TransferLiteralToBuffer(
@@ -733,10 +731,16 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   }
 
   size_t buffer_size(int buffer_index) const override {
-    LOG(FATAL)
-        << "PJRT C API does not support buffer_size. Please report an "
-           "issue at https://github.com/google/jax/issues if you need this "
-           "feature.";
+    PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_BufferSize(&args), api);
+    return args.buffer_size;
   }
 
   absl::Status TransferRawDataToBuffer(
@@ -765,44 +769,47 @@ class PjRtCApiAsyncHostToDeviceTransferManager
         api->PJRT_AsyncHostToDeviceTransferManager_TransferData(&args), api);
     std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
         args.done_with_h2d_transfer, ::pjrt::MakeEventDeleter(api));
-    if (on_done) {
-      PJRT_Event_OnReady_Args event_args;
-      event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
-      event_args.extension_start = nullptr;
-      event_args.event = event.get();
-      event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
-          [on_done = std::move(on_done),
-           c_api = api](PJRT_Error* error) mutable {
-            if (error) {
-              ::pjrt::MakeErrorDeleter(c_api)(error);
-            }
-            std::move(on_done)();
-          });
-      event_args.callback = [](PJRT_Error* error, void* args) {
-        auto* on_done_with_d2h_transfer =
-            reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
-        (*on_done_with_d2h_transfer)(error);
-        delete on_done_with_d2h_transfer;
-      };
-
-      RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Event_OnReady(&event_args), api);
-    }
+    RETURN_STATUS_IF_PJRT_ERROR(
+        pjrt::InvokePjRtEventWhenReady(api, event.get(), std::move(on_done)),
+        api);
     return absl::OkStatus();
   }
 
   void SetBufferError(int buffer_index, absl::Status error) override {
-    LOG(FATAL) << "PJRT C API does not support SetBufferError. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    args.error_code = pjrt::StatusCodeToPjrtErrorCode(error.code());
+    args.error_message = error.message().data();
+    args.error_message_size = error.message().size();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_SetBufferError(&args), api);
   }
 
   using TransferMetadata = absl::flat_hash_map<std::string, std::string>;
   void AddTransferMetadata(const TransferMetadata& metadata) override {
-    LOG(FATAL) << "PJRT C API does not support AddTransferMetadata. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    absl::flat_hash_map<std::string, xla::PjRtValueType> pjrt_metadata;
+    for (const auto& [key, value] : metadata) {
+      pjrt_metadata[key] = PjRtValueType(value);
+    };
+    absl::StatusOr<std::vector<PJRT_NamedValue>> result =
+        pjrt::ConvertToPjRtNamedValueList(pjrt_metadata);
+    TF_CHECK_OK(result.status());
+    std::vector<PJRT_NamedValue> c_metadata = result.value();
+    args.transfer_metadata = c_metadata.data();
+    args.num_metadata = c_metadata.size();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_AddMetadata(&args), api);
   }
 
  private:
@@ -1013,22 +1020,36 @@ absl::string_view PjRtCApiDeviceDescription::ToString() const {
   return to_string;
 }
 
-absl::Span<const PjRtMemorySpaceDescription* const>
-PjRtCApiDeviceDescription::memory_spaces() const {
+void PjRtCApiDeviceDescription::InitMemoryDescriptions() const {
   const PJRT_MemoryDescriptions_Extension* extension =
       pjrt::FindExtension<PJRT_MemoryDescriptions_Extension>(
           c_api_, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
-  if (!extension) return {};
+  if (!extension) return;
 
   if (memory_space_description_pointers_.empty()) {
-    memory_space_descriptions_ =
-        pjrt::GetMemorySpaceDescriptions(device_description_, c_api_);
+    memory_space_descriptions_ = pjrt::GetMemorySpaceDescriptions(
+        device_description_, c_api_, &default_memory_space_description_);
     for (int i = 0; i < memory_space_descriptions_.size(); i++) {
       memory_space_description_pointers_.push_back(
           &memory_space_descriptions_[i]);
     }
   }
+}
+
+absl::Span<const PjRtMemorySpaceDescription* const>
+PjRtCApiDeviceDescription::memory_spaces() const {
+  if (memory_space_description_pointers_.empty()) {
+    InitMemoryDescriptions();
+  }
   return memory_space_description_pointers_;
+}
+
+absl::StatusOr<const PjRtMemorySpaceDescription*>
+PjRtCApiDeviceDescription::default_memory_space() const {
+  if (memory_space_description_pointers_.empty()) {
+    InitMemoryDescriptions();
+  }
+  return default_memory_space_description_;
 }
 
 // ------------------------------- Devices -------------------------------------
@@ -2030,7 +2051,7 @@ std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
           pjrt::FindExtension<PJRT_Layouts_Extension>(
               c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
       if (extension == nullptr) {
-        layout_ = std::make_shared<PjRtXlaLayout>(
+        layout_ = std::make_shared<PjRtLayout>(
             LayoutUtil::MakeDescendingLayout(dimensions().size()));
       } else {
         std::unique_ptr<PJRT_Layouts_MemoryLayout,
@@ -2056,10 +2077,10 @@ std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
 
         std::string serialized_layout(serialize_args.serialized_bytes,
                                       serialize_args.serialized_bytes_size);
-        absl::StatusOr<PjRtXlaLayout> pjrt_xla_layout =
-            PjRtXlaLayout::Deserialize(serialized_layout);
-        TF_CHECK_OK(pjrt_xla_layout.status());
-        layout_ = std::make_shared<PjRtXlaLayout>(*std::move(pjrt_xla_layout));
+        absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout =
+            PjRtLayout::Deserialize(serialized_layout);
+        TF_CHECK_OK(pjrt_layout.status());
+        layout_ = *std::move(pjrt_layout);
       }
     }
   }

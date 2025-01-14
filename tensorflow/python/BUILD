@@ -1511,19 +1511,30 @@ pywrap_library(
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_filters = {
-        "//tensorflow:tensorflow_framework_pywrap_filter": "tensorflow/libtensorflow_framework.so.2",
-        "//tensorflow:tensorflow_cc_pywrap_filter": "tensorflow/libtensorflow_cc.so.2",
+        "tensorflow/libtensorflow_framework.so.2": "//tensorflow:tensorflow_framework_pywrap_filter",
+        "tensorflow/libtensorflow_cc.so.2": "//tensorflow:tensorflow_cc_pywrap_filter",
     },
-    linkopts = select({
-        "//tensorflow:windows": [
-            "-DEFAULTLIB:ws2_32.lib",
-            "-DEFAULTLIB:advapi32.lib",
-            "-DEFAULTLIB:crypt32.lib",
-            "-DEFAULTLIB:Normaliz.lib",
-            "-DEFAULTLIB:ntdll.lib",
+    # buildifier: disable=unsorted-dict-items
+    # @unsorted-dict-items
+    common_lib_linkopts = {
+        "tensorflow/libtensorflow_framework.so.2": [
+            "-z defs",
+            "-lpthread",
+            "-ldl",
+            "-lm",
         ],
-        "//conditions:default": [],
-    }),
+        "tensorflow/libtensorflow_cc.so.2": [
+            "-z defs",
+            "-lpthread",
+            "-ldl",
+            "-lm",
+        ],
+    },
+    # buildifier: disable=unsorted-dict-items
+    # @unsorted-dict-items
+    common_lib_version_scripts = {
+        "tensorflow/libtensorflow_cc.so.2": "//tensorflow:tf_version_script.lds",
+    },
     pywrap_lib_exclusion_filter = ":_pywrap_lib_exclusion_filter",
     pywrap_lib_filter = ":_pywrap_lib_filter",
     starlark_only_deps = [

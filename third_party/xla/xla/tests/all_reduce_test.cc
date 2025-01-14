@@ -16,8 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 

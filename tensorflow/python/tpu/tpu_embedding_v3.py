@@ -1883,7 +1883,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           table_vocab_size=total_vocab_size,
           feature_width=feature_width,
           table_name=table_name,
-          allow_id_dropping=True,  # TODO(pineapplejuice233): make this configurable.
+          allow_id_dropping=self._sparse_core_embedding_config.allow_id_dropping,
       )
       table_to_csr_format_tensor[table_name] = (
           PartitionedCsrFormatTensor(

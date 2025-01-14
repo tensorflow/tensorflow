@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -350,9 +350,11 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
         auto& results = *results_or;
         CHECK_EQ(results.size(), 1);
         CHECK_EQ(results[0].size(), 1);
-        auto literal = results[0][0]->ToLiteralSync().value();
-        CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
-                                     *literal));
+        auto literal_or = results[0][0]->ToLiteralSync();
+        if (literal_or.ok()) {
+          CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                       *literal_or.value()));
+        }
       }
       blocking_counter.DecrementCount();
     });

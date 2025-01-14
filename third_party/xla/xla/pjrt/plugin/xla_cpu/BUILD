@@ -40,8 +40,8 @@ cc_library(
     srcs = [],
     hdrs = ["cpu_client_options.h"],
     deps = [
+        "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/service:hlo_module_config",
-        "//xla/service/cpu:collectives_interface",
     ],
 )
 
@@ -101,8 +101,8 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_proto_cc",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

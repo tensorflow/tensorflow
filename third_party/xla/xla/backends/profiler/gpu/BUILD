@@ -109,8 +109,8 @@ xla_test(
     ],
     deps = [
         ":cupti_interface",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ] + if_cuda_is_configured([
         ":cuda_test",
         ":cupti_error_manager",
@@ -397,8 +397,8 @@ xla_test(
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_utils",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -418,9 +418,9 @@ xla_test(
     ]) + [
         "//xla/tsl/profiler/utils:xplane_builder",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -435,7 +435,7 @@ cuda_library(
         "ptxas-options=-v",
     ]),
     local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
-    tags = ["requires-gpu-nvidia"],
+    tags = ["cuda-only"],
     visibility = ["//visibility:public"],
 )
 
@@ -445,10 +445,12 @@ xla_test(
     srcs = ["nvtx_with_cuda_kernels_test.cc"],
     backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
-    tags = ["no_mac"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
     deps = [
         ":nvtx_with_cuda_kernels",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

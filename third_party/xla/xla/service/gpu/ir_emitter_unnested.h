@@ -32,6 +32,10 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -40,10 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/runtime/copy_thunk.h"
-#include "xla/service/gpu/runtime/send_recv_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape_util.h"
@@ -89,8 +89,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
-    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
+      Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
+    return std::make_unique<SequentialThunk>(thunk_info,
                                              std::move(thunk_sequence_));
   }
 

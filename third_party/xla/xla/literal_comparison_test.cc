@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {

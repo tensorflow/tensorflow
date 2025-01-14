@@ -17,16 +17,16 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifndef IS_MOBILE_PLATFORM
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 namespace monitoring {

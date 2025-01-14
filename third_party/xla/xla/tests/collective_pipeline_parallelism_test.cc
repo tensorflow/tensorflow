@@ -103,7 +103,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -296,7 +299,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -416,7 +422,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -536,7 +545,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -674,7 +686,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -814,7 +829,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 4;
   const int64_t kNumPartitions = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -907,7 +925,11 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -992,7 +1014,11 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -1088,7 +1114,11 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -1186,7 +1216,11 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
 
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
@@ -1413,7 +1447,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   )";
 
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1597,7 +1634,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   )";
 
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);

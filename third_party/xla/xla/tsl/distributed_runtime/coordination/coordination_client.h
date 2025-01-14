@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/status.h"
 
 namespace tsl {
 using tensorflow::BarrierRequest;

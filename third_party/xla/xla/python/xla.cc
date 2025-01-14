@@ -46,6 +46,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -63,23 +64,22 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"  // NOLINT
 
 #if defined(__linux__)
 #include "gloo/transport/tcp/attr.h"
 #include "gloo/transport/tcp/device.h"
-#include "xla/pjrt/cpu/gloo_collectives.h"
-#include "xla/pjrt/cpu/gloo_kv_store.h"
+#include "xla/backends/cpu/collectives/gloo_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"
 #elif defined(__APPLE__)
 #include "gloo/transport/uv/device.h"
-#include "xla/pjrt/cpu/gloo_collectives.h"  // NOLINT
-#include "xla/pjrt/cpu/gloo_kv_store.h"  // NOLINT
+#include "xla/backends/cpu/collectives/gloo_collectives.h"  // NOLINT
+#include "xla/backends/cpu/collectives/gloo_kv_store.h"  // NOLINT
 #endif  // defined(__linux__)
 
 #if !defined(_WIN32) && !defined(PLATFORM_GOOGLE)
-#include "xla/pjrt/cpu/mpi_collectives.h"
+#include "xla/backends/cpu/collectives/mpi_collectives.h"
 #endif  // !_WIN32 && !PLATFORM_GOOGLE
 
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -239,33 +239,27 @@ NB_MODULE(xla_extension, m) {
       .def("__eq__", [](const PjRtLayout& layout,
                         const PjRtLayout& other) { return layout == other; })
       .def("__hash__",
-           [](const PjRtLayout& layout) { return absl::HashOf(layout); });
-
-  nb::class_<PjRtXlaLayout, PjRtLayout>(m, "PjRtXlaLayout")
-      .def("_xla_layout", &PjRtXlaLayout::xla_layout)
+           [](const PjRtLayout& layout) { return absl::HashOf(layout); })
+      .def("_xla_layout", &PjRtLayout::xla_layout)
       .def("__getstate__",
-           [](const PjRtXlaLayout& layout) -> nb::tuple {
+           [](const PjRtLayout& layout) -> nb::tuple {
              absl::StatusOr<std::string> serialized = layout.Serialize();
              ThrowIfError(serialized.status());
              return nb::make_tuple(
                  nb::bytes(serialized->data(), serialized->size()));
            })
-      .def("__setstate__", [](PjRtXlaLayout* self, nb::tuple t) {
-        // TODO(b/328671718): don't assume PjRtXlaLayout. We probably want a
-        // generic method on PjRtCompiler instead, although we'll have
-        // somehow have to attach a compiler to this PjRtLayout (something
-        // like ClientAndPtr).
+      .def("__setstate__", [](PjRtLayout* self, nb::tuple t) {
         nb::bytes serialized = nb::cast<nb::bytes>(t[0]);
-        absl::StatusOr<PjRtXlaLayout> layout = PjRtXlaLayout::Deserialize(
-            absl::string_view(serialized.c_str(), serialized.size()));
+        absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout =
+            PjRtLayout::Deserialize(
+                absl::string_view(serialized.c_str(), serialized.size()));
         ThrowIfError(layout.status());
-        new (self) PjRtXlaLayout(std::move(*layout));
+        new (self) PjRtLayout((*layout)->xla_layout());
       });
 
   jax::BuildWeakrefLRUCacheAPI(m);
 
-  nb::class_<xla::cpu::CollectivesInterface> cpu_collectives(m,
-                                                             "CpuCollectives");
+  nb::class_<xla::cpu::CpuCollectives> cpu_collectives(m, "CpuCollectives");
 
   m.def(
       "make_gloo_tcp_collectives",
@@ -273,7 +267,7 @@ NB_MODULE(xla_extension, m) {
 
          std::optional<std::string> hostname,
          std::optional<std::string> interface)
-          -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+          -> std::shared_ptr<xla::cpu::CpuCollectives> {
 #if defined(__linux__)
         std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
@@ -326,7 +320,7 @@ NB_MODULE(xla_extension, m) {
   });
 #else   // !_WIN32 && !PLATFORM_GOOGLE
   m.def("make_mpi_collectives",
-        []() -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+        []() -> std::shared_ptr<xla::cpu::CpuCollectives> {
           throw xla::XlaRuntimeError(
               "make_mpi_collectives is not implemented for Windows");
         });
@@ -337,7 +331,7 @@ NB_MODULE(xla_extension, m) {
       [](bool asynchronous,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id, int num_nodes,
-         std::shared_ptr<xla::cpu::CollectivesInterface> collectives,
+         std::shared_ptr<xla::cpu::CpuCollectives> collectives,
          std::optional<int> num_devices) -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
@@ -368,7 +362,7 @@ NB_MODULE(xla_extension, m) {
       nb::arg("asynchronous") = true, nb::arg("distributed_client") = nullptr,
       nb::arg("node_id") = 0, nb::arg("num_nodes") = 1,
       nb::arg("collectives").none() =
-          std::shared_ptr<xla::cpu::CollectivesInterface>(),
+          std::shared_ptr<xla::cpu::CpuCollectives>(),
       nb::arg("num_devices").none() = std::nullopt);
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     absl::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);

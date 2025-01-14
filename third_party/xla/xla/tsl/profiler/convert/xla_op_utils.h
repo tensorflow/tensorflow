@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {
@@ -128,6 +128,22 @@ inline bool MayHaveInnerOps(absl::string_view category) {
   return category == kHloCall || category == kHloConditional ||
          category == kHloWhile || category == kHloMegacoreFusion;
 }
+
+// File and line that the framework op corresponding to an HLO op is associated
+// to in a user's program; e.g. it could be the file and line of user code that
+// generated the op.
+struct OpSourceInfo {
+  absl::string_view source_file;
+  int32_t source_line = -1;
+  std::string stack_frame;
+
+  std::string GetSourceTopLine() const {
+    if (source_file.empty()) return "";
+    return absl::StrCat(source_file, ":", source_line);
+  }
+
+  std::string GetSourceStack() const { return stack_frame; }
+};
 
 }  // namespace profiler
 }  // namespace tsl

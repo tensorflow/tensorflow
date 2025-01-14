@@ -130,6 +130,9 @@ CreateIfrtVerifyDeviceTypeConsistencyPass(
     IfrtVerifyDeviceTypeConsistencyPassOptions options = {});
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtDumpAtomProgramsPass(IfrtDumpAtomProgramsPassOptions options = {});
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtAtomProgramsToVhloPass(
     tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
     std::string vhlo_target_version);

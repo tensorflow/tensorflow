@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::Status GetPaddingFromString(StringPiece str_value, Padding* value) {
+absl::Status GetPaddingFromString(absl::string_view str_value, Padding* value) {
   if (str_value == "SAME") {
     *value = SAME;
   } else if (str_value == "VALID") {

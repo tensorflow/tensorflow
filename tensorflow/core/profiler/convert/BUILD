@@ -1332,6 +1332,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "duty_cycle_tracker",
+    srcs = ["duty_cycle_tracker.cc"],
+    hdrs = ["duty_cycle_tracker.h"],
+    deps = [
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
+    ],
+)
+
+tf_cc_test(
+    name = "duty_cycle_tracker_test",
+    srcs = ["duty_cycle_tracker_test.cc"],
+    deps = [
+        ":duty_cycle_tracker",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log:check",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
+    ],
+)
+
 tf_cc_test(
     name = "compute_inference_latency_test",
     srcs = ["compute_inference_latency_test.cc"],

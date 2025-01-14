@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_android",
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
@@ -87,7 +88,7 @@ cc_library(
     name = "op_kernel_runner",
     srcs = ["op_kernel_runner.cc"],
     hdrs = ["op_kernel_runner.h"],
-    features = tf_features_nolayering_check_if_ios(),
+    features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
     visibility = [
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
         "//visibility:public",

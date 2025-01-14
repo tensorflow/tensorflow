@@ -31,9 +31,9 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #endif
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 

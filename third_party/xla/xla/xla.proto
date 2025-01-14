@@ -163,6 +163,11 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
+  // When enabled, the Triton emitter for dot will use int4 as native type and
+  // later the Triton IR will be rewritten by Triton IR rewriting pass to use
+  // int4 packed into int8.
+  bool xla_gpu_experimental_enable_triton_i4_rewrites = 361;
+
   // When possible, XLA will use Triton's experimental TMA feature.
   bool xla_gpu_experimental_enable_triton_tma = 355;
 
@@ -899,9 +904,8 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
   // 0: Disabled.
-  // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
-  // 2: + Broadcasts, slicing.
-  // 3: + Nontrivial noncontracting dimension reshapes/transposes.
+  // 1: Enabled on Blackwell+ GPUs.
+  // 2: Enabled on all supported GPUs (Ampere+).
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
   // This instructs the runtime whether to use
@@ -942,6 +946,9 @@ message DebugOptions {
 
   reserved 302;  // was xla_use_shardy
 
+  // If true, shards the autotuning work between participating compiler
+  // processes (typically in multi-host setups) and joins the results when
+  // it's done.
   bool xla_gpu_shard_autotuning = 304;
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
@@ -1052,7 +1059,7 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Timeouts for RendezvousSingle stuck warning and termination.
+  // Timeouts for Rendezvous stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
 
@@ -1101,7 +1108,12 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 360
+  // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
+  // This feature is still experimental and effective only
+  // xla_gpu_multi_streamed_windowed_einsum is set to true.
+  bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
+
+  // Next id: 362
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

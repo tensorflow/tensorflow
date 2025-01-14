@@ -40,9 +40,7 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(
                       Sharding::FromProto(lookup_device, proto.sharding()));
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (proto.has_layout()) {
-    TF_ASSIGN_OR_RETURN(auto pjrt_xla_layout,
-                        xla::PjRtXlaLayout::Deserialize(proto.layout()));
-    layout = std::make_shared<xla::PjRtXlaLayout>(std::move(pjrt_xla_layout));
+    TF_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
   }
   return ArraySpec{
       /*dtype=*/dtype,

@@ -65,7 +65,7 @@ class TFRTOpKernelConstruction {
   explicit TFRTOpKernelConstruction(const tfrt::OpAttrsRef& attributes);
 
   template <class T>
-  absl::Status GetAttr(StringPiece attr_name, T* value) const;
+  absl::Status GetAttr(absl::string_view attr_name, T* value) const;
 
   void CtxFailure(const absl::Status& s);
   void CtxFailureWithWarning(const absl::Status& s);
@@ -88,25 +88,25 @@ class TFRTOpKernelConstruction {
 };
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                std::string* value) const;
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                DataType* value) const;
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                Padding* value) const;
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                std::vector<int32>* value) const;
 
-absl::Status MissingAttributeError(StringPiece attr_name);
+absl::Status MissingAttributeError(absl::string_view attr_name);
 
 template <class T>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                T* value) const {
   bool success = attributes_.Get<T>(
       llvm::StringRef(attr_name.data(), attr_name.size()), value);
@@ -202,10 +202,10 @@ class TFRTOpMeta {
 // AddN.
 class TFRTOpMetaBuilder {
  public:
-  explicit TFRTOpMetaBuilder(StringPiece op_name);
-  TFRTOpMetaBuilder& Output(StringPiece output_spec);
-  TFRTOpMetaBuilder& Input(StringPiece input_spec);
-  TFRTOpMetaBuilder& Attr(StringPiece attr_spec);
+  explicit TFRTOpMetaBuilder(absl::string_view op_name);
+  TFRTOpMetaBuilder& Output(absl::string_view output_spec);
+  TFRTOpMetaBuilder& Input(absl::string_view input_spec);
+  TFRTOpMetaBuilder& Attr(absl::string_view attr_spec);
 
   const string& op_name() const;
   TFRTOpMeta BuildMeta() const;
@@ -222,7 +222,7 @@ class TFRTOpMetaMap {
   void RegisterOpMeta(const TFRTOpMetaBuilder& op_builder);
 
   // Returns nullptr if there is no metadata for op_name.
-  const TFRTOpMeta* GetOpMeta(StringPiece op_name) const;
+  const TFRTOpMeta* GetOpMeta(absl::string_view op_name) const;
 
  private:
   llvm::StringMap<TFRTOpMeta> op_metas_;
@@ -271,7 +271,7 @@ struct TFRTOpKernelReg {
 class TFRTOpKernelFactories {
  public:
   TFRTOpKernelFactories();
-  void RegisterFactory(StringPiece kernel_class_name,
+  void RegisterFactory(absl::string_view kernel_class_name,
                        TFRTOpKernelReg kernel_info);
 
   // Creates a kernel with the given name and passes op_kernel_construction
@@ -285,7 +285,7 @@ class TFRTOpKernelFactories {
   //      Note that we consider a constraint to be "not matched" if attribute
   //      it applies to is not in op_kernel_construction.
   std::unique_ptr<TFRTOpKernel> CreateKernel(
-      StringPiece kernel_class_name,
+      absl::string_view kernel_class_name,
       TFRTOpKernelConstruction* op_kernel_construction) const;
 
  private:

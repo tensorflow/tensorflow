@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
@@ -114,8 +115,7 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::CreateCommunicators(int32_t nranks,
-                                     const CliqueKey& clique_key,
+NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
                                      const std::optional<CliqueId>& clique_id,
                                      absl::Span<const DeviceRank> ranks,
                                      const Collectives::Config& config) {
@@ -139,15 +139,15 @@ NcclCollectives::CreateCommunicators(int32_t nranks,
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < ranks.size(); ++i) {
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << nranks
+            << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_id->fingerprint();
     TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
     auto activate_context = device->stream_executor()->Activate();
 
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(*clique_id));
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm_handles[i], nranks, nccl_unique_id,
-                               ranks[i].rank.value(), &comm_config));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+        &comm_handles[i], clique_key.num_devices(), nccl_unique_id,
+        ranks[i].rank.value(), &comm_config));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 

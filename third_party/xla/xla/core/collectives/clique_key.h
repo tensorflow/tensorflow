@@ -40,7 +40,7 @@ namespace xla {
 // these cliques launch operations (device kernels) on different device streams.
 class CliqueKey {
  public:
-  explicit CliqueKey(std::vector<GlobalDeviceId> devices);
+  explicit CliqueKey(absl::Span<const GlobalDeviceId> devices);
   virtual ~CliqueKey() = default;
 
   CliqueKey(const CliqueKey& other) = default;

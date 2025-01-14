@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -183,14 +184,17 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
             "Done instruction's operand is not annotated with the same id: ",
             instr->operand(0)->name(), ", annotation: ", id));
       }
-      for (HloInstruction* user : instr->users()) {
-        if (!visited.contains(user) &&
-            (!annotation.contains(user) || annotation[user] != id)) {
-          stack.push_back(user);
-          parent[user] = instr;
-          visited.insert(user);
-          VLOG(2) << "Annotation group: " << id
-                  << ", frontier using a root: " << user->name();
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (!visited.contains(user) &&
+              (!annotation.contains(user) || annotation[user] != id)) {
+            stack.push_back(user);
+            parent[user] = instr;
+            visited.insert(user);
+            VLOG(2) << "Annotation group: " << id
+                    << ", frontier using a root: " << user->name();
+          }
         }
       }
     }
@@ -202,28 +206,31 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     while (!stack.empty()) {
       HloInstruction* instr = stack.back();
       stack.pop_back();
-      for (HloInstruction* user : instr->users()) {
-        if (annotation.contains(user) && annotation[user] == id) {
-          LOG(INFO) << "PATH: " << user->name();
-          HloInstruction* current = instr;
-          LOG(INFO) << "PATH: " << current->name();
-          while (parent.contains(current)) {
-            current = parent[current];
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (annotation.contains(user) && annotation[user] == id) {
+            LOG(INFO) << "PATH: " << user->name();
+            HloInstruction* current = instr;
             LOG(INFO) << "PATH: " << current->name();
+            while (parent.contains(current)) {
+              current = parent[current];
+              LOG(INFO) << "PATH: " << current->name();
+            }
+            return absl::UnimplementedError(absl::StrCat(
+                "Support for annotation groups with gaps doesn't "
+                "exist yet, annotation: ",
+                id, ", instr: ", user->name(),
+                " has the same annotation in its operand tree but "
+                "has gaps on the way from that operand to itself."));
           }
-          return absl::UnimplementedError(
-              absl::StrCat("Support for annotation groups with gaps doesn't "
-                           "exist yet, annotation: ",
-                           id, ", instr: ", user->name(),
-                           " has the same annotation in its operand tree but "
-                           "has gaps on the way from that operand to itself."));
+          if (visited.contains(user)) {
+            continue;
+          }
+          stack.push_back(user);
+          parent[user] = instr;
+          visited.insert(user);
         }
-        if (visited.contains(user)) {
-          continue;
-        }
-        stack.push_back(user);
-        parent[user] = instr;
-        visited.insert(user);
       }
     }
   }

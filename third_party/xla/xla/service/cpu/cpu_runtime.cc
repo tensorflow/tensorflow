@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstring>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -40,7 +39,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/collectives/cpu_clique_key.h"
+#include "xla/backends/cpu/collectives/cpu_cliques.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/backends/cpu/collectives/in_process_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -48,20 +51,17 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -339,13 +339,12 @@ RendezvousKey GetRendezvousKey(const ExecutableRunOptions* run_options,
                        num_local_participants, op_kind, op_id};
 }
 
-CollectivesInterface* GetInProcessCollectivesImpl() {
+CpuCollectives* GetInProcessCollectivesImpl() {
   static InProcessCollectives* c = new InProcessCollectives();
   return c;
 }
 
-CollectivesInterface* GetCollectivesImpl(
-    const ExecutableRunOptions* run_options) {
+CpuCollectives* GetCollectivesImpl(const ExecutableRunOptions* run_options) {
   if (run_options->cpu_executable_run_options() &&
       run_options->cpu_executable_run_options()->collectives()) {
     return run_options->cpu_executable_run_options()->collectives();
@@ -386,14 +385,16 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+  CpuCollectives* collectives = GetCollectivesImpl(run_options);
 
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(source_buffers,
                                       sizeof(void*) * num_buffers);
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(destination_buffers,
                                       sizeof(void*) * num_buffers);
-  auto communicator =
-      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+
+  CpuCliqueKey clique_key(rendezvous_key.global_devices);
+  Communicator* communicator =
+      AcquireCommunicator(collectives, clique_key, RankId(rank)).value();
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
 
@@ -428,10 +429,11 @@ void AllGatherImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+  CpuCollectives* collectives = GetCollectivesImpl(run_options);
 
-  auto communicator =
-      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  CpuCliqueKey clique_key(rendezvous_key.global_devices);
+  Communicator* communicator =
+      AcquireCommunicator(collectives, clique_key, RankId(rank)).value();
 
   se::DeviceMemoryBase input_buffer_data(source_buffer, buffer_size);
   se::DeviceMemoryBase output_buffer_data(destination_buffer, buffer_size);
@@ -461,10 +463,11 @@ void ReduceScatterImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+  CpuCollectives* collectives = GetCollectivesImpl(run_options);
 
-  auto communicator =
-      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  CpuCliqueKey clique_key(rendezvous_key.global_devices);
+  Communicator* communicator =
+      AcquireCommunicator(collectives, clique_key, RankId(rank)).value();
 
   auto dtype = static_cast<PrimitiveType>(element_type);
 
@@ -506,10 +509,11 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+  CpuCollectives* collectives = GetCollectivesImpl(run_options);
 
-  auto communicator =
-      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  CpuCliqueKey clique_key(rendezvous_key.global_devices);
+  Communicator* communicator =
+      AcquireCommunicator(collectives, clique_key, RankId(rank)).value();
 
   // Convert input/output buffers to DeviceMemoryBase.
   std::vector<se::DeviceMemoryBase> input_buffers_data;
@@ -569,10 +573,11 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+  CpuCollectives* collectives = GetCollectivesImpl(run_options);
 
-  auto communicator =
-      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  CpuCliqueKey clique_key(rendezvous_key.global_devices);
+  Communicator* communicator =
+      AcquireCommunicator(collectives, clique_key, RankId(rank)).value();
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
 

@@ -136,6 +136,27 @@ class TensorBuffer
 #endif
   }
 
+  struct DmaBuf {
+    void* addr;
+    int fd;
+  };
+
+  litert::Expected<DmaBuf> GetDmaBuf() const {
+#if LITERT_HAS_DMABUF_SUPPORT
+    DmaBuf dma_buf;
+    if (LiteRtGetTensorBufferDmaBufBuffer(Get(), &dma_buf.addr, &dma_buf.fd) ==
+        kLiteRtStatusOk) {
+      return dma_buf;
+    } else {
+      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                                "Failed to get DMA-BUF from tensor buffer");
+    }
+#else
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "DMA-BUF is not supported on this platform");
+#endif
+  }
+
   Expected<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;
     if (auto status = LiteRtGetTensorBufferType(Get(), &tensor_buffer_type);

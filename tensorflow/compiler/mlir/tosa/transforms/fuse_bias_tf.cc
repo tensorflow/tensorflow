@@ -15,12 +15,7 @@ limitations under the License.
 
 // Fuse tf.Op + tf.BiasAdd and legalized to TOSA
 
-#include <climits>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 

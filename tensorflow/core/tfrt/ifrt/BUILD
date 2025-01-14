@@ -21,6 +21,7 @@ tf_proto_library(
     srcs = ["ifrt_config.proto"],
     protodeps = [
         "@local_xla//xla:xla_data_proto",
+        "//tensorflow/core/framework:tensor_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -268,6 +269,7 @@ cc_library(
     srcs = ["ifrt_model_context.cc"],
     hdrs = ["ifrt_model_context.h"],
     deps = [
+        ":ifrt_config_proto_cc",
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
         ":ifrt_persistent_compilation_cache",
@@ -276,6 +278,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",

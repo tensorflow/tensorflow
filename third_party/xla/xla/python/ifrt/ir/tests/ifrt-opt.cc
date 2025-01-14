@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/InitAllPasses.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "tsl/platform/init_main.h"
 
 namespace xla {
 namespace ifrt {
@@ -117,6 +119,20 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
 }  // namespace xla
 
 int main(int argc, char** argv) {
+  // Allow passing ABSL flags to mlir_opt. For convenience (since we don't need
+  // ABSL flags in most cases), this is in effect only if '--' is present in the
+  // argument list.
+  bool has_absl_flags = false;
+  for (int i = 1; i < argc; ++i) {
+    if (absl::string_view(argv[i]) == "--") {
+      has_absl_flags = true;
+    }
+  }
+  if (has_absl_flags) {
+    // Parses ABSL flags.
+    tsl::port::InitMain((argc >= 1 ? argv[0] : ""), &argc, &argv);
+  }
+
   std::shared_ptr<xla::ifrt::AtomProgramCompiler> compiler =
       std::make_shared<xla::ifrt::TestChildExecutableCompiler>();
   auto compile_options = std::make_shared<absl::flat_hash_map<

@@ -53,6 +53,12 @@ class SolLatencyEstimator : public LatencyEstimator {
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const SolGPUCostModel::Config& sol_flags);
 
+  static absl::Duration ComputeCollectiveTime(
+      const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const SolGPUCostModel::Config& sol_flags,
+      const GpuHloCostAnalysis& cost_analysis);
+
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kLowLatency = 1.0;
 

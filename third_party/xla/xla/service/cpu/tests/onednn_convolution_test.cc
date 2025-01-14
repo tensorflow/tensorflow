@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
@@ -170,6 +170,23 @@ TEST_P(ConvolutionTest, Simple2DTest1) {
   RunCompareAndMatchOptimizedHlo(outline, {});
 }
 
+TEST_P(ConvolutionTest, SimpleScalarTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test
+
+  ENTRY convolution.test {
+    arg.0 = $dtype[1,22,22,1] parameter(0)
+    arg.1 = $dtype[1] parameter(1)
+    reshape.1 = $dtype[1,1,1,1] reshape(arg.1)
+    convolution.0 = $dtype[1,14,14,1] convolution(arg.0, reshape.1),
+          window={size=1x1 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    tuple.0 = ($dtype[1,14,14,1]) tuple(convolution.0)
+    ROOT gte.0 = $dtype[1,14,14,1] get-tuple-element(tuple.0), index=0
+  })";
+
+  RunCompareAndMatchOptimizedHlo(outline, {});
+}
+
 TEST_P(ConvolutionTest, Simple3DTest1) {
   const absl::string_view outline = R"(
   HloModule convolution.test
@@ -196,6 +213,22 @@ TEST_P(ConvolutionTest, Conv3DWithBiasTest) {
     bias = $dtype[64] parameter(2)
     broadcasted_bias = $dtype[15,4,5,5,64] broadcast(bias), dimensions={4}
     ROOT add = $dtype[15,4,5,5,64] add(conv, broadcasted_bias)
+})";
+
+  RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
+}
+
+TEST_P(ConvolutionTest, Conv2DWithSmallBiasTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.constant.bias
+  ENTRY convolution.test.with.bias {
+    arg.0 = $dtype[1,10,10,32] parameter(0)
+    arg.1 = $dtype[10,10,32,64] parameter(1)
+    conv = $dtype[1,1,1,64] convolution(arg.0, arg.1),
+          window={size=10x10}, dim_labels=b01f_01io->b01f
+    bias = $dtype[64] constant({...})
+    broadcasted_bias = $dtype[1,1,1,64] broadcast(bias), dimensions={3}
+    ROOT add = $dtype[1,1,1,64] add(conv, broadcasted_bias)
 })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});

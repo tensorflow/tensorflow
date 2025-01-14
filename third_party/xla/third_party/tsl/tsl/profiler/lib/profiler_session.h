@@ -20,11 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

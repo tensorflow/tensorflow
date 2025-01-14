@@ -31,9 +31,11 @@ limitations under the License.
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -46,19 +48,6 @@ namespace stream_executor {
 
 // Identifies the memory space where an allocation resides.
 enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
-
-inline std::string MemoryTypeString(MemoryType memory_type) {
-  switch (memory_type) {
-    case MemoryType::kDevice:
-      return "device";
-    case MemoryType::kUnified:
-      return "unified";
-    case MemoryType::kCollective:
-      return "collective";
-    case MemoryType::kHost:
-      return "host";
-  }
-}
 
 /// The StreamExecutor is a single-device abstraction for:
 //

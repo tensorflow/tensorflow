@@ -52,10 +52,13 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
   auto cc = std::get<se::CudaComputeCapability>(GetComputeCapability());
-  bool is_hopper = !config_.IsDeviceless() && cc.IsAtLeastHopper();
   bool is_cudnn_enabled =
-      debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
-      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
+      !config_.IsDeviceless() &&
+      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
+      ((cc.IsAtLeastAmpere() &&
+        debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
+       (cc.IsAtLeastBlackwell() &&
+        debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
   if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
       (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
        algorithm_util::IsSupportedByCudnn(

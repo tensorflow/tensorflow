@@ -17,9 +17,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace testing {

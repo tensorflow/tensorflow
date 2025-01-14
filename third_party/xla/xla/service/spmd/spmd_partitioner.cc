@@ -432,7 +432,7 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   // propagated to constant.)
   if (hlo()->opcode() == HloOpcode::kConstant && !sharding().IsManual() &&
       target.IsManual()) {
-    PartitionedHlo pconstant = this->Reshard(HloSharding::Replicate());
+    PartitionedHlo pconstant = this->Replicate();
     pconstant.hlo()->set_sharding(target);
     return pconstant;
   }
@@ -2758,19 +2758,26 @@ absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCollectivePermute(
+    HloInstruction* hlo) {
+  if (hlo->channel_id()) {
+    return HandleElementwise(hlo);
+  }
+  return DefaultAction(hlo);
+}
+
+absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
+    HloInstruction* hlo, absl::Span<const int64_t> dims_to_replicate) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
   }
 
-  // 1. Replicate the final sharding along the concatenate dimension to get
-  // temp_sharding. If the final sharding is already replicated along the
-  // concatenate dimension, then temp_sharding will be the same as final
-  // sharding.
+  // 1. Replicate the final sharding along `dims_to_replicate` to get
+  // temp_sharding.
   const HloSharding temp_sharding =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          sharding, {hlo->concatenate_dimension()});
+          sharding, dims_to_replicate);
 
   // 2. Reshard the operands to temp_sharding.
   std::vector<HloInstruction*> new_operands;
@@ -2780,16 +2787,34 @@ absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
         GetPartitionedHlo(operand).Reshard(temp_sharding).hlo());
   }
 
-  // 3. Concatenate the operands to get result in temp_sharding.
-  auto concatenate = b_.AddInstruction(hlo->CloneWithNewOperands(
+  // 3. Apply the operation to get result in temp_sharding.
+  auto result_in_temp_sharding = b_.AddInstruction(hlo->CloneWithNewOperands(
       MakePartitionedShape(hlo->shape(), temp_sharding), new_operands));
-  concatenate->set_sharding(temp_sharding);
+  result_in_temp_sharding->set_sharding(temp_sharding);
 
   // 4. Reshard the result from temp_sharding to the final sharding.
-  SetPartitionedHlo(
-      hlo, PartitionedHlo(concatenate, hlo->shape(), MakePartitioningState())
-               .Reshard(sharding));
+  SetPartitionedHlo(hlo, PartitionedHlo(result_in_temp_sharding, hlo->shape(),
+                                        MakePartitioningState())
+                             .Reshard(sharding));
   return absl::OkStatus();
+}
+
+absl::Status SpmdPartitioningVisitor::HandleCholesky(HloInstruction* hlo) {
+  CHECK_GE(hlo->shape().rank(), 2);
+  return HandleElementwiseWithDimsToReplicate(
+      hlo, {hlo->shape().rank() - 2, hlo->shape().rank() - 1});
+}
+
+absl::Status SpmdPartitioningVisitor::HandleTriangularSolve(
+    HloInstruction* hlo) {
+  CHECK_GE(hlo->shape().rank(), 2);
+  return HandleElementwiseWithDimsToReplicate(
+      hlo, {hlo->shape().rank() - 2, hlo->shape().rank() - 1});
+}
+
+absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+  return HandleElementwiseWithDimsToReplicate(hlo,
+                                              {hlo->concatenate_dimension()});
 }
 
 absl::Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
@@ -2913,8 +2938,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
         slice_input, ShapeUtil::MakeShape(element_type, replicated_dimensions),
         MakePartitioningState());
     // Reshard value to be replicated.
-    auto replicated_slice_input =
-        partitioned_slice_input.Reshard(HloSharding::Replicate()).hlo();
+    auto replicated_slice_input = partitioned_slice_input.Replicate().hlo();
 
     // Slice top K index from the first parttioned sort.
     auto slice_index = SliceFirstK(index_gte, &b_, sort_dim, k.value());
@@ -2923,8 +2947,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
         slice_index, ShapeUtil::MakeShape(index_type, replicated_dimensions),
         MakePartitioningState());
     // Reshard value to be replicated.
-    auto replicated_slice_index =
-        partitioned_slice_index.Reshard(HloSharding::Replicate()).hlo();
+    auto replicated_slice_index = partitioned_slice_index.Replicate().hlo();
 
     // Creates replicated sort to do TopK, the input is value and index pairs
     // from all the partitions.
@@ -2970,7 +2993,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     std::vector<HloSharding> new_shardings;
     std::optional<HloSharding> new_output_sharding;
     if (std::optional<int64_t> picked_dim =
-            hlo_sharding_util::GetFirstMergeableDimForSortOperand(
+            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                 subshape, cur_sharding, sort_dim)) {
       // We can move the sharding tiles from the sort dimension to the picked
       // dimension.
@@ -3496,6 +3519,48 @@ absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
+absl::Status SpmdPartitioningVisitor::HandleBitcastConvert(
+    HloInstruction* hlo) {
+  const Shape& input_shape = hlo->operand(0)->shape();
+  const Shape& output_shape = hlo->shape();
+  if (input_shape.rank() == output_shape.rank()) {
+    return HandleElementwise(hlo);
+  }
+
+  if (hlo->sharding().IsTileMaximal()) {
+    return DefaultAction(hlo);
+  }
+  PartitionedHlo& operand = GetPartitionedHlo(hlo->operand(0));
+  HloSharding temp_input_sharding = HloSharding::Replicate();
+  HloSharding temp_output_sharding = HloSharding::Replicate();
+  if (input_shape.rank() > output_shape.rank()) {
+    CHECK_EQ(input_shape.rank(), output_shape.rank() + 1);
+    std::vector<int64_t> extra_dim = {output_shape.rank()};
+    temp_input_sharding =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            operand.sharding(), extra_dim);
+    temp_output_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        temp_input_sharding, extra_dim);
+  } else {
+    CHECK_EQ(input_shape.rank() + 1, output_shape.rank());
+    std::vector<int64_t> extra_dim = {input_shape.rank()};
+    temp_output_sharding =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            hlo->sharding(), extra_dim);
+    temp_input_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        temp_output_sharding, extra_dim);
+  }
+  Shape temp_output_shape =
+      MakePartitionedShape(output_shape, temp_output_sharding);
+  HloInstruction* temp_output = b_.AddInstruction(hlo->CloneWithNewOperands(
+      temp_output_shape, {operand.Reshard(temp_input_sharding).hlo()}));
+  temp_output->set_sharding(temp_output_sharding);
+  SetPartitionedHlo(
+      hlo, PartitionedHlo(temp_output, hlo->shape(), MakePartitioningState())
+               .Reshard(hlo->sharding()));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -3566,9 +3631,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
       continue;
     }
     // Replicate the indices.;
-    new_indices[i] = GetPartitionedHlo(hlo->operand(i + 1))
-                         .Reshard(HloSharding::Replicate())
-                         .hlo();
+    new_indices[i] = GetPartitionedHlo(hlo->operand(i + 1)).Replicate().hlo();
   }
   SetPartitionedHlo(hlo, [&]() {
     auto partitioned_shape =
@@ -3623,9 +3686,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     std::vector<HloInstruction*> new_indices(hlo->shape().rank());
     for (int64_t i = 0; i < new_indices.size(); ++i) {
       // Replicate the indices.
-      new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
-                           .Reshard(HloSharding::Replicate())
-                           .hlo();
+      new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2)).Replicate().hlo();
     }
     auto dus = b_.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
         base.hlo()->shape(), base.hlo(), operand.hlo(), new_indices));
@@ -3654,9 +3715,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
         continue;
       }
       // Replicate the indices.
-      new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
-                           .Reshard(HloSharding::Replicate())
-                           .hlo();
+      new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2)).Replicate().hlo();
     }
 
     // Get partitioned input.
@@ -3774,9 +3833,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
       continue;
     }
     // Replicate the indices.
-    new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
-                         .Reshard(HloSharding::Replicate())
-                         .hlo();
+    new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2)).Replicate().hlo();
   }
   SetPartitionedHlo(hlo, [&]() {
     auto partitioned_shape =
@@ -3944,9 +4001,7 @@ absl::Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
   auto lhs = GetPartitionedHlo(hlo->operand(0));
-  auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))
-                            .Reshard(HloSharding::Replicate())
-                            .hlo();
+  auto replicated_rhs = GetPartitionedHlo(hlo->operand(1)).Replicate().hlo();
   auto reshard_operand = ReshardDataForPad(
       replicated_rhs, hlo->padding_config(), lhs, hlo->sharding(), &b_);
   if (!reshard_operand.has_value()) {
@@ -4025,7 +4080,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
 
   for (int64_t operand_id = 0; operand_id < input_count; ++operand_id) {
     inits.push_back(GetPartitionedHlo(hlo->operand(operand_id + input_count))
-                        .Reshard(HloSharding::Replicate())
+                        .Replicate()
                         .hlo());
     inputs.push_back(GetPartitionedHlo(hlo->operand(operand_id)));
     if (operand_id > 0) {
@@ -4210,9 +4265,7 @@ absl::Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
                 .Reshard(hlo_sharding_util::UngroupSharding(grouped_sharding))
                 .hlo();
       } else {
-        cond = GetPartitionedHlo(hlo->operand(0))
-                   .Reshard(HloSharding::Replicate())
-                   .hlo();
+        cond = GetPartitionedHlo(hlo->operand(0)).Replicate().hlo();
       }
     }
     return b_.AddInstruction(HloInstruction::CreateConditional(
@@ -4438,7 +4491,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
       // Run on a single device (0) and distribute the data to all other cores.
       auto clone = clone_from_original(HloSharding::AssignDevice(0));
       return PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
-          .Reshard(HloSharding::Replicate())
+          .Replicate()
           .hlo();
     });
     return absl::OkStatus();
@@ -4449,9 +4502,8 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   std::vector<HloInstruction*> new_operands;
   new_operands.reserve(hlo->operand_count());
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-    new_operands.push_back(GetPartitionedHlo(hlo->operand(i))
-                               .Reshard(HloSharding::Replicate())
-                               .hlo());
+    new_operands.push_back(
+        GetPartitionedHlo(hlo->operand(i)).Replicate().hlo());
   }
 
   if (!hlo->sharding().ReplicateOnLastTileDim()) {
@@ -4498,8 +4550,8 @@ absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
   for (const HloInstruction* input_array : input_arrays) {
     PartitionedHlo& operand = GetPartitionedHlo(input_array);
     // Replicate init
-    PartitionedHlo replicated_init = GetPartitionedHlo(init_values[input_idx])
-                                         .Reshard(HloSharding::Replicate());
+    PartitionedHlo replicated_init =
+        GetPartitionedHlo(init_values[input_idx]).Replicate();
 
     const HloSharding& sharding =
         hlo->sharding().IsTuple() ? hlo->sharding().tuple_elements()[input_idx]
@@ -4601,8 +4653,7 @@ absl::Status SpmdPartitioningVisitor::HandleSelectAndScatter(
           : LiteralUtil::CreateR0<float>(float_pad_value)));
 
   // Replicate init
-  auto replicated_init = GetPartitionedHlo(hlo->mutable_operand(2))
-                             .Reshard(HloSharding::Replicate());
+  auto replicated_init = GetPartitionedHlo(hlo->mutable_operand(2)).Replicate();
 
   auto state = MakePartitioningState();
   auto partition_ordinals =

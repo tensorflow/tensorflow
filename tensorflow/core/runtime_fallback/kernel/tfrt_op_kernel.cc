@@ -41,12 +41,12 @@ TFRTOpKernelConstruction::TFRTOpKernelConstruction(
     const tfrt::OpAttrsRef& attributes)
     : attributes_(std::move(attributes)) {}
 
-absl::Status MissingAttributeError(StringPiece attr_name) {
+absl::Status MissingAttributeError(absl::string_view attr_name) {
   return errors::InvalidArgument("Missing attribute: ", attr_name);
 }
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                std::string* value) const {
   tfrt::string_view view;
   bool success = attributes_.GetString(
@@ -59,7 +59,7 @@ absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
 }
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                DataType* value) const {
   tfrt::OpAttrType attrtype;
   bool success = attributes_.Get<tfrt::OpAttrType>(
@@ -72,7 +72,7 @@ absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
 }
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
+absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                Padding* value) const {
   std::string padding_str;
   TF_RETURN_IF_ERROR(GetAttr<std::string>(attr_name, &padding_str));
@@ -81,7 +81,7 @@ absl::Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
 
 template <>
 absl::Status TFRTOpKernelConstruction::GetAttr(
-    StringPiece attr_name, std::vector<int32>* value) const {
+    absl::string_view attr_name, std::vector<int32>* value) const {
   llvm::ArrayRef<int32> arrayref;
   bool success = attributes_.GetArray<int32>(
       llvm::StringRef(attr_name.data(), attr_name.size()), &arrayref);
@@ -208,11 +208,12 @@ DataType TFRTOpMeta::output_type(int index) const {
   return output_types_[index];
 }
 
-TFRTOpMetaBuilder::TFRTOpMetaBuilder(StringPiece op_name) : op_name_(op_name) {}
+TFRTOpMetaBuilder::TFRTOpMetaBuilder(absl::string_view op_name)
+    : op_name_(op_name) {}
 
 namespace {
 
-DataType ParseInputOutputSpec(StringPiece spec) {
+DataType ParseInputOutputSpec(absl::string_view spec) {
   std::vector<absl::string_view> name_type =
       absl::StrSplit(spec, absl::MaxSplits(':', 2));
   DataType data_type;
@@ -225,16 +226,16 @@ DataType ParseInputOutputSpec(StringPiece spec) {
 
 }  // anonymous namespace
 
-TFRTOpMetaBuilder& TFRTOpMetaBuilder::Output(StringPiece output_spec) {
+TFRTOpMetaBuilder& TFRTOpMetaBuilder::Output(absl::string_view output_spec) {
   output_types_.push_back(ParseInputOutputSpec(output_spec));
   return *this;
 }
 
-TFRTOpMetaBuilder& TFRTOpMetaBuilder::Input(StringPiece input_spec) {
+TFRTOpMetaBuilder& TFRTOpMetaBuilder::Input(absl::string_view input_spec) {
   return *this;
 }
 
-TFRTOpMetaBuilder& TFRTOpMetaBuilder::Attr(StringPiece attr_spec) {
+TFRTOpMetaBuilder& TFRTOpMetaBuilder::Attr(absl::string_view attr_spec) {
   return *this;
 }
 
@@ -253,7 +254,7 @@ void TFRTOpMetaMap::RegisterOpMeta(const TFRTOpMetaBuilder& op_builder) {
   (void)insert_result;
 }
 
-const TFRTOpMeta* TFRTOpMetaMap::GetOpMeta(StringPiece op_name) const {
+const TFRTOpMeta* TFRTOpMetaMap::GetOpMeta(absl::string_view op_name) const {
   auto it = op_metas_.find(llvm::StringRef(op_name.data(), op_name.size()));
   if (it == op_metas_.end()) return nullptr;
 
@@ -274,13 +275,13 @@ llvm::ManagedStatic<TFRTOpKernelFactories> tfrt_forwarding_kernel_factories;
 
 TFRTOpKernelFactories::TFRTOpKernelFactories() = default;
 
-void TFRTOpKernelFactories::RegisterFactory(StringPiece kernel_class_name,
+void TFRTOpKernelFactories::RegisterFactory(absl::string_view kernel_class_name,
                                             TFRTOpKernelReg kernel_info) {
   factories_[std::string(kernel_class_name)].push_back(kernel_info);
 }
 
 // Returns true if kernel attributes match given type constraints.
-absl::Status ValidKernelAttr(StringPiece kernel_class_name,
+absl::Status ValidKernelAttr(absl::string_view kernel_class_name,
                              TFRTOpKernelConstruction* construction,
                              const llvm::StringMap<DataType>& constraints) {
   for (const auto& constraint : constraints) {
@@ -303,7 +304,7 @@ absl::Status ValidKernelAttr(StringPiece kernel_class_name,
 }
 
 std::unique_ptr<TFRTOpKernel> TFRTOpKernelFactories::CreateKernel(
-    StringPiece kernel_class_name,
+    absl::string_view kernel_class_name,
     TFRTOpKernelConstruction* op_kernel_construction) const {
   auto it = factories_.find(std::string(kernel_class_name));
   if (it == factories_.end()) {

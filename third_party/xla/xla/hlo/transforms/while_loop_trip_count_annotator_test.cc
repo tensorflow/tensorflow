@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

@@ -23,7 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
     defined(PLATFORM_GOOGLE)
@@ -34,7 +34,7 @@ limitations under the License.
         // defined(PLATFORM_GOOGLE)
 
 #include "xla/tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/str_util.h"

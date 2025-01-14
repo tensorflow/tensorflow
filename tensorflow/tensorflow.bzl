@@ -3572,6 +3572,9 @@ def tfcompile_dfsan_enabled():
 def tfcompile_dfsan_abilists():
     return []
 
+def tfcompile_friends():
+    return ["public"]
+
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]

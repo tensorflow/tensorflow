@@ -17,7 +17,9 @@
 #include <dlfcn.h>
 
 #ifndef __ANDROID__
+#if __has_include(<link.h>)
 #include <link.h>
+#endif
 #endif
 
 #include <cstdint>
@@ -269,7 +271,7 @@ void Dump(const CompilerPlugin& plugin, std::ostream& out) {
 }
 
 void DumpDLL(void* lib_handle, std::ostream& out) {
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__APPLE__)
   out << "\n--- Lib Info ---\n";
   if (lib_handle == nullptr) {
     out << "Handle is nullptr\n";

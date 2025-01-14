@@ -24,7 +24,7 @@ import pipes
 
 # Template values set by rocm_configure.bzl.
 CPU_COMPILER = ('%{cpu_compiler}')
-USE_CLANG = ('%{compiler}' == 'clang')
+USE_CLANG = ('%{compiler_is_clang}' == 'True')
 HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
 HIPCC_PATH = '%{hipcc_path}'

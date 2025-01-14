@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -95,8 +95,9 @@ class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
-    // Do not fall back to cuBLAS, we are testing Triton.
+    // Do not fall back to cuBLAS and disable cuDNN; we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);

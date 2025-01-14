@@ -25,13 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cord.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_statistics.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile

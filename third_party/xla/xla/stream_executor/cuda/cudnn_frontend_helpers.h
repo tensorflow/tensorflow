@@ -29,6 +29,12 @@ namespace gpu {
     }                                                                       \
   } while (false)
 
+#define RETURN_CUDNN_FRONTEND_STATUS(expr) \
+  do {                                     \
+    RETURN_IF_CUDNN_FRONTEND_ERROR(expr);  \
+    return absl::OkStatus();               \
+  } while (false)
+
 // UIDs for cuDNN are unique identifiers of tensors within a graph. They are
 // assigned during graph construction; then graph execution takes a {uid:
 // buffer pointer} map defining the correspondance of buffers to tensors.

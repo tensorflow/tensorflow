@@ -20,7 +20,7 @@ namespace tensorflow {
 
 class TestRandomAccessFile : public RandomAccessFile {
   // The file contents is 10 bytes of all A's
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     absl::Status s;
     for (int i = 0; i < n; ++i) {
@@ -31,7 +31,7 @@ class TestRandomAccessFile : public RandomAccessFile {
       }
       scratch[i] = 'A';
     }
-    *result = StringPiece(scratch, n);
+    *result = absl::string_view(scratch, n);
     return s;
   }
 };

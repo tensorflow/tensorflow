@@ -545,9 +545,12 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
           "byte_strides is not currently supported for making "
           "BasicStringArrays.");
     }
-    if (semantics != Client::HostBufferSemantics::kImmutableOnlyDuringCall) {
+    if (!(semantics == Client::HostBufferSemantics::kImmutableOnlyDuringCall ||
+          semantics ==
+              Client::HostBufferSemantics::kImmutableUntilTransferCompletes)) {
       return absl::InvalidArgumentError(
-          "HostBufferSemantics other than kImmutableOnlyDuringCall are not "
+          "HostBufferSemantics other than kImmutableOnlyDuringCall and "
+          "kImmutableUntilTransferCompletes are not "
           "currently supported for making BasicStringArrays.");
     }
     if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {
@@ -1123,13 +1126,13 @@ absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtClient::GetDefaultLayout(
     MemoryKind memory_kind) const {
   static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
   if (memory_kind == kUnpinnedHostMemoryKind) {
-    return std::make_shared<PjRtXlaLayout>(
+    return std::make_shared<PjRtLayout>(
         LayoutUtil::MakeDescendingLayout(dims.size()));
   }
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
   TF_ASSIGN_OR_RETURN(xla::Layout layout,
                       pjrt_client_->GetDefaultLayout(element_type, dims));
-  return std::make_unique<PjRtXlaLayout>(std::move(layout));
+  return std::make_shared<PjRtLayout>(std::move(layout));
 }
 
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,

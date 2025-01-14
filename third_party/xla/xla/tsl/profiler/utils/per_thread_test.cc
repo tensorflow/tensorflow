@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {

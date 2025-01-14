@@ -38,11 +38,11 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // changes happen before shardings are added to operations, to ensure the
   // correct shardings are added and that they are not lost by this pass.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createPrepareForExportPass());
-  // We import `stablehlo.constant` ops to `sdy.constant` ops so that constants
+  // We import `mhlo.constant` ops to `sdy.constant` ops so that constants
   // aren't folded in greedy pattern rewriters, which would lift them outside of
   // nested regions (this undoes `WhileLoopConstantSinking` HLO pass).
-  // Therefore, this pass needs to be applied after any stablehlo pass that
-  // expects `stablehlo.constant`, and before any pass that has a greedy pattern
+  // Therefore, this pass needs to be applied after any MHLO pass that
+  // expects `mhlo.constant`, and before any pass that has a greedy pattern
   // rewriter.
   pm.addNestedPass<FuncOp>(createImportConstantsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createFlattenTuplePass());

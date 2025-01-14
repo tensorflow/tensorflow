@@ -17,4 +17,7 @@ package(
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
 )
 
-exports_files(srcs = ["export_litert_only.lds"])
+exports_files(srcs = [
+    "export_litert_only_darwin.lds",
+    "export_litert_only_linux.lds",
+])

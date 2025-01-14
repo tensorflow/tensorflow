@@ -227,7 +227,7 @@ cc_library(
     ] + if_google([
         "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
-        "//learning/brain/tfrt/mlrt/application/pathways:model_config_impl",
+        "//learning/brain/tfrt/saved_model:model_config_impl",
     ]),
 )
 

@@ -35,7 +35,7 @@ class CollectionRegistryTestAccess;
 #include <memory>
 
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace monitoring {
@@ -110,14 +110,14 @@ class CollectionRegistry {
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {

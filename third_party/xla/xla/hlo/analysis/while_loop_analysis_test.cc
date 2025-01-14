@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
-#include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 

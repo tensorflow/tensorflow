@@ -27,6 +27,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -665,9 +668,10 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t actual_size) {
   std::string error_msg = absl::StrCat(
       "Unexpected ", struct_name, " size: expected ", expected_size, ", got ",
-      actual_size, ". Check installed software versions.");
+      actual_size,
+      ". The plugin is likely built with a later version than the framework.");
 #if defined(PJRT_API_MAJOR)
-  absl::StrAppend(&error_msg, " The framework PJRT API version is ",
+  absl::StrAppend(&error_msg, " This plugin is built with PJRT API version ",
                   PJRT_API_MAJOR, ".", PJRT_API_MINOR, ".");
 #endif  // PJRT_API_MAJOR
   return error_msg;
@@ -1142,7 +1146,8 @@ xla::PjRtClient::ShapeSpec ConvertFromPjrtShapeSpec(
 }
 
 std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
-    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api) {
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api,
+    absl::StatusOr<xla::PjRtMemorySpaceDescription*>* default_memory) {
   const PJRT_MemoryDescriptions_Extension* extension =
       pjrt::FindExtension<PJRT_MemoryDescriptions_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_MemoryDescriptions);
@@ -1169,7 +1174,39 @@ std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
         std::string(kind_args.kind, kind_args.kind_size), kind_args.kind_id);
     memory_space_descriptions.push_back(description);
   }
+  *default_memory = {};
+  for (int i = 0; i < mem_desc_args.num_memory_descriptions; i++) {
+    if (mem_desc_args.default_memory_index == i && default_memory) {
+      *default_memory = &memory_space_descriptions[i];
+    }
+  }
   return memory_space_descriptions;
+}
+PJRT_Error* InvokePjRtEventWhenReady(
+    const PJRT_Api* api, PJRT_Event* event,
+    absl::AnyInvocable<void() &&> on_done_with_event) {
+  if (on_done_with_event) {
+    PJRT_Event_OnReady_Args event_args;
+    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+    event_args.extension_start = nullptr;
+    event_args.event = event;
+    event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
+        [on_done_with_event = std::move(on_done_with_event),
+         c_api = api](PJRT_Error* error) mutable {
+          if (error) {
+            ::pjrt::MakeErrorDeleter(c_api)(error);
+          }
+          std::move(on_done_with_event)();
+        });
+    event_args.callback = [](PJRT_Error* error, void* args) {
+      auto* on_done_with_event =
+          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
+      (*on_done_with_event)(error);
+      delete on_done_with_event;
+    };
+    return api->PJRT_Event_OnReady(&event_args);
+  }
+  return nullptr;
 }
 
 }  // namespace pjrt

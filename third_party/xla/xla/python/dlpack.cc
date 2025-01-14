@@ -418,7 +418,7 @@ absl::StatusOr<nb::capsule> BufferToDLPackManagedTensor(
                                      pjrt_buffer->dimensions().end());
 
   // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  Layout xla_layout = pjrt_buffer->layout()->xla_layout();
   pack->strides = StridesForShape(pjrt_buffer->element_type(),
                                   pjrt_buffer->dimensions(), xla_layout);
 

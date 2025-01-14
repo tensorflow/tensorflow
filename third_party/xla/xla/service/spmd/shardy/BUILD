@@ -86,8 +86,10 @@ cc_library(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -119,6 +121,7 @@ xla_cc_binary(
     deps = [
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service/spmd/shardy/mhlo_round_trip:export_callback_custom_calls",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_ops",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_export",
@@ -132,6 +135,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardy_attrs",
+        "//xla/service/spmd/shardy/sdy_round_trip:import_callback_custom_calls",
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/service/spmd/shardy/sdy_round_trip:remove_size_one_axes",
@@ -140,12 +144,11 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:mhlo_to_hlo_to_mhlo",
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:testing_pipeline",
         "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/ir:register",
         "@shardy//shardy/dialect/sdy/transforms:passes",
-        "@stablehlo//:stablehlo_ops",
     ],
 )

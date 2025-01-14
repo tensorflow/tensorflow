@@ -15,13 +15,11 @@ limitations under the License.
 
 // Legalize TensorFlow to TOSA
 
-#include <climits>
-#include <cstddef>
+#include <cassert>
 #include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 

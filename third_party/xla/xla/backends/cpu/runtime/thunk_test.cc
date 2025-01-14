@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -93,13 +93,12 @@ TEST(ThunkTest, CollectiveExecuteParams) {
   // Test forwarding collectives interface from CpuExecutableRunOptions.
   CpuExecutableRunOptions cpu_run_options;
   cpu_run_options.set_collectives(
-      reinterpret_cast<CollectivesInterface*>(0x12345678));
+      reinterpret_cast<CpuCollectives*>(0x12345678));
   run_options.set_cpu_executable_run_options(&cpu_run_options);
 
   TF_ASSERT_OK_AND_ASSIGN(params,
                           Thunk::CollectiveExecuteParams::Create(&run_options));
-  EXPECT_EQ(params.collectives,
-            reinterpret_cast<CollectivesInterface*>(0x12345678));
+  EXPECT_EQ(params.collectives, reinterpret_cast<CpuCollectives*>(0x12345678));
 }
 
 }  // namespace

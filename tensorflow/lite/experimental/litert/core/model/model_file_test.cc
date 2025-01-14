@@ -142,8 +142,8 @@ TEST(ModelLoadTest, BadFileData) {
 }
 
 TEST(ModelLoadTest, WithMetadata) {
-  constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
-  constexpr static std::string_view kMetadataData = "My_Meta_Data";
+  constexpr static absl::string_view kMetadataName = "an_soc_manufacturer";
+  constexpr static absl::string_view kMetadataData = "My_Meta_Data";
 
   auto flatbuffer =
       FlatbufferWrapper::CreateFromTflFile(GetTestFilePath(kAddSimple));

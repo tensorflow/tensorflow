@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace io {

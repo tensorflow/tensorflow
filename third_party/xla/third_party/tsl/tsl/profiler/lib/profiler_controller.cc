@@ -17,8 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

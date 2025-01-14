@@ -191,9 +191,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/collective_select_folder.h"
+#include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -202,6 +202,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/explicit_stream_annotation_async_wrapper.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
@@ -1216,7 +1217,11 @@ absl::Status RunPostFusionSimplificationPasses(
         gpu_target_config.device_description);
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
   }
-
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_stream_annotation()) {
+    pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
+  }
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1649,8 +1654,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // also have unsorted update_window_dims.
   pipeline.AddPass<ScatterSimplifier>();
 
-  pipeline.AddPass<HostOffloader>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+  pipeline.AddPass<HostOffloader>();
 
   TF_RETURN_IF_ERROR(
       AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,

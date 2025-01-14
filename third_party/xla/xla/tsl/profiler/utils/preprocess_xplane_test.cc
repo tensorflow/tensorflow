@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

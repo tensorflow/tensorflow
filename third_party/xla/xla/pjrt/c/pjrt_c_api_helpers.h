@@ -190,6 +190,9 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes();
 // than or equal to the expected size. The actual struct size can be larger if
 // it comes from a forwards-compatible caller built at a later version than this
 // check. Returns a non-OK status if the expected is smaller.
+//
+// This function is only valid when called from the *plugin* side, not the
+// *client* side.
 absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
                                               size_t expected_size,
                                               size_t actual_size);
@@ -358,7 +361,12 @@ int64_t GetTracemeContextId(InputType* args) {
 }
 
 std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
-    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api);
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api,
+    absl::StatusOr<xla::PjRtMemorySpaceDescription*>* default_memory);
+
+PJRT_Error* InvokePjRtEventWhenReady(
+    const PJRT_Api* api, PJRT_Event* event,
+    absl::AnyInvocable<void() &&> on_done_with_event);
 
 }  // namespace pjrt
 
