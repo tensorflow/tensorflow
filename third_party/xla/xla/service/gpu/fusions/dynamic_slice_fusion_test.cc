@@ -21,6 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -32,9 +35,6 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"

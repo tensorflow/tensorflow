@@ -21,12 +21,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
