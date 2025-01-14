@@ -154,6 +154,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       else:
         original_input_names = []
         input_specs = []
+
       # TODO(b/205015292): Support optional arguments
       feeds = [
           wrap_function._get_element_from_tensor_info(input_spec, wrapped.graph)  # pylint: disable=protected-access
@@ -189,7 +190,10 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       )
       try:
         signature_fn = wrapped.prune(
-            feeds=feeds, fetches=fetches, input_signature=input_signature
+            feeds=feeds,
+            fetches=fetches,
+            input_signature=input_signature,
+            are_keyword_args_also_positional=True,
         )
       except lift_to_graph.UnliftableError as ex:
         # Mutate the exception to add a bit more detail.
@@ -206,6 +210,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         ).format(signature_key) + message
         ex.args = (message,) + args[1:]
         raise
+
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
 
