@@ -612,8 +612,8 @@ lit_test_suite(
 #     srcs = ["xla-opt.cc"],
 #     deps = [
 #         "//xla/backends/gpu/codegen/transforms:passes",
-#         "//xla/service/gpu/fusions/triton:xla_triton",
-#         "//xla/service/gpu/fusions/triton:xla_triton_passes",
+#         "//xla/backends/gpu/codegen/triton:xla_triton",
+#         "//xla/backends/gpu/codegen/triton:xla_triton_passes",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",

@@ -22,11 +22,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
