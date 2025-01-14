@@ -1113,7 +1113,10 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
-  // Next id: 362
+  // For sub-byte dot operands, layout them along contracting dimensions.
+  bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
+
+  // Next id: 363
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
