@@ -1260,7 +1260,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
     alwayslink = 1,
 )
