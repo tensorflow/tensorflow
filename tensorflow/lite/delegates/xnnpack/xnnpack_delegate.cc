@@ -6197,7 +6197,8 @@ class Subgraph {
 
     const auto CheckParamTensorShape = [&](const TfLiteTensor& param_tensor,
                                            const char* param_tensor_name) {
-      if (input_tensor.dims->size != GetTensorData<int32_t>(&param_tensor)[0]) {
+      if (param_tensor.dims->size != 1 ||
+          input_tensor.dims->size != param_tensor.dims->data[0]) {
         TF_LITE_MAYBE_KERNEL_LOG(
             logging_context,
             "%s shape (%d) must be equal to input shape (%d) "
@@ -6231,65 +6232,33 @@ class Subgraph {
 
     auto begin_data = GetTensorData<int32_t>(&begin_tensor);
     auto end_data = GetTensorData<int32_t>(&end_tensor);
-    auto input_shape = input_tensor.dims;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> begins;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> ends;
+    std::array<int64_t, XNN_MAX_TENSOR_DIMS> offsets, sizes;
     for (size_t i = 0; i < num_dims; i++) {
-      if (begin_data[i] < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "begin %d must be greater than or equal to zero "
-            "in STRIDED_SLICE node #%d",
-            begin_data[i], node_index);
-        return kTfLiteError;
-      }
-      begins[i] = begin_data[i] < 0 ? input_shape->data[i] + begin_data[i]
-                                    : begin_data[i];
-      if ((params->begin_mask & (1 << i)) != 0) {
-        begins[i] = 0;
-      }
-
-      int actual_end_data = end_data[i];
+      offsets[i] = begin_data[i];
       if (params->offset) {
-        actual_end_data += begin_data[i];
-      }
-      // If end is negative, we count from the back, -1 is the last element.
-      if (actual_end_data < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "end %d must be greater than or equal to zero "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
-        return kTfLiteError;
+        sizes[i] = end_data[i];
       } else {
-        ends[i] = actual_end_data;
+        const int32_t offset = begin_data[i] < 0
+                                   ? begin_data[i] + input_tensor.dims->data[i]
+                                   : begin_data[i];
+        if (end_data[i] < 0) {
+          sizes[i] = end_data[i] + input_tensor.dims->data[i] - offset;
+        } else {
+          sizes[i] = end_data[i] - offset;
+        }
       }
-
-      if ((params->end_mask & (1 << i)) != 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "non-zero end mask not supported "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
-        return kTfLiteError;
-      }
-
-      if (begins[i] >= ends[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "begin index %zu must be less than end index "
-                                 "%zu for STRIDED_SLICE node #%d",
-                                 begins[i], ends[i], node_index);
-      }
-
-      sizes[i] = ends[i] - begins[i];
+      // TF_LITE_MAYBE_KERNEL_LOG(
+      //     logging_context,
+      //     "DEL: i %d beg %d end %d->%d extent %d offset %d masks %x %x",
+      //     (int)i, begin_data[i], end_data[i], (int)sizes[i],
+      //     (int)input_tensor.dims->data[i], (int)params->offset,
+      //     (params->begin_mask >> i) & 1, (params->end_mask >> i) & 1);
     }
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_static_slice(
-          subgraph, num_dims, begins.data(), sizes.data(),
-          input_output_tensors.at(input_tensor_index),
+      const xnn_status status = xnn_define_static_slice_v3(
+          subgraph, num_dims, offsets.data(), sizes.data(), params->begin_mask,
+          params->end_mask, input_output_tensors.at(input_tensor_index),
           input_output_tensors.at(output_tensor_index), /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(
