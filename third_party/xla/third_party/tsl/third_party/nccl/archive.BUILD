@@ -93,7 +93,7 @@ genrule(
     cmd = """
     mkdir -p src/device/generated
     $(location :generate) src/device/generated
-    tar -cf $@ src
+    tar --warning=no-file-changed -cf $@ src
     """,
     tools = [":generate"],
 )

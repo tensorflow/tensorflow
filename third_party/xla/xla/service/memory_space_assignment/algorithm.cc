@@ -2857,6 +2857,20 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
     required_copy_allocation_latest_time =
         std::min(earliest_use_time, earliest_position_time);
+    // We need to make sure that the copy allocation is scheduled before the
+    // controlled successor of the sync mem op.
+    for (const HloInstruction* control_successor :
+         required_copy_allocation_for->control_successors()) {
+      int64_t successor_time = instruction_schedule.at(control_successor);
+      if (successor_time < required_copy_allocation_latest_time) {
+        VLOG(3) << "Updating the required replacement async mem op allocation "
+                   "latest time from "
+                << required_copy_allocation_latest_time << " to "
+                << successor_time << ", because of control successor "
+                << control_successor->ToString();
+        required_copy_allocation_latest_time = successor_time;
+      }
+    }
   }
   int64_t use_time = instruction_schedule.at(hlo_use.instruction);
   bool allow_no_copy_alternate_mem_allocation = true;

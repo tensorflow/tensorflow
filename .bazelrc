@@ -190,7 +190,7 @@ build:macos_arm64 --macos_minimum_os=11.0
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
-build:ios --apple_bitcode=embedded --copt=-fembed-bitcode
+build:ios --copt=-fembed-bitcode
 build:ios --copt=-Wno-c++11-narrowing
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
