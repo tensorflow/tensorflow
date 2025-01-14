@@ -58,7 +58,13 @@ tf_proto_library(
     srcs = ["xla_data.proto"],
     create_grpc_library = True,
     make_default_target_header_only = True,
+    protodeps = [
+        "//xla/hlo/support:hlo_proto",
+    ],
     visibility = ["//visibility:public"],
+    exports = [
+        "//xla/hlo/support:hlo_proto",
+    ],
 )
 
 tf_proto_library(
