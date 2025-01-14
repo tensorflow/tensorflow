@@ -1506,10 +1506,13 @@ TEST_F(AutoMixedPrecisionSimulateGpuTest, Simple_SimulatedGpu_CpuScope) {
 
 class AutoMixedPrecisionMklTest : public GrapplerTest {
  protected:
+  void SetMode(AutoMixedPrecisionMode mode) { mode_ = mode; }
   void SetUp() override {
     virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));
     TF_CHECK_OK(virtual_cluster_->Provision());
   }
+  AutoMixedPrecisionMode mode_;
+
   void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
 
   std::unique_ptr<Cluster> virtual_cluster_;
@@ -1681,9 +1684,35 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   }
 }
 
-TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
-  if (!IsMKLEnabled())
+class AutoMixedPrecisionMklParamTest
+    : public AutoMixedPrecisionMklTest,
+      public ::testing::WithParamInterface<AutoMixedPrecisionMode> {
+ protected:
+  void SetUp() override {
+    mode_ = GetParam();
+    if (mode_ == AutoMixedPrecisionMode::BF16) {
+      dtype_ = DT_BFLOAT16;
+    } else if (mode_ == AutoMixedPrecisionMode::FP16_CPU) {
+      dtype_ = DT_HALF;
+      // oneDNN supports FP16 on some platforms by converting to and from FP32
+      is_fp16_supported =
+        IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF) ||
+        IsAVXConvertSupportedByOneDNNOnThisCPU();
+    } else {
+      GTEST_SKIP() << "Mode not supported on this device";
+    }
+
+    AutoMixedPrecisionMklTest::SetMode(mode_);
+    AutoMixedPrecisionMklTest::SetUp();
+  }
+  DataType dtype_;
+  bool is_fp16_supported;
+};
+
+TEST_P(AutoMixedPrecisionMklParamTest, InferFollowUpStreamAllow) {
+  if (!IsMKLEnabled() || (dtype_ == DT_HALF && !is_fp16_supported))
     GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
+
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
@@ -1701,7 +1730,7 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
+  AutoMixedPrecision optimizer{mode_};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -1712,9 +1741,9 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
   EXPECT_EQ(output_view.GetNode("input1")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("weight")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("input2")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("allow")->attr().at("T").type(), DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("infer")->attr().at("T").type(), DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("clr")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("allow")->attr().at("T").type(), dtype_);
+  EXPECT_EQ(output_view.GetNode("infer")->attr().at("T").type(), dtype_);
+  EXPECT_EQ(output_view.GetNode("clr")->attr().at("T").type(), dtype_);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -1724,9 +1753,10 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
   }
 }
 
-TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
-  if (!IsMKLEnabled())
+TEST_P(AutoMixedPrecisionMklParamTest, InferFollowUpStreamDeny) {
+  if (!IsMKLEnabled() || (dtype_ == DT_HALF && !is_fp16_supported))
     GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
+
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
@@ -1742,7 +1772,7 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
-  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::BF16};
+  AutoMixedPrecision optimizer{mode_};
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -1764,6 +1794,15 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
     test::ExpectClose(tensors_expected[i], tensors[i]);
   }
 }
+
+constexpr AutoMixedPrecisionMode kMklTestValues[] = {
+    AutoMixedPrecisionMode::BF16,
+    AutoMixedPrecisionMode::FP16_CPU,
+};
+INSTANTIATE_TEST_SUITE_P(AutoMixedPrecisionMklTest,
+                         AutoMixedPrecisionMklParamTest,
+                         ::testing::ValuesIn(kMklTestValues));
+
 #endif  // INTEL_MKL
 
 }  // namespace
