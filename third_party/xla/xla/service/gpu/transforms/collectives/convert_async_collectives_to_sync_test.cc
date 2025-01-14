@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
+#include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
