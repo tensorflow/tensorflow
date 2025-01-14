@@ -228,9 +228,9 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:cholesky_expander",
-        "//xla/hlo/transforms:rng_bit_generator_expander",
-        "//xla/hlo/transforms:rng_expander",
+        "//xla/hlo/transforms/expanders:cholesky_expander",
+        "//xla/hlo/transforms/expanders:rng_bit_generator_expander",
+        "//xla/hlo/transforms/expanders:rng_expander",
         "//xla/service:batchnorm_expander",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_verifier",
