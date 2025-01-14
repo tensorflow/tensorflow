@@ -776,6 +776,25 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "dot_thunk_test",
+    srcs = ["dot_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":dot_thunk",
+        ":thunk",
+        ":thunk_testlib",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "outfeed_thunk",
     srcs = ["outfeed_thunk.cc"],

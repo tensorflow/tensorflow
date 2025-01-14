@@ -107,7 +107,12 @@ void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
   int rhs_contract_dim = transpose_rhs ? 1 : 0;
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
-  c.device(*device, std::move(done)) = a.contract(b, dims);
+  if (device != nullptr) {
+    c.device(*device, std::move(done)) = a.contract(b, dims);
+  } else {
+    c = a.contract(b, dims);
+    done();
+  }
 }
 
 template <typename T>
