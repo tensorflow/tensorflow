@@ -1568,6 +1568,62 @@ TEST_F(PassOrderTest,
                   "remove-no-op-reduce-precision-algebraic-simplifier");
 }
 
+// Tests that passes are converging and pipelines reach a fix point.
+class FixPointTest : public HloTestBase {
+ public:
+  void ExpectPipelinesReachFixedPoint(absl::string_view module_text) {
+    std::unique_ptr<HloModule> optimized_module;
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<VerifiedHloModule> module,
+        ParseAndReturnVerifiedModule(module_text, GetModuleConfigForTest()));
+    TF_ASSERT_OK_AND_ASSIGN(optimized_module,
+                            GetOptimizedModule(std::move(module)));
+
+    std::string last_pipeline_name;
+    int count = 0;
+    for (const HloPassMetadata& pass_metadata :
+         optimized_module->metadata()->proto().pass_metadata()) {
+      if (pass_metadata.pass_name() != "pipeline-start") {
+        continue;
+      }
+      VLOG(2) << "pipeline: " << pass_metadata.pipeline_name();
+      if (pass_metadata.pipeline_name() != last_pipeline_name) {
+        count = 0;
+        last_pipeline_name = pass_metadata.pipeline_name();
+      }
+      count++;
+      // 25 is a default iteration limit of HloPassFix.
+      EXPECT_LT(count, 25) << "Pipeline '" << pass_metadata.pipeline_name()
+                           << "' ran " << count
+                           << " times. That is likely an indication that the "
+                              "pipeline is not reaching a fixed point.";
+    }
+  }
+};
+
+TEST_F(FixPointTest, Constant) {
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+  ROOT constant = f32[] constant(0)
+})");
+}
+
+TEST_F(FixPointTest, ReshapeTranspose) {
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+p0 = f32[1024,4096]{1,0} parameter(0)
+reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
+ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+})");
+}
+
+TEST_F(FixPointTest, DotWithBatchDims) {
+  // Reduced test case for b/383729716.
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+p0 = f32[8,4,64]{2,1,0} parameter(0)
+p1 = f32[4,64,1024] parameter(1)
+ROOT dot = f32[4,8,1024]{2,1,0} dot(p0, p1), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
