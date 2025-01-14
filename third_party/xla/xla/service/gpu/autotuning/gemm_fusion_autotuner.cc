@@ -875,8 +875,10 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // on small block_k values depending on the bit-width of the inputs to the
     // dot. The logic below accounts for this limitation.
     constexpr int kLdmatrixGranularity = 256;
-    config.block_k =
-        std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
+    if (!small_dot) {
+      config.block_k =
+          std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
+    }
 
     // Additionally, there are further issues happening on 8 bit types and
     // predicates that require additional restriction on block_m when num_warps
