@@ -253,7 +253,7 @@ tsl_cc_test(
     deps = [
         ":stats_calculator_portable",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -278,7 +278,7 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:strcat",
     ],
 )

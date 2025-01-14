@@ -49,7 +49,7 @@ tsl_cc_test(
     deps = [
         ":xla_op_utils",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -95,7 +95,7 @@ tsl_cc_test(
     deps = [
         ":trace_container",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
@@ -107,7 +107,7 @@ tsl_cc_test(
         ":trace_container",
         ":trace_events_to_json",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
@@ -144,10 +144,10 @@ tsl_cc_test(
     deps = [
         ":xplane_to_trace_events",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/profiler/utils:trace_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

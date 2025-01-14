@@ -364,7 +364,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -379,9 +379,9 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:notification",
     ],
@@ -398,9 +398,9 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
         "//xla/tsl/profiler/utils:time_utils_impl",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
     ],
@@ -415,7 +415,7 @@ tsl_cc_test(
         ":gcs_dns_cache",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
     ],
 )
@@ -430,7 +430,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
     ],
 )
@@ -444,9 +444,9 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
@@ -469,8 +469,8 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@boringssl//:crypto",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:base64",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:scanner",
@@ -493,7 +493,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
     ],
 )
@@ -508,7 +508,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -521,7 +521,7 @@ tsl_cc_test(
         ":http_request_fake",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -533,6 +533,6 @@ tsl_cc_test(
         ":time_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )

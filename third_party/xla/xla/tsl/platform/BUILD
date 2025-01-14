@@ -319,7 +319,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:strcat",
     ],
@@ -372,8 +372,8 @@ tsl_cc_test(
     deps = [
         ":errors",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -457,12 +457,12 @@ tsl_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:status_to_from_proto",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:stack_frame",
     ],
 )
@@ -490,8 +490,8 @@ tsl_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -537,8 +537,8 @@ tsl_cc_test(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base:config",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -606,8 +606,8 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -86,8 +86,8 @@ tsl_cc_test(
     srcs = ["cpu_info_test.cc"],
     deps = [
         ":platform_port",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -106,8 +106,8 @@ tsl_cc_test(
     ],
     deps = [
         ":criticality",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -128,8 +128,8 @@ tsl_cc_test(
     srcs = ["denormal_test.cc"],
     deps = [
         ":denormal",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1115,9 +1115,9 @@ tsl_cc_test(
     tags = ["no_windows"],
     deps = [
         ":stacktrace",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1153,8 +1153,8 @@ tsl_cc_test(
     srcs = ["fingerprint_test.cc"],
     deps = [
         ":fingerprint",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1199,8 +1199,8 @@ tsl_cc_test(
     srcs = ["ctstring_test.cc"],
     deps = [
         ":tstring",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1210,10 +1210,10 @@ tsl_cc_test(
     srcs = ["hash_test.cc"],
     deps = [
         ":hash",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1224,10 +1224,10 @@ tsl_cc_test(
     deps = [
         ":path",
         ":stringpiece",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1236,8 +1236,8 @@ tsl_cc_test(
     srcs = ["random_test.cc"],
     deps = [
         ":random",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1251,8 +1251,8 @@ tsl_cc_test(
         ":platform",
         ":stringpiece",
         ":tstring",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1260,7 +1260,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@local_xla//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
     alwayslink = 1,
 )
@@ -1301,10 +1301,10 @@ tsl_cc_test(
         ":random",
         ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1359,8 +1359,8 @@ tsl_cc_test(
     deps = [
         ":intrusive_ptr",
         ":refcount",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1376,9 +1376,9 @@ tsl_cc_test(
     ],
     deps = [
         ":platform_port",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1389,8 +1389,8 @@ tsl_cc_test(
     tags = ["noclang"],
     deps = [
         ":setround",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1402,10 +1402,10 @@ tsl_cc_test(
     ],
     deps = [
         ":refcount",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1416,8 +1416,8 @@ tsl_cc_test(
         "integral_types_test.cc",
     ],
     deps = [
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1437,12 +1437,12 @@ tsl_cc_test(
         ":strcat",
         ":stringpiece",
         ":stringprintf",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:env_time",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1455,9 +1455,9 @@ tsl_cc_test(
     ],
     deps = [
         ":net",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1473,10 +1473,10 @@ tsl_cc_test(
     deps = [
         ":mutex",
         ":platform_port",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1488,8 +1488,8 @@ tsl_cc_test(
     ],
     deps = [
         ":scanner",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1501,8 +1501,8 @@ tsl_cc_test(
     ],
     deps = [
         ":str_util",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1516,8 +1516,8 @@ tsl_cc_test(
         ":strcat",
         ":stringprintf",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1530,8 +1530,8 @@ tsl_cc_test(
     ],
     deps = [
         ":stringpiece",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1543,8 +1543,8 @@ tsl_cc_test(
     ],
     deps = [
         ":stringprintf",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1557,8 +1557,8 @@ tsl_cc_test(
     deps = [
         ":numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1604,10 +1604,10 @@ tsl_cc_test(
     deps = [
         ":retrying_file_system",
         ":str_util",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -1619,11 +1619,11 @@ tsl_cc_test(
         ":retrying_utils",
         ":str_util",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )

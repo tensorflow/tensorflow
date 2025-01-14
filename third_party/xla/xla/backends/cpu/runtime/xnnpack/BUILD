@@ -33,9 +33,9 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -61,11 +61,11 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -171,9 +171,9 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -231,10 +231,10 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@XNNPACK",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
