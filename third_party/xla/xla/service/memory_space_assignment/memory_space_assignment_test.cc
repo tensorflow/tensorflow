@@ -7840,6 +7840,69 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   options.allocate_reserved_scoped_memory_at_same_offset = false;
   AssignMemorySpace(module.get(), options);
 }
+
+TEST_F(MemorySpaceAssignmentTest,
+       ReduceReservedScopedVmemUpdatesPeakMemoryUsage) {
+  // This test is designed to test that the peak_memory_usage_ is updated
+  // correctly after scoped memory allocation is updated. The test HLO module
+  // has two HLO values: a and b. The size of a is 64, and the size of b is 128.
+  // We expect both of them to be allocated in alternate memory.
+  //
+  // The reduce_scoped_memory_fn will initially report the scoped
+  // memory allocation of c as 64. So if b is allocated in the alternate memory,
+  // the peak memory usage at the time of c will be 196 (64 as scoped memory +
+  // 128 for its operand). This setup uses up all the memory and prevents a from
+  // being allocated in alternate memory. However, we also set
+  // reduce_scoped_memory_fn to report c's scoped memory allocation as 0 if its
+  // operand is prefetched. So, after repacking, the peak memory usage at the
+  // time of c should be reduced to 128 (0 as scoped memory + 128 for its
+  // operand). This allows a to be allocated in the alternate memory.
+  //
+  // If the peak_memory_usage_ is not updated correctly, we will hit a check
+  // failure and a will not be able to be allocated in alternate memory.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+  ENTRY Entry {
+    param0 = f32[] parameter(0)
+    param1 = f32[16] parameter(1)
+
+    a = f32[16] negate(param1)
+    b = f32[32] broadcast(param0), dimensions={}
+    c = f32[32] sine(b)
+    d = f32[16] negate(a)
+    ROOT tuple = (f32[16], f32[32]) tuple(d, c)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 128 + 64;
+  options.max_repacks = 10;
+  options.repack_after_every_allocation = true;
+  options.reduce_scoped_memory_limit = true;
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory)
+      -> int64_t {
+    if (instruction->opcode() != HloOpcode::kSin) {
+      return 0;
+    }
+    // Reserve 64 bytes as scoped memory, when we initially allocate scoped
+    // memory for c. After b is prefetched, reduce the scoped memory to 0.
+    if (operands_in_alternate_memory.empty()) {
+      return 64;
+    }
+    return 0;
+  };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), options);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
   // This is a test case for b/171040271. Repacks erase the required assignments
