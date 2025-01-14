@@ -768,6 +768,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/testlib:test",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
