@@ -61,3 +61,8 @@ config_setting(
     name = "forward_compatibility",
     flag_values = {":enable_forward_compatibility": "True"},
 )
+
+config_setting(
+    name = "no_forward_compatibility",
+    flag_values = {":enable_forward_compatibility": "False"},
+)

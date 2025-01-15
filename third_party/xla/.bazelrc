@@ -232,6 +232,7 @@ build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 
 # This configuration is used for building the wheels.
 build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
+build:cuda_wheel --@cuda_cudart//:enable_driver_stub=false
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda

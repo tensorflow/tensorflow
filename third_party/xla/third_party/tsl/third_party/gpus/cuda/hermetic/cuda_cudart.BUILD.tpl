@@ -1,4 +1,8 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
 licenses(["restricted"])  # NVIDIA proprietary license
+
 load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
@@ -27,7 +31,7 @@ cc_import(
 )
 %{multiline_comment}
 cc_library(
-    name = "cuda_driver",
+    name = "cuda_driver_stub",
     %{comment}deps = [":cuda_stub"],
     visibility = ["//visibility:public"],
 )
@@ -35,8 +39,10 @@ cc_library(
 cc_library(
     name = "cudart",
     %{comment}deps = select({
-        %{comment}"@cuda_driver//:forward_compatibility": ["@cuda_driver//:nvidia_driver"],
-        %{comment}"//conditions:default": [":cuda_driver"],
+        %{comment}":forward_compatibility_mode": ["@cuda_driver//:nvidia_driver"],
+        %{comment}":forward_compatibility_mode_override": ["@cuda_driver//:nvidia_driver"],
+        %{comment}":nvidia_cuda_driver_stub": [":cuda_driver_stub"],
+        %{comment}"//conditions:default": [],
     %{comment}}) + [
         %{comment}":cudart_shared_library",
     %{comment}],
@@ -129,4 +135,44 @@ cc_library(
     includes = ["include"],
     strip_include_prefix = "include",
     visibility = ["@local_config_cuda//cuda:__pkg__"],
+)
+
+# Flag indicating if we should add dependency on libcuda stub.
+bool_flag(
+    name = "enable_driver_stub",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "driver_stub",
+    flag_values = {":enable_driver_stub": "True"},
+)
+
+config_setting(
+    name = "no_driver_stub",
+    flag_values = {":enable_driver_stub": "False"},
+)
+
+selects.config_setting_group(
+    name = "forward_compatibility_mode",
+    match_all = [
+        "@cuda_driver//:forward_compatibility",
+        ":no_driver_stub"
+    ],
+)
+
+selects.config_setting_group(
+    name = "forward_compatibility_mode_override",
+    match_all = [
+        "@cuda_driver//:forward_compatibility",
+        ":driver_stub"
+    ],
+)
+
+selects.config_setting_group(
+    name = "nvidia_cuda_driver_stub",
+    match_all = [
+        "@cuda_driver//:no_forward_compatibility",
+        ":driver_stub"
+    ],
 )
