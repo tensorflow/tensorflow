@@ -1083,6 +1083,19 @@ class PjRtClient {
     return host_memory_for_device_manager_.get();
   }
 
+  // Experimental: Maps memory for fast transfers. May have backend specific
+  // alignment requirements (most backends will require at least a page).
+  virtual absl::Status DmaMap(void* data, size_t size) {
+    return Unimplemented("DmaMap not supported on platform %s",
+                         platform_name());
+  }
+
+  // Experimental: Unmaps memory for fast transfers.
+  virtual absl::Status DmaUnmap(void* data) {
+    return Unimplemented("DmaUnmap not supported on platform %s",
+                         platform_name());
+  }
+
  private:
   std::unique_ptr<PjRtHostMemoryForDeviceManager>
       host_memory_for_device_manager_;
