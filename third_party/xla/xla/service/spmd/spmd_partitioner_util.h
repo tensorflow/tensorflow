@@ -556,9 +556,9 @@ struct PadWithWrapPattern {
   std::vector<const HloInstruction*> rhs_modifiers;
 };
 
-// Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to
-// padding mid with wrapping (i.e., padding mid with slices of itself). Return
-// std::nullopt if the pattern is not found.
+// Returns the `PadWithWrapPattern` if the concat(lhs, mid, rhs) is equivalent
+// to padding mid with wrapping (i.e., padding mid with slices of itself).
+// Returns std::nullopt if the pattern is not found.
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);

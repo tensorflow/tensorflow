@@ -2294,9 +2294,7 @@ std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
       rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
-      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
-      rhs->sharding() != mid->sharding() ||
-      lhs->sharding() != concat->sharding()) {
+      rhs->slice_strides(dim) != 1) {
     return std::nullopt;
   }
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
